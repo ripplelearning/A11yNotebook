@@ -16,7 +16,16 @@ const entries: VaultEntry[] = [
 describe('accessible vault tree', () => {
   it('expands, moves focus with arrows, and opens a note with Enter', () => {
     const onOpen = vi.fn();
-    render(<VaultTree entries={entries} selectedPath={null} onSelect={vi.fn()} onOpen={onOpen} onRename={vi.fn()} onDelete={vi.fn()} />);
+    render(
+      <VaultTree
+        entries={entries}
+        selectedPath={null}
+        onSelect={vi.fn()}
+        onOpen={onOpen}
+        onRename={vi.fn()}
+        onDelete={vi.fn()}
+      />,
+    );
     const folder = screen.getByRole('treeitem', { name: /Research/ });
     fireEvent.keyDown(folder, { key: 'ArrowRight' });
     expect(folder).toHaveAttribute('aria-expanded', 'true');
@@ -29,7 +38,11 @@ describe('accessible vault tree', () => {
 describe('Markdown document', () => {
   it('renders headings semantically and removes raw executable HTML', () => {
     const { container } = render(
-      <MarkdownDocument content={'# Note\n\n<script>alert(1)</script>\n\n**Safe**'} mode="read-only" onChange={vi.fn()} onSave={vi.fn()} />,
+      <MarkdownDocument
+        content={'# Note\n\n<script>alert(1)</script>\n\n**Safe**'}
+        mode="read-only"
+        onChange={vi.fn()}
+      />,
     );
     expect(screen.getByRole('heading', { name: 'Note', level: 1 })).toBeInTheDocument();
     expect(container.querySelector('script')).toBeNull();
@@ -37,7 +50,7 @@ describe('Markdown document', () => {
   });
 
   it('uses a native textarea for Markdown editing', () => {
-    render(<MarkdownDocument content="# Note" mode="edit" onChange={vi.fn()} onSave={vi.fn()} />);
+    render(<MarkdownDocument content="# Note" mode="edit" onChange={vi.fn()} />);
     expect(screen.getByRole('textbox', { name: 'Markdown source' })).toHaveValue('# Note');
   });
 });

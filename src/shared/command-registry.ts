@@ -3,6 +3,7 @@ import type { AppMode, FocusRegion, FocusTarget } from './types';
 export type CommandId =
   | 'open-vault'
   | 'new-notebook'
+  | 'save-current-note'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
   | 'toggle-right-pane'
@@ -11,7 +12,7 @@ export type CommandId =
   | 'focus-main-content'
   | 'focus-right-pane'
   | 'command-search'
-  | 'refresh-links'
+  | 'refresh-vault'
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
   | 'show-about';
@@ -23,6 +24,7 @@ export type CommandActionContext = {
   setRightPaneOpen: (value: boolean) => void;
   setCommandPaletteOpen: (value: boolean) => void;
   setSelectedTab: (value: string) => void;
+  saveNote: () => void;
   /** Move keyboard focus to a region or control of the shell. */
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
@@ -55,6 +57,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'New notebook',
     description: 'Create a new notebook entry within the current vault.',
     shortcut: 'Ctrl+N',
+  },
+  {
+    id: 'save-current-note',
+    label: 'Save note',
+    description: 'Save changes to the active Markdown note.',
+    shortcut: 'Ctrl+S',
   },
   { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
   {
@@ -100,9 +108,9 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+K',
   },
   {
-    id: 'refresh-links',
-    label: 'Refresh links',
-    description: 'Refresh local links and relationships in the vault.',
+    id: 'refresh-vault',
+    label: 'Refresh vault',
+    description: 'Rescan the open vault folder for local changes.',
     shortcut: 'F5',
   },
   {
@@ -192,6 +200,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return 'Open vault dialog ready.';
     case 'new-notebook':
       return 'New notebook created in the current vault.';
+    case 'save-current-note':
+      context.saveNote();
+      return undefined;
     case 'close-current-tab':
       context.setSelectedTab('welcome');
       return 'Current tab closed.';
@@ -223,8 +234,8 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
     case 'command-search':
       context.setCommandPaletteOpen(true);
       return undefined;
-    case 'refresh-links':
-      return 'Local links refreshed.';
+    case 'refresh-vault':
+      return 'Vault contents refreshed.';
     case 'show-keyboard-shortcuts':
       context.showKeyboardShortcuts();
       return undefined;

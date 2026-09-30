@@ -20,7 +20,7 @@ are never downloaded or installed without the user's explicit choice.
 
 `src/shared` never imports Node or Electron, so it is safe for the renderer.
 
-## Renderer API (the whole IPC surface)
+## Updater renderer API
 
 ```ts
 window.a11yNotebook.updater.check(): Promise<void>
@@ -33,6 +33,11 @@ window.a11yNotebook.onMenuCommand(callback): () => void      // native Help menu
 
 There is no generic `invoke`/`send`, the renderer never provides a channel name, and none of the methods take
 arguments. Callbacks receive only the payload, never the raw `IpcRendererEvent`.
+
+The renderer also receives a separate fixed vault API for selecting/reading/writing vault resources. Its channels
+are registered by `electron/vault/ipc.ts`; it accepts relative paths only and resolves them against the active
+vault. It does not expose generic IPC or Node filesystem methods. See [architecture](architecture.md) for the
+vault-specific operations and their data model.
 
 | Channel                   | Direction       | Payload                                                            |
 | ------------------------- | --------------- | ------------------------------------------------------------------ |

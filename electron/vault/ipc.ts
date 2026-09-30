@@ -26,8 +26,9 @@ async function rememberVault(vaultPath: string) {
 }
 
 async function openVault(vaultPath: string) {
-  service = createVaultService(vaultPath);
-  const vault = await service.initialize();
+  const nextService = createVaultService(vaultPath);
+  const vault = await nextService.initialize();
+  service = nextService;
   await rememberVault(vault.path);
   return vault;
 }

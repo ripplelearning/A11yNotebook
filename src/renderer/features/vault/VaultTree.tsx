@@ -124,47 +124,47 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
 
   const render = (items: VaultEntry[], level = 1): ReactNode[] =>
     items.map((entry, index) => {
-          const isExpanded = expanded.has(entry.path);
-          return (
-            <div key={entry.path}>
-              <div
-                ref={(element) => {
-                  if (element) itemRefs.set(entry.path, element);
-                  else itemRefs.delete(entry.path);
-                }}
-                role="treeitem"
-                aria-expanded={entry.children?.length ? isExpanded : undefined}
-                aria-level={level}
-                aria-setsize={items.length}
-                aria-posinset={index + 1}
-                aria-selected={selectedPath === entry.path}
-                tabIndex={activePath === entry.path ? 0 : -1}
-                onFocus={() => {
-                  setFocusedPath(entry.path);
-                  onSelect(entry);
-                }}
-                onClick={() => {
-                  setFocusedPath(entry.path);
-                  onSelect(entry);
-                  if (entry.children?.length) {
-                    setExpanded((current) => {
-                      const next = new Set(current);
-                      if (next.has(entry.path)) next.delete(entry.path);
-                      else next.add(entry.path);
-                      return next;
-                    });
-                  } else onOpen(entry);
-                }}
-                onKeyDown={(event) => onKeyDown(event, entry)}
-              >
-                {entry.children?.length ? (isExpanded ? '▾ ' : '▸ ') : '　'}
-                {entry.name}
-                <span className="sr-only">, {entry.kind}</span>
-              </div>
-              {entry.children?.length && isExpanded ? <div role="group">{render(entry.children, level + 1)}</div> : null}
-            </div>
-          );
-        });
+      const isExpanded = expanded.has(entry.path);
+      return (
+        <div key={entry.path}>
+          <div
+            ref={(element) => {
+              if (element) itemRefs.set(entry.path, element);
+              else itemRefs.delete(entry.path);
+            }}
+            role="treeitem"
+            aria-expanded={entry.children?.length ? isExpanded : undefined}
+            aria-level={level}
+            aria-setsize={items.length}
+            aria-posinset={index + 1}
+            aria-selected={selectedPath === entry.path}
+            tabIndex={activePath === entry.path ? 0 : -1}
+            onFocus={() => {
+              setFocusedPath(entry.path);
+              onSelect(entry);
+            }}
+            onClick={() => {
+              setFocusedPath(entry.path);
+              onSelect(entry);
+              if (entry.children?.length) {
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  if (next.has(entry.path)) next.delete(entry.path);
+                  else next.add(entry.path);
+                  return next;
+                });
+              } else onOpen(entry);
+            }}
+            onKeyDown={(event) => onKeyDown(event, entry)}
+          >
+            {entry.children?.length ? (isExpanded ? '▾ ' : '▸ ') : '　'}
+            {entry.name}
+            <span className="sr-only">, {entry.kind}</span>
+          </div>
+          {entry.children?.length && isExpanded ? <div role="group">{render(entry.children, level + 1)}</div> : null}
+        </div>
+      );
+    });
 
   return (
     <div role="tree" aria-label="Vault files">

@@ -8,11 +8,10 @@ interface MarkdownDocumentProps {
   content: string;
   mode: 'read-only' | 'edit';
   onChange: (content: string) => void;
-  onSave: () => void;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
-export default function MarkdownDocument({ content, mode, onChange, onSave }: MarkdownDocumentProps) {
+export default function MarkdownDocument({ content, mode, onChange }: MarkdownDocumentProps) {
   if (mode === 'edit') {
     return (
       <label className="editor-label">
@@ -22,12 +21,6 @@ export default function MarkdownDocument({ content, mode, onChange, onSave }: Ma
           className="markdown-editor"
           value={content}
           onChange={(event) => onChange(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key.toLowerCase() === 's' && (event.ctrlKey || event.metaKey)) {
-              event.preventDefault();
-              onSave();
-            }
-          }}
         />
       </label>
     );

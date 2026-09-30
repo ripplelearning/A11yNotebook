@@ -56,6 +56,7 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
   { label: 'Vault', items: ['open-vault', 'new-notebook'] },
+  { label: 'Note', items: ['save-current-note', 'close-current-tab'] },
   { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode'] },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
@@ -237,6 +238,11 @@ export default function App() {
       return;
     }
     if (entry.kind !== 'note') return;
+    const existingNote = openNotes.find((item) => item.id === entry.path);
+    if (existingNote) {
+      setSelectedTab(existingNote.id);
+      return;
+    }
     const content = await bridge.vault.readNote(entry.path);
     const note: OpenNote = {
       id: entry.path,
@@ -273,25 +279,79 @@ export default function App() {
     if (latest) setVault(latest);
   };
 
+  const deleteEntry = async (entryPath: string) => {
+    const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
+    if (
+      affectedNotes.some((item) => item.content !== item.saved) &&
+      !window.confirm('This item contains unsaved note changes. Continue and discard them?')
+    ) {
+      return;
+    }
+    try {
+      const updated = await window.a11yNotebook?.vault.delete(entryPath);
+      if (!updated) return;
+      setVault(updated);
+      setOpenNotes((current) =>
+        current.filter((item) => item.path !== entryPath && !item.path.startsWith(`${entryPath}/`)),
+      );
+      if (affectedNotes.some((item) => item.id === selectedTab)) setSelectedTab('welcome');
+    } catch {
+      setStatusMessage('Could not delete the selected item.');
+    }
+  };
+
+  const renameEntry = async (entryPath: string, name: string) => {
+    try {
+      const updated = await window.a11yNotebook?.vault.rename(entryPath, name);
+      if (!updated) return;
+      setVault(updated);
+      const renamedNotes = openNotes.map((note) => {
+        if (note.path !== entryPath && !note.path.startsWith(`${entryPath}/`)) return note;
+        const nextPath = `${name}${note.path.slice(entryPath.length)}`;
+        const nextTitle =
+          note.path === entryPath && note.path.toLowerCase().endsWith('.md') ? name.replace(/\.md$/i, '') : note.title;
+        return { ...note, id: nextPath, path: nextPath, title: nextTitle };
+      });
+      const activeNote = openNotes.find(
+        (note) => note.id === selectedTab && (note.path === entryPath || note.path.startsWith(`${entryPath}/`)),
+      );
+      if (activeNote) setSelectedTab(`${name}${activeNote.path.slice(entryPath.length)}`);
+      setOpenNotes(renamedNotes);
+    } catch {
+      setStatusMessage('Could not rename the selected item.');
+    }
+  };
+
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
-    await window.a11yNotebook.vault.saveNote(note.path, note.content);
-    setOpenNotes((current) => current.map((item) => (item.id === note.id ? { ...item, saved: item.content } : item)));
-    setStatusMessage(`Saved ${note.title}.`);
-    await refreshVault();
+    const contentToSave = note.content;
+    try {
+      await window.a11yNotebook.vault.saveNote(note.path, contentToSave);
+      setOpenNotes((current) =>
+        current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
+      );
+      setStatusMessage(`Saved ${note.title}.`);
+      await refreshVault();
+    } catch {
+      setStatusMessage(`Could not save ${note.title}.`);
+    }
   };
 
   useEffect(() => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || note.content === note.saved || !window.a11yNotebook) return;
+    const contentToSave = note.content;
     const timeout = window.setTimeout(() => {
-      void window.a11yNotebook?.vault.saveNote(note.path, note.content).then(() => {
-        setOpenNotes((current) =>
-          current.map((item) => (item.id === note.id ? { ...item, saved: item.content } : item)),
-        );
-        setStatusMessage(`Saved ${note.title}.`);
-      });
+      void window.a11yNotebook?.vault
+        .saveNote(note.path, contentToSave)
+        .then(() => {
+          setOpenNotes((current) =>
+            current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
+          );
+          setStatusMessage(`Saved ${note.title}.`);
+        })
+        .catch(() => setStatusMessage(`Could not save ${note.title}.`));
     }, 900);
     return () => window.clearTimeout(timeout);
   }, [openNotes, selectedTab]);
@@ -325,7 +385,7 @@ export default function App() {
       }
       return;
     }
-    if (commandId === 'refresh-links') {
+    if (commandId === 'refresh-vault') {
       void window.a11yNotebook?.vault.get().then(setVault);
       setStatusMessage('Vault refreshed.');
       return;
@@ -349,6 +409,7 @@ export default function App() {
       setRightPaneOpen,
       setCommandPaletteOpen: (open) => setActiveDialog(open ? 'palette' : null),
       setSelectedTab,
+      saveNote: () => void saveActiveNote(),
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
@@ -537,7 +598,11 @@ export default function App() {
             <button
               type="button"
               onClick={() => {
-                if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook)
+                if (
+                  treeSelection &&
+                  findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' &&
+                  window.a11yNotebook
+                )
                   void window.a11yNotebook.vault
                     .importFile(treeSelection)
                     .then((updated) => updated && setVault(updated));
@@ -547,6 +612,20 @@ export default function App() {
             >
               Import file
             </button>
+            <button
+              type="button"
+              onClick={() => treeSelection && void window.a11yNotebook?.vault.reveal(treeSelection)}
+              disabled={!treeSelection}
+            >
+              Reveal in Explorer
+            </button>
+            <button
+              type="button"
+              onClick={() => treeSelection && void window.a11yNotebook?.vault.openExternal(treeSelection)}
+              disabled={!treeSelection}
+            >
+              Open in external app
+            </button>
           </div>
           {vault ? (
             <VaultTree
@@ -554,13 +633,8 @@ export default function App() {
               selectedPath={treeSelection}
               onSelect={(entry) => setTreeSelection(entry.path)}
               onOpen={(entry) => void openEntry(entry)}
-              onRename={(entryPath, name) => void window.a11yNotebook?.vault.rename(entryPath, name).then(setVault)}
-              onDelete={(entryPath) =>
-                void window.a11yNotebook?.vault.delete(entryPath).then((updated) => {
-                  setVault(updated);
-                  if (selectedTab === entryPath) setSelectedTab('welcome');
-                })
-              }
+              onRename={(entryPath, name) => void renameEntry(entryPath, name)}
+              onDelete={(entryPath) => void deleteEntry(entryPath)}
             />
           ) : (
             <p>Open a folder as a local vault from the Vault menu.</p>
@@ -660,7 +734,6 @@ export default function App() {
                       current.map((note) => (note.id === currentNote.id ? { ...note, content } : note)),
                     )
                   }
-                  onSave={() => void saveActiveNote()}
                 />
               </>
             ) : (

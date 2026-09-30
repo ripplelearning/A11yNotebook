@@ -19,6 +19,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     setRightPaneOpen: vi.fn(),
     setCommandPaletteOpen: vi.fn(),
     setSelectedTab: vi.fn(),
+    saveNote: vi.fn(),
     focusTarget: vi.fn(),
     checkForUpdates: vi.fn(),
     showKeyboardShortcuts: vi.fn(),

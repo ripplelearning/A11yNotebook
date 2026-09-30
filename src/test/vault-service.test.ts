@@ -22,6 +22,7 @@ describe('vault filesystem service', () => {
   it('rejects traversal, absolute paths, and non-Markdown note writes', async () => {
     const service = await openService();
     await expect(service.readNote('../outside.md')).rejects.toThrow('not valid inside this vault');
+    await expect(service.readNote('.A11YNOTEBOOK/settings.json')).rejects.toThrow('not valid inside this vault');
     await expect(service.readNote(path.join(temporaryDirectory, 'outside.md'))).rejects.toThrow(
       'not valid inside this vault',
     );

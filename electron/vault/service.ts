@@ -22,7 +22,8 @@ export function createVaultService(vaultPath: string) {
       typeof relativePath !== 'string' ||
       !relativePath ||
       path.isAbsolute(relativePath) ||
-      relativePath.split(/[\\/]/).some((part) => part === '..' || part === '.' || part === '')
+      relativePath.split(/[\\/]/).some((part) => part === '..' || part === '.' || part === '') ||
+      relativePath.split(/[\\/]/)[0].toLowerCase() === '.a11ynotebook'
     ) {
       throw new Error('The requested path is not valid inside this vault.');
     }

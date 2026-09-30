@@ -2,12 +2,7 @@
 import { app, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { REPOSITORY_NAME, REPOSITORY_OWNER } from '../src/shared/app-info';
-import {
-  IPC_CHANNELS,
-  UPDATER_INVOKE_CHANNELS,
-  isInvokeChannel,
-  type UpdaterInvokeChannel,
-} from '../src/shared/ipc';
+import { IPC_CHANNELS, UPDATER_INVOKE_CHANNELS, isInvokeChannel, type UpdaterInvokeChannel } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import { createUpdaterController } from './updater-controller';
 
