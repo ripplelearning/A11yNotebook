@@ -9,6 +9,17 @@ export const IPC_CHANNELS = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  vaultOpen: 'vault:open',
+  vaultGet: 'vault:get',
+  vaultReadNote: 'vault:read-note',
+  vaultSaveNote: 'vault:save-note',
+  vaultCreateNotebook: 'vault:create-notebook',
+  vaultCreateNote: 'vault:create-note',
+  vaultRename: 'vault:rename',
+  vaultReveal: 'vault:reveal',
+  vaultOpenExternal: 'vault:open-external',
+  vaultImport: 'vault:import',
+  vaultDelete: 'vault:delete',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -17,6 +28,17 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.updaterDownload,
   IPC_CHANNELS.updaterInstallNow,
   IPC_CHANNELS.updaterInstallOnExit,
+  IPC_CHANNELS.vaultOpen,
+  IPC_CHANNELS.vaultGet,
+  IPC_CHANNELS.vaultReadNote,
+  IPC_CHANNELS.vaultSaveNote,
+  IPC_CHANNELS.vaultCreateNotebook,
+  IPC_CHANNELS.vaultCreateNote,
+  IPC_CHANNELS.vaultRename,
+  IPC_CHANNELS.vaultReveal,
+  IPC_CHANNELS.vaultOpenExternal,
+  IPC_CHANNELS.vaultImport,
+  IPC_CHANNELS.vaultDelete,
 ] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];

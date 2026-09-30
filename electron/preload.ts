@@ -4,6 +4,7 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { NotebookBridge } from '../src/shared/bridge';
 import type { IPC_CHANNELS as SharedChannels, MenuCommand } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
+import type { VaultInfo } from '../src/shared/types';
 
 // Must match src/shared/ipc.ts exactly; the type annotation enforces that at compile time.
 const CHANNELS: typeof SharedChannels = {
@@ -13,6 +14,17 @@ const CHANNELS: typeof SharedChannels = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  vaultOpen: 'vault:open',
+  vaultGet: 'vault:get',
+  vaultReadNote: 'vault:read-note',
+  vaultSaveNote: 'vault:save-note',
+  vaultCreateNotebook: 'vault:create-notebook',
+  vaultCreateNote: 'vault:create-note',
+  vaultRename: 'vault:rename',
+  vaultReveal: 'vault:reveal',
+  vaultOpenExternal: 'vault:open-external',
+  vaultImport: 'vault:import',
+  vaultDelete: 'vault:delete',
 };
 
 function subscribe<T>(
@@ -34,6 +46,19 @@ const bridge: NotebookBridge = {
     installNow: () => ipcRenderer.invoke(CHANNELS.updaterInstallNow),
     installOnExit: () => ipcRenderer.invoke(CHANNELS.updaterInstallOnExit),
     onStatus: (callback) => subscribe<UpdaterStatus>(CHANNELS.updaterStatus, callback),
+  },
+  vault: {
+    open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
+    get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
+    readNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath),
+    saveNote: (relativePath, content) => ipcRenderer.invoke(CHANNELS.vaultSaveNote, relativePath, content),
+    createNotebook: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultCreateNotebook, relativePath),
+    createNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultCreateNote, relativePath),
+    rename: (relativePath, name) => ipcRenderer.invoke(CHANNELS.vaultRename, relativePath, name),
+    reveal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReveal, relativePath),
+    openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
+    importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
+    delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
   },
   onMenuCommand: (callback) => subscribe<MenuCommand>(CHANNELS.menuCommand, callback),
 };

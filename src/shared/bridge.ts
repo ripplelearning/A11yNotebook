@@ -1,5 +1,21 @@
 import type { MenuCommand } from './ipc';
 import type { UpdaterStatus } from './updater';
+import type { VaultInfo } from './types';
+
+/** Explicit local-vault operations exposed by the sandboxed preload bridge. */
+export interface VaultBridge {
+  open(): Promise<VaultInfo | null>;
+  get(): Promise<VaultInfo | null>;
+  readNote(path: string): Promise<string>;
+  saveNote(path: string, content: string): Promise<void>;
+  createNotebook(path: string): Promise<VaultInfo>;
+  createNote(path: string): Promise<VaultInfo>;
+  rename(path: string, name: string): Promise<VaultInfo>;
+  reveal(path: string): Promise<void>;
+  openExternal(path: string): Promise<void>;
+  importFile(notebookPath: string): Promise<VaultInfo | null>;
+  delete(path: string): Promise<VaultInfo>;
+}
 
 /** Narrow updater API exposed to the renderer through the preload script. */
 export interface UpdaterBridge {
@@ -18,6 +34,7 @@ export interface UpdaterBridge {
 /** Everything the preload script exposes on `window.a11yNotebook`. */
 export interface NotebookBridge {
   updater: UpdaterBridge;
+  vault: VaultBridge;
   /** Subscribe to commands chosen from the native application menu. Returns an unsubscribe function. */
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
 }

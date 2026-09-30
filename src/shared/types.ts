@@ -29,3 +29,18 @@ export interface NoteItem {
   label: string;
   summary: string;
 }
+
+/** A filesystem entry returned to the renderer without exposing Node objects. */
+export interface VaultEntry {
+  name: string;
+  path: string;
+  kind: 'notebook' | 'note' | 'attachment';
+  children?: VaultEntry[];
+}
+
+/** Public view of the currently open local vault. */
+export interface VaultInfo {
+  name: string;
+  path: string;
+  entries: VaultEntry[];
+}
