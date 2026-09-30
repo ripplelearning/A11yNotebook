@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { RELEASES_URL } from '../../shared/app-info';
 import type { UpdaterStatus } from '../../shared/updater';
 import Modal, { focusInitialElement } from './Modal';
@@ -43,8 +43,8 @@ export default function UpdateDialog({
   }, [phase]);
 
   let message: string;
-  let details: JSX.Element | null = null;
-  let actions: JSX.Element;
+  let details: ReactElement | null = null;
+  let actions: ReactElement;
 
   switch (status.state) {
     case 'idle':

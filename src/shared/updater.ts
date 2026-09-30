@@ -139,7 +139,7 @@ export function formatUpdaterError(error: unknown): string {
   if (/ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ERR_CONNECTION/i.test(raw)) {
     return 'Could not reach GitHub. Check your internet connection and try again.';
   }
-  if (/\b404\b|No published versions|Cannot find latest\.yml|latest\.yml/i.test(raw)) {
+  if (/\b404\b|No published versions|Cannot find latest\.yml/i.test(raw)) {
     return 'No published release was found on GitHub yet. A tagged release must be published before updates can be installed.';
   }
   if (/signature|not signed|publisherName/i.test(raw)) {
