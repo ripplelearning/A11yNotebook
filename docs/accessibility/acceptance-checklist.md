@@ -10,3 +10,11 @@
 - [ ] No custom control replaces a native semantic control without keyboard and state support.
 - [ ] Search and filters are operable without a mouse.
 - [ ] Windows UIA tree and manual screen-reader checks are part of the validation plan.
+- [ ] F6 and Shift+F6 move real keyboard focus (not just highlighting) and skip the hidden right pane.
+- [ ] Every modal dialog moves focus inside on open, keeps Tab inside, closes on Escape, and returns focus.
+- [ ] The tab list follows the WAI-ARIA tabs pattern (arrow keys, Home and End, roving tabindex, labelled tab panel).
+- [ ] The Help menu (in-app and native Windows menu) is keyboard operable, and each item has a clear, unique name.
+- [ ] Check for Updates opens a labelled modal update dialog that describes the current state in text.
+- [ ] Update download progress is exposed as a progress bar with its value and announced politely about every 10 percent, never on every tick and never twice.
+- [ ] Update errors are announced as alerts and shown as readable text, never only visually.
+- [ ] The update dialog's buttons (Download, Not now, Hide, Restart and install, Install on exit, Try again, Close) have clear, unique accessible names.

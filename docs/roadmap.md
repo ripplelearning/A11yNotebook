@@ -1,6 +1,16 @@
 # Product roadmap
 
-## Phase 1 — Foundation shell and accessibility model
+Status key: ✅ complete · 🚧 in progress · ⏳ planned
+
+## Phase 1 — Foundation shell and accessibility model ✅
+
+- ✅ Scaffold stabilized: installs, type checks, lints, tests, and builds cleanly. The main and preload code compiles to CommonJS, and the renderer is bundled by Vite.
+- ✅ Real focus management: F6/Shift+F6 pane cycling, focus commands, a modal command palette, and WAI-ARIA tabs
+- ✅ Windows packaging: NSIS installer and portable `.exe` built with electron-builder (`npm run package:win`)
+- ✅ Secure, user-initiated in-app updater through Help → Check for Updates, backed by GitHub Releases
+- ✅ CI workflow (type check, lint, test, build) and a tag-triggered Windows release workflow
+- 🚧 Code-signed releases (needs a Windows code-signing certificate)
+- 🚧 Manual JAWS, NVDA, and Narrator checks of the Help menu and update dialog
 
 - Electron + React + TypeScript shell
 - Accessible menu, header, navigation, content area, tabs, info pane, and status bar
@@ -64,4 +74,4 @@
 - Automated DOM and keyboard interaction tests
 - Windows UI Automation smoke testing
 - Manual screen-reader validation across JAWS, NVDA, and Narrator
-- Packaging, installer, and release process
+- ✅ Packaging, installer, and release process (delivered early, in Phase 1)
