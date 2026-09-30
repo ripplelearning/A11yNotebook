@@ -1,11 +1,9 @@
 export type AppMode = 'read-only' | 'edit';
 
-export type FocusRegion =
-  | 'navigation'
-  | 'main'
-  | 'tabs'
-  | 'right-pane'
-  | 'status';
+export type FocusRegion = 'navigation' | 'main' | 'tabs' | 'right-pane' | 'status';
+
+/** Anything the shell can programmatically move focus to. */
+export type FocusTarget = FocusRegion | 'search';
 
 export interface Vault {
   id: string;
