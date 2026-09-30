@@ -35,6 +35,14 @@ the status, due-date, and notebook filters narrow the list. Checking or unchecki
 the source note. Optional dates use `due:YYYY-MM-DD` or `📅 YYYY-MM-DD`; priorities use `priority:low`,
 `priority:normal`, `priority:high`, or `priority:urgent`.
 
+## Links and bookmarks
+
+Use `[[Note title]]` to link to a note by title, or a relative Markdown link such as `[Related](./Related.md)`.
+In read mode, activate a resolved link to open its note in a tab. Missing wiki links are marked and announced as
+missing. The right pane lists outgoing links and backlinks for the current note. Choose **Bookmark note** to
+bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. Bookmarks and
+the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
+
 ## Keyboard shortcuts
 
 | Shortcut                                                     | Action                                         |
@@ -47,6 +55,7 @@ the source note. Optional dates use `due:YYYY-MM-DD` or `📅 YYYY-MM-DD`; prior
 | Ctrl+K                                                       | Open command palette                           |
 | Ctrl+Tab / Ctrl+Shift+Tab                                    | Switch to next / previous open tab             |
 | Ctrl+S                                                       | Save the current note                          |
+| Ctrl+D                                                       | Bookmark or unbookmark the current note        |
 | F1                                                           | Show keyboard shortcuts                        |
 | F5                                                           | Refresh the vault tree                         |
 | F6 / Shift+F6                                                | Move focus to next / previous pane             |
@@ -63,6 +72,6 @@ is still needed; see the [testing strategy](accessibility/testing-strategy.md).
 
 ## Not available yet
 
-Reminders, bookmarks, annotations, backlinks, shortcut customization, formatting dialogs,
+Reminders, annotations, shortcut customization, formatting dialogs,
 password protection, in-app attachment previews, and cognitive assets are planned but are not presented as working
 features in this build.

@@ -34,11 +34,13 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 
 - ✅ Sanitized semantic Markdown rendering and native textarea source editing.
 - ✅ Open-note tabs with close controls, unsaved state, Ctrl+W, Ctrl+Tab, and auto-save.
-- ⏳ Formatting commands, full internal wiki-link handling, link/backlink index, and annotation/bookmark workflows.
+- ✅ Wiki links and relative Markdown links with resolved/missing state; readable JSON link index, outgoing links, and backlinks.
+- ✅ Persistent note bookmarks with an accessible list and jump action.
+- ⏳ Formatting commands, heading/position bookmarks, annotations, and link repair prompts.
 
 ## Phase 4 — Search, indexing, and annotations
 
-- ⏳ Persistent indexed search, search filters, bookmarks, annotations, and link graph/backlinks.
+- ⏳ Persistent indexed search, search filters, and annotations.
 - ⏳ Search beyond Markdown notes (documents, PDFs, ePubs, and web captures).
 - User-generated tags and metadata suggestions
 

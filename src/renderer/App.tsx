@@ -17,7 +17,16 @@ import {
   type CommandId,
 } from '../shared/command-registry';
 import { isMenuCommand } from '../shared/ipc';
-import type { AppMode, FocusRegion, FocusTarget, VaultEntry, VaultInfo, VaultTask } from '../shared/types';
+import type {
+  AppMode,
+  FocusRegion,
+  FocusTarget,
+  VaultBookmark,
+  VaultEntry,
+  VaultInfo,
+  VaultLink,
+  VaultTask,
+} from '../shared/types';
 import CommandPalette from './components/CommandPalette';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
@@ -59,8 +68,8 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 };
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
-  { label: 'Vault', items: ['open-vault', 'new-notebook'] },
-  { label: 'Note', items: ['save-current-note', 'close-current-tab'] },
+  { label: 'Vault', items: ['open-vault', 'new-notebook', 'refresh-links'] },
+  { label: 'Note', items: ['save-current-note', 'toggle-bookmark', 'close-current-tab'] },
   { label: 'Tasks', items: ['show-tasks'] },
   { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode'] },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
@@ -78,6 +87,8 @@ export default function App() {
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [openNotes, setOpenNotes] = useState<OpenNote[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
+  const [links, setLinks] = useState<VaultLink[]>([]);
+  const [bookmarks, setBookmarks] = useState<VaultBookmark[]>([]);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
@@ -122,6 +133,20 @@ export default function App() {
       .getTasks()
       .then(setTasks)
       .catch(() => setStatusMessage('Could not load tasks.'));
+  }, [vault]);
+
+  useEffect(() => {
+    if (!vault || !window.a11yNotebook) {
+      setLinks([]);
+      setBookmarks([]);
+      return;
+    }
+    void Promise.all([window.a11yNotebook.vault.getLinkIndex(), window.a11yNotebook.vault.getBookmarks()])
+      .then(([index, savedBookmarks]) => {
+        setLinks(index.links);
+        setBookmarks(savedBookmarks);
+      })
+      .catch(() => setStatusMessage('Could not refresh vault links and bookmarks.'));
   }, [vault]);
 
   useEffect(() => {
@@ -302,6 +327,70 @@ export default function App() {
     if (latest) setVault(latest);
   };
 
+  const refreshLinkIndex = async () => {
+    const index = await window.a11yNotebook?.vault.getLinkIndex();
+    const savedBookmarks = await window.a11yNotebook?.vault.getBookmarks();
+    if (index) setLinks(index.links);
+    if (savedBookmarks) setBookmarks(savedBookmarks);
+  };
+
+  const openLinkTarget = async (href: string) => {
+    const currentNote = openNotes.find((item) => item.id === selectedTab);
+    if (!currentNote) return;
+    let targetTitle = href;
+    let targetPath = links.find((link) => link.sourcePath === currentNote.path && link.targetPath === href)?.targetPath;
+    if (href.startsWith('#wiki:')) {
+      try {
+        targetTitle = decodeURIComponent(href.slice('#wiki:'.length));
+      } catch {
+        targetTitle = href.slice('#wiki:'.length);
+      }
+      targetPath = links.find(
+        (link) =>
+          link.sourcePath === currentNote.path &&
+          link.targetTitle.toLocaleLowerCase() === targetTitle.toLocaleLowerCase() &&
+          link.resolved,
+      )?.targetPath;
+    } else {
+      const cleanHref = href.split('#')[0].split('?')[0];
+      const base = currentNote.path.includes('/')
+        ? currentNote.path.slice(0, currentNote.path.lastIndexOf('/') + 1)
+        : '';
+      const normalizedParts: string[] = [...base.split('/').filter(Boolean)];
+      for (const part of cleanHref.split('/')) {
+        if (!part || part === '.') continue;
+        if (part === '..') normalizedParts.pop();
+        else normalizedParts.push(part);
+      }
+      const candidate = normalizedParts.join('/');
+      const withExtension = /\.[^/]+$/.test(candidate) ? candidate : `${candidate}.md`;
+      targetPath = links.find(
+        (link) =>
+          link.sourcePath === currentNote.path &&
+          link.targetPath?.toLocaleLowerCase() === withExtension.toLocaleLowerCase(),
+      )?.targetPath;
+    }
+    if (!targetPath) {
+      setStatusMessage(`Missing note: ${targetTitle}.`);
+      return;
+    }
+    const targetEntry = findEntry(vault?.entries ?? [], targetPath);
+    if (targetEntry) await openEntry(targetEntry);
+  };
+
+  const toggleActiveBookmark = async () => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    if (!note || !window.a11yNotebook) return;
+    try {
+      setBookmarks(await window.a11yNotebook.vault.toggleBookmark(note.path));
+      setStatusMessage(
+        bookmarks.some((bookmark) => bookmark.path === note.path) ? 'Bookmark removed.' : 'Note bookmarked.',
+      );
+    } catch {
+      setStatusMessage('Could not update the bookmark.');
+    }
+  };
+
   const deleteEntry = async (entryPath: string) => {
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     if (
@@ -356,6 +445,7 @@ export default function App() {
       );
       setStatusMessage(`Saved ${note.title}.`);
       await refreshVault();
+      await refreshLinkIndex();
     } catch {
       setStatusMessage(`Could not save ${note.title}.`);
     }
@@ -396,6 +486,7 @@ export default function App() {
             current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
           );
           setStatusMessage(`Saved ${note.title}.`);
+          void refreshLinkIndex();
         })
         .catch(() => setStatusMessage(`Could not save ${note.title}.`));
     }, 900);
@@ -431,9 +522,9 @@ export default function App() {
       }
       return;
     }
-    if (commandId === 'refresh-vault') {
-      void window.a11yNotebook?.vault.get().then(setVault);
-      setStatusMessage('Vault refreshed.');
+    if (commandId === 'refresh-links') {
+      void refreshVault().then(refreshLinkIndex);
+      setStatusMessage('Vault and links refreshed.');
       return;
     }
     if (commandId === 'close-current-tab') {
@@ -465,6 +556,7 @@ export default function App() {
         setTaskTabOpen(true);
         setSelectedTab('tasks');
       },
+      toggleBookmark: () => void toggleActiveBookmark(),
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
@@ -883,6 +975,13 @@ export default function App() {
             ) : currentNote ? (
               <>
                 <h2>{currentNote.title}</h2>
+                {mode === 'read-only' ? (
+                  <button type="button" onClick={() => void toggleActiveBookmark()}>
+                    {bookmarks.some((bookmark) => bookmark.path === currentNote.path)
+                      ? 'Remove bookmark'
+                      : 'Bookmark note'}
+                  </button>
+                ) : null}
                 {mode === 'edit' ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
                     Save note
@@ -891,11 +990,13 @@ export default function App() {
                 <MarkdownDocument
                   content={currentNote.content}
                   mode={mode}
+                  links={links.filter((link) => link.sourcePath === currentNote.path)}
                   onChange={(content) =>
                     setOpenNotes((current) =>
                       current.map((note) => (note.id === currentNote.id ? { ...note, content } : note)),
                     )
                   }
+                  onNavigate={(href) => void openLinkTarget(href)}
                 />
               </>
             ) : (
@@ -927,6 +1028,80 @@ export default function App() {
               <dt>Search</dt>
               <dd>{searchText || 'No active query'}</dd>
             </dl>
+            {currentNote ? (
+              <>
+                <section aria-labelledby="outgoing-links-heading">
+                  <h3 id="outgoing-links-heading">Outgoing links</h3>
+                  <ul>
+                    {links
+                      .filter((link) => link.sourcePath === currentNote.path)
+                      .map((link, index) => (
+                        <li key={`${link.sourcePath}-${index}`}>
+                          {link.resolved && link.targetPath ? (
+                            <button type="button" onClick={() => void openLinkTarget(link.targetPath!)}>
+                              {link.targetTitle}
+                            </button>
+                          ) : (
+                            <span>{link.targetTitle}, missing note</span>
+                          )}
+                        </li>
+                      ))}
+                  </ul>
+                </section>
+                <section aria-labelledby="backlinks-heading">
+                  <h3 id="backlinks-heading">Backlinks</h3>
+                  <ul>
+                    {links
+                      .filter((link) => link.targetPath === currentNote.path)
+                      .map((link) => (
+                        <li key={`${link.sourcePath}-${link.targetPath}`}>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const entry = findEntry(vault?.entries ?? [], link.sourcePath);
+                              if (entry) void openEntry(entry);
+                            }}
+                          >
+                            {link.sourcePath}
+                          </button>
+                        </li>
+                      ))}
+                  </ul>
+                </section>
+              </>
+            ) : null}
+            <section aria-labelledby="bookmarks-heading">
+              <h3 id="bookmarks-heading">Bookmarks</h3>
+              <ul>
+                {bookmarks.map((bookmark) => (
+                  <li key={bookmark.id}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const entry = findEntry(vault?.entries ?? [], bookmark.path);
+                        if (entry) void openEntry(entry);
+                      }}
+                    >
+                      {bookmark.title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </section>
+            <section aria-labelledby="tasks-heading-right">
+              <h3 id="tasks-heading-right">Tasks</h3>
+              <ul>
+                {tasks
+                  .filter((task) => !task.complete)
+                  .slice(0, 10)
+                  .map((task) => (
+                    <li key={task.id}>
+                      {task.text}
+                      {task.dueDate ? `, due ${task.dueDate}` : ''}
+                    </li>
+                  ))}
+              </ul>
+            </section>
           </aside>
         ) : null}
       </main>

@@ -22,6 +22,9 @@ export const IPC_CHANNELS = {
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
+  vaultGetLinkIndex: 'vault:get-link-index',
+  vaultGetBookmarks: 'vault:get-bookmarks',
+  vaultToggleBookmark: 'vault:toggle-bookmark',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -43,6 +46,9 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultDelete,
   IPC_CHANNELS.vaultGetTasks,
   IPC_CHANNELS.vaultToggleTask,
+  IPC_CHANNELS.vaultGetLinkIndex,
+  IPC_CHANNELS.vaultGetBookmarks,
+  IPC_CHANNELS.vaultToggleBookmark,
 ] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];

@@ -26,6 +26,9 @@ const CHANNELS: typeof SharedChannels = {
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
+  vaultGetLinkIndex: 'vault:get-link-index',
+  vaultGetBookmarks: 'vault:get-bookmarks',
+  vaultToggleBookmark: 'vault:toggle-bookmark',
 };
 
 function subscribe<T>(
@@ -63,6 +66,9 @@ const bridge: NotebookBridge = {
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
     toggleTask: (relativePath, line, complete) =>
       ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, line, complete),
+    getLinkIndex: () => ipcRenderer.invoke(CHANNELS.vaultGetLinkIndex),
+    getBookmarks: () => ipcRenderer.invoke(CHANNELS.vaultGetBookmarks),
+    toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),
   },
   onMenuCommand: (callback) => subscribe<MenuCommand>(CHANNELS.menuCommand, callback),
 };

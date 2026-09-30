@@ -5,6 +5,7 @@ export type CommandId =
   | 'new-notebook'
   | 'save-current-note'
   | 'show-tasks'
+  | 'toggle-bookmark'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
   | 'toggle-right-pane'
@@ -13,7 +14,7 @@ export type CommandId =
   | 'focus-main-content'
   | 'focus-right-pane'
   | 'command-search'
-  | 'refresh-vault'
+  | 'refresh-links'
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
   | 'show-about';
@@ -27,6 +28,7 @@ export type CommandActionContext = {
   setSelectedTab: (value: string) => void;
   saveNote: () => void;
   showTasks: () => void;
+  toggleBookmark: () => void;
   /** Move keyboard focus to a region or control of the shell. */
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
@@ -70,6 +72,12 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'show-tasks',
     label: 'Open Tasks',
     description: 'Open the accessible task list for this vault.',
+  },
+  {
+    id: 'toggle-bookmark',
+    label: 'Toggle note bookmark',
+    description: 'Add or remove a bookmark for the active note.',
+    shortcut: 'Ctrl+D',
   },
   { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
   {
@@ -115,9 +123,9 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+K',
   },
   {
-    id: 'refresh-vault',
-    label: 'Refresh vault',
-    description: 'Rescan the open vault folder for local changes.',
+    id: 'refresh-links',
+    label: 'Refresh links',
+    description: 'Rescan the vault and rebuild local links and backlinks.',
     shortcut: 'F5',
   },
   {
@@ -213,6 +221,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
     case 'show-tasks':
       context.showTasks();
       return undefined;
+    case 'toggle-bookmark':
+      context.toggleBookmark();
+      return undefined;
     case 'close-current-tab':
       context.setSelectedTab('welcome');
       return 'Current tab closed.';
@@ -244,8 +255,8 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
     case 'command-search':
       context.setCommandPaletteOpen(true);
       return undefined;
-    case 'refresh-vault':
-      return 'Vault contents refreshed.';
+    case 'refresh-links':
+      return 'Vault and links refreshed.';
     case 'show-keyboard-shortcuts':
       context.showKeyboardShortcuts();
       return undefined;

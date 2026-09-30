@@ -1,6 +1,6 @@
 import type { MenuCommand } from './ipc';
 import type { UpdaterStatus } from './updater';
-import type { VaultInfo, VaultTask } from './types';
+import type { VaultBookmark, VaultInfo, VaultLinkIndex, VaultTask } from './types';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
@@ -17,6 +17,9 @@ export interface VaultBridge {
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
   toggleTask(path: string, line: number, complete: boolean): Promise<VaultTask[]>;
+  getLinkIndex(): Promise<VaultLinkIndex>;
+  getBookmarks(): Promise<VaultBookmark[]>;
+  toggleBookmark(path: string): Promise<VaultBookmark[]>;
 }
 
 /** Narrow updater API exposed to the renderer through the preload script. */

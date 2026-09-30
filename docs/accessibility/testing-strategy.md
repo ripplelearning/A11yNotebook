@@ -48,6 +48,7 @@ Recommended manual checks:
 - Opening notes in tabs, unsaved state, saving, and Markdown browse-mode navigation
 - Global Markdown search and opening a result
 - Task filters, sortable table metadata, and task toggles reflected in the source note
+- Internal wiki-link activation, missing-link announcement, backlink navigation, and bookmark persistence
 - Read-only and edit mode transitions
 - Status bar reading and command feedback
 

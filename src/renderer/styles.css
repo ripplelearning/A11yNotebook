@@ -445,6 +445,11 @@ a:focus-visible,
   color: #93c5fd;
 }
 
+.markdown-body a.missing-note {
+  color: #fecaca;
+  text-decoration: underline wavy;
+}
+
 .markdown-body pre {
   overflow: auto;
   padding: 0.75rem;

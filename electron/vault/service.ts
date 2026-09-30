@@ -2,7 +2,8 @@
 // so untrusted renderer content never receives direct filesystem access.
 import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import { buildVaultLinkIndex } from './links';
 import { parseMarkdownTasks } from './tasks';
 
 /** Create an operations facade for one canonical vault folder. */
@@ -86,8 +87,8 @@ export function createVaultService(vaultPath: string) {
 
   async function saveNote(relativePath: string, content: string) {
     if (typeof content !== 'string') throw new Error('Note content must be text.');
-    const target = await resolveEntry(relativePath, true);
-    if (path.extname(target).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+    if (path.extname(relativePath).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+    const target = await resolveEntry(relativePath);
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, content, 'utf8');
   }
@@ -113,7 +114,32 @@ export function createVaultService(vaultPath: string) {
     const source = await resolveEntry(relativePath);
     const destinationRelative = path.posix.join(path.posix.dirname(relativePath), newName);
     const destination = await resolveEntry(destinationRelative, true);
+    try {
+      await lstat(destination);
+      throw new Error('An item with that name already exists.');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    const bookmarks = await getBookmarks();
     await rename(source, destination);
+    const updatedBookmarks = bookmarks.map((bookmark) =>
+      bookmark.path === relativePath || bookmark.path.startsWith(`${relativePath}/`)
+        ? {
+            ...bookmark,
+            path: `${destinationRelative}${bookmark.path.slice(relativePath.length)}`,
+            ...(bookmark.path === relativePath && path.extname(relativePath).toLowerCase() === '.md'
+              ? { title: path.basename(newName, path.extname(newName)) }
+              : {}),
+          }
+        : bookmark,
+    );
+    if (updatedBookmarks.some((bookmark, index) => bookmark !== bookmarks[index])) {
+      await writeFile(
+        path.join(root, '.a11ynotebook', 'bookmarks.json'),
+        JSON.stringify(updatedBookmarks, null, 2),
+        'utf8',
+      );
+    }
     return getVault();
   }
 
@@ -147,6 +173,75 @@ export function createVaultService(vaultPath: string) {
     return getTasks();
   }
 
+  async function getLinkIndex(): Promise<VaultLinkIndex> {
+    const notes: Array<{ path: string; content: string }> = [];
+    const collect = async (entries: VaultEntry[]) => {
+      for (const entry of entries) {
+        if (entry.kind === 'note') notes.push({ path: entry.path, content: await readNote(entry.path) });
+        if (entry.children) await collect(entry.children);
+      }
+    };
+    const vault = await getVault();
+    await collect(vault.entries);
+    const index = buildVaultLinkIndex(notes, vault.entries);
+    const metadataDirectory = path.join(root, '.a11ynotebook');
+    await mkdir(metadataDirectory, { recursive: true });
+    await writeFile(path.join(metadataDirectory, 'links.json'), JSON.stringify(index, null, 2), 'utf8');
+    return index;
+  }
+
+  async function getBookmarks(): Promise<VaultBookmark[]> {
+    const bookmarkPath = path.join(root, '.a11ynotebook', 'bookmarks.json');
+    try {
+      const parsed: unknown = JSON.parse(await readFile(bookmarkPath, 'utf8'));
+      const candidates = Array.isArray(parsed)
+        ? parsed.filter(
+            (item): item is VaultBookmark =>
+              typeof item === 'object' &&
+              item !== null &&
+              typeof (item as VaultBookmark).id === 'string' &&
+              typeof (item as VaultBookmark).path === 'string' &&
+              typeof (item as VaultBookmark).title === 'string' &&
+              typeof (item as VaultBookmark).created === 'string',
+          )
+        : [];
+      const existing = await Promise.all(
+        candidates.map(async (bookmark) => {
+          try {
+            const target = await resolveEntry(bookmark.path);
+            return path.extname(target).toLowerCase() === '.md' ? bookmark : null;
+          } catch {
+            return null;
+          }
+        }),
+      );
+      return existing.filter((bookmark): bookmark is VaultBookmark => bookmark !== null);
+    } catch {
+      return [];
+    }
+  }
+
+  async function toggleBookmark(relativePath: string) {
+    const target = await resolveEntry(relativePath);
+    if (path.extname(target).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be bookmarked.');
+    const bookmarks = await getBookmarks();
+    const next = bookmarks.some((bookmark) => bookmark.path === relativePath)
+      ? bookmarks.filter((bookmark) => bookmark.path !== relativePath)
+      : [
+          ...bookmarks,
+          {
+            id: relativePath,
+            path: relativePath,
+            title: path.basename(relativePath, path.extname(relativePath)),
+            created: new Date().toISOString(),
+          },
+        ];
+    const metadataDirectory = path.join(root, '.a11ynotebook');
+    await mkdir(metadataDirectory, { recursive: true });
+    await writeFile(path.join(metadataDirectory, 'bookmarks.json'), JSON.stringify(next, null, 2), 'utf8');
+    return next;
+  }
+
   return {
     initialize,
     getVault,
@@ -157,6 +252,9 @@ export function createVaultService(vaultPath: string) {
     renameEntry,
     getTasks,
     toggleTask,
+    getLinkIndex,
+    getBookmarks,
+    toggleBookmark,
     resolveEntry,
   };
 }

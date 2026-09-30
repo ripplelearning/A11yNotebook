@@ -7,6 +7,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+O   | Open vault                 |
 | Ctrl+N   | New notebook               |
 | Ctrl+S   | Save note                  |
+| Ctrl+D   | Toggle note bookmark       |
 | Ctrl+W   | Close current tab          |
 | Ctrl+E   | Toggle read-only/edit mode |
 | F9       | Toggle right pane          |
@@ -15,7 +16,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Alt+2    | Focus main content         |
 | Alt+3    | Focus right pane           |
 | Ctrl+K   | Open command search        |
-| F5       | Refresh vault              |
+| F5       | Refresh links              |
 | F1       | Keyboard Shortcuts         |
 
 ## Navigation keys

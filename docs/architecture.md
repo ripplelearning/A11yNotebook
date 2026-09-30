@@ -15,8 +15,9 @@ contracts and serializable data types live in `src/shared/`.
 
 The vault IPC methods are `vault:open`, `vault:get`, `vault:read-note`, `vault:save-note`,
 `vault:create-notebook`, `vault:create-note`, `vault:rename`, `vault:reveal`, `vault:open-external`,
-`vault:import`, and `vault:delete`. Destructive delete uses an OS confirmation dialog and moves the selected
-resource to the Recycle Bin.
+`vault:import`, `vault:delete`, `vault:get-tasks`, `vault:toggle-task`, `vault:get-link-index`,
+`vault:get-bookmarks`, and `vault:toggle-bookmark`. Destructive delete uses an OS confirmation dialog and moves
+the selected resource to the Recycle Bin.
 
 ## Folders and data
 
@@ -26,7 +27,9 @@ resource to the Recycle Bin.
 - `src/shared/`: IPC names, command registry, bridge types, and data contracts.
 - `src/test/`: Vitest tests for renderer interactions and main-process logic.
 - Vault folders contain notebook subfolders, `.md` notes, and ordinary attachment files. `.a11ynotebook/` is
-  reserved for readable JSON metadata; notes are not converted to a proprietary format.
+  reserved for readable JSON metadata including `links.json` and `bookmarks.json`; notes are not converted to a
+  proprietary format. Link indexes are rebuilt from Markdown source when the vault is opened/refreshed or a note
+  is saved.
 
 ## Adding a command or feature
 

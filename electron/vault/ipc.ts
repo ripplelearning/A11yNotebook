@@ -132,6 +132,19 @@ export function setupVaultIpc(isTrustedSender: TrustedSender) {
       return requireService().toggleTask(relativePath, line, complete);
     },
   );
+  ipcMain.handle(IPC_CHANNELS.vaultGetLinkIndex, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getLinkIndex();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetBookmarks, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getBookmarks();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
+    return requireService().toggleBookmark(relativePath);
+  });
 }
 
 function vaultPathOf(vault: { path: string }) {

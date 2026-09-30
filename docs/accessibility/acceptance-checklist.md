@@ -25,3 +25,4 @@
 - [ ] Open note tabs expose unsaved state, a labelled close action, and confirmation before discarding edits.
 - [ ] Manual JAWS, NVDA, and Narrator validation of the vault tree and Markdown reader/editor is completed on Windows.
 - [ ] Tasks are exposed in a labelled table with sortable headers and labelled filters; toggles update their Markdown source.
+- [ ] Internal and missing-note links have distinguishable accessible text; backlinks and bookmarks are lists under headings.

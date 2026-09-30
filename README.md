@@ -14,6 +14,7 @@ Markdown notes, attachments, an accessible file tree, note tabs, a sanitized rea
 - Semantic Markdown reading and a native textarea editor with Ctrl+S and idle autosave.
 - Global text search over Markdown note names and contents.
 - Checkbox tasks indexed from Markdown, with due dates and priorities, filters, and a sortable table that updates source notes.
+- Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
 - A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
 - Closable tabs that follow the WAI-ARIA tabs pattern (arrow keys, Home, End, roving focus).

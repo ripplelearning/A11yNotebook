@@ -61,6 +61,16 @@ describe('local vault workflow', () => {
             complete: true,
           },
         ]),
+        getLinkIndex: vi.fn(async () => ({ links: [] })),
+        getBookmarks: vi.fn(async () => []),
+        toggleBookmark: vi.fn(async () => [
+          {
+            id: 'Class notes/Week 1.md',
+            path: 'Class notes/Week 1.md',
+            title: 'Week 1',
+            created: '2026-09-30T00:00:00.000Z',
+          },
+        ]),
       },
       onMenuCommand: vi.fn(() => () => undefined),
     };
@@ -73,6 +83,8 @@ describe('local vault workflow', () => {
     fireEvent.click(screen.getByRole('treeitem', { name: /Week 1.md/ }));
     expect(await screen.findByRole('heading', { name: 'Week 1', level: 2 })).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: 'Bookmark note' }));
+    await waitFor(() => expect(bridge.vault.toggleBookmark).toHaveBeenCalledWith('Class notes/Week 1.md'));
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.\n- [ ] Submit' } });
