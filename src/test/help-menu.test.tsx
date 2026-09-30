@@ -33,6 +33,8 @@ function installBridge() {
       openExternal: vi.fn(async () => undefined),
       importFile: vi.fn(async () => null),
       delete: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+      getTasks: vi.fn(async () => []),
+      toggleTask: vi.fn(async () => []),
     },
     onMenuCommand: (callback) => {
       menuListener = callback;

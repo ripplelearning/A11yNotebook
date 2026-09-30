@@ -20,6 +20,8 @@ export const IPC_CHANNELS = {
   vaultOpenExternal: 'vault:open-external',
   vaultImport: 'vault:import',
   vaultDelete: 'vault:delete',
+  vaultGetTasks: 'vault:get-tasks',
+  vaultToggleTask: 'vault:toggle-task',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -39,6 +41,8 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultOpenExternal,
   IPC_CHANNELS.vaultImport,
   IPC_CHANNELS.vaultDelete,
+  IPC_CHANNELS.vaultGetTasks,
+  IPC_CHANNELS.vaultToggleTask,
 ] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];

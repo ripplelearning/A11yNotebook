@@ -34,7 +34,7 @@ describe('local vault workflow', () => {
       vault: {
         open: vi.fn(async () => vault),
         get: vi.fn(async () => vault),
-        readNote: vi.fn(async () => '# Week 1\n\nImportant material'),
+        readNote: vi.fn(async () => '# Week 1\n\nImportant material\n- [ ] Submit'),
         saveNote: vi.fn(async () => undefined),
         createNotebook: vi.fn(async () => vault),
         createNote: vi.fn(async () => vault),
@@ -43,6 +43,24 @@ describe('local vault workflow', () => {
         openExternal: vi.fn(async () => undefined),
         importFile: vi.fn(async () => vault),
         delete: vi.fn(async () => vault),
+        getTasks: vi.fn(async () => [
+          {
+            id: 'Class notes/Week 1.md:4',
+            path: 'Class notes/Week 1.md',
+            line: 4,
+            text: 'Submit',
+            complete: false,
+          },
+        ]),
+        toggleTask: vi.fn(async () => [
+          {
+            id: 'Class notes/Week 1.md:4',
+            path: 'Class notes/Week 1.md',
+            line: 4,
+            text: 'Submit',
+            complete: true,
+          },
+        ]),
       },
       onMenuCommand: vi.fn(() => () => undefined),
     };
@@ -57,13 +75,21 @@ describe('local vault workflow', () => {
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
-    fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.' } });
+    fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.\n- [ ] Submit' } });
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() =>
-      expect(bridge.vault.saveNote).toHaveBeenCalledWith('Class notes/Week 1.md', '# Week 1\n\nUpdated.'),
+      expect(bridge.vault.saveNote).toHaveBeenCalledWith('Class notes/Week 1.md', '# Week 1\n\nUpdated.\n- [ ] Submit'),
     );
     expect(
       within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }),
     ).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(
+      within(screen.getByRole('complementary', { name: 'Navigation pane' })).getByRole('button', {
+        name: 'Open Tasks',
+      }),
+    );
+    const taskTable = await screen.findByRole('table', { name: 'Markdown checkbox tasks in the open vault' });
+    fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
+    await waitFor(() => expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true));
   });
 });

@@ -17,7 +17,7 @@ import {
   type CommandId,
 } from '../shared/command-registry';
 import { isMenuCommand } from '../shared/ipc';
-import type { AppMode, FocusRegion, FocusTarget, VaultEntry, VaultInfo } from '../shared/types';
+import type { AppMode, FocusRegion, FocusTarget, VaultEntry, VaultInfo, VaultTask } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
@@ -44,6 +44,10 @@ function findEntry(entries: VaultEntry[], targetPath: string | null): VaultEntry
   return undefined;
 }
 
+function notebookForTask(task: VaultTask) {
+  return task.path.split('/').slice(0, -1).join('/') || 'Root';
+}
+
 const TAB_PANEL_ID = 'main-tabpanel';
 
 const REGION_LABELS: Record<FocusRegion, string> = {
@@ -57,6 +61,7 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 const menuGroups: { label: string; items: CommandId[] }[] = [
   { label: 'Vault', items: ['open-vault', 'new-notebook'] },
   { label: 'Note', items: ['save-current-note', 'close-current-tab'] },
+  { label: 'Tasks', items: ['show-tasks'] },
   { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode'] },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
@@ -72,6 +77,12 @@ export default function App() {
   const [selectedTab, setSelectedTab] = useState('welcome');
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [openNotes, setOpenNotes] = useState<OpenNote[]>([]);
+  const [tasks, setTasks] = useState<VaultTask[]>([]);
+  const [taskTabOpen, setTaskTabOpen] = useState(false);
+  const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
+  const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
+  const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
+  const [dueAscending, setDueAscending] = useState(true);
   const [treeSelection, setTreeSelection] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<VaultEntry[]>([]);
   const [pendingFocus, setPendingFocus] = useState<FocusTarget | null>(null);
@@ -86,6 +97,7 @@ export default function App() {
   const statusRef = useRef<HTMLElement>(null);
   const tabs = [
     { id: 'welcome', label: 'Welcome' },
+    ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
     ...openNotes.map((note) => ({
       id: note.id,
       label: `${note.title}${note.content !== note.saved ? ' (unsaved)' : ''}`,
@@ -100,6 +112,17 @@ export default function App() {
         .then(setVault)
         .catch(() => setStatusMessage('Could not open the last vault.'));
   }, []);
+
+  useEffect(() => {
+    if (!vault || !window.a11yNotebook) {
+      setTasks([]);
+      return;
+    }
+    void window.a11yNotebook.vault
+      .getTasks()
+      .then(setTasks)
+      .catch(() => setStatusMessage('Could not load tasks.'));
+  }, [vault]);
 
   useEffect(() => {
     const bridge = window.a11yNotebook;
@@ -338,6 +361,29 @@ export default function App() {
     }
   };
 
+  const toggleTask = async (task: VaultTask) => {
+    try {
+      const updated = await window.a11yNotebook?.vault.toggleTask(task.path, task.line, !task.complete);
+      if (!updated) return;
+      setTasks(updated);
+      const note = openNotes.find((item) => item.path === task.path);
+      if (note) {
+        const lines = note.content.split(/\r?\n/);
+        const line = lines[task.line - 1];
+        if (line) {
+          lines[task.line - 1] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${task.complete ? 'x' : ' '}$2`);
+          const content = lines.join('\n');
+          setOpenNotes((current) =>
+            current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+          );
+        }
+      }
+      setStatusMessage(task.complete ? 'Task marked complete.' : 'Task marked open.');
+    } catch {
+      setStatusMessage('Could not update the task.');
+    }
+  };
+
   useEffect(() => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || note.content === note.saved || !window.a11yNotebook) return;
@@ -391,6 +437,11 @@ export default function App() {
       return;
     }
     if (commandId === 'close-current-tab') {
+      if (selectedTab === 'tasks') {
+        setTaskTabOpen(false);
+        setSelectedTab('welcome');
+        return;
+      }
       const note = openNotes.find((item) => item.id === selectedTab);
       if (!note) return;
       if (note.content !== note.saved && !window.confirm(`Discard unsaved changes to ${note.title}?`)) return;
@@ -410,6 +461,10 @@ export default function App() {
       setCommandPaletteOpen: (open) => setActiveDialog(open ? 'palette' : null),
       setSelectedTab,
       saveNote: () => void saveActiveNote(),
+      showTasks: () => {
+        setTaskTabOpen(true);
+        setSelectedTab('tasks');
+      },
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
@@ -511,6 +566,22 @@ export default function App() {
   };
 
   const currentNote = openNotes.find((item) => item.id === selectedTab);
+  const today = new Date().toISOString().slice(0, 10);
+  const taskNotebooks = [...new Set(tasks.map(notebookForTask))];
+  const visibleTasks = tasks
+    .filter((task) => taskStatusFilter === 'all' || (taskStatusFilter === 'done') === task.complete)
+    .filter((task) => taskNotebookFilter === 'all' || notebookForTask(task) === taskNotebookFilter)
+    .filter((task) => {
+      if (taskDueFilter === 'any') return true;
+      if (taskDueFilter === 'today') return task.dueDate === today;
+      if (taskDueFilter === 'overdue') return !task.complete && Boolean(task.dueDate && task.dueDate < today);
+      return !task.complete && Boolean(task.dueDate && task.dueDate > today);
+    })
+    .sort((left, right) => {
+      const leftDate = left.dueDate ?? '9999-12-31';
+      const rightDate = right.dueDate ?? '9999-12-31';
+      return leftDate.localeCompare(rightDate) * (dueAscending ? 1 : -1);
+    });
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
   useEffect(() => {
     document.title =
@@ -581,6 +652,9 @@ export default function App() {
         >
           <h2>{vault?.name ?? 'Vault'}</h2>
           <div className="vault-actions">
+            <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
+              Open Tasks
+            </button>
             <button type="button" onClick={() => void createNote()} disabled={!vault}>
               New note
             </button>
@@ -641,7 +715,10 @@ export default function App() {
           )}
           {searchResults.length ? (
             <section aria-label="Search results">
-              <h3>{searchResults.length} search results</h3>
+              <h3>Search results</h3>
+              <p role="status" aria-live="polite">
+                {searchResults.length} results.
+              </p>
               <ul>
                 {searchResults.map((entry) => (
                   <li key={entry.path}>
@@ -690,6 +767,11 @@ export default function App() {
                       className="close-tab"
                       aria-label={`Close ${tab.label}`}
                       onClick={() => {
+                        if (tab.id === 'tasks') {
+                          setTaskTabOpen(false);
+                          if (selected) setSelectedTab('welcome');
+                          return;
+                        }
                         const note = openNotes.find((item) => item.id === tab.id);
                         if (
                           note &&
@@ -718,7 +800,87 @@ export default function App() {
             aria-labelledby={`tab-${selectedTab}`}
             tabIndex={0}
           >
-            {currentNote ? (
+            {selectedTab === 'tasks' ? (
+              <section aria-labelledby="tasks-heading">
+                <h2 id="tasks-heading">Tasks</h2>
+                <p role="status" aria-live="polite">
+                  {visibleTasks.length} tasks shown.
+                </p>
+                <div className="task-filters">
+                  <label>
+                    Task status
+                    <select
+                      value={taskStatusFilter}
+                      onChange={(event) => {
+                        setTaskStatusFilter(event.target.value as typeof taskStatusFilter);
+                      }}
+                    >
+                      <option value="open">Open</option>
+                      <option value="done">Done</option>
+                      <option value="all">All</option>
+                    </select>
+                  </label>
+                  <label>
+                    Due date
+                    <select
+                      value={taskDueFilter}
+                      onChange={(event) => {
+                        setTaskDueFilter(event.target.value as typeof taskDueFilter);
+                      }}
+                    >
+                      <option value="any">Any date</option>
+                      <option value="today">Due today</option>
+                      <option value="overdue">Overdue</option>
+                      <option value="upcoming">Upcoming</option>
+                    </select>
+                  </label>
+                  <label>
+                    Notebook
+                    <select value={taskNotebookFilter} onChange={(event) => setTaskNotebookFilter(event.target.value)}>
+                      <option value="all">All notebooks</option>
+                      {taskNotebooks.map((notebook) => (
+                        <option key={notebook} value={notebook}>
+                          {notebook}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="table-scroll">
+                  <table>
+                    <caption>Markdown checkbox tasks in the open vault</caption>
+                    <thead>
+                      <tr>
+                        <th scope="col">Task</th>
+                        <th scope="col">Notebook</th>
+                        <th scope="col" aria-sort={dueAscending ? 'ascending' : 'descending'}>
+                          <button type="button" onClick={() => setDueAscending((ascending) => !ascending)}>
+                            Due date
+                          </button>
+                        </th>
+                        <th scope="col">Priority</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {visibleTasks.map((task) => (
+                        <tr key={task.id}>
+                          <th scope="row">
+                            <label>
+                              <input type="checkbox" checked={task.complete} onChange={() => void toggleTask(task)} />
+                              {task.text}
+                            </label>
+                          </th>
+                          <td>{notebookForTask(task)}</td>
+                          <td>{task.dueDate ?? 'No due date'}</td>
+                          <td>{task.priority ?? 'Normal'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {!visibleTasks.length ? <p>No tasks match these filters.</p> : null}
+                </div>
+              </section>
+            ) : currentNote ? (
               <>
                 <h2>{currentNote.title}</h2>
                 {mode === 'edit' ? (

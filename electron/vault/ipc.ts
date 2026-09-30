@@ -118,6 +118,20 @@ export function setupVaultIpc(isTrustedSender: TrustedSender) {
     await shell.trashItem(target);
     return vault.getVault();
   });
+  ipcMain.handle(IPC_CHANNELS.vaultGetTasks, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getTasks();
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultToggleTask,
+    async (event, relativePath: unknown, line: unknown, complete: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relativePath !== 'string' || typeof line !== 'number' || typeof complete !== 'boolean') {
+        throw new Error('Invalid task update request.');
+      }
+      return requireService().toggleTask(relativePath, line, complete);
+    },
+  );
 }
 
 function vaultPathOf(vault: { path: string }) {

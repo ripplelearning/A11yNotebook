@@ -461,6 +461,24 @@ a:focus-visible,
   padding: 0.4rem 0.6rem;
 }
 
+.task-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-block: 1rem;
+}
+
+.task-filters label {
+  display: grid;
+  gap: 0.25rem;
+}
+
+.task-filters select,
+.table-scroll input[type='checkbox'] {
+  min-width: 2rem;
+  min-height: 2rem;
+}
+
 @media (forced-colors: active) {
   :focus-visible,
   [role='treeitem'][aria-selected='true'] {

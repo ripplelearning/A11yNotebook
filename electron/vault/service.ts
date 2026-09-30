@@ -3,6 +3,7 @@
 import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import { parseMarkdownTasks } from './tasks';
 
 /** Create an operations facade for one canonical vault folder. */
 export function createVaultService(vaultPath: string) {
@@ -116,5 +117,46 @@ export function createVaultService(vaultPath: string) {
     return getVault();
   }
 
-  return { initialize, getVault, readNote, saveNote, createFolder, createNote, renameEntry, resolveEntry };
+  async function getTasks() {
+    const notes: string[] = [];
+    const collect = (entries: VaultEntry[]) =>
+      entries.forEach((entry) => {
+        if (entry.kind === 'note') notes.push(entry.path);
+        if (entry.children) collect(entry.children);
+      });
+    collect((await getVault()).entries);
+    const taskGroups = await Promise.all(
+      notes.map(async (notePath) => parseMarkdownTasks(await readNote(notePath), notePath)),
+    );
+    return taskGroups.flat();
+  }
+
+  async function toggleTask(relativePath: string, lineNumber: number, complete: boolean) {
+    const target = await resolveEntry(relativePath);
+    if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
+      throw new Error('Invalid task location.');
+    }
+    const lines = (await readFile(target, 'utf8')).split(/\r?\n/);
+    const index = lineNumber - 1;
+    const line = lines[index];
+    if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
+      throw new Error('The task no longer exists at this location.');
+    }
+    lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
+    await writeFile(target, lines.join('\n'), 'utf8');
+    return getTasks();
+  }
+
+  return {
+    initialize,
+    getVault,
+    readNote,
+    saveNote,
+    createFolder,
+    createNote,
+    renameEntry,
+    getTasks,
+    toggleTask,
+    resolveEntry,
+  };
 }

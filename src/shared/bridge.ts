@@ -1,6 +1,6 @@
 import type { MenuCommand } from './ipc';
 import type { UpdaterStatus } from './updater';
-import type { VaultInfo } from './types';
+import type { VaultInfo, VaultTask } from './types';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
@@ -15,6 +15,8 @@ export interface VaultBridge {
   openExternal(path: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
+  getTasks(): Promise<VaultTask[]>;
+  toggleTask(path: string, line: number, complete: boolean): Promise<VaultTask[]>;
 }
 
 /** Narrow updater API exposed to the renderer through the preload script. */

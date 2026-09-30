@@ -28,6 +28,13 @@ content and asks before discarding it when closed.
 Type in **Global search** to search Markdown note titles and body text in the open vault. Select a result to open its
 note. Search currently does not index attachment contents, tags, or metadata.
 
+## Tasks
+
+Choose **Open Tasks** in the navigation pane or command palette. Markdown checkboxes appear in a sortable table;
+the status, due-date, and notebook filters narrow the list. Checking or unchecking a task updates its checkbox in
+the source note. Optional dates use `due:YYYY-MM-DD` or `📅 YYYY-MM-DD`; priorities use `priority:low`,
+`priority:normal`, `priority:high`, or `priority:urgent`.
+
 ## Keyboard shortcuts
 
 | Shortcut                                                     | Action                                         |
@@ -56,6 +63,6 @@ is still needed; see the [testing strategy](accessibility/testing-strategy.md).
 
 ## Not available yet
 
-Bookmarks, annotations, backlinks, task management and reminders, shortcut customization, formatting dialogs,
+Reminders, bookmarks, annotations, backlinks, shortcut customization, formatting dialogs,
 password protection, in-app attachment previews, and cognitive assets are planned but are not presented as working
 features in this build.

@@ -44,7 +44,8 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 
 ## Phase 5 — Tasks, reminders, and project planning
 
-- ⏳ Task parsing, task list/table and filtering, reminders, and calendar-like organization.
+- ✅ Markdown checkbox tasks with optional due dates/priorities, filters, sortable table, and source-file toggles.
+- ⏳ Native reminders/notifications and calendar-like organization.
 - Project tracking and milestone summaries
 - Sortable tables and cognitive assets
 

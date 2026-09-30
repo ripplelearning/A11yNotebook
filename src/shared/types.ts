@@ -44,3 +44,14 @@ export interface VaultInfo {
   path: string;
   entries: VaultEntry[];
 }
+
+/** A checkbox task parsed from one Markdown line in the open vault. */
+export interface VaultTask {
+  id: string;
+  path: string;
+  line: number;
+  text: string;
+  complete: boolean;
+  dueDate?: string;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+}

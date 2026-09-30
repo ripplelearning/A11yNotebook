@@ -24,6 +24,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenExternal: 'vault:open-external',
   vaultImport: 'vault:import',
   vaultDelete: 'vault:delete',
+  vaultGetTasks: 'vault:get-tasks',
+  vaultToggleTask: 'vault:toggle-task',
 };
 
 function subscribe<T>(
@@ -58,6 +60,9 @@ const bridge: NotebookBridge = {
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
+    getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
+    toggleTask: (relativePath, line, complete) =>
+      ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, line, complete),
   },
   onMenuCommand: (callback) => subscribe<MenuCommand>(CHANNELS.menuCommand, callback),
 };
