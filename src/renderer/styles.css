@@ -25,6 +25,7 @@ textarea {
 
 button:focus-visible,
 input:focus-visible,
+a:focus-visible,
 [tabindex]:focus-visible {
   outline: 3px solid #7dd3fc;
   outline-offset: 2px;
@@ -108,7 +109,8 @@ input:focus-visible,
   cursor: pointer;
 }
 
-.menu-item:hover {
+.menu-item:hover,
+.tab:hover {
   background: rgba(148, 163, 184, 0.12);
 }
 
@@ -218,6 +220,8 @@ input:focus-visible,
 
 .status-bar {
   display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
   justify-content: space-between;
   align-items: center;
   padding: 0.6rem 1.25rem;
@@ -234,13 +238,105 @@ input:focus-visible,
   padding: 1rem;
 }
 
-.command-palette {
+.modal {
   width: min(560px, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow: auto;
   background: #0f172a;
   border: 1px solid rgba(148, 163, 184, 0.35);
   border-radius: 1rem;
   padding: 1rem;
   box-shadow: 0 25px 50px rgba(2, 6, 23, 0.6);
+}
+
+.modal.wide-modal {
+  width: min(720px, 100%);
+}
+
+.modal-title {
+  margin: 0 0 0.75rem;
+  font-size: 1.25rem;
+}
+
+.modal-body p {
+  margin: 0 0 0.75rem;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.modal-actions button {
+  background: rgba(30, 41, 59, 0.9);
+  color: white;
+  border: 1px solid rgba(148, 163, 184, 0.5);
+  border-radius: 0.5rem;
+  padding: 0.5rem 0.9rem;
+  cursor: pointer;
+}
+
+.modal-actions button:first-child {
+  background: #1d4ed8;
+  border-color: #93c5fd;
+}
+
+.modal a {
+  color: #93c5fd;
+}
+
+.release-notes h3 {
+  margin: 0 0 0.25rem;
+  font-size: 1rem;
+}
+
+.error-message {
+  color: #fecaca;
+  border-left: 4px solid #f87171;
+  padding-left: 0.75rem;
+}
+
+.progress {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.progress-track {
+  height: 0.9rem;
+  border: 1px solid #93c5fd;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(15, 23, 42, 0.8);
+}
+
+.progress-fill {
+  height: 100%;
+  background: #60a5fa;
+}
+
+.table-scroll {
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.table-scroll table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table-scroll th,
+.table-scroll td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.table-scroll tbody th {
+  font-weight: 400;
 }
 
 .command-list {
@@ -253,25 +349,28 @@ input:focus-visible,
   overflow: auto;
 }
 
+.command-list li {
+  background: rgba(30, 41, 59, 0.8);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 0.6rem;
+  padding: 0.35rem;
+}
+
 .command-list button {
   width: 100%;
   text-align: left;
-  background: rgba(30, 41, 59, 0.8);
+  background: transparent;
   color: white;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 0.6rem;
-  padding: 0.75rem 0.85rem;
+  border: 1px solid transparent;
+  border-radius: 0.4rem;
+  padding: 0.4rem 0.5rem;
   cursor: pointer;
 }
 
-.command-list button span,
-.command-list button small {
+.command-list small {
   display: block;
-}
-
-.command-list button small {
   color: #cbd5e1;
-  margin-top: 0.15rem;
+  padding: 0 0.5rem 0.25rem;
 }
 
 .active-panel {

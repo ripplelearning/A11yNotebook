@@ -1,18 +1,17 @@
 {
   "compilerOptions": {
     "target": "ES2022",
-    "module": "NodeNext",
-    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
     "outDir": "dist-electron",
     "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "forceConsistentCasingInFileNames": true,
     "skipLibCheck": true,
+    "sourceMap": false,
     "types": ["node"]
   },
-  "include": [
-    "electron/**/*.ts",
-    "src/shared/**/*.ts"
-  ]
+  "include": ["electron/**/*.ts"]
 }

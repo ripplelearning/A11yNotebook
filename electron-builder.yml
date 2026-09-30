@@ -1,0 +1,48 @@
+# electron-builder configuration for A11y Notebook.
+# Build a Windows installer with:  npm run package:win   (output: release/)
+appId: com.ripplelearning.a11ynotebook
+productName: A11y Notebook
+copyright: Copyright © 2026 ripplelearning
+
+directories:
+  output: release
+  buildResources: build
+
+files:
+  - dist/**
+  - dist-electron/**
+  - package.json
+  - '!**/*.map'
+
+win:
+  icon: build/icon.ico
+  target:
+    - target: nsis
+      arch:
+        - x64
+    - target: portable
+      arch:
+        - x64
+  # Code signing: set CSC_LINK / CSC_KEY_PASSWORD (or WIN_CSC_LINK / WIN_CSC_KEY_PASSWORD)
+  # in the build environment. When the installer is signed, electron-updater verifies
+  # that downloaded updates are signed by the same publisher. See docs/updater.md.
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  perMachine: false
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: A11y Notebook
+  uninstallDisplayName: A11y Notebook
+  artifactName: A11y-Notebook-Setup-${version}.${ext}
+
+portable:
+  artifactName: A11y-Notebook-Portable-${version}.${ext}
+
+publish:
+  provider: github
+  owner: ripplelearning
+  repo: A11yNotebook
+  # Publish as a full release (not a draft) so Help → Check for Updates can find it.
+  releaseType: release
