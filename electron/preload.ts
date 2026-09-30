@@ -4,7 +4,6 @@ import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { NotebookBridge } from '../src/shared/bridge';
 import type { IPC_CHANNELS as SharedChannels, MenuCommand } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
-import type { VaultInfo } from '../src/shared/types';
 
 // Must match src/shared/ipc.ts exactly; the type annotation enforces that at compile time.
 const CHANNELS: typeof SharedChannels = {

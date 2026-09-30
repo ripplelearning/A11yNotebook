@@ -388,3 +388,82 @@ a:focus-visible,
   white-space: nowrap;
   border: 0;
 }
+
+.vault-actions,
+.tab-control {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.vault-actions {
+  flex-wrap: wrap;
+  margin-block: 0.75rem;
+}
+
+.vault-actions button,
+.close-tab {
+  min-width: 2rem;
+  min-height: 2rem;
+  border: 1px solid #64748b;
+  border-radius: 0.35rem;
+  background: #1e293b;
+  color: #f8fafc;
+  cursor: pointer;
+}
+
+[role='tree'] [role='treeitem'] {
+  min-height: 2rem;
+  padding: 0.35rem 0.5rem;
+  cursor: pointer;
+}
+
+[role='tree'] [role='treeitem'][aria-selected='true'] {
+  background: #1e3a5f;
+  outline: 1px solid #7dd3fc;
+}
+
+.editor-label {
+  display: grid;
+  gap: 0.5rem;
+  font-weight: 600;
+}
+
+.markdown-editor {
+  width: 100%;
+  min-height: 55vh;
+  resize: vertical;
+  padding: 0.8rem;
+  border: 1px solid #64748b;
+  border-radius: 0.4rem;
+  background: #0b1220;
+  color: #f8fafc;
+  font-family: Consolas, 'Cascadia Code', monospace;
+}
+
+.markdown-body a {
+  color: #93c5fd;
+}
+
+.markdown-body pre {
+  overflow: auto;
+  padding: 0.75rem;
+  background: #020617;
+}
+
+.markdown-body table {
+  border-collapse: collapse;
+}
+
+.markdown-body th,
+.markdown-body td {
+  border: 1px solid #64748b;
+  padding: 0.4rem 0.6rem;
+}
+
+@media (forced-colors: active) {
+  :focus-visible,
+  [role='treeitem'][aria-selected='true'] {
+    outline: 2px solid Highlight;
+  }
+}

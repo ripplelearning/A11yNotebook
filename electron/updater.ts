@@ -2,7 +2,12 @@
 import { app, ipcMain, type IpcMainInvokeEvent } from 'electron';
 import { autoUpdater } from 'electron-updater';
 import { REPOSITORY_NAME, REPOSITORY_OWNER } from '../src/shared/app-info';
-import { IPC_CHANNELS, INVOKE_CHANNELS, isInvokeChannel, type InvokeChannel } from '../src/shared/ipc';
+import {
+  IPC_CHANNELS,
+  UPDATER_INVOKE_CHANNELS,
+  isInvokeChannel,
+  type UpdaterInvokeChannel,
+} from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import { createUpdaterController } from './updater-controller';
 
@@ -47,14 +52,14 @@ export function setupUpdater({ send, isTrustedSender }: UpdaterWiringOptions) {
   autoUpdater.on('update-downloaded', (info) => controller.handleUpdateDownloaded(info));
   autoUpdater.on('error', (error) => controller.handleError(error));
 
-  const handlers: Record<InvokeChannel, () => unknown> = {
+  const handlers: Record<UpdaterInvokeChannel, () => unknown> = {
     [IPC_CHANNELS.updaterCheck]: () => controller.check(),
     [IPC_CHANNELS.updaterDownload]: () => controller.download(),
     [IPC_CHANNELS.updaterInstallNow]: () => controller.installNow(),
     [IPC_CHANNELS.updaterInstallOnExit]: () => controller.installOnExit(),
   };
 
-  for (const channel of INVOKE_CHANNELS) {
+  for (const channel of UPDATER_INVOKE_CHANNELS) {
     // Handlers ignore any arguments sent by the renderer.
     ipcMain.handle(channel, async (event) => {
       if (!isInvokeChannel(channel) || !isTrustedSender(event)) {

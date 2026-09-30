@@ -21,6 +21,19 @@ function installBridge() {
         };
       },
     },
+    vault: {
+      open: vi.fn(async () => null),
+      get: vi.fn(async () => null),
+      readNote: vi.fn(async () => ''),
+      saveNote: vi.fn(async () => undefined),
+      createNotebook: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+      createNote: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+      rename: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+      reveal: vi.fn(async () => undefined),
+      openExternal: vi.fn(async () => undefined),
+      importFile: vi.fn(async () => null),
+      delete: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+    },
     onMenuCommand: (callback) => {
       menuListener = callback;
       return () => {

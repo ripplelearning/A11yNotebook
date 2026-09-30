@@ -43,6 +43,15 @@ export const INVOKE_CHANNELS = [
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 
+/** Renderer-invokable updater calls, handled by the updater controller only. */
+export const UPDATER_INVOKE_CHANNELS = [
+  IPC_CHANNELS.updaterCheck,
+  IPC_CHANNELS.updaterDownload,
+  IPC_CHANNELS.updaterInstallNow,
+  IPC_CHANNELS.updaterInstallOnExit,
+] as const;
+export type UpdaterInvokeChannel = (typeof UPDATER_INVOKE_CHANNELS)[number];
+
 export function isInvokeChannel(value: unknown): value is InvokeChannel {
   return typeof value === 'string' && (INVOKE_CHANNELS as readonly string[]).includes(value);
 }
