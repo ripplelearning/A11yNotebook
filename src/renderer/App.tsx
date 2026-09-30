@@ -441,9 +441,12 @@ export default function App() {
           onDownload={updater.download}
           onInstallNow={updater.installNow}
           onInstallOnExit={() => {
-            updater.installOnExit();
-            closeDialog();
-            setStatusMessage('The update will be installed when you exit A11y Notebook.');
+            void updater.installOnExit().then((accepted) => {
+              if (accepted) {
+                closeDialog();
+                setStatusMessage('The update will be installed when you exit A11y Notebook.');
+              }
+            });
           }}
           onRetry={updater.check}
           onClose={closeDialog}

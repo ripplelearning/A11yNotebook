@@ -10,8 +10,14 @@ import {
   type UpdaterStatus,
 } from '../src/shared/updater';
 
+/** The subset of electron-updater's UpdateCheckResult the controller relies on. */
+export type UpdateCheckResultLike = {
+  isUpdateAvailable?: boolean;
+  updateInfo?: UpdateInfoLike;
+} | null;
+
 export type UpdaterEngine = {
-  checkForUpdates: () => Promise<unknown>;
+  checkForUpdates: () => Promise<UpdateCheckResultLike | undefined | void>;
   downloadUpdate: () => Promise<unknown>;
   quitAndInstall: (isSilent: boolean, isForceRunAfter: boolean) => void;
   setAutoInstallOnAppQuit: (value: boolean) => void;
@@ -68,7 +74,7 @@ export function createUpdaterController({
     return null;
   };
 
-  return {
+  const controller = {
     getPhase: () => phase,
 
     async check() {
@@ -88,10 +94,18 @@ export function createUpdaterController({
       phase = 'checking';
       emit({ state: 'checking' });
       try {
-        await engine.checkForUpdates();
+        const result = await engine.checkForUpdates();
+        // electron-updater normally emits its events before resolving; fall back to the
+        // resolved result so the outcome never depends on event ordering.
         if (phase === 'checking') {
-          phase = 'idle';
-          emitError('The update check did not complete. Please try again.');
+          if (result?.updateInfo && result.isUpdateAvailable === true) {
+            controller.handleUpdateAvailable(result.updateInfo);
+          } else if (result?.updateInfo && result.isUpdateAvailable === false) {
+            controller.handleUpdateNotAvailable();
+          } else {
+            phase = 'idle';
+            emitError('The update check did not complete. Please try again.');
+          }
         }
       } catch (error) {
         phase = 'idle';
@@ -173,4 +187,5 @@ export function createUpdaterController({
       emitError(formatUpdaterError(error));
     },
   };
+  return controller;
 }

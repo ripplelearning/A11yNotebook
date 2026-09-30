@@ -85,6 +85,12 @@ describe('updater error formatting', () => {
     );
   });
 
+  it('strips the Electron IPC prefix from rejected invoke errors', () => {
+    expect(
+      formatUpdaterError(new Error("Error invoking remote method 'updater:check': Error: Untrusted updater request.")),
+    ).toBe('Untrusted updater request.');
+  });
+
   it('keeps only the first line of other errors', () => {
     expect(formatUpdaterError(new Error('Something broke\n    at stack frame'))).toBe('Something broke');
     expect(formatUpdaterError(undefined)).toBe('An unknown error occurred.');

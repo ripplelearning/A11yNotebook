@@ -17,8 +17,10 @@ export function useUpdater() {
   const [status, setStatus] = useState<UpdaterStatus>({ state: 'idle' });
   const [announcement, setAnnouncement] = useState('');
   const lastAnnouncedBucket = useRef(-1);
+  const latestStatus = useRef<UpdaterStatus>(status);
 
   const applyStatus = useCallback((next: UpdaterStatus) => {
+    latestStatus.current = next;
     setStatus(next);
     if (next.state === 'download-progress') {
       const bucket = progressAnnouncementBucket(next.percent);
@@ -43,13 +45,29 @@ export function useUpdater() {
     });
   }, [bridge, applyStatus]);
 
+  /**
+   * Runs an updater action and resolves to true when it succeeded. Status events are
+   * delivered before the invoke reply, so an error reported by the main process during
+   * the call is already visible when the promise settles.
+   */
   const run = useCallback(
-    (action: (() => Promise<void>) | undefined) => {
+    async (action: (() => Promise<void>) | undefined): Promise<boolean> => {
       if (!action) {
         applyStatus({ state: 'unsupported', message: UPDATES_DEV_BUILD_MESSAGE });
-        return;
+        return false;
       }
-      action().catch((error: unknown) => applyStatus({ state: 'error', message: formatUpdaterError(error) }));
+      const before = latestStatus.current;
+      try {
+        await action();
+      } catch (error: unknown) {
+        // Keep a readable error the main process already sent instead of replacing it
+        // with the generic IPC rejection text.
+        if (latestStatus.current === before || latestStatus.current.state !== 'error') {
+          applyStatus({ state: 'error', message: formatUpdaterError(error) });
+        }
+        return false;
+      }
+      return !(latestStatus.current !== before && latestStatus.current.state === 'error');
     },
     [applyStatus],
   );
@@ -62,7 +80,7 @@ export function useUpdater() {
     if (bridge) {
       applyStatus({ state: 'checking' });
     }
-    run(bridge?.check);
+    void run(bridge?.check);
   }, [bridge, status.state, applyStatus, run]);
 
   return {
@@ -70,8 +88,9 @@ export function useUpdater() {
     announcement,
     isAvailable: Boolean(bridge),
     check,
-    download: useCallback(() => run(bridge?.download), [bridge, run]),
-    installNow: useCallback(() => run(bridge?.installNow), [bridge, run]),
+    download: useCallback(() => void run(bridge?.download), [bridge, run]),
+    installNow: useCallback(() => void run(bridge?.installNow), [bridge, run]),
+    /** Resolves to true once the main process has accepted "install on exit". */
     installOnExit: useCallback(() => run(bridge?.installOnExit), [bridge, run]),
   };
 }

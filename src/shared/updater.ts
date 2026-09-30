@@ -130,7 +130,10 @@ export function summarizeReleaseNotes(
 
 /** Turn an unknown updater error into a short, readable, user-facing message. */
 export function formatUpdaterError(error: unknown): string {
-  const raw = error instanceof Error ? error.message : typeof error === 'string' ? error : 'An unknown error occurred.';
+  const rawMessage =
+    error instanceof Error ? error.message : typeof error === 'string' ? error : 'An unknown error occurred.';
+  // Rejected ipcRenderer.invoke calls are prefixed with "Error invoking remote method '<channel>': ".
+  const raw = rawMessage.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
   const firstLine = raw.split(/\r?\n/)[0]?.trim() ?? '';
 
   if (/ERR_INTERNET_DISCONNECTED|ERR_NAME_NOT_RESOLVED|ENOTFOUND|ECONNREFUSED|ETIMEDOUT|ERR_CONNECTION/i.test(raw)) {

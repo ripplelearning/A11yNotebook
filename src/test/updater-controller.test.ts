@@ -37,6 +37,25 @@ describe('updater controller', () => {
     expect(statuses[0].state).toBe('unsupported');
   });
 
+  it('settles the check from the resolved result when no event was emitted', async () => {
+    const available = setup({
+      engine: { checkForUpdates: vi.fn(async () => ({ isUpdateAvailable: true, updateInfo: { version: '0.3.0' } })) },
+    });
+    await available.controller.check();
+    expect(available.statuses.map((status) => status.state)).toEqual(['checking', 'update-available']);
+    expect(available.controller.getPhase()).toBe('available');
+
+    const latest = setup({
+      engine: { checkForUpdates: vi.fn(async () => ({ isUpdateAvailable: false, updateInfo: { version: '0.1.0' } })) },
+    });
+    await latest.controller.check();
+    expect(latest.statuses.map((status) => status.state)).toEqual(['checking', 'update-not-available']);
+
+    const skipped = setup({ engine: { checkForUpdates: vi.fn(async () => null) } });
+    await skipped.controller.check();
+    expect(skipped.statuses.map((status) => status.state)).toEqual(['checking', 'error']);
+  });
+
   it('runs the full user-consented update flow', async () => {
     const { controller, engine, statuses } = setup({
       engine: {

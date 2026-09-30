@@ -129,6 +129,46 @@ describe('Check for Updates', () => {
     expect(bridge.updater.installNow).toHaveBeenCalledTimes(1);
   });
 
+  it('confirms "Install on exit" only after the main process accepts it', async () => {
+    const { bridge, emit } = installBridge();
+    render(<App />);
+    fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+    emit({ state: 'update-downloaded', version: '9.9.9' });
+    const dialog = screen.getByRole('dialog', { name: 'Software update' });
+
+    vi.mocked(bridge.updater.installOnExit).mockImplementationOnce(async () => {
+      emit({ state: 'error', message: 'No downloaded update is ready to install.' });
+    });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Install on exit' }));
+    });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('No downloaded update is ready to install.');
+    expect(screen.getByLabelText('Status bar')).not.toHaveTextContent('installed when you exit');
+
+    emit({ state: 'update-downloaded', version: '9.9.9' });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Install on exit' }));
+    });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+      'The update will be installed when you exit A11y Notebook.',
+    );
+  });
+
+  it('keeps the readable main-process error when the IPC call also rejects', async () => {
+    const { bridge, emit } = installBridge();
+    render(<App />);
+    vi.mocked(bridge.updater.check).mockImplementationOnce(async () => {
+      emit({ state: 'error', message: 'Could not reach GitHub.' });
+      throw new Error("Error invoking remote method 'updater:check': Error: boom");
+    });
+    await act(async () => {
+      fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+    });
+    const dialog = screen.getByRole('dialog', { name: 'Software update' });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not reach GitHub.');
+  });
+
   it('announces errors with an alert and offers a retry', () => {
     const { bridge, emit } = installBridge();
     render(<App />);
