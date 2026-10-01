@@ -29,3 +29,51 @@ export interface NoteItem {
   label: string;
   summary: string;
 }
+
+/** A filesystem entry returned to the renderer without exposing Node objects. */
+export interface VaultEntry {
+  name: string;
+  path: string;
+  kind: 'notebook' | 'note' | 'attachment';
+  children?: VaultEntry[];
+}
+
+/** Public view of the currently open local vault. */
+export interface VaultInfo {
+  name: string;
+  path: string;
+  entries: VaultEntry[];
+}
+
+/** A checkbox task parsed from one Markdown line in the open vault. */
+export interface VaultTask {
+  id: string;
+  path: string;
+  line: number;
+  text: string;
+  complete: boolean;
+  dueDate?: string;
+  priority?: 'low' | 'normal' | 'high' | 'urgent';
+}
+
+/** One Markdown reference and its best-effort resolution in the open vault. */
+export interface VaultLink {
+  sourcePath: string;
+  targetPath?: string;
+  targetTitle: string;
+  resolved: boolean;
+  attachment: boolean;
+}
+
+/** Current vault-wide forward links, backlinks, and unresolved references. */
+export interface VaultLinkIndex {
+  links: VaultLink[];
+}
+
+/** A user bookmark that points to a note in a local vault. */
+export interface VaultBookmark {
+  id: string;
+  path: string;
+  title: string;
+  created: string;
+}

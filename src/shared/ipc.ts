@@ -9,6 +9,22 @@ export const IPC_CHANNELS = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  vaultOpen: 'vault:open',
+  vaultGet: 'vault:get',
+  vaultReadNote: 'vault:read-note',
+  vaultSaveNote: 'vault:save-note',
+  vaultCreateNotebook: 'vault:create-notebook',
+  vaultCreateNote: 'vault:create-note',
+  vaultRename: 'vault:rename',
+  vaultReveal: 'vault:reveal',
+  vaultOpenExternal: 'vault:open-external',
+  vaultImport: 'vault:import',
+  vaultDelete: 'vault:delete',
+  vaultGetTasks: 'vault:get-tasks',
+  vaultToggleTask: 'vault:toggle-task',
+  vaultGetLinkIndex: 'vault:get-link-index',
+  vaultGetBookmarks: 'vault:get-bookmarks',
+  vaultToggleBookmark: 'vault:toggle-bookmark',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -17,9 +33,34 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.updaterDownload,
   IPC_CHANNELS.updaterInstallNow,
   IPC_CHANNELS.updaterInstallOnExit,
+  IPC_CHANNELS.vaultOpen,
+  IPC_CHANNELS.vaultGet,
+  IPC_CHANNELS.vaultReadNote,
+  IPC_CHANNELS.vaultSaveNote,
+  IPC_CHANNELS.vaultCreateNotebook,
+  IPC_CHANNELS.vaultCreateNote,
+  IPC_CHANNELS.vaultRename,
+  IPC_CHANNELS.vaultReveal,
+  IPC_CHANNELS.vaultOpenExternal,
+  IPC_CHANNELS.vaultImport,
+  IPC_CHANNELS.vaultDelete,
+  IPC_CHANNELS.vaultGetTasks,
+  IPC_CHANNELS.vaultToggleTask,
+  IPC_CHANNELS.vaultGetLinkIndex,
+  IPC_CHANNELS.vaultGetBookmarks,
+  IPC_CHANNELS.vaultToggleBookmark,
 ] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
+
+/** Renderer-invokable updater calls, handled by the updater controller only. */
+export const UPDATER_INVOKE_CHANNELS = [
+  IPC_CHANNELS.updaterCheck,
+  IPC_CHANNELS.updaterDownload,
+  IPC_CHANNELS.updaterInstallNow,
+  IPC_CHANNELS.updaterInstallOnExit,
+] as const;
+export type UpdaterInvokeChannel = (typeof UPDATER_INVOKE_CHANNELS)[number];
 
 export function isInvokeChannel(value: unknown): value is InvokeChannel {
   return typeof value === 'string' && (INVOKE_CHANNELS as readonly string[]).includes(value);

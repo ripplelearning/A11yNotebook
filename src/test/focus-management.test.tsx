@@ -130,31 +130,15 @@ describe('command palette', () => {
 });
 
 describe('tabs', () => {
-  it('follows the WAI-ARIA tabs pattern with roving tabindex', () => {
+  it('starts with one real welcome tab and a labelled tab panel', () => {
     render(<App />);
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
-    const [welcome, notes, tasks] = within(tablist).getAllByRole('tab');
+    const tabs = within(tablist).getAllByRole('tab');
+    const [welcome] = tabs;
 
+    expect(tabs).toHaveLength(1);
     expect(welcome).toHaveAttribute('aria-selected', 'true');
     expect(welcome).toHaveAttribute('tabindex', '0');
-    expect(notes).toHaveAttribute('tabindex', '-1');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', welcome.id);
-
-    welcome.focus();
-    fireEvent.keyDown(welcome, { key: 'ArrowRight' });
-    expect(notes).toHaveFocus();
-    expect(notes).toHaveAttribute('aria-selected', 'true');
-    expect(notes).toHaveAttribute('tabindex', '0');
-    expect(welcome).toHaveAttribute('tabindex', '-1');
-    expect(screen.getByRole('tabpanel', { name: 'Notes' })).toBeInTheDocument();
-
-    fireEvent.keyDown(notes, { key: 'End' });
-    expect(tasks).toHaveFocus();
-    fireEvent.keyDown(tasks, { key: 'ArrowRight' });
-    expect(welcome).toHaveFocus();
-    fireEvent.keyDown(welcome, { key: 'ArrowLeft' });
-    expect(tasks).toHaveFocus();
-    fireEvent.keyDown(tasks, { key: 'Home' });
-    expect(welcome).toHaveFocus();
   });
 });
