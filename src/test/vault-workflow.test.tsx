@@ -85,6 +85,8 @@ describe('local vault workflow', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Bookmark note' }));
     await waitFor(() => expect(bridge.vault.toggleBookmark).toHaveBeenCalledWith('Class notes/Week 1.md'));
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent('Note bookmarked.');
+
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.\n- [ ] Submit' } });
@@ -103,5 +105,6 @@ describe('local vault workflow', () => {
     const taskTable = await screen.findByRole('table', { name: 'Markdown checkbox tasks in the open vault' });
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
     await waitFor(() => expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true));
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task marked complete.');
   });
 });

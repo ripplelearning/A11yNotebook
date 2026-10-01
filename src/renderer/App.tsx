@@ -382,10 +382,10 @@ export default function App() {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
     try {
-      setBookmarks(await window.a11yNotebook.vault.toggleBookmark(note.path));
-      setStatusMessage(
-        bookmarks.some((bookmark) => bookmark.path === note.path) ? 'Bookmark removed.' : 'Note bookmarked.',
-      );
+      const nextBookmarks = await window.a11yNotebook.vault.toggleBookmark(note.path);
+      setBookmarks(nextBookmarks);
+      const isBookmarked = nextBookmarks.some((bookmark) => bookmark.path === note.path);
+      setStatusMessage(isBookmarked ? 'Note bookmarked.' : 'Bookmark removed.');
     } catch {
       setStatusMessage('Could not update the bookmark.');
     }
@@ -456,19 +456,20 @@ export default function App() {
       const updated = await window.a11yNotebook?.vault.toggleTask(task.path, task.line, !task.complete);
       if (!updated) return;
       setTasks(updated);
+      const nextComplete = !task.complete;
       const note = openNotes.find((item) => item.path === task.path);
       if (note) {
         const lines = note.content.split(/\r?\n/);
         const line = lines[task.line - 1];
         if (line) {
-          lines[task.line - 1] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${task.complete ? 'x' : ' '}$2`);
+          lines[task.line - 1] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${nextComplete ? 'x' : ' '}$2`);
           const content = lines.join('\n');
           setOpenNotes((current) =>
             current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
           );
         }
       }
-      setStatusMessage(task.complete ? 'Task marked complete.' : 'Task marked open.');
+      setStatusMessage(nextComplete ? 'Task marked complete.' : 'Task marked open.');
     } catch {
       setStatusMessage('Could not update the task.');
     }
