@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
+import { vaultExtensions } from './vault-extensions';
 
 const vault: VaultInfo = {
   name: 'Study',
@@ -32,6 +33,7 @@ describe('local vault workflow', () => {
         onStatus: vi.fn(() => () => undefined),
       },
       vault: {
+        ...vaultExtensions(),
         open: vi.fn(async () => vault),
         get: vi.fn(async () => vault),
         readNote: vi.fn(async () => '# Week 1\n\nImportant material\n- [ ] Submit'),
@@ -92,7 +94,11 @@ describe('local vault workflow', () => {
     fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.\n- [ ] Submit' } });
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() =>
-      expect(bridge.vault.saveNote).toHaveBeenCalledWith('Class notes/Week 1.md', '# Week 1\n\nUpdated.\n- [ ] Submit'),
+      expect(bridge.vault.saveNote).toHaveBeenCalledWith(
+        'Class notes/Week 1.md',
+        '# Week 1\n\nUpdated.\n- [ ] Submit',
+        '# Week 1\n\nImportant material\n- [ ] Submit',
+      ),
     );
     expect(
       within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }),

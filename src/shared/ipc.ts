@@ -1,6 +1,7 @@
 // The complete, fixed list of IPC channels used by A11y Notebook. The renderer never
 // supplies channel names: the preload script maps a small typed API onto these
 // constants, and the main process only registers handlers for this whitelist.
+import { COMMANDS, type CommandId } from './command-registry';
 
 export const IPC_CHANNELS = {
   updaterCheck: 'updater:check',
@@ -25,6 +26,29 @@ export const IPC_CHANNELS = {
   vaultGetLinkIndex: 'vault:get-link-index',
   vaultGetBookmarks: 'vault:get-bookmarks',
   vaultToggleBookmark: 'vault:toggle-bookmark',
+  vaultMove: 'vault:move',
+  vaultSearch: 'vault:search',
+  vaultTags: 'vault:tags',
+  vaultChanged: 'vault:changed',
+  vaultAnnotations: 'vault:annotations',
+  vaultAnnotationAdd: 'vault:annotation-add',
+  vaultAnnotationUpdate: 'vault:annotation-update',
+  vaultAnnotationDelete: 'vault:annotation-delete',
+  vaultReadAttachment: 'vault:read-attachment',
+  vaultImageAlt: 'vault:image-alt',
+  vaultSaveImageAlt: 'vault:save-image-alt',
+  settingsGet: 'settings:get',
+  settingsSave: 'settings:save',
+  vaultReminders: 'vault:reminders',
+  vaultReminderCreate: 'vault:reminder-create',
+  vaultReminderDismiss: 'vault:reminder-dismiss',
+  vaultReminderSnooze: 'vault:reminder-snooze',
+  vaultReminderEvent: 'vault:reminder-event',
+  vaultAssetRead: 'vault:asset-read',
+  vaultAssetSave: 'vault:asset-save',
+  vaultAssetCreate: 'vault:asset-create',
+  vaultFlashcardsGet: 'vault:flashcards-get',
+  vaultFlashcardsSave: 'vault:flashcards-save',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -49,6 +73,27 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultGetLinkIndex,
   IPC_CHANNELS.vaultGetBookmarks,
   IPC_CHANNELS.vaultToggleBookmark,
+  IPC_CHANNELS.vaultMove,
+  IPC_CHANNELS.vaultSearch,
+  IPC_CHANNELS.vaultTags,
+  IPC_CHANNELS.vaultAnnotations,
+  IPC_CHANNELS.vaultAnnotationAdd,
+  IPC_CHANNELS.vaultAnnotationUpdate,
+  IPC_CHANNELS.vaultAnnotationDelete,
+  IPC_CHANNELS.vaultReadAttachment,
+  IPC_CHANNELS.vaultImageAlt,
+  IPC_CHANNELS.vaultSaveImageAlt,
+  IPC_CHANNELS.settingsGet,
+  IPC_CHANNELS.settingsSave,
+  IPC_CHANNELS.vaultReminders,
+  IPC_CHANNELS.vaultReminderCreate,
+  IPC_CHANNELS.vaultReminderDismiss,
+  IPC_CHANNELS.vaultReminderSnooze,
+  IPC_CHANNELS.vaultAssetRead,
+  IPC_CHANNELS.vaultAssetSave,
+  IPC_CHANNELS.vaultAssetCreate,
+  IPC_CHANNELS.vaultFlashcardsGet,
+  IPC_CHANNELS.vaultFlashcardsSave,
 ] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
@@ -67,9 +112,9 @@ export function isInvokeChannel(value: unknown): value is InvokeChannel {
 }
 
 /** Commands the native application menu may forward to the renderer. */
-export const MENU_COMMANDS = ['check-for-updates', 'show-keyboard-shortcuts', 'show-about'] as const;
+export const MENU_COMMANDS = COMMANDS.map((command) => command.id);
 
-export type MenuCommand = (typeof MENU_COMMANDS)[number];
+export type MenuCommand = CommandId;
 
 export function isMenuCommand(value: unknown): value is MenuCommand {
   return typeof value === 'string' && (MENU_COMMANDS as readonly string[]).includes(value);

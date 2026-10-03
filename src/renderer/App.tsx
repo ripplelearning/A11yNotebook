@@ -33,15 +33,34 @@ import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
+import type { OpenNote } from './features/vault/open-note';
+import { useVaultChanges } from './hooks/useVaultChanges';
+import ConflictDialog from './features/vault/ConflictDialog';
+import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
+import type { TreeAction } from './features/vault/TreeContextMenu';
+import SearchResults from './features/search/SearchResults';
+import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
+import SettingsDialog from './features/settings/SettingsDialog';
+import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
+import AttachmentView from './features/previews/AttachmentView';
+import type { AttachmentPreview } from '../shared/attachments';
+import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
+import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
+import type { NoteTemplate } from '../shared/templates';
+import { useAnnotations } from './features/annotations/useAnnotations';
+import type { NoteAnnotation } from '../shared/annotations';
+import RemindersView from './features/reminders/RemindersView';
+import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
+import { useReminders } from './hooks/useReminders';
+import AssetsWorkspace from './features/assets/AssetsWorkspace';
+import { assetTypes, createAssetRegistry } from '../shared/assets';
+import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
+import Modal from './components/Modal';
 
-type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about';
+type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert';
 
-interface OpenNote {
-  id: string;
-  path: string;
-  title: string;
-  content: string;
-  saved: string;
+function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
+  return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
 }
 
 function findEntry(entries: VaultEntry[], targetPath: string | null): VaultEntry | undefined {
@@ -58,6 +77,7 @@ function notebookForTask(task: VaultTask) {
 }
 
 const TAB_PANEL_ID = 'main-tabpanel';
+const assetRegistry = createAssetRegistry(assetTypes);
 
 const REGION_LABELS: Record<FocusRegion, string> = {
   navigation: 'Navigation pane',
@@ -69,9 +89,30 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
   { label: 'Vault', items: ['open-vault', 'new-notebook', 'refresh-links'] },
-  { label: 'Note', items: ['save-current-note', 'toggle-bookmark', 'close-current-tab'] },
-  { label: 'Tasks', items: ['show-tasks'] },
-  { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode'] },
+  {
+    label: 'Note',
+    items: ['save-current-note', 'new-from-template', 'annotate-selection', 'toggle-bookmark', 'close-current-tab'],
+  },
+  {
+    label: 'Format',
+    items: [
+      'format-bold',
+      'format-italic',
+      'format-heading1',
+      'format-heading2',
+      'format-heading3',
+      'format-bullet',
+      'format-numbered',
+      'format-checkbox',
+      'format-quote',
+      'format-code',
+      'insert-link',
+      'insert-table',
+      'insert-attachment',
+    ],
+  },
+  { label: 'Tasks', items: ['show-tasks', 'show-reminders'] },
+  { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode', 'show-settings', 'show-assets'] },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
 ];
@@ -90,14 +131,68 @@ export default function App() {
   const [links, setLinks] = useState<VaultLink[]>([]);
   const [bookmarks, setBookmarks] = useState<VaultBookmark[]>([]);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
+  const [reminderTabOpen, setReminderTabOpen] = useState(false);
+  const [assetTabOpen, setAssetTabOpen] = useState(false);
+  const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
+  const [assetDirty, setAssetDirty] = useState(false);
+  const [assetBusy, setAssetBusy] = useState(false);
+  const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
+  const [switchingVault, setSwitchingVault] = useState(false);
+  const switchingRef = useRef(false);
+  const vaultGenerationRef = useRef(0);
+  const vaultPathRef = useRef(vault?.path);
+  vaultPathRef.current = vault?.path;
+  const updateNoteContent = (id: string, content: string) => {
+    if (switchingRef.current) return;
+    setOpenNotes((items) => items.map((note) => (note.id === id ? { ...note, content } : note)));
+  };
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
   const [treeSelection, setTreeSelection] = useState<string | null>(null);
-  const [searchResults, setSearchResults] = useState<VaultEntry[]>([]);
+  const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
+  const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
+  const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
+  const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
+  const [imageAlt, setImageAlt] = useState('');
+  const [noteAnnotations, setNoteAnnotations] = useState<NoteAnnotation[]>([]);
+  const [userTemplates, setUserTemplates] = useState<NoteTemplate[]>([]);
   const [pendingFocus, setPendingFocus] = useState<FocusTarget | null>(null);
   const updater = useUpdater();
+  const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage);
+  const { checking: checkingDisk, checkDisk } = synchronization;
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorToolsRef = useRef<EditorToolsHandle>(null);
+  const currentNote = openNotes.find((item) => item.id === selectedTab);
+  const allEntries = flattenEntries(vault?.entries ?? []);
+  const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
+  const notePaths = allEntries.filter((entry) => entry.kind === 'note').map((entry) => entry.path);
+  const activeConflict = synchronization.conflicts.find((conflict) =>
+    openNotes.some((note) => note.path === conflict.path),
+  );
+  const annotationTools = useAnnotations({
+    path: currentNote?.path ?? null,
+    content: currentNote?.content ?? '',
+    enabled: mode === 'read-only' && !!currentNote,
+    annotations: noteAnnotations,
+    bindShortcut: false,
+    announce: setStatusMessage,
+    onAdd: async (annotation) => {
+      const saved = await window.a11yNotebook!.vault.addAnnotation(annotation);
+      setNoteAnnotations((items) => [...items, saved]);
+    },
+    onUpdate: async (id, update) => {
+      const saved = await window.a11yNotebook!.vault.updateAnnotation(currentNote!.path, id, update);
+      setNoteAnnotations((items) => items.map((item) => (item.id === id ? saved : item)));
+    },
+    onDelete: async (id) => {
+      await window.a11yNotebook!.vault.deleteAnnotation(currentNote!.path, id);
+      setNoteAnnotations((items) => items.filter((item) => item.id !== id));
+    },
+  });
 
   const searchRef = useRef<HTMLInputElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
@@ -109,33 +204,105 @@ export default function App() {
   const tabs = [
     { id: 'welcome', label: 'Welcome' },
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
+    ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
+    ...(assetTabOpen ? [{ id: 'assets', label: 'Cognitive tools' }] : []),
+    ...(attachment ? [{ id: 'attachment', label: attachment.path.split('/').at(-1) ?? attachment.path }] : []),
     ...openNotes.map((note) => ({
       id: note.id,
       label: `${note.title}${note.content !== note.saved ? ' (unsaved)' : ''}`,
     })),
   ];
+  const reminderState = useReminders(
+    vault?.path,
+    (relative) => {
+      if (switchingRef.current) return;
+      const entry = findEntry(vault?.entries ?? [], relative);
+      if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open reminder note.'));
+      else setStatusMessage('The reminder note is no longer available in this vault.');
+    },
+    setStatusMessage,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    void window.a11yNotebook?.vault
+      .getSettings?.()
+      .then((value) => {
+        if (!cancelled) setSettings(value);
+      })
+      .catch(() => setStatusMessage('Could not load settings.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [vault?.path]);
+
+  useEffect(() => {
+    document.documentElement.dataset.theme = settings.theme;
+    document.documentElement.style.fontSize = `${settings.fontSize}px`;
+  }, [settings.theme, settings.fontSize]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNoteAnnotations([]);
+    if (currentNote?.path)
+      void window.a11yNotebook?.vault
+        .getAnnotations?.(currentNote.path)
+        .then((items) => {
+          if (!cancelled) setNoteAnnotations(items);
+        })
+        .catch(() => setStatusMessage('Could not load annotations.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNote?.path, vault]);
 
   useEffect(() => {
     const bridge = window.a11yNotebook;
+    const generation = vaultGenerationRef.current;
     if (bridge)
       void bridge.vault
         .get()
-        .then(setVault)
+        .then((latest) => {
+          if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
+        })
         .catch(() => setStatusMessage('Could not open the last vault.'));
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     if (!vault || !window.a11yNotebook) {
       setTasks([]);
       return;
     }
     void window.a11yNotebook.vault
       .getTasks()
-      .then(setTasks)
+      .then((items) => {
+        if (!cancelled) setTasks(items);
+      })
       .catch(() => setStatusMessage('Could not load tasks.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [vault]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!vault) {
+      setTags([]);
+      return;
+    }
+    void window.a11yNotebook?.vault
+      .getTags()
+      .then((items) => {
+        if (!cancelled) setTags(items);
+      })
+      .catch(() => setStatusMessage('Could not load tags.'));
+    return () => {
+      cancelled = true;
+    };
   }, [vault]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!vault || !window.a11yNotebook) {
       setLinks([]);
       setBookmarks([]);
@@ -143,40 +310,42 @@ export default function App() {
     }
     void Promise.all([window.a11yNotebook.vault.getLinkIndex(), window.a11yNotebook.vault.getBookmarks()])
       .then(([index, savedBookmarks]) => {
+        if (cancelled) return;
         setLinks(index.links);
         setBookmarks(savedBookmarks);
       })
       .catch(() => setStatusMessage('Could not refresh vault links and bookmarks.'));
+    return () => {
+      cancelled = true;
+    };
   }, [vault]);
 
   useEffect(() => {
     const bridge = window.a11yNotebook;
-    if (!bridge || !vault || !searchText.trim()) {
+    const active = searchText.trim() || Object.values(searchFilters).some(Boolean);
+    if (!bridge || !vault || !active) {
       setSearchResults([]);
       return;
     }
     let cancelled = false;
-    const notes: VaultEntry[] = [];
-    const collect = (entries: VaultEntry[]) =>
-      entries.forEach((entry) => {
-        if (entry.kind === 'note') notes.push(entry);
-        if (entry.children) collect(entry.children);
-      });
-    collect(vault.entries);
-    void Promise.all(
-      notes.map(async (entry) => {
-        const content = await bridge.vault.readNote(entry.path).catch(() => '');
-        return `${entry.name}\n${content}`.toLocaleLowerCase().includes(searchText.trim().toLocaleLowerCase())
-          ? entry
-          : null;
-      }),
-    ).then((matches) => {
-      if (!cancelled) setSearchResults(matches.filter((entry): entry is VaultEntry => entry !== null));
-    });
+    const timeout = window.setTimeout(() => {
+      void bridge.vault
+        .search({ text: searchText, ...searchFilters, limit: 100 })
+        .then((matches) => {
+          if (!cancelled) {
+            setSearchResults(matches);
+            setStatusMessage(`${matches.length} search results shown.`);
+          }
+        })
+        .catch(() => {
+          if (!cancelled) setStatusMessage('Could not query the search index.');
+        });
+    }, 250);
     return () => {
       cancelled = true;
+      window.clearTimeout(timeout);
     };
-  }, [searchText, vault]);
+  }, [searchText, searchFilters, vault]);
 
   const availableRegions = FOCUS_REGION_ORDER.filter((region) => region !== 'right-pane' || rightPaneOpen);
 
@@ -279,10 +448,36 @@ export default function App() {
 
   const openEntry = async (entry: VaultEntry) => {
     const bridge = window.a11yNotebook;
-    if (!bridge) return;
+    if (!bridge || switchingRef.current) return;
+    const root = vaultPathRef.current;
     setTreeSelection(entry.path);
+    if (assetRegistry.resolve(entry.path)) {
+      if (assetDirty || assetBusy) {
+        setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
+        return;
+      }
+      setAssetInitialPath(entry.path);
+      setAssetSelectionVersion((version) => version + 1);
+      setAssetTabOpen(true);
+      setSelectedTab('assets');
+      return;
+    }
     if (entry.kind === 'attachment') {
-      await bridge.vault.openExternal(entry.path);
+      if (/\.(?:txt|csv|html?)$/i.test(entry.path)) {
+        const preview = await bridge.vault.readAttachment(entry.path);
+        if (switchingRef.current || vaultPathRef.current !== root) return;
+        setAttachment(preview);
+        setSelectedTab('attachment');
+      } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(entry.path)) {
+        const alt = await bridge.vault.getImageAlt(entry.path);
+        if (switchingRef.current || vaultPathRef.current !== root) return;
+        setImageAlt(alt);
+        setAttachment({ path: entry.path, text: '', kind: 'image' });
+        setSelectedTab('attachment');
+      } else {
+        setStatusMessage('This attachment has no in-app preview yet. Opening in the external app.');
+        await bridge.vault.openExternal(entry.path);
+      }
       return;
     }
     if (entry.kind !== 'note') return;
@@ -292,6 +487,7 @@ export default function App() {
       return;
     }
     const content = await bridge.vault.readNote(entry.path);
+    if (switchingRef.current || vaultPathRef.current !== root) return;
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
@@ -312,24 +508,29 @@ export default function App() {
       setStatusMessage('Open a vault before creating a note.');
       return;
     }
-    const title = window.prompt('New note title');
-    if (!title?.trim()) return;
-    const selected = findEntry(vault.entries, treeSelection);
-    const parent = selected?.kind === 'notebook' ? selected : undefined;
-    const relativePath = `${parent ? `${parent.path}/` : ''}${title.trim().replace(/\.md$/i, '')}.md`;
-    setVault(await window.a11yNotebook.vault.createNote(relativePath));
-    await openEntry({ name: relativePath.split('/').at(-1) ?? relativePath, path: relativePath, kind: 'note' });
-    setStatusMessage('Note created.');
+    setItemDialog({ action: 'new-note' });
   };
 
   const refreshVault = async () => {
+    const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
     const latest = await window.a11yNotebook?.vault.get();
-    if (latest) setVault(latest);
+    if (
+      latest &&
+      latest.path === root &&
+      vaultPathRef.current === root &&
+      !switchingRef.current &&
+      generation === vaultGenerationRef.current
+    )
+      setVault(latest);
   };
 
   const refreshLinkIndex = async () => {
+    const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
     const index = await window.a11yNotebook?.vault.getLinkIndex();
     const savedBookmarks = await window.a11yNotebook?.vault.getBookmarks();
+    if (switchingRef.current || vaultPathRef.current !== root || generation !== vaultGenerationRef.current) return;
     if (index) setLinks(index.links);
     if (savedBookmarks) setBookmarks(savedBookmarks);
   };
@@ -403,6 +604,7 @@ export default function App() {
       const updated = await window.a11yNotebook?.vault.delete(entryPath);
       if (!updated) return;
       setVault(updated);
+      if (findEntry(updated.entries, entryPath)) return;
       setOpenNotes((current) =>
         current.filter((item) => item.path !== entryPath && !item.path.startsWith(`${entryPath}/`)),
       );
@@ -412,34 +614,116 @@ export default function App() {
     }
   };
 
-  const renameEntry = async (entryPath: string, name: string) => {
-    try {
-      const updated = await window.a11yNotebook?.vault.rename(entryPath, name);
-      if (!updated) return;
-      setVault(updated);
-      const renamedNotes = openNotes.map((note) => {
-        if (note.path !== entryPath && !note.path.startsWith(`${entryPath}/`)) return note;
-        const nextPath = `${name}${note.path.slice(entryPath.length)}`;
-        const nextTitle =
-          note.path === entryPath && note.path.toLowerCase().endsWith('.md') ? name.replace(/\.md$/i, '') : note.title;
-        return { ...note, id: nextPath, path: nextPath, title: nextTitle };
-      });
-      const activeNote = openNotes.find(
-        (note) => note.id === selectedTab && (note.path === entryPath || note.path.startsWith(`${entryPath}/`)),
+  const renameEntry = (entryPath: string) => {
+    setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
+  };
+
+  const submitItem = async (name: string, notebook: string) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge || !vault || !itemDialog) return;
+    const request = itemDialog;
+    if (request.action === 'new-note' || request.action === 'new-notebook') {
+      const selected = findEntry(vault.entries, treeSelection);
+      const parent =
+        selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? '');
+      const leaf = request.action === 'new-note' ? `${name.replace(/\.md$/i, '')}.md` : name;
+      const relative = [parent, leaf].filter(Boolean).join('/');
+      setVault(
+        request.action === 'new-note' ? await bridge.createNote(relative) : await bridge.createNotebook(relative),
       );
-      if (activeNote) setSelectedTab(`${name}${activeNote.path.slice(entryPath.length)}`);
-      setOpenNotes(renamedNotes);
-    } catch {
-      setStatusMessage('Could not rename the selected item.');
+      if (request.action === 'new-note') await openEntry({ name: leaf, path: relative, kind: 'note' });
+      setStatusMessage(`${request.action === 'new-note' ? 'Note' : 'Notebook'} created.`);
+      return;
     }
+    if (openNotes.some((note) => note.content !== note.saved))
+      throw new Error('Save or resolve all unsaved notes before moving or repairing links.');
+    const source = request.path!;
+    const parent = request.action === 'rename' ? source.split('/').slice(0, -1).join('/') : notebook;
+    const destination = [parent, request.action === 'rename' ? name : source.split('/').at(-1)]
+      .filter(Boolean)
+      .join('/');
+    if (source === destination) throw new Error('Choose a different name or notebook.');
+    const updated =
+      request.action === 'rename' ? await bridge.rename(source, name) : await bridge.move(source, destination);
+    setVault(updated);
+    if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
+    const moved = (relative: string) =>
+      relative === source || relative.startsWith(`${source}/`) ? destination + relative.slice(source.length) : relative;
+    const refreshed = await Promise.all(
+      openNotes.map(async (note) => {
+        const nextPath = moved(note.path);
+        const content = await bridge.readNote(nextPath);
+        return {
+          ...note,
+          id: nextPath,
+          path: nextPath,
+          title: nextPath.split('/').at(-1)!.replace(/\.md$/i, ''),
+          content,
+          saved: content,
+        };
+      }),
+    );
+    setOpenNotes(refreshed);
+    setSelectedTab(moved(selectedTab));
+    setTreeSelection(destination);
+    for (const note of openNotes) synchronization.clearConflict(note.path);
+    setStatusMessage('Item moved and local links repaired.');
+  };
+
+  const handleTreeAction = (entry: VaultEntry, action: TreeAction) => {
+    setTreeSelection(entry.path);
+    if (action === 'new-note') setItemDialog({ action: 'new-note' });
+    else if (action === 'new-template') handleCommand('new-from-template');
+    else if (action === 'rename') renameEntry(entry.path);
+    else if (action === 'move') setItemDialog({ action: 'move', path: entry.path });
+    else if (action === 'delete') void deleteEntry(entry.path);
+    else if (action === 'bookmark')
+      void window.a11yNotebook?.vault
+        .toggleBookmark(entry.path)
+        .then(setBookmarks)
+        .catch(() => setStatusMessage('Could not update bookmark.'));
+    else
+      void (
+        action === 'reveal'
+          ? window.a11yNotebook?.vault.reveal(entry.path)
+          : window.a11yNotebook?.vault.openExternal(entry.path)
+      )?.catch(() => setStatusMessage('Could not open the selected item.'));
+  };
+
+  const resolveConflict = async (choice: 'mine' | 'disk' | 'copy') => {
+    if (!activeConflict || !window.a11yNotebook) return;
+    const note = openNotes.find((item) => item.path === activeConflict.path);
+    if (!note) return;
+    const bridge = window.a11yNotebook.vault;
+    if (choice === 'copy') {
+      const copyPath = note.path.replace(/\.md$/i, ` (conflict copy ${Date.now()}).md`);
+      setVault(await bridge.createNote(copyPath, note.content));
+      setOpenNotes((items) => items.filter((item) => item.path !== note.path));
+      synchronization.clearConflict(note.path);
+      await openEntry({ name: copyPath.split('/').at(-1)!, path: copyPath, kind: 'note' });
+    } else {
+      if (activeConflict.disk === null) throw new Error('The disk note was removed. Save a copy instead.');
+      const disk = await bridge.readNote(note.path);
+      if (disk !== activeConflict.disk) {
+        await synchronization.checkDisk(note.path);
+        throw new Error('The disk changed again. Review the latest conflict before continuing.');
+      }
+      const content = choice === 'mine' ? note.content : disk;
+      if (choice === 'mine') await bridge.saveNote(note.path, content, disk);
+      setOpenNotes((items) =>
+        items.map((item) => (item.path === note.path ? { ...item, content, saved: content } : item)),
+      );
+      synchronization.clearConflict(note.path);
+    }
+    setStatusMessage('Note conflict resolved.');
   };
 
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || !window.a11yNotebook) return;
+    if (!note || !window.a11yNotebook || activeConflict || synchronization.checking) return;
     const contentToSave = note.content;
     try {
-      await window.a11yNotebook.vault.saveNote(note.path, contentToSave);
+      await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
       setOpenNotes((current) =>
         current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
       );
@@ -448,10 +732,15 @@ export default function App() {
       await refreshLinkIndex();
     } catch {
       setStatusMessage(`Could not save ${note.title}.`);
+      await synchronization.checkDisk(note.path);
     }
   };
 
   const toggleTask = async (task: VaultTask) => {
+    if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
+      setStatusMessage('Save or resolve unsaved note changes before toggling this task.');
+      return;
+    }
     try {
       const updated = await window.a11yNotebook?.vault.toggleTask(task.path, task.line, !task.complete);
       if (!updated) return;
@@ -477,11 +766,20 @@ export default function App() {
 
   useEffect(() => {
     const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || note.content === note.saved || !window.a11yNotebook) return;
+    if (
+      !note ||
+      note.content === note.saved ||
+      !window.a11yNotebook ||
+      activeConflict ||
+      checkingDisk ||
+      !settings.autosaveDelay ||
+      itemDialog
+    )
+      return;
     const contentToSave = note.content;
     const timeout = window.setTimeout(() => {
       void window.a11yNotebook?.vault
-        .saveNote(note.path, contentToSave)
+        .saveNote(note.path, contentToSave, note.saved)
         .then(() => {
           setOpenNotes((current) =>
             current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
@@ -489,24 +787,126 @@ export default function App() {
           setStatusMessage(`Saved ${note.title}.`);
           void refreshLinkIndex();
         })
-        .catch(() => setStatusMessage(`Could not save ${note.title}.`));
-    }, 900);
+        .catch(() => {
+          setStatusMessage(`Could not save ${note.title}.`);
+          void checkDisk(note.path);
+        });
+    }, settings.autosaveDelay);
     return () => window.clearTimeout(timeout);
-  }, [openNotes, selectedTab]);
+  }, [openNotes, selectedTab, activeConflict, checkingDisk, checkDisk, settings.autosaveDelay, itemDialog]);
 
   const handleCommand = (commandId: CommandId) => {
+    if (switchingRef.current) return;
+    if (commandId === 'insert-attachment') {
+      if (!currentNote || mode !== 'edit') {
+        setStatusMessage('Open a note in edit mode first.');
+        return;
+      }
+      setActiveDialog('attachment-insert');
+      return;
+    }
+    if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
+    if (commandId === 'show-settings') {
+      setActiveDialog('settings');
+      return;
+    }
+    if (commandId === 'show-reminders') {
+      setReminderTabOpen(true);
+      setSelectedTab('reminders');
+      return;
+    }
+    if (commandId === 'show-assets') {
+      if (!vault) {
+        setStatusMessage('Open a vault before using cognitive tools.');
+        return;
+      }
+      setAssetTabOpen(true);
+      setSelectedTab('assets');
+      return;
+    }
+    if (commandId === 'new-from-template') {
+      if (!vault) {
+        setStatusMessage('Open a vault before using a template.');
+        return;
+      }
+      const root = vault.path;
+      void Promise.all(
+        allEntries
+          .filter((entry) => entry.kind === 'note' && entry.path.startsWith('Templates/'))
+          .map(async (entry) => ({
+            id: `user:${entry.path}`,
+            name: entry.name.replace(/\.md$/i, ''),
+            content: await window.a11yNotebook!.vault.readNote(entry.path),
+          })),
+      )
+        .then((templates) => {
+          if (switchingRef.current || vaultPathRef.current !== root) return;
+          setUserTemplates(templates);
+          setActiveDialog('template');
+        })
+        .catch(() => setStatusMessage('Could not load templates.'));
+      return;
+    }
+    if (commandId === 'annotate-selection') {
+      annotationTools.begin();
+      return;
+    }
+    if (commandId.startsWith('format-')) {
+      if (mode !== 'edit' || !currentNote) {
+        setStatusMessage('Open a note in edit mode before formatting.');
+        return;
+      }
+      const action = commandId.slice('format-'.length) as Parameters<EditorToolsHandle['format']>[0];
+      editorToolsRef.current?.format(action);
+      return;
+    }
+    if (commandId === 'insert-link' || commandId === 'insert-table') {
+      if (mode !== 'edit') {
+        setStatusMessage('Switch to edit mode first.');
+        return;
+      }
+      if (commandId === 'insert-link') editorToolsRef.current?.openLink();
+      else editorToolsRef.current?.openTable();
+      return;
+    }
     if (commandId === 'open-vault') {
+      if (
+        assetDirty ||
+        assetBusy ||
+        openNotes.some((note) => note.content !== note.saved) ||
+        activeConflict ||
+        switchingRef.current
+      ) {
+        setStatusMessage('Save or resolve unsaved changes before opening another vault.');
+        return;
+      }
+      switchingRef.current = true;
+      vaultGenerationRef.current += 1;
+      setSwitchingVault(true);
       void window.a11yNotebook?.vault
         .open()
         .then((opened) => {
           if (opened) {
+            vaultPathRef.current = opened.path;
             setVault(opened);
             setOpenNotes([]);
+            setAttachment(null);
+            setAssetTabOpen(false);
+            setAssetInitialPath(undefined);
+            setAssetDirty(false);
             setSelectedTab('welcome');
             setStatusMessage(`Opened vault ${opened.name}.`);
           }
         })
-        .catch(() => setStatusMessage('Could not open the selected vault.'));
+        .catch(() => setStatusMessage('Could not open the selected vault.'))
+        .finally(() => {
+          switchingRef.current = false;
+          setSwitchingVault(false);
+        });
+      if (!window.a11yNotebook) {
+        switchingRef.current = false;
+        setSwitchingVault(false);
+      }
       return;
     }
     if (commandId === 'new-notebook') {
@@ -514,13 +914,7 @@ export default function App() {
         setStatusMessage('Open a vault before creating a notebook.');
         return;
       }
-      const name = window.prompt('New notebook name');
-      if (name?.trim()) {
-        void window.a11yNotebook.vault
-          .createNotebook(name.trim())
-          .then(setVault)
-          .then(() => setStatusMessage('Notebook created.'));
-      }
+      setItemDialog({ action: 'new-notebook' });
       return;
     }
     if (commandId === 'refresh-links') {
@@ -529,6 +923,29 @@ export default function App() {
       return;
     }
     if (commandId === 'close-current-tab') {
+      if (selectedTab === 'assets') {
+        if (assetBusy) {
+          setStatusMessage('Wait for the cognitive asset operation to finish.');
+          return;
+        }
+        if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
+        setAssetTabOpen(false);
+        setAssetDirty(false);
+        setAssetBusy(false);
+        setAssetInitialPath(undefined);
+        setSelectedTab('welcome');
+        return;
+      }
+      if (selectedTab === 'attachment') {
+        setAttachment(null);
+        setSelectedTab('welcome');
+        return;
+      }
+      if (selectedTab === 'reminders') {
+        setReminderTabOpen(false);
+        setSelectedTab('welcome');
+        return;
+      }
       if (selectedTab === 'tasks') {
         setTaskTabOpen(false);
         setSelectedTab('welcome');
@@ -570,7 +987,7 @@ export default function App() {
 
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
-    if (activeDialog) {
+    if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"]')) {
       return;
     }
     if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.metaKey) {
@@ -591,7 +1008,11 @@ export default function App() {
       setSelectedTab(tabs[nextIndex].id);
       return;
     }
-    const command = COMMANDS.find((item) => item.shortcut && matchesShortcut(event, item.shortcut));
+    if (event.defaultPrevented || event.isComposing) return;
+    const command = COMMANDS.find((item) => {
+      const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
+      return shortcut && matchesShortcut(event, shortcut);
+    });
     if (command) {
       event.preventDefault();
       handleCommand(command.id);
@@ -616,7 +1037,7 @@ export default function App() {
       return undefined;
     }
     return bridge.onMenuCommand((command) => {
-      if (isMenuCommand(command)) {
+      if (isMenuCommand(command) && !document.querySelector('[role="dialog"]')) {
         menuCommandHandlerRef.current(command);
       }
     });
@@ -658,7 +1079,6 @@ export default function App() {
     tabRefs.current[nextTab.id]?.focus();
   };
 
-  const currentNote = openNotes.find((item) => item.id === selectedTab);
   const today = new Date().toISOString().slice(0, 10);
   const taskNotebooks = [...new Set(tasks.map(notebookForTask))];
   const visibleTasks = tasks
@@ -724,7 +1144,11 @@ export default function App() {
                     type="button"
                     className="menu-item"
                     onClick={() => handleCommand(command.id)}
-                    aria-keyshortcuts={command.shortcut ? toAriaKeyShortcut(command.shortcut) : undefined}
+                    aria-keyshortcuts={
+                      (settings.shortcuts[command.id] ?? command.shortcut)
+                        ? toAriaKeyShortcut(settings.shortcuts[command.id] ?? command.shortcut!)
+                        : undefined
+                    }
                   >
                     {command.label}
                   </button>
@@ -751,15 +1175,7 @@ export default function App() {
             <button type="button" onClick={() => void createNote()} disabled={!vault}>
               New note
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!vault || !window.a11yNotebook) return;
-                const name = window.prompt('New notebook name');
-                if (name?.trim()) void window.a11yNotebook.vault.createNotebook(name.trim()).then(setVault);
-              }}
-              disabled={!vault}
-            >
+            <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
               New notebook
             </button>
             <button
@@ -799,24 +1215,37 @@ export default function App() {
               entries={vault.entries}
               selectedPath={treeSelection}
               onSelect={(entry) => setTreeSelection(entry.path)}
-              onOpen={(entry) => void openEntry(entry)}
-              onRename={(entryPath, name) => void renameEntry(entryPath, name)}
+              onOpen={(entry) =>
+                void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'))
+              }
+              onRename={renameEntry}
               onDelete={(entryPath) => void deleteEntry(entryPath)}
+              onAction={handleTreeAction}
             />
           ) : (
             <p>Open a folder as a local vault from the Vault menu.</p>
           )}
-          {searchResults.length ? (
-            <section aria-label="Search results">
-              <h3>Search results</h3>
-              <p role="status" aria-live="polite">
-                {searchResults.length} results.
-              </p>
+          {vault ? (
+            <SearchResults
+              filters={searchFilters}
+              onFilters={setSearchFilters}
+              notebooks={notebooks}
+              results={searchResults}
+              active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
+              onOpen={(relative) => {
+                const entry = findEntry(vault.entries, relative);
+                if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
+              }}
+            />
+          ) : null}
+          {tags.length ? (
+            <section aria-label="Tags">
+              <h3>Tags</h3>
               <ul>
-                {searchResults.map((entry) => (
-                  <li key={entry.path}>
-                    <button type="button" onClick={() => void openEntry(entry)}>
-                      {entry.name}
+                {tags.map((tag) => (
+                  <li key={tag}>
+                    <button type="button" onClick={() => setSearchFilters((filters) => ({ ...filters, tag }))}>
+                      #{tag}
                     </button>
                   </li>
                 ))}
@@ -860,6 +1289,29 @@ export default function App() {
                       className="close-tab"
                       aria-label={`Close ${tab.label}`}
                       onClick={() => {
+                        if (tab.id === 'assets') {
+                          if (assetBusy) {
+                            setStatusMessage('Wait for the cognitive asset operation to finish.');
+                            return;
+                          }
+                          if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
+                          setAssetTabOpen(false);
+                          setAssetDirty(false);
+                          setAssetBusy(false);
+                          setAssetInitialPath(undefined);
+                          if (selected) setSelectedTab('welcome');
+                          return;
+                        }
+                        if (tab.id === 'reminders') {
+                          setReminderTabOpen(false);
+                          if (selected) setSelectedTab('welcome');
+                          return;
+                        }
+                        if (tab.id === 'attachment') {
+                          setAttachment(null);
+                          if (selected) setSelectedTab('welcome');
+                          return;
+                        }
                         if (tab.id === 'tasks') {
                           setTaskTabOpen(false);
                           if (selected) setSelectedTab('welcome');
@@ -893,9 +1345,60 @@ export default function App() {
             aria-labelledby={`tab-${selectedTab}`}
             tabIndex={0}
           >
-            {selectedTab === 'tasks' ? (
+            {assetTabOpen ? (
+              <div hidden={selectedTab !== 'assets'}>
+                <AssetsWorkspace
+                  paths={allEntries.filter((entry) => entry.kind !== 'notebook').map((entry) => entry.path)}
+                  initialPath={assetInitialPath}
+                  selectionVersion={assetSelectionVersion}
+                  refresh={refreshVault}
+                  announce={setStatusMessage}
+                  onDirty={setAssetDirty}
+                  onBusy={setAssetBusy}
+                />
+              </div>
+            ) : null}
+            {selectedTab === 'assets' ? null : selectedTab === 'reminders' ? (
+              <RemindersView
+                reminders={reminderState.reminders}
+                notePaths={notePaths}
+                onCreate={async (input) => {
+                  reminderState.setReminders(await window.a11yNotebook!.vault.createReminder(input));
+                  setStatusMessage('Reminder created.');
+                }}
+                onDismiss={async (id) => {
+                  reminderState.setReminders(await window.a11yNotebook!.vault.dismissReminder(id));
+                  setStatusMessage('Reminder dismissed.');
+                }}
+                onSnooze={async (id, duration) => {
+                  reminderState.setReminders(await window.a11yNotebook!.vault.snoozeReminder(id, duration));
+                  setStatusMessage('Reminder snoozed.');
+                }}
+                onOpenNote={async (relative) => {
+                  const entry = findEntry(vault?.entries ?? [], relative);
+                  if (entry) await openEntry(entry);
+                }}
+              />
+            ) : selectedTab === 'attachment' && attachment ? (
+              <AttachmentView
+                key={attachment.path}
+                preview={attachment}
+                alt={imageAlt}
+                announce={setStatusMessage}
+                onExternal={() =>
+                  void window.a11yNotebook?.vault
+                    .openExternal(attachment.path)
+                    .catch(() => setStatusMessage('Could not open attachment externally.'))
+                }
+                onSaveAlt={async (alt) => {
+                  await window.a11yNotebook!.vault.saveImageAlt(attachment.path, alt);
+                  setImageAlt(alt);
+                }}
+              />
+            ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
                 <h2 id="tasks-heading">Tasks</h2>
+                <TaskProgressSummaries tasks={tasks} />
                 <p role="status" aria-live="polite">
                   {visibleTasks.length} tasks shown.
                 </p>
@@ -988,17 +1491,31 @@ export default function App() {
                     Save note
                   </button>
                 ) : null}
-                <MarkdownDocument
-                  content={currentNote.content}
-                  mode={mode}
-                  links={links.filter((link) => link.sourcePath === currentNote.path)}
-                  onChange={(content) =>
-                    setOpenNotes((current) =>
-                      current.map((note) => (note.id === currentNote.id ? { ...note, content } : note)),
-                    )
-                  }
-                  onNavigate={(href) => void openLinkTarget(href)}
-                />
+                {mode === 'edit' ? (
+                  <EditorTools
+                    ref={editorToolsRef}
+                    textareaRef={editorRef}
+                    bindShortcuts={false}
+                    notePaths={notePaths}
+                    announce={setStatusMessage}
+                    onRequestAttachment={() => handleCommand('insert-attachment')}
+                    onContentChange={(content) => updateNoteContent(currentNote.id, content)}
+                  />
+                ) : (
+                  annotationTools.toolbar
+                )}
+                <div ref={annotationTools.documentRef}>
+                  <MarkdownDocument
+                    disabled={switchingVault}
+                    notePath={currentNote.path}
+                    editorRef={editorRef}
+                    content={currentNote.content}
+                    mode={mode}
+                    links={links.filter((link) => link.sourcePath === currentNote.path)}
+                    onChange={(content) => updateNoteContent(currentNote.id, content)}
+                    onNavigate={(href) => void openLinkTarget(href)}
+                  />
+                </div>
               </>
             ) : (
               <div className="document-body">
@@ -1031,6 +1548,7 @@ export default function App() {
             </dl>
             {currentNote ? (
               <>
+                {annotationTools.pane}
                 <section aria-labelledby="outgoing-links-heading">
                   <h3 id="outgoing-links-heading">Outgoing links</h3>
                   <ul>
@@ -1116,9 +1634,76 @@ export default function App() {
         <span>Mode: {mode}</span>
       </footer>
 
-      {activeDialog === 'palette' ? <CommandPalette onRun={handleCommand} onClose={closeDialog} /> : null}
-      {activeDialog === 'shortcuts' ? <KeyboardShortcutsDialog onClose={closeDialog} /> : null}
+      {activeDialog === 'palette' ? (
+        <CommandPalette shortcuts={settings.shortcuts} onRun={handleCommand} onClose={closeDialog} />
+      ) : null}
+      {activeDialog === 'shortcuts' ? (
+        <KeyboardShortcutsDialog shortcuts={settings.shortcuts} onClose={closeDialog} />
+      ) : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+      {activeDialog === 'settings' ? (
+        <SettingsDialog
+          settings={settings}
+          onClose={closeDialog}
+          onSave={async (value) => {
+            await window.a11yNotebook!.vault.saveSettings(value);
+            setSettings(value);
+            setStatusMessage('Settings saved.');
+          }}
+        />
+      ) : null}
+      {activeDialog === 'attachment-insert' && currentNote ? (
+        <InsertAttachmentDialog
+          paths={allEntries.filter((entry) => entry.kind === 'attachment').map((entry) => entry.path)}
+          notePath={currentNote.path}
+          textareaRef={editorRef}
+          announce={setStatusMessage}
+          onClose={closeDialog}
+          onChange={(content) => updateNoteContent(currentNote.id, content)}
+        />
+      ) : null}
+      {activeDialog === 'template' ? (
+        <NewFromTemplateDialog
+          notebooks={[
+            { path: '', name: 'Vault root' },
+            ...notebooks.map((relative) => ({ path: relative, name: relative })),
+          ]}
+          templates={userTemplates}
+          onClose={closeDialog}
+          onCreate={async (relative, content, cursor) => {
+            setVault(await window.a11yNotebook!.vault.createNote(relative, content));
+            await openEntry({ path: relative, name: relative.split('/').at(-1)!, kind: 'note' });
+            setMode('edit');
+            setStatusMessage('Note created from template.');
+            window.setTimeout(() => {
+              editorRef.current?.focus();
+              editorRef.current?.setSelectionRange(cursor, cursor);
+            }, 0);
+          }}
+        />
+      ) : null}
+      {itemDialog ? (
+        <ItemDialog
+          request={itemDialog}
+          notebooks={notebooks}
+          onClose={() => setItemDialog(null)}
+          onSubmit={submitItem}
+        />
+      ) : null}
+      {switchingVault ? (
+        <Modal
+          title="Opening vault"
+          titleId="opening-vault-title"
+          onClose={() => setStatusMessage('Wait for the folder selection or vault initialization to finish.')}
+        >
+          <p>
+            Choose a folder in the native dialog, or wait while it is opened. Editing is paused to protect your notes.
+          </p>
+        </Modal>
+      ) : null}
+      {activeConflict && !itemDialog && !activeDialog ? (
+        <ConflictDialog key={activeConflict.path} conflict={activeConflict} onResolve={resolveConflict} />
+      ) : null}
       {activeDialog === 'updates' ? (
         <UpdateDialog
           status={updater.status}

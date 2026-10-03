@@ -26,3 +26,21 @@
 - [ ] Manual JAWS, NVDA, and Narrator validation of the vault tree and Markdown reader/editor is completed on Windows.
 - [ ] Tasks are exposed in a labelled table with sortable headers and labelled filters; toggles update their Markdown source.
 - [ ] Internal and missing-note links have distinguishable accessible text; backlinks and bookmarks are lists under headings.
+- [ ] Indexed search filters and tag controls have labels; results expose snippets and announce the displayed count once in the existing status region.
+- [ ] External changes reload clean notes without stealing focus; dirty notes retain text, pause autosave, and offer Keep mine / Load disk version / Save copy.
+- [ ] Conflict dialogs explain removed notes; Escape never discards edits, and Save copy is operable with keyboard only.
+- [ ] Rename/move dialogs and the native affected-note confirmation enumerate changes, have safe cancellation, and restore focus.
+- [ ] Shift+F10/Applications-key tree menus support arrows, Home/End, Enter, Escape, and predictable focus return.
+- [ ] Formatting toolbar has one roving tab stop, arrow navigation, labelled dialogs, retained selection, and announced results.
+- [ ] Annotation selection works with each screen reader; marks expose label/comment descriptions and a non-color cue.
+- [ ] Annotation lists expose unavailable anchors, Jump/Edit/Delete names, and focus after deletion/jump.
+- [ ] Template selection, title/notebook controls, read-only preview, errors, and cursor placement are understandable.
+- [ ] Reminder table and agenda headings expose local times, notification status, snooze/dismiss actions, and startup missed reminders.
+- [ ] Notebook task progress has an accessible label, completion count, and native progress value.
+- [ ] Outline and mind-map trees expose level/expansion/selection and support indent/reorder/new-item editing without trapping Tab.
+- [ ] Mind-map SVG is hidden from assistive technology; the tree supplies all editing functionality.
+- [ ] Editable grids expose headers, coordinates, one roving cell stop, Enter/Escape editing, aria-sort, and row/column controls.
+- [ ] Flashcards announce reveal/review progress, focus the current question/answer, and preserve the card after persistence failure.
+- [ ] HTML preview frame is labelled and keyboard reachable; image descriptions, text, and CSV headers read correctly.
+- [ ] Settings labels, validation errors, shortcut conflicts/reset/disable, active-binding help, and all themes work at enlarged font sizes.
+- [ ] All above widgets pass JAWS, NVDA, Narrator, keyboard-only, and Windows forced-colors checks; record results rather than checking boxes based on DOM tests.

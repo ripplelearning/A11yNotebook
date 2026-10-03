@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import { vaultExtensions } from './vault-extensions';
 import type { MenuCommand } from '../shared/ipc';
 import type { UpdaterStatus } from '../shared/updater';
 
@@ -22,6 +23,7 @@ function installBridge() {
       },
     },
     vault: {
+      ...vaultExtensions(),
       open: vi.fn(async () => null),
       get: vi.fn(async () => null),
       readNote: vi.fn(async () => ''),
