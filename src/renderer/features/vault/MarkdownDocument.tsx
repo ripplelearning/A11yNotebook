@@ -37,10 +37,18 @@ interface MarkdownDocumentProps {
   links: VaultLink[];
   onChange: (content: string) => void;
   onNavigate: (href: string) => void;
+  onOpenExternal: (url: string) => void;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
-export default function MarkdownDocument({ content, mode, links, onChange, onNavigate }: MarkdownDocumentProps) {
+export default function MarkdownDocument({
+  content,
+  mode,
+  links,
+  onChange,
+  onNavigate,
+  onOpenExternal,
+}: MarkdownDocumentProps) {
   if (mode === 'edit') {
     return (
       <label className="editor-label">
@@ -62,10 +70,14 @@ export default function MarkdownDocument({ content, mode, links, onChange, onNav
       onClick={(event) => {
         const anchor = (event.target as HTMLElement).closest('a');
         const href = anchor?.getAttribute('href');
-        if (href) {
-          event.preventDefault();
-          onNavigate(href);
+        if (!href || (href.startsWith('#') && !href.startsWith('#wiki:'))) return;
+        event.preventDefault();
+        const scheme = /^([a-z][a-z\d+.-]*):/i.exec(href)?.[1].toLowerCase();
+        if (scheme) {
+          if (['http', 'https', 'mailto'].includes(scheme)) onOpenExternal(href);
+          return;
         }
+        onNavigate(href);
       }}
       dangerouslySetInnerHTML={{ __html: html }}
     />

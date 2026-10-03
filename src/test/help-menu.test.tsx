@@ -31,6 +31,7 @@ function installBridge() {
       rename: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),
+      openUrl: vi.fn(async () => undefined),
       importFile: vi.fn(async () => null),
       delete: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       getTasks: vi.fn(async () => []),

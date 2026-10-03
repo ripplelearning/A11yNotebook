@@ -42,6 +42,7 @@ describe('local vault workflow', () => {
         rename: vi.fn(async () => vault),
         reveal: vi.fn(async () => undefined),
         openExternal: vi.fn(async () => undefined),
+        openUrl: vi.fn(async () => undefined),
         importFile: vi.fn(async () => vault),
         delete: vi.fn(async () => vault),
         getTasks: vi.fn(async () => [

@@ -1004,6 +1004,7 @@ export default function App() {
                     )
                   }
                   onNavigate={(href) => void openLinkTarget(href)}
+                  onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                 />
               </>
             ) : (
