@@ -38,6 +38,7 @@ describe('safe preview rendering and image insertion', () => {
         links={[]}
         onChange={vi.fn()}
         onNavigate={vi.fn()}
+        onOpenExternal={vi.fn()}
       />,
     );
     expect(screen.getByAltText('Diagram')).toHaveAttribute('src', 'vault-file://attachment/Images/My%20image.png');

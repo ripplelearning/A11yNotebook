@@ -43,6 +43,7 @@ export interface VaultBridge {
   saveFlashcardSchedule(path: string, id: string, schedule: CardSchedule, expectedContent: string): Promise<void>;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
+  openUrl(url: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;

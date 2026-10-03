@@ -29,6 +29,7 @@ function Harness(props: Partial<UseAnnotationsOptions>) {
           links={[]}
           onChange={vi.fn()}
           onNavigate={vi.fn()}
+          onOpenExternal={vi.fn()}
         />
       </div>
       <aside>{annotations.pane}</aside>

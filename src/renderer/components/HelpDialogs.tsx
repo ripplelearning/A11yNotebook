@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { APP_NAME, REPOSITORY_URL } from '../../shared/app-info';
 import { COMMANDS } from '../../shared/command-registry';
 import type { NotebookSettings } from '../../shared/settings';
@@ -77,6 +78,40 @@ export function AboutDialog({ onClose }: DialogProps) {
           Close
         </button>
       </div>
+    </Modal>
+  );
+}
+
+type NotebookNameDialogProps = {
+  onCreate: (name: string) => void;
+  onClose: () => void;
+};
+
+export function NotebookNameDialog({ onCreate, onClose }: NotebookNameDialogProps) {
+  const [name, setName] = useState('');
+  const trimmedName = name.trim();
+
+  return (
+    <Modal titleId="notebook-name-dialog-title" title="New notebook" onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (trimmedName) onCreate(trimmedName);
+        }}
+      >
+        <div className="modal-body">
+          <label htmlFor="notebook-name">Notebook name</label>
+          <input id="notebook-name" data-autofocus value={name} onChange={(event) => setName(event.target.value)} />
+        </div>
+        <div className="modal-actions">
+          <button type="button" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" disabled={!trimmedName}>
+            Create
+          </button>
+        </div>
+      </form>
     </Modal>
   );
 }

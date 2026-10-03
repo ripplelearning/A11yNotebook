@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { VaultEntry } from '../../../shared/types';
 import TreeContextMenu, { type TreeAction } from './TreeContextMenu';
+import Modal from '../../components/Modal';
 
 interface VaultTreeProps {
   entries: VaultEntry[];
@@ -41,6 +42,8 @@ export default function VaultTree({
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const [contextEntry, setContextEntry] = useState<VaultEntry | null>(null);
+  const [renameTarget, setRenameTarget] = useState<VaultEntry | null>(null);
+  const [renameName, setRenameName] = useState('');
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
   const visible = visibleEntries(entries, expanded);
   const activePath = visible.some(({ entry }) => entry.path === focusedPath)
@@ -104,7 +107,8 @@ export default function VaultTree({
         onOpen(entry);
         break;
       case 'F2': {
-        onRename(entry.path);
+        setRenameTarget(entry);
+        setRenameName(entry.name);
         break;
       }
       case 'Delete':
@@ -198,6 +202,36 @@ export default function VaultTree({
           onClose={() => setContextEntry(null)}
           onAction={(action) => onAction?.(contextEntry, action)}
         />
+      ) : null}
+      {renameTarget ? (
+        <Modal titleId="rename-item-title" title="Rename item" onClose={() => setRenameTarget(null)}>
+          <form
+            onSubmit={(event) => {
+              event.preventDefault();
+              const name = renameName.trim();
+              if (!name) return;
+              onRename(renameTarget.path, name);
+              setRenameTarget(null);
+            }}
+          >
+            <label className="editor-label" htmlFor="rename-item-input">
+              New name
+              <input
+                id="rename-item-input"
+                data-autofocus
+                required
+                value={renameName}
+                onChange={(event) => setRenameName(event.target.value)}
+              />
+            </label>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setRenameTarget(null)}>
+                Cancel
+              </button>
+              <button type="submit">Rename</button>
+            </div>
+          </form>
+        </Modal>
       ) : null}
     </>
   );

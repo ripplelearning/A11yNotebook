@@ -541,6 +541,20 @@ export function setupVaultIpc(
     const error = await shell.openPath(await requireService().resolveEntry(relativePath));
     if (error) throw new Error(error);
   });
+  ipcMain.handle(IPC_CHANNELS.vaultOpenUrl, async (event, rawUrl: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof rawUrl !== 'string') throw new Error('URL must be text.');
+    let url: URL;
+    try {
+      url = new URL(rawUrl);
+    } catch {
+      throw new Error('Invalid external URL.');
+    }
+    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) {
+      throw new Error('Unsupported external URL protocol.');
+    }
+    await shell.openExternal(url.href);
+  });
   ipcMain.handle(IPC_CHANNELS.vaultImport, async (event, notebookPath: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof notebookPath !== 'string') throw new Error('Notebook path must be text.');

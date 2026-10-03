@@ -62,6 +62,7 @@ interface MarkdownDocumentProps {
   editorRef?: RefObject<HTMLTextAreaElement>;
   notePath?: string;
   disabled?: boolean;
+  onOpenExternal: (url: string) => void;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
@@ -74,6 +75,7 @@ export default function MarkdownDocument({
   editorRef,
   notePath,
   disabled,
+  onOpenExternal,
 }: MarkdownDocumentProps) {
   if (mode === 'edit') {
     return (
@@ -101,10 +103,14 @@ export default function MarkdownDocument({
       onClick={(event) => {
         const anchor = (event.target as HTMLElement).closest('a');
         const href = anchor?.getAttribute('href');
-        if (href) {
-          event.preventDefault();
-          onNavigate(href);
+        if (!href || (href.startsWith('#') && !href.startsWith('#wiki:'))) return;
+        event.preventDefault();
+        const scheme = /^([a-z][a-z\d+.-]*):/i.exec(href)?.[1].toLowerCase();
+        if (scheme) {
+          if (['http', 'https', 'mailto'].includes(scheme)) onOpenExternal(href);
+          return;
         }
+        onNavigate(href);
       }}
       dangerouslySetInnerHTML={{ __html: html }}
     />

@@ -6,6 +6,7 @@ export function vaultExtensions() {
     move: vi.fn(),
     search: vi.fn(async () => []),
     getTags: vi.fn(async () => []),
+    openUrl: vi.fn(async () => undefined),
     onChanged: vi.fn(() => () => undefined),
     getAnnotations: vi.fn(async () => []),
     addAnnotation: vi.fn(),

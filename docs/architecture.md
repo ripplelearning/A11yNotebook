@@ -15,6 +15,7 @@ contracts and serializable data types live in `src/shared/`.
 
 The vault IPC methods are `vault:open`, `vault:get`, `vault:read-note`, `vault:save-note`,
 `vault:create-notebook`, `vault:create-note`, `vault:rename`, `vault:reveal`, `vault:open-external`,
+`vault:open-url`,
 `vault:import`, `vault:delete`, `vault:get-tasks`, `vault:toggle-task`, `vault:get-link-index`,
 `vault:get-bookmarks`, and `vault:toggle-bookmark`. Destructive delete uses an OS confirmation dialog and moves
 the selected resource to the Recycle Bin. Extended channels for search, move/link repair, annotations, assets,

@@ -28,7 +28,7 @@ import type {
   VaultTask,
 } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
-import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
+import { AboutDialog, KeyboardShortcutsDialog, NotebookNameDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import VaultTree from './features/vault/VaultTree';
@@ -57,7 +57,8 @@ import { assetTypes, createAssetRegistry } from '../shared/assets';
 import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
 import Modal from './components/Modal';
 
-type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert';
+type DialogId =
+  'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'notebook-name';
 
 function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
@@ -511,6 +512,25 @@ export default function App() {
     setItemDialog({ action: 'new-note' });
   };
 
+  const openNotebookNameDialog = () => {
+    if (!vault || !window.a11yNotebook) {
+      setStatusMessage('Open a vault before creating a notebook.');
+      return;
+    }
+    setActiveDialog('notebook-name');
+  };
+
+  const createNotebook = (name: string) => {
+    const bridge = window.a11yNotebook;
+    if (!bridge) return;
+    closeDialog();
+    void bridge.vault
+      .createNotebook(name)
+      .then(setVault)
+      .then(() => setStatusMessage('Notebook created.'))
+      .catch(() => setStatusMessage('Could not create notebook.'));
+  };
+
   const refreshVault = async () => {
     const root = vaultPathRef.current;
     const generation = vaultGenerationRef.current;
@@ -910,11 +930,7 @@ export default function App() {
       return;
     }
     if (commandId === 'new-notebook') {
-      if (!vault || !window.a11yNotebook) {
-        setStatusMessage('Open a vault before creating a notebook.');
-        return;
-      }
-      setItemDialog({ action: 'new-notebook' });
+      openNotebookNameDialog();
       return;
     }
     if (commandId === 'refresh-links') {
@@ -1514,6 +1530,7 @@ export default function App() {
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
                     onNavigate={(href) => void openLinkTarget(href)}
+                    onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                   />
                 </div>
               </>
@@ -1704,6 +1721,7 @@ export default function App() {
       {activeConflict && !itemDialog && !activeDialog ? (
         <ConflictDialog key={activeConflict.path} conflict={activeConflict} onResolve={resolveConflict} />
       ) : null}
+      {activeDialog === 'notebook-name' ? <NotebookNameDialog onCreate={createNotebook} onClose={closeDialog} /> : null}
       {activeDialog === 'updates' ? (
         <UpdateDialog
           status={updater.status}
