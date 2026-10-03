@@ -221,6 +221,7 @@ describe('extended vault IPC integration', () => {
     const encryptedOnDisk = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     expect(encryptedOnDisk).not.toContain('alpha');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
+    await expect(invoke(IPC_CHANNELS.vaultSearch, { text: 'alpha' })).resolves.toEqual([]);
 
     await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
     expect(await readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).not.toContain('secret');
@@ -230,8 +231,13 @@ describe('extended vault IPC integration', () => {
 
     await invoke(IPC_CHANNELS.vaultSecurityLock);
     expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+    expect(((await invoke(IPC_CHANNELS.vaultGet)) as { entries: unknown[] }).entries).toEqual([]);
+    await writeFile(path.join(mock.root, 'Private.png'), new Uint8Array([1, 2, 3]));
+    expect((await mock.protocol!({ url: 'vault-file://attachment/Private.png' })).status).toBe(423);
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/Unlock the vault/);
-    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow(/Incorrect vault password/);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow(
+      /Incorrect vault password/,
+    );
     const reopened = await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
     expect(reopened).toEqual(expect.objectContaining({ path: mock.root }));
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);

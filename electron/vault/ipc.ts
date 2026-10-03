@@ -65,7 +65,14 @@ function lockVault() {
   const wasUnlocked = masterKey !== null;
   masterKey?.fill(0);
   masterKey = null;
-  if (wasUnlocked) sendSecurityLocked();
+  if (wasUnlocked) {
+    reminderService?.stop();
+    reminderService = null;
+    for (const notification of notifications) notification.close();
+    notifications.clear();
+    notificationTargets.clear();
+    sendSecurityLocked();
+  }
 }
 
 function resetIdleLock() {
@@ -92,6 +99,18 @@ async function rememberVault(vaultPath: string) {
 
 function openVault(vaultPath: string) {
   return serializeVaultOperation(() => openVaultNow(vaultPath));
+}
+
+async function startReminders(vaultService: VaultService, vault: VaultInfo) {
+  const nextReminders = makeReminders(vaultService, vault);
+  reminderService = nextReminders;
+  await nextReminders.initialize().catch(() =>
+    sendReminder({
+      type: 'error',
+      vaultPath: vault.path,
+      message: 'Could not initialize reminders. Check vault metadata.',
+    }),
+  );
 }
 
 async function openVaultNow(vaultPath: string) {
@@ -136,15 +155,8 @@ async function openVaultNow(vaultPath: string) {
       await nextService.resolveEntry(relative);
     },
   });
-  const nextReminders = makeReminders(nextService, vault);
-  reminderService = nextReminders;
-  await nextReminders.initialize().catch(() =>
-    sendReminder({
-      type: 'error',
-      vaultPath: vault.path,
-      message: 'Could not initialize reminders. Check vault metadata.',
-    }),
-  );
+  if (masterKey || !securityConfig) await startReminders(nextService, vault);
+  else reminderService = null;
   await nextService
     .startWatcher(
       (event) => {
@@ -389,12 +401,15 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecurityUnlock, async (event, password: unknown) => {
     assertTrusted(event, isTrustedSender, true);
-    if (!securityConfig || typeof password !== 'string') throw new Error('Vault password protection is not configured.');
+    if (!securityConfig || typeof password !== 'string')
+      throw new Error('Vault password protection is not configured.');
     const key = await unlockVault(securityConfig, password);
     masterKey?.fill(0);
     masterKey = key;
     resetIdleLock();
-    return requireService().getVault();
+    const vault = await requireService().getVault();
+    await startReminders(requireService(), vault);
+    return vault;
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecurityLock, async (event) => {
     assertTrusted(event, isTrustedSender, true);
@@ -468,7 +483,11 @@ export function setupVaultIpc(
         throw new Error('Invalid credential.');
       const saved = await metadataFor(requireService()).read('credentials.json');
       const credentials = saved
-        ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string; username: string; password: string }[])
+        ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as {
+            id: string;
+            username: string;
+            password: string;
+          }[])
         : [];
       const normalizedId = id.trim();
       const next = credentials.filter((item) => item.id !== normalizedId);
@@ -521,7 +540,10 @@ export function setupVaultIpc(
       }
       const safeTitle =
         [...capture.title]
-          .filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127 && !'<>:"/\\|?*'.includes(character))
+          .filter(
+            (character) =>
+              character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127 && !'<>:"/\\|?*'.includes(character),
+          )
           .join('')
           .replace(/[. ]+$/g, '')
           .trim()
@@ -605,6 +627,7 @@ export function setupVaultIpc(
   });
   protocol.handle('vault-file', async (request) => {
     try {
+      if (securityConfig && !masterKey) return new Response('Vault is locked.', { status: 423 });
       const relative = protocolPath(request.url);
       const extension = path.extname(relative).toLowerCase();
       const mime = IMAGE_TYPES[extension] ?? DOCUMENT_TYPES[extension];
@@ -779,7 +802,9 @@ export function setupVaultIpc(
       }
     }
     try {
-      const validated = validateSettings(JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')));
+      const validated = validateSettings(
+        JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')),
+      );
       idleLockMinutes = validated.vaultLockMinutes ?? 15;
       return validated;
     } catch {

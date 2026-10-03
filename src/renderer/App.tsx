@@ -60,14 +60,7 @@ import SecurityGate from './features/security/SecurityGate';
 import WebCaptureDialog from './features/previews/WebCaptureDialog';
 
 type DialogId =
-  | 'palette'
-  | 'updates'
-  | 'shortcuts'
-  | 'about'
-  | 'settings'
-  | 'template'
-  | 'attachment-insert'
-  | 'web-capture';
+  'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'web-capture';
 
 function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
@@ -177,7 +170,7 @@ export default function App() {
   const [pendingFocus, setPendingFocus] = useState<FocusTarget | null>(null);
   const updater = useUpdater();
   const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage);
-  const { checking: checkingDisk, checkDisk } = synchronization;
+  const { checking: checkingDisk, checkDisk, clearAllConflicts } = synchronization;
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
@@ -214,11 +207,14 @@ export default function App() {
     if (!currentNote || currentNote.content === currentNote.saved) return;
     const path = currentNote.path;
     const title = currentNote.title;
-    const timer = window.setTimeout(() => {
-      setLockedEditPath(path);
-      setMode('read-only');
-      setStatusMessage(`Editing locked for ${title}; save the unsaved changes to continue.`);
-    }, (settings.noteEditLockMinutes ?? 0) * 60_000);
+    const timer = window.setTimeout(
+      () => {
+        setLockedEditPath(path);
+        setMode('read-only');
+        setStatusMessage(`Editing locked for ${title}; save the unsaved changes to continue.`);
+      },
+      (settings.noteEditLockMinutes ?? 0) * 60_000,
+    );
     return () => window.clearTimeout(timer);
   }, [currentNote, settings.noteEditLockMinutes]);
 
@@ -336,6 +332,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = window.a11yNotebook?.vault.onSecurityLocked?.(() => {
       setSecurityLocked(true);
+      clearAllConflicts();
       setOpenNotes([]);
       setAttachment(null);
       setLockedEditPath(null);
@@ -344,9 +341,12 @@ export default function App() {
       setLinks([]);
       setBookmarks([]);
       setSearchResults([]);
+      setSearchText('');
+      setSearchFilters({});
       setTags([]);
       setUserTemplates([]);
       setActiveDialog(null);
+      setItemDialog(null);
       setAssetTabOpen(false);
       setAssetDirty(false);
       setMode('read-only');
@@ -354,7 +354,7 @@ export default function App() {
       setStatusMessage('Vault locked. Unlock it to continue.');
     });
     return unsubscribe;
-  }, []);
+  }, [clearAllConflicts]);
 
   useEffect(() => {
     let lastPing = 0;
@@ -1849,9 +1849,7 @@ export default function App() {
       ) : null}
       {activeDialog === 'web-capture' && vault ? (
         <WebCaptureDialog
-          notebooks={[
-            ...notebooks.map((relative) => ({ path: relative, name: relative })),
-          ]}
+          notebooks={[...notebooks.map((relative) => ({ path: relative, name: relative }))]}
           onClose={closeDialog}
           onCapture={async (url, notebookPath) => {
             if (openNotes.some((note) => note.content !== note.saved) || activeConflict) {
@@ -1886,7 +1884,7 @@ export default function App() {
           }}
         />
       ) : null}
-      {itemDialog ? (
+      {!securityLocked && itemDialog ? (
         <ItemDialog
           request={itemDialog}
           notebooks={notebooks}
@@ -1905,7 +1903,7 @@ export default function App() {
           </p>
         </Modal>
       ) : null}
-      {activeConflict && !itemDialog && !activeDialog ? (
+      {!securityLocked && activeConflict && !itemDialog && !activeDialog ? (
         <ConflictDialog key={activeConflict.path} conflict={activeConflict} onResolve={resolveConflict} />
       ) : null}
       {activeDialog === 'updates' ? (

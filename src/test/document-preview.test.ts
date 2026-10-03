@@ -44,7 +44,10 @@ function storedZip(entries: Record<string, string>) {
 
 describe('PDF and ePub extraction', () => {
   it('extracts literal and hex PDF text operators', () => {
-    const pdf = Buffer.from('%PDF-1.7\n<< /Length 28 >>\nstream\nBT (Hello\\040world) Tj <00410042> Tj ET\nendstream\n', 'latin1');
+    const pdf = Buffer.from(
+      '%PDF-1.7\n<< /Length 28 >>\nstream\nBT (Hello\\040world) Tj <00410042> Tj ET\nendstream\n',
+      'latin1',
+    );
     expect(extractPdfPages(pdf)).toEqual(['Hello world AB']);
   });
 
@@ -53,7 +56,8 @@ describe('PDF and ePub extraction', () => {
       'META-INF/container.xml': '<container><rootfile full-path="OPS/book.opf"/></container>',
       'OPS/book.opf':
         '<package><manifest><item id="c2" href="chapter2.xhtml"/><item id="c1" href="chapter1.xhtml"/></manifest><spine><itemref idref="c1"/><itemref idref="c2"/></spine></package>',
-      'OPS/chapter1.xhtml': '<html><body><h1>One</h1><p>Hello &amp; welcome</p><script>ignored()</script></body></html>',
+      'OPS/chapter1.xhtml':
+        '<html><body><h1>One</h1><p>Hello &amp; welcome</p><script>ignored()</script></body></html>',
       'OPS/chapter2.xhtml': '<html><body><p>Two</p></body></html>',
     });
     expect(extractEpubPages(epub)).toEqual(['One\nHello & welcome', 'Two']);

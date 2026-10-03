@@ -21,10 +21,14 @@ describe('security controls', () => {
     fireEvent.change(screen.getByLabelText(/Vault idle lock in minutes/), { target: { value: '25' } });
     fireEvent.change(screen.getByLabelText(/Lock editing after unsaved changes/), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
-    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({
-      vaultLockMinutes: 25,
-      noteEditLockMinutes: 3,
-    })));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vaultLockMinutes: 25,
+          noteEditLockMinutes: 3,
+        }),
+      ),
+    );
     expect(onClose).toHaveBeenCalled();
   });
 });

@@ -85,8 +85,11 @@ async function publicAddress(hostname: string) {
 
 function requestHttps(url: URL, address: { address: string; family: number }, maximumBytes: number) {
   return new Promise<{ status: number; headers: IncomingHttpHeaders; bytes: Buffer }>((resolve, reject) => {
-    const pinnedLookup = ((_: string, __: unknown, callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void) =>
-      callback(null, address.address, address.family)) as NonNullable<RequestOptions['lookup']>;
+    const pinnedLookup = ((
+      _: string,
+      __: unknown,
+      callback: (error: NodeJS.ErrnoException | null, address: string, family: number) => void,
+    ) => callback(null, address.address, address.family)) as NonNullable<RequestOptions['lookup']>;
     const outgoing = request(
       {
         protocol: 'https:',
@@ -95,7 +98,10 @@ function requestHttps(url: URL, address: { address: string; family: number }, ma
         servername: url.hostname.replace(/^\[|\]$/g, ''),
         path: `${url.pathname}${url.search}`,
         method: 'GET',
-        headers: { 'User-Agent': 'A11yNotebook web capture', Accept: 'text/html,image/png,image/jpeg,image/gif,image/webp,image/bmp' },
+        headers: {
+          'User-Agent': 'A11yNotebook web capture',
+          Accept: 'text/html,image/png,image/jpeg,image/gif,image/webp,image/bmp',
+        },
         lookup: pinnedLookup,
         timeout: 12_000,
       },
@@ -135,7 +141,8 @@ async function fetchPublic(urlValue: string, maximumBytes: number) {
       url = parseCaptureUrl(new URL(result.headers.location, url).href);
       continue;
     }
-    if (result.status < 200 || result.status >= 300) throw new Error(`The remote server returned HTTP ${result.status}.`);
+    if (result.status < 200 || result.status >= 300)
+      throw new Error(`The remote server returned HTTP ${result.status}.`);
     return { ...result, url };
   }
   throw new Error('The remote page could not be reached.');
@@ -175,7 +182,10 @@ export async function downloadCaptureImages(html: string, pageUrl: string): Prom
   for (const url of [...imageUrls].slice(0, MAX_IMAGES)) {
     try {
       const result = await fetchPublic(url, MAX_IMAGE_BYTES);
-      const mime = String(result.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+      const mime = String(result.headers['content-type'] ?? '')
+        .split(';')[0]
+        .trim()
+        .toLowerCase();
       const extension = IMAGE_EXTENSIONS[mime];
       if (extension && totalBytes + result.bytes.length <= MAX_CAPTURED_IMAGE_BYTES) {
         captured.push({ url, extension, bytes: result.bytes });
@@ -188,11 +198,7 @@ export async function downloadCaptureImages(html: string, pageUrl: string): Prom
   return captured;
 }
 
-export function htmlToMarkdown(
-  html: string,
-  pageUrl: string,
-  imageReferences: Map<string, string> = new Map(),
-) {
+export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: Map<string, string> = new Map()) {
   let source = html
     .replace(/<!--[\s\S]*?-->/g, ' ')
     .replace(/<(script|style|noscript|svg|iframe|object|form|nav)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ');
@@ -214,9 +220,7 @@ export function htmlToMarkdown(
       const href = decodeEntities(rawHref?.[1] ?? rawHref?.[2] ?? rawHref?.[3] ?? '');
       try {
         const target = new URL(href, pageUrl);
-        return ['https:', 'http:', 'mailto:'].includes(target.protocol)
-          ? `[${text}](${target.href})`
-          : text;
+        return ['https:', 'http:', 'mailto:'].includes(target.protocol) ? `[${text}](${target.href})` : text;
       } catch {
         return text;
       }
@@ -247,15 +251,19 @@ export function htmlToMarkdown(
 
 export async function captureWebPage(value: string, imagePrefix = '') {
   const page = await fetchPublic(value, MAX_PAGE_BYTES);
-  const mime = String(page.headers['content-type'] ?? '').split(';')[0].trim().toLowerCase();
+  const mime = String(page.headers['content-type'] ?? '')
+    .split(';')[0]
+    .trim()
+    .toLowerCase();
   if (!['text/html', 'application/xhtml+xml'].includes(mime)) {
     throw new Error('The URL did not return an HTML page.');
   }
   const html = page.bytes.toString('utf8');
-  const title = decodeEntities(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]*>/g, ' ') ?? '')
-    .replace(/\s+/g, ' ')
-    .trim()
-    .slice(0, 120) || page.url.hostname;
+  const title =
+    decodeEntities(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]*>/g, ' ') ?? '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 120) || page.url.hostname;
   const images = await downloadCaptureImages(html, page.url.href);
   const imageReferences = new Map(
     images.map((image, index) => [image.url, `${imagePrefix}image-${index + 1}${image.extension}`]),

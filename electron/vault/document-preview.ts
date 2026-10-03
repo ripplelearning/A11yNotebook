@@ -31,7 +31,8 @@ function decodePdfString(token: string) {
   const bytes = Buffer.from(hex, 'hex');
   if (
     bytes.length > 1 &&
-    (bytes[0] === 0xfe && bytes[1] === 0xff || bytes.filter((_byte, index) => index % 2 === 0 && _byte === 0).length > 0)
+    ((bytes[0] === 0xfe && bytes[1] === 0xff) ||
+      bytes.filter((_byte, index) => index % 2 === 0 && _byte === 0).length > 0)
   ) {
     const units: number[] = [];
     const start = bytes[0] === 0xfe && bytes[1] === 0xff ? 2 : 0;
@@ -82,7 +83,11 @@ export function extractPdfPages(bytes: Buffer): string[] {
   }
   const nonStreamSource = source.replace(/<<(.*?)>>\s*stream\r?\n[\s\S]*?endstream/gims, '');
   const text = extractTextOperators(`${nonStreamSource}\n${streams.join('\n')}`);
-  return text.split('\f').map((page) => page.trim()).filter(Boolean).slice(0, 200);
+  return text
+    .split('\f')
+    .map((page) => page.trim())
+    .filter(Boolean)
+    .slice(0, 200);
 }
 
 function decodeHtmlText(html: string) {
@@ -141,7 +146,8 @@ function readZipEntries(bytes: Buffer): Map<string, Buffer> {
       throw new Error('An ePub item is too large to preview.');
     }
     total += uncompressedSize;
-    if (total > MAX_EXTRACTED_BYTES || localOffset + 30 > bytes.length) throw new Error('The ePub expands beyond preview limits.');
+    if (total > MAX_EXTRACTED_BYTES || localOffset + 30 > bytes.length)
+      throw new Error('The ePub expands beyond preview limits.');
     if (bytes.readUInt32LE(localOffset) !== 0x04034b50) throw new Error('This ePub archive is invalid.');
     const dataOffset = localOffset + 30 + bytes.readUInt16LE(localOffset + 26) + bytes.readUInt16LE(localOffset + 28);
     const compressed = bytes.subarray(dataOffset, dataOffset + compressedSize);

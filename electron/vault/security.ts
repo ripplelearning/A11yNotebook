@@ -81,7 +81,9 @@ function decryptBytes(key: Buffer, domain: string, id: string, nonce: string, ta
   }
 }
 
-export async function createVaultSecurityConfig(password: string): Promise<{ config: VaultSecurityConfig; key: Buffer }> {
+export async function createVaultSecurityConfig(
+  password: string,
+): Promise<{ config: VaultSecurityConfig; key: Buffer }> {
   validatePassword(password);
   const salt = randomBytes(SALT_BYTES);
   const key = await deriveKey(password, salt);
@@ -110,7 +112,8 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
     throw new Error('Vault security metadata is invalid.');
   }
   const salt = Buffer.from(config.salt, 'base64');
-  if (salt.length !== SALT_BYTES || salt.toString('base64') !== config.salt) throw new Error('Vault security metadata is invalid.');
+  if (salt.length !== SALT_BYTES || salt.toString('base64') !== config.salt)
+    throw new Error('Vault security metadata is invalid.');
   const key = await deriveKey(password, salt);
   try {
     const verifier = decryptBytes(key, 'verifier', VERIFIER, config.nonce, config.tag, config.verifier);
@@ -126,7 +129,12 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
   }
 }
 
-export function encryptRecord(key: Buffer, domain: 'note' | 'credentials', id: string, plaintext: string): EncryptedRecord {
+export function encryptRecord(
+  key: Buffer,
+  domain: 'note' | 'credentials',
+  id: string,
+  plaintext: string,
+): EncryptedRecord {
   if (key.length !== KEY_BYTES || !id || id.length > 512 || typeof plaintext !== 'string') {
     throw new Error('Invalid encrypted record.');
   }

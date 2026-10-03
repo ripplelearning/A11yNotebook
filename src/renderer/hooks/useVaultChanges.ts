@@ -63,6 +63,7 @@ export function useVaultChanges(
     },
     [announce, setNotes, setVault],
   );
+  const clearAllConflicts = useCallback(() => setConflicts([]), []);
 
   useEffect(() => {
     setConflicts([]);
@@ -80,6 +81,7 @@ export function useVaultChanges(
     conflicts,
     checking,
     checkDisk,
+    clearAllConflicts,
     clearConflict: (relative: string) => setConflicts((items) => items.filter((item) => item.path !== relative)),
   };
 }
