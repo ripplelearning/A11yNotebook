@@ -28,13 +28,13 @@ import type {
   VaultTask,
 } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
-import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
+import { AboutDialog, KeyboardShortcutsDialog, NotebookNameDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
 
-type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about';
+type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'notebook-name';
 
 interface OpenNote {
   id: string;
@@ -322,6 +322,25 @@ export default function App() {
     setStatusMessage('Note created.');
   };
 
+  const openNotebookNameDialog = () => {
+    if (!vault || !window.a11yNotebook) {
+      setStatusMessage('Open a vault before creating a notebook.');
+      return;
+    }
+    setActiveDialog('notebook-name');
+  };
+
+  const createNotebook = (name: string) => {
+    const bridge = window.a11yNotebook;
+    if (!bridge) return;
+    closeDialog();
+    void bridge.vault
+      .createNotebook(name)
+      .then(setVault)
+      .then(() => setStatusMessage('Notebook created.'))
+      .catch(() => setStatusMessage('Could not create notebook.'));
+  };
+
   const refreshVault = async () => {
     const latest = await window.a11yNotebook?.vault.get();
     if (latest) setVault(latest);
@@ -516,17 +535,7 @@ export default function App() {
       return;
     }
     if (commandId === 'new-notebook') {
-      if (!vault || !window.a11yNotebook) {
-        setStatusMessage('Open a vault before creating a notebook.');
-        return;
-      }
-      const name = window.prompt('New notebook name');
-      if (name?.trim()) {
-        void window.a11yNotebook.vault
-          .createNotebook(name.trim())
-          .then(setVault)
-          .then(() => setStatusMessage('Notebook created.'));
-      }
+      openNotebookNameDialog();
       return;
     }
     if (commandId === 'refresh-links') {
@@ -757,15 +766,7 @@ export default function App() {
             <button type="button" onClick={() => void createNote()} disabled={!vault}>
               New note
             </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (!vault || !window.a11yNotebook) return;
-                const name = window.prompt('New notebook name');
-                if (name?.trim()) void window.a11yNotebook.vault.createNotebook(name.trim()).then(setVault);
-              }}
-              disabled={!vault}
-            >
+            <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
               New notebook
             </button>
             <button
@@ -1126,6 +1127,7 @@ export default function App() {
       {activeDialog === 'palette' ? <CommandPalette onRun={handleCommand} onClose={closeDialog} /> : null}
       {activeDialog === 'shortcuts' ? <KeyboardShortcutsDialog onClose={closeDialog} /> : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+      {activeDialog === 'notebook-name' ? <NotebookNameDialog onCreate={createNotebook} onClose={closeDialog} /> : null}
       {activeDialog === 'updates' ? (
         <UpdateDialog
           status={updater.status}
