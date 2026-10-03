@@ -1,5 +1,6 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { inflateRawSync, inflateSync } from 'node:zlib';
+import { decodeHtmlEntities } from './html-entities';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_EXTRACTED_BYTES = 20 * 1024 * 1024;
@@ -46,7 +47,7 @@ function extractTextOperators(source: string) {
   const output: string[] = [];
   const single = /(\((?:\\.|[^\\)])*\)|<[0-9a-f\s]*>)\s*Tj\b/gim;
   for (const match of source.matchAll(single)) output.push(decodePdfString(match[1]));
-  const arrays = /\[((?:\\.|[^\]])*)\]\s*TJ\b/gim;
+  const arrays = /\[((?:\\[\s\S]|[^\\\]])*)\]\s*TJ\b/gim;
   for (const match of source.matchAll(arrays)) {
     const pieces = match[1].match(/\((?:\\.|[^\\)])*\)|<[0-9a-f\s]*>/gim) ?? [];
     output.push(pieces.map(decodePdfString).join(''));
@@ -91,22 +92,15 @@ export function extractPdfPages(bytes: Buffer): string[] {
 }
 
 function decodeHtmlText(html: string) {
-  return html
+  const text = html
     .replace(/<(script|style|svg|head|nav|form)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, ' ')
     .replace(/<(?:br|\/p|\/div|\/h[1-6]|\/li|\/tr)\b[^>]*>/gi, '\n')
     .replace(/<[^>]*>/g, ' ')
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, value: string) => String.fromCodePoint(Number(value)))
-    .replace(/&#x([\da-f]+);/gi, (_match, value: string) => String.fromCodePoint(parseInt(value, 16)))
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
+  return decodeHtmlEntities(text);
 }
 
 function readZipEntries(bytes: Buffer): Map<string, Buffer> {

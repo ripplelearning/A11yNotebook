@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { request, type RequestOptions } from 'node:https';
 import type { IncomingHttpHeaders } from 'node:http';
+import { decodeHtmlEntities } from './html-entities';
 
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
@@ -148,18 +149,6 @@ async function fetchPublic(urlValue: string, maximumBytes: number) {
   throw new Error('The remote page could not be reached.');
 }
 
-function decodeEntities(text: string) {
-  return text
-    .replace(/&nbsp;|&#160;/gi, ' ')
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;|&apos;/gi, "'")
-    .replace(/&#(\d+);/g, (_match, value: string) => String.fromCodePoint(Number(value)))
-    .replace(/&#x([\da-f]+);/gi, (_match, value: string) => String.fromCodePoint(parseInt(value, 16)));
-}
-
 export interface CapturedImage {
   url: string;
   extension: string;
@@ -169,7 +158,7 @@ export interface CapturedImage {
 export async function downloadCaptureImages(html: string, pageUrl: string): Promise<CapturedImage[]> {
   const imageUrls = new Set<string>();
   for (const match of html.matchAll(/<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
-    const source = decodeEntities(match[1] ?? match[2] ?? match[3] ?? '');
+    const source = decodeHtmlEntities(match[1] ?? match[2] ?? match[3] ?? '');
     try {
       const url = new URL(source, pageUrl);
       if (url.protocol === 'https:') imageUrls.add(url.href);
@@ -207,9 +196,9 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
     const alt = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(attributes);
     if (!source) return '';
     try {
-      const url = new URL(decodeEntities(source[1] ?? source[2] ?? source[3] ?? ''), pageUrl).href;
+      const url = new URL(decodeHtmlEntities(source[1] ?? source[2] ?? source[3] ?? ''), pageUrl).href;
       const local = imageReferences.get(url);
-      return local ? `\n![${decodeEntities(alt?.[1] ?? alt?.[2] ?? alt?.[3] ?? '')}](${local})\n` : '';
+      return local ? `\n![${alt?.[1] ?? alt?.[2] ?? alt?.[3] ?? ''}](${local})\n` : '';
     } catch {
       return '';
     }
@@ -217,7 +206,7 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
   source = source
     .replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (_tag, attributes: string, text: string) => {
       const rawHref = /\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(attributes);
-      const href = decodeEntities(rawHref?.[1] ?? rawHref?.[2] ?? rawHref?.[3] ?? '');
+      const href = rawHref?.[1] ?? rawHref?.[2] ?? rawHref?.[3] ?? '';
       try {
         const target = new URL(href, pageUrl);
         return ['https:', 'http:', 'mailto:'].includes(target.protocol) ? `[${text}](${target.href})` : text;
@@ -241,7 +230,7 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
     .replace(/<\/blockquote\s*>/gi, '\n\n')
     .replace(/<(?:br|\/p|\/div|\/section|\/article|\/ul|\/ol|\/main)\b[^>]*>/gi, '\n')
     .replace(/<[^>]*>/g, ' ');
-  return decodeEntities(source)
+  return decodeHtmlEntities(source)
     .replace(/[ \t]+\n/g, '\n')
     .replace(/\n[ \t]+/g, '\n')
     .replace(/[ \t]{2,}/g, ' ')
@@ -260,7 +249,7 @@ export async function captureWebPage(value: string, imagePrefix = '') {
   }
   const html = page.bytes.toString('utf8');
   const title =
-    decodeEntities(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]*>/g, ' ') ?? '')
+    decodeHtmlEntities(/<title\b[^>]*>([\s\S]*?)<\/title>/i.exec(html)?.[1]?.replace(/<[^>]*>/g, ' ') ?? '')
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 120) || page.url.hostname;

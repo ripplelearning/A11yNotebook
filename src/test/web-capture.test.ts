@@ -5,14 +5,15 @@ import { htmlToMarkdown, validateCaptureUrl } from '../../electron/vault/web-cap
 describe('web capture conversion and URL validation', () => {
   it('preserves headings, emphasis, safe links and downloaded local images', () => {
     const html =
-      '<h1>Research</h1><p>A <strong>bold</strong> &amp; useful page.</p><a href="/source">Read source</a><script>steal()</script><img src="/photo.png" alt="Photo"><img src="https://remote.example/image.png">';
+      '<h1>Research</h1><p>A <strong>bold</strong> &amp; useful page &amp;lt;safe&amp;gt;.</p><a href="/source">Read source</a><script>steal()</script><img src="/photo.png" alt="Photo"><img src="https://remote.example/image.png">';
     const output = htmlToMarkdown(
       html,
       'https://example.org/page',
       new Map([['https://example.org/photo.png', 'Attachments/Capture-1/image-1.png']]),
     );
     expect(output).toContain('# Research');
-    expect(output).toContain('**bold** & useful page.');
+    expect(output).toContain('**bold** & useful page &lt;safe&gt;.');
+    expect(output).toContain('&lt;safe&gt;');
     expect(output).toContain('[Read source](https://example.org/source)');
     expect(output).toContain('![Photo](Attachments/Capture-1/image-1.png)');
     expect(output).not.toContain('steal');
