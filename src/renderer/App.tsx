@@ -496,6 +496,12 @@ export default function App() {
 
   const handleCommand = (commandId: CommandId) => {
     if (commandId === 'open-vault') {
+      if (
+        openNotes.some((note) => note.content !== note.saved) &&
+        !window.confirm('Opening another vault will discard unsaved note changes. Continue?')
+      ) {
+        return;
+      }
       void window.a11yNotebook?.vault
         .open()
         .then((opened) => {

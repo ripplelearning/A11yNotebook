@@ -19,6 +19,7 @@ const vault: VaultInfo = {
 
 afterEach(() => {
   delete window.a11yNotebook;
+  vi.restoreAllMocks();
 });
 
 describe('local vault workflow', () => {
@@ -106,5 +107,19 @@ describe('local vault workflow', () => {
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
     await waitFor(() => expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task marked complete.');
+
+    fireEvent.click(within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), {
+      target: { value: '# Week 1\n\nUnsaved changes.' },
+    });
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const openVault = screen.getByRole('button', { name: 'Open vault' });
+    fireEvent.click(openVault);
+    expect(confirm).toHaveBeenCalledWith('Opening another vault will discard unsaved note changes. Continue?');
+    expect(bridge.vault.open).not.toHaveBeenCalled();
+
+    confirm.mockReturnValue(true);
+    fireEvent.click(openVault);
+    await waitFor(() => expect(bridge.vault.open).toHaveBeenCalledTimes(1));
   });
 });
