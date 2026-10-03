@@ -213,6 +213,32 @@ describe('extended vault IPC integration', () => {
       }),
     );
   });
+  it('locks a password-protected vault and encrypts notes and credentials in the main process', async () => {
+    const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: false });
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original);
+    const encryptedOnDisk = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    expect(encryptedOnDisk).not.toContain('alpha');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
+
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    expect(await readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).not.toContain('secret');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/Unlock the vault/);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow(/Incorrect vault password/);
+    const reopened = await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    expect(reopened).toEqual(expect.objectContaining({ path: mock.root }));
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
+    await invoke(IPC_CHANNELS.vaultSaveNote, 'Topic.md', '# Updated\n', original);
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
+  });
   it('rejects untrusted senders on every registered channel', async () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');
   });

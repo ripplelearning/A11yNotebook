@@ -41,6 +41,16 @@ export interface VaultBridge {
   createAsset(path: string, content: string): Promise<VaultInfo>;
   getFlashcardSchedules(path: string): Promise<Record<string, CardSchedule>>;
   saveFlashcardSchedule(path: string, id: string, schedule: CardSchedule, expectedContent: string): Promise<void>;
+  getSecurityStatus?(): Promise<{ enabled: boolean; locked: boolean }>;
+  setupVaultPassword?(password: string): Promise<void>;
+  unlockVault?(password: string): Promise<VaultInfo>;
+  lockVault?(): Promise<void>;
+  encryptNote?(path: string, expectedContent: string): Promise<void>;
+  readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;
+  saveCredential?(id: string, username: string, password: string): Promise<void>;
+  deleteCredential?(id: string): Promise<void>;
+  captureWeb?(url: string, notebookPath: string): Promise<VaultInfo>;
+  onSecurityLocked?(callback: () => void): () => void;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;

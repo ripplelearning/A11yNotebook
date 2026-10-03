@@ -49,6 +49,16 @@ export const IPC_CHANNELS = {
   vaultAssetCreate: 'vault:asset-create',
   vaultFlashcardsGet: 'vault:flashcards-get',
   vaultFlashcardsSave: 'vault:flashcards-save',
+  vaultSecurityStatus: 'vault:security-status',
+  vaultSecuritySetup: 'vault:security-setup',
+  vaultSecurityUnlock: 'vault:security-unlock',
+  vaultSecurityLock: 'vault:security-lock',
+  vaultNoteEncrypt: 'vault:note-encrypt',
+  vaultCredentialsRead: 'vault:credentials-read',
+  vaultCredentialsSave: 'vault:credentials-save',
+  vaultCredentialsDelete: 'vault:credentials-delete',
+  vaultCaptureWeb: 'vault:capture-web',
+  vaultSecurityLocked: 'vault:security-locked',
 } as const;
 
 /** Channels the renderer may invoke (renderer → main, request/response). */
@@ -94,7 +104,18 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultAssetCreate,
   IPC_CHANNELS.vaultFlashcardsGet,
   IPC_CHANNELS.vaultFlashcardsSave,
+  IPC_CHANNELS.vaultSecurityStatus,
+  IPC_CHANNELS.vaultSecuritySetup,
+  IPC_CHANNELS.vaultSecurityUnlock,
+  IPC_CHANNELS.vaultSecurityLock,
+  IPC_CHANNELS.vaultNoteEncrypt,
+  IPC_CHANNELS.vaultCredentialsRead,
+  IPC_CHANNELS.vaultCredentialsSave,
+  IPC_CHANNELS.vaultCredentialsDelete,
+  IPC_CHANNELS.vaultCaptureWeb,
 ] as const;
+
+export const EVENT_CHANNELS = [IPC_CHANNELS.vaultSecurityLocked] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 

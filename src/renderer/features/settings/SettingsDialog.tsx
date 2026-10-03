@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { COMMANDS } from '../../../shared/command-registry';
 import { DEFAULT_SETTINGS, validateSettings, type NotebookSettings } from '../../../shared/settings';
 import Modal from '../../components/Modal';
@@ -7,12 +7,38 @@ interface Props {
   settings: NotebookSettings;
   onSave: (settings: NotebookSettings) => Promise<void>;
   onClose: () => void;
+  securityEnabled?: boolean;
+  onSetVaultPassword?: (password: string) => Promise<void>;
+  onLockVault?: () => Promise<void>;
+  onSaveCredential?: (id: string, username: string, password: string) => Promise<void>;
+  onDeleteCredential?: (id: string) => Promise<void>;
 }
 
-export default function SettingsDialog({ settings, onSave, onClose }: Props) {
+export default function SettingsDialog({
+  settings,
+  onSave,
+  onClose,
+  securityEnabled = false,
+  onSetVaultPassword,
+  onLockVault,
+  onSaveCredential,
+  onDeleteCredential,
+}: Props) {
   const [draft, setDraft] = useState(settings);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [vaultPassword, setVaultPassword] = useState('');
+  const [credentials, setCredentials] = useState<{ id: string; username: string; password: string }[]>([]);
+  const [credentialId, setCredentialId] = useState('');
+  const [credentialUsername, setCredentialUsername] = useState('');
+  const [credentialPassword, setCredentialPassword] = useState('');
+  useEffect(() => {
+    const readCredentials = window.a11yNotebook?.vault.readCredentials;
+    if (!securityEnabled || !readCredentials) return;
+    void readCredentials()
+      .then(setCredentials)
+      .catch(() => setError('Could not read encrypted credentials.'));
+  }, [securityEnabled]);
   return (
     <Modal title="Settings" titleId="settings-heading" onClose={onClose}>
       <form
@@ -79,6 +105,110 @@ export default function SettingsDialog({ settings, onSave, onClose }: Props) {
           <button type="button" onClick={() => setDraft({ ...draft, shortcuts: {} })}>
             Reset shortcuts to defaults
           </button>
+        </fieldset>
+        <fieldset>
+          <legend>Vault security</legend>
+          <p>
+            {securityEnabled
+              ? 'This vault is password protected. The password cannot be recovered if it is lost.'
+              : 'Set a password to require authentication when opening this vault. This does not encrypt unmarked notes.'}
+          </p>
+          {!securityEnabled && onSetVaultPassword ? (
+            <>
+              <label>
+                New vault password (at least 8 characters)
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={1024}
+                  value={vaultPassword}
+                  onChange={(event) => setVaultPassword(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={vaultPassword.length < 8}
+                onClick={() => {
+                  void onSetVaultPassword(vaultPassword)
+                    .then(() => {
+                      setVaultPassword('');
+                      setError('Vault password protection enabled.');
+                    })
+                    .catch(() => setError('Could not enable vault password protection.'));
+                }}
+              >
+                Set vault password
+              </button>
+            </>
+          ) : null}
+          {securityEnabled && onLockVault ? (
+            <button type="button" onClick={() => void onLockVault().catch(() => setError('Could not lock vault.'))}>
+              Lock vault now
+            </button>
+          ) : null}
+          {securityEnabled && onSaveCredential && onDeleteCredential ? (
+            <>
+              <h3>Encrypted service credentials</h3>
+              <ul>
+                {credentials.map((credential) => (
+                  <li key={credential.id}>
+                    {credential.id} — {credential.username}{' '}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void onDeleteCredential(credential.id)
+                          .then(() => setCredentials((items) => items.filter((item) => item.id !== credential.id)))
+                          .catch(() => setError('Could not remove credential.'));
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              <label>
+                Service name
+                <input maxLength={120} value={credentialId} onChange={(event) => setCredentialId(event.target.value)} />
+              </label>
+              <label>
+                Username
+                <input
+                  maxLength={500}
+                  value={credentialUsername}
+                  onChange={(event) => setCredentialUsername(event.target.value)}
+                />
+              </label>
+              <label>
+                Password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={4096}
+                  value={credentialPassword}
+                  onChange={(event) => setCredentialPassword(event.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                disabled={!credentialId.trim() || !credentialPassword}
+                onClick={() => {
+                  void onSaveCredential(credentialId, credentialUsername, credentialPassword)
+                    .then(() => {
+                      setCredentials((items) => [
+                        ...items.filter((item) => item.id !== credentialId.trim()),
+                        { id: credentialId.trim(), username: credentialUsername, password: credentialPassword },
+                      ]);
+                      setCredentialId('');
+                      setCredentialUsername('');
+                      setCredentialPassword('');
+                    })
+                    .catch(() => setError('Could not save credential.'));
+                }}
+              >
+                Save encrypted credential
+              </button>
+            </>
+          ) : null}
         </fieldset>
         {error ? <p role="alert">{error}</p> : null}
         <button type="submit" disabled={saving}>

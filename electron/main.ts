@@ -126,6 +126,11 @@ if (!app.requestSingleInstanceLock()) {
           }
         }
       },
+      () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.vaultSecurityLocked, true);
+        }
+      },
     );
 
     Menu.setApplicationMenu(

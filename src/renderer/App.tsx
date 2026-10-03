@@ -56,6 +56,7 @@ import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
 import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
 import Modal from './components/Modal';
+import SecurityGate from './features/security/SecurityGate';
 
 type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert';
 
@@ -155,6 +156,8 @@ export default function App() {
   const [tags, setTags] = useState<string[]>([]);
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
+  const [securityEnabled, setSecurityEnabled] = useState(false);
+  const [securityLocked, setSecurityLocked] = useState(false);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
   const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
   const [imageAlt, setImageAlt] = useState('');
@@ -266,6 +269,54 @@ export default function App() {
           if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
         })
         .catch(() => setStatusMessage('Could not open the last vault.'));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const bridge = window.a11yNotebook?.vault;
+    if (bridge?.getSecurityStatus) {
+      void bridge
+        .getSecurityStatus()
+        .then((status) => {
+          if (!cancelled) {
+            setSecurityEnabled(status.enabled);
+            setSecurityLocked(status.locked);
+          }
+        })
+        .catch(() => setStatusMessage('Could not read vault security status.'));
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [vault?.path]);
+
+  useEffect(() => {
+    const unsubscribe = window.a11yNotebook?.vault.onSecurityLocked?.(() => {
+      setSecurityLocked(true);
+      setOpenNotes([]);
+      setAttachment(null);
+      setNoteAnnotations([]);
+      setMode('read-only');
+      setVault((current) => (current ? { ...current, entries: [] } : current));
+      setStatusMessage('Vault locked. Unlock it to continue.');
+    });
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    let lastPing = 0;
+    const activity = () => {
+      const now = Date.now();
+      if (now - lastPing < 30_000) return;
+      lastPing = now;
+      void window.a11yNotebook?.vault.getSecurityStatus?.().catch(() => undefined);
+    };
+    window.addEventListener('pointerdown', activity);
+    window.addEventListener('keydown', activity);
+    return () => {
+      window.removeEventListener('pointerdown', activity);
+      window.removeEventListener('keydown', activity);
+    };
   }, []);
 
   useEffect(() => {
@@ -1486,6 +1537,21 @@ export default function App() {
                       : 'Bookmark note'}
                   </button>
                 ) : null}
+                {mode === 'read-only' && securityEnabled ? (
+                  <button
+                    type="button"
+                    disabled={currentNote.content !== currentNote.saved}
+                    onClick={() => {
+                      const encrypt = window.a11yNotebook?.vault.encryptNote;
+                      if (!encrypt) return;
+                      void encrypt(currentNote.path, currentNote.saved)
+                        .then(() => setStatusMessage('Note encrypted.'))
+                        .catch(() => setStatusMessage('Could not encrypt this note.'));
+                    }}
+                  >
+                    Encrypt note
+                  </button>
+                ) : null}
                 {mode === 'edit' ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
                     Save note
@@ -1644,11 +1710,50 @@ export default function App() {
       {activeDialog === 'settings' ? (
         <SettingsDialog
           settings={settings}
+          securityEnabled={securityEnabled}
           onClose={closeDialog}
           onSave={async (value) => {
             await window.a11yNotebook!.vault.saveSettings(value);
             setSettings(value);
             setStatusMessage('Settings saved.');
+          }}
+          onSetVaultPassword={async (password) => {
+            const setupPassword = window.a11yNotebook?.vault.setupVaultPassword;
+            if (!setupPassword) throw new Error('Vault security is unavailable.');
+            await setupPassword(password);
+            setSecurityEnabled(true);
+            setSecurityLocked(false);
+            setStatusMessage('Vault password protection enabled.');
+          }}
+          onLockVault={async () => {
+            await window.a11yNotebook?.vault.lockVault?.();
+            setSecurityLocked(true);
+            setOpenNotes([]);
+            setAttachment(null);
+            setMode('read-only');
+          }}
+          onSaveCredential={async (id, username, password) => {
+            const save = window.a11yNotebook?.vault.saveCredential;
+            if (!save) throw new Error('Credential storage is unavailable.');
+            await save(id, username, password);
+          }}
+          onDeleteCredential={async (id) => {
+            const remove = window.a11yNotebook?.vault.deleteCredential;
+            if (!remove) throw new Error('Credential storage is unavailable.');
+            await remove(id);
+          }}
+        />
+      ) : null}
+      {securityLocked ? (
+        <SecurityGate
+          onUnlock={async (password) => {
+            const unlock = window.a11yNotebook?.vault.unlockVault;
+            if (!unlock) throw new Error('Vault security is unavailable.');
+            const opened = await unlock(password);
+            setVault(opened);
+            setSecurityLocked(false);
+            setSecurityEnabled(true);
+            setStatusMessage('Vault unlocked.');
           }}
         />
       ) : null}
