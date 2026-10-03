@@ -33,6 +33,56 @@ describe('accessible vault tree', () => {
     fireEvent.keyDown(note, { key: 'Enter' });
     expect(onOpen).toHaveBeenCalledWith(entries[0].children?.[0]);
   });
+
+  it('renames an item through a focused dialog and restores focus after submission', () => {
+    const onRename = vi.fn();
+    render(
+      <VaultTree
+        entries={entries}
+        selectedPath={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+    const item = screen.getByRole('treeitem', { name: /Research/ });
+    item.focus();
+    fireEvent.keyDown(item, { key: 'F2' });
+
+    const dialog = screen.getByRole('dialog', { name: 'Rename item' });
+    const input = screen.getByRole('textbox', { name: 'New name' });
+    expect(input).toHaveFocus();
+    fireEvent.change(input, { target: { value: '  Archive  ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+
+    expect(onRename).toHaveBeenCalledWith('Research', 'Archive');
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(item).toHaveFocus();
+    expect(dialog).not.toBeInTheDocument();
+  });
+
+  it('cancels renaming without changing the item and restores focus', () => {
+    const onRename = vi.fn();
+    render(
+      <VaultTree
+        entries={entries}
+        selectedPath={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onRename={onRename}
+        onDelete={vi.fn()}
+      />,
+    );
+    const item = screen.getByRole('treeitem', { name: /Research/ });
+    item.focus();
+    fireEvent.keyDown(item, { key: 'F2' });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(onRename).not.toHaveBeenCalled();
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(item).toHaveFocus();
+  });
 });
 
 describe('Markdown document', () => {
