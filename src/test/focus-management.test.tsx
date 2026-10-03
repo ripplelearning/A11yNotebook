@@ -1,12 +1,60 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
 
+const twoNoteVault: VaultInfo = {
+  name: 'Study',
+  path: 'C:/Study',
+  entries: [
+    {
+      name: 'Class notes',
+      path: 'Class notes',
+      kind: 'notebook',
+      children: [
+        { name: 'Week 1.md', path: 'Class notes/Week 1.md', kind: 'note' },
+        { name: 'Week 2.md', path: 'Class notes/Week 2.md', kind: 'note' },
+      ],
+    },
+  ],
+};
+
 afterEach(() => {
   delete window.a11yNotebook;
 });
+
+function createNotebookBridge(): NotebookBridge {
+  return {
+    updater: {
+      check: vi.fn(async () => undefined),
+      download: vi.fn(async () => undefined),
+      installNow: vi.fn(async () => undefined),
+      installOnExit: vi.fn(async () => undefined),
+      onStatus: vi.fn(() => () => undefined),
+    },
+    vault: {
+      open: vi.fn(async () => twoNoteVault),
+      get: vi.fn(async () => twoNoteVault),
+      readNote: vi.fn(async (path) => `# ${path}`),
+      saveNote: vi.fn(async () => undefined),
+      createNotebook: vi.fn(async () => twoNoteVault),
+      createNote: vi.fn(async () => twoNoteVault),
+      rename: vi.fn(async () => twoNoteVault),
+      reveal: vi.fn(async () => undefined),
+      openExternal: vi.fn(async () => undefined),
+      openUrl: vi.fn(async () => undefined),
+      importFile: vi.fn(async () => twoNoteVault),
+      delete: vi.fn(async () => twoNoteVault),
+      getTasks: vi.fn(async () => []),
+      toggleTask: vi.fn(async () => []),
+      getLinkIndex: vi.fn(async () => ({ links: [] })),
+      getBookmarks: vi.fn(async () => []),
+      toggleBookmark: vi.fn(async () => []),
+    },
+    onMenuCommand: vi.fn(() => () => undefined),
+  };
+}
 
 const pressF6 = (shiftKey = false) =>
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F6', shiftKey });
@@ -148,63 +196,45 @@ describe('tabs', () => {
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', welcome.id);
   });
 
-  it('moves focus and selection across multiple tabs with arrow, Home, and End keys', async () => {
-    const vault: VaultInfo = {
-      name: 'Study',
-      path: '/study',
-      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note' }],
-    };
-    window.a11yNotebook = {
-      updater: { onStatus: () => () => undefined },
-      onMenuCommand: () => () => undefined,
-      vault: {
-        get: async () => vault,
-        getTasks: async () => [],
-        getLinkIndex: async () => ({ links: [] }),
-        getBookmarks: async () => [],
-        readNote: async () => '# Note',
-      },
-    } as unknown as NotebookBridge;
+  it('keeps roving keyboard navigation and panel labels across multiple note tabs', async () => {
+    window.a11yNotebook = createNotebookBridge();
     render(<App />);
+    await screen.findByRole('heading', { name: 'Study' });
+    const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
+    fireEvent.click(within(navigation).getByRole('button', { name: 'Open Tasks' }));
+    fireEvent.click(screen.getByRole('treeitem', { name: /Class notes/ }));
+    fireEvent.click(screen.getByRole('treeitem', { name: /Week 1.md/ }));
+    await screen.findByRole('tab', { name: 'Week 1' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Week 2.md/ }));
+    await screen.findByRole('tab', { name: 'Week 2' });
 
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
-    const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
-    fireEvent.click(await within(navigation).findByRole('button', { name: 'Open Tasks' }));
-    const noteItem = await screen.findByRole('treeitem', { name: /Note\.md/ });
-    await act(async () => {
-      fireEvent.click(noteItem);
-    });
+    const week1 = within(tablist).getByRole('tab', { name: 'Week 1' });
+    const week2 = within(tablist).getByRole('tab', { name: 'Week 2' });
+    const tasks = within(tablist).getByRole('tab', { name: 'Tasks' });
+    const welcome = within(tablist).getByRole('tab', { name: 'Welcome' });
+    week2.focus();
+    expect(week2).toHaveFocus();
 
-    const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Welcome', 'Tasks', 'Note']);
-    const [welcome, tasks, note] = tabs;
-    const panel = screen.getByRole('tabpanel');
-    expect(note).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', note.id);
+    fireEvent.keyDown(week2, { key: 'ArrowLeft' });
+    expect(week1).toHaveFocus();
+    expect(week1).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', week1.id);
 
-    fireEvent.keyDown(note, { key: 'ArrowRight' });
+    fireEvent.keyDown(week1, { key: 'Home' });
     expect(welcome).toHaveFocus();
     expect(welcome).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
-
-    fireEvent.keyDown(welcome, { key: 'ArrowLeft' });
-    expect(note).toHaveFocus();
-    expect(note).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', note.id);
-
-    fireEvent.keyDown(note, { key: 'Home' });
-    expect(welcome).toHaveFocus();
-    expect(welcome).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
-
     fireEvent.keyDown(welcome, { key: 'End' });
-    expect(note).toHaveFocus();
-    expect(note).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', note.id);
+    expect(week2).toHaveFocus();
+    expect(week2).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', week2.id);
+    expect(week2.id).not.toMatch(/\s/);
 
-    fireEvent.keyDown(note, { key: 'ArrowLeft' });
+    fireEvent.keyDown(week2, { key: 'ArrowLeft' });
+    expect(week1).toHaveFocus();
+    fireEvent.keyDown(week1, { key: 'ArrowLeft' });
     expect(tasks).toHaveFocus();
     expect(tasks).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', tasks.id);
+    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', tasks.id);
   });
 });

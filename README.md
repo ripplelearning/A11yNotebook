@@ -150,8 +150,8 @@ the latest changes.
 
 ## Roadmap summary
 
-The vault, basic Markdown reading/editing, and note search are implemented in this phase. Link indexing,
-annotations, bookmarks, tasks, shortcut customization, and advanced document support remain planned. See
+The vault, Markdown reading/editing, note search, link indexing, bookmarks, and tasks are implemented in this phase.
+Annotations, shortcut customization, and advanced document support remain planned. See
 [`docs/roadmap.md`](docs/roadmap.md) for completed work and limitations.
 
 ## Documentation

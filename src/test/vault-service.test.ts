@@ -23,6 +23,7 @@ describe('vault filesystem service', () => {
     const service = await openService();
     await expect(service.readNote('../outside.md')).rejects.toThrow('not valid inside this vault');
     await expect(service.readNote('.A11YNOTEBOOK/settings.json')).rejects.toThrow('not valid inside this vault');
+    await expect(service.createFolder('Research/.hidden')).rejects.toThrow('not valid inside this vault');
     await expect(service.readNote(path.join(temporaryDirectory, 'outside.md'))).rejects.toThrow(
       'not valid inside this vault',
     );
@@ -54,5 +55,18 @@ describe('vault filesystem service', () => {
     await symlink(outside, path.join(temporaryDirectory, 'escape'), 'dir');
     await expect(service.readNote('escape/secret.md')).rejects.toThrow('Symbolic links are not supported');
     await rm(outside, { recursive: true, force: true });
+  });
+
+  it('keeps bookmark ids in sync when a bookmarked note is renamed', async () => {
+    const service = await openService();
+    await service.createFolder('Research');
+    await service.createNote('Research/Ideas.md');
+    await service.toggleBookmark('Research/Ideas.md');
+
+    await service.renameEntry('Research/Ideas.md', 'Renamed.md');
+
+    expect(await service.getBookmarks()).toMatchObject([
+      { id: 'Research/Renamed.md', path: 'Research/Renamed.md', title: 'Renamed' },
+    ]);
   });
 });

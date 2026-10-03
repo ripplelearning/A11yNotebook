@@ -29,12 +29,20 @@ import type {
 } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
 import { AboutDialog, KeyboardShortcutsDialog, NotebookNameDialog } from './components/HelpDialogs';
+import NameDialog from './components/NameDialog';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
 
 type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'notebook-name';
+interface NameDialogRequest {
+  title: string;
+  label: string;
+  submitLabel: string;
+  initialValue?: string;
+  onSubmit: (value: string) => void | Promise<void>;
+}
 
 interface OpenNote {
   id: string;
@@ -81,6 +89,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('read-only');
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
+  const [nameDialog, setNameDialog] = useState<NameDialogRequest | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [selectedTab, setSelectedTab] = useState('welcome');
@@ -106,6 +115,7 @@ export default function App() {
   const tabPanelRef = useRef<HTMLElement>(null);
   const rightPaneRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLElement>(null);
+  const autosaveTimers = useRef(new Map<string, { content: string; timeout: number }>());
   const tabs = [
     { id: 'welcome', label: 'Welcome' },
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
@@ -307,19 +317,33 @@ export default function App() {
     setSelectedTab(note.id);
   };
 
-  const createNote = async () => {
+  const createNote = () => {
     if (!vault || !window.a11yNotebook) {
       setStatusMessage('Open a vault before creating a note.');
       return;
     }
-    const title = window.prompt('New note title');
-    if (!title?.trim()) return;
     const selected = findEntry(vault.entries, treeSelection);
     const parent = selected?.kind === 'notebook' ? selected : undefined;
-    const relativePath = `${parent ? `${parent.path}/` : ''}${title.trim().replace(/\.md$/i, '')}.md`;
-    setVault(await window.a11yNotebook.vault.createNote(relativePath));
-    await openEntry({ name: relativePath.split('/').at(-1) ?? relativePath, path: relativePath, kind: 'note' });
-    setStatusMessage('Note created.');
+    const parentPath = parent?.path;
+    setNameDialog({
+      title: 'New note',
+      label: 'Note title',
+      submitLabel: 'Create',
+      onSubmit: async (title) => {
+        const relativePath = `${parentPath ? `${parentPath}/` : ''}${title.replace(/\.md$/i, '')}.md`;
+        try {
+          setVault(await window.a11yNotebook!.vault.createNote(relativePath));
+          await openEntry({
+            name: relativePath.split('/').at(-1) ?? relativePath,
+            path: relativePath,
+            kind: 'note',
+          });
+          setStatusMessage('Note created.');
+        } catch {
+          setStatusMessage('Could not create the note.');
+        }
+      },
+    });
   };
 
   const openNotebookNameDialog = () => {
@@ -349,13 +373,35 @@ export default function App() {
   const refreshLinkIndex = async () => {
     const index = await window.a11yNotebook?.vault.getLinkIndex();
     const savedBookmarks = await window.a11yNotebook?.vault.getBookmarks();
+    const updatedTasks = await window.a11yNotebook?.vault.getTasks();
     if (index) setLinks(index.links);
     if (savedBookmarks) setBookmarks(savedBookmarks);
+    if (updatedTasks) setTasks(updatedTasks);
   };
 
   const openLinkTarget = async (href: string) => {
     const currentNote = openNotes.find((item) => item.id === selectedTab);
     if (!currentNote) return;
+    if (href.startsWith('#') && !href.startsWith('#wiki:')) return;
+    if (/^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href)) {
+      let url: URL;
+      try {
+        url = new URL(href.startsWith('//') ? `https:${href}` : href);
+      } catch {
+        setStatusMessage('External link is invalid.');
+        return;
+      }
+      if (!['http:', 'https:', 'mailto:'].includes(url.protocol) || url.username || url.password) {
+        setStatusMessage('This external link is not supported.');
+        return;
+      }
+      try {
+        await window.a11yNotebook?.vault.openUrl(url.href);
+      } catch {
+        setStatusMessage('Could not open the external link.');
+      }
+      return;
+    }
     let targetTitle = href;
     let targetPath = links.find((link) => link.sourcePath === currentNote.path && link.targetPath === href)?.targetPath;
     if (href.startsWith('#wiki:')) {
@@ -372,11 +418,17 @@ export default function App() {
       )?.targetPath;
     } else {
       const cleanHref = href.split('#')[0].split('?')[0];
+      let decodedHref = cleanHref;
+      try {
+        decodedHref = decodeURIComponent(cleanHref);
+      } catch {
+        // Keep the original path when the link contains malformed percent escapes.
+      }
       const base = currentNote.path.includes('/')
         ? currentNote.path.slice(0, currentNote.path.lastIndexOf('/') + 1)
         : '';
       const normalizedParts: string[] = [...base.split('/').filter(Boolean)];
-      for (const part of cleanHref.split('/')) {
+      for (const part of decodedHref.split('/')) {
         if (!part || part === '.') continue;
         if (part === '..') normalizedParts.pop();
         else normalizedParts.push(part);
@@ -438,7 +490,8 @@ export default function App() {
       setVault(updated);
       const renamedNotes = openNotes.map((note) => {
         if (note.path !== entryPath && !note.path.startsWith(`${entryPath}/`)) return note;
-        const nextPath = `${name}${note.path.slice(entryPath.length)}`;
+        const parent = entryPath.includes('/') ? entryPath.slice(0, entryPath.lastIndexOf('/') + 1) : '';
+        const nextPath = `${parent}${name}${note.path.slice(entryPath.length)}`;
         const nextTitle =
           note.path === entryPath && note.path.toLowerCase().endsWith('.md') ? name.replace(/\.md$/i, '') : note.title;
         return { ...note, id: nextPath, path: nextPath, title: nextTitle };
@@ -446,7 +499,10 @@ export default function App() {
       const activeNote = openNotes.find(
         (note) => note.id === selectedTab && (note.path === entryPath || note.path.startsWith(`${entryPath}/`)),
       );
-      if (activeNote) setSelectedTab(`${name}${activeNote.path.slice(entryPath.length)}`);
+      if (activeNote) {
+        const parent = entryPath.includes('/') ? entryPath.slice(0, entryPath.lastIndexOf('/') + 1) : '';
+        setSelectedTab(`${parent}${name}${activeNote.path.slice(entryPath.length)}`);
+      }
       setOpenNotes(renamedNotes);
     } catch {
       setStatusMessage('Could not rename the selected item.');
@@ -482,7 +538,8 @@ export default function App() {
         const line = lines[task.line - 1];
         if (line) {
           lines[task.line - 1] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${nextComplete ? 'x' : ' '}$2`);
-          const content = lines.join('\n');
+          const newline = note.content.includes('\r\n') ? '\r\n' : '\n';
+          const content = lines.join(newline);
           setOpenNotes((current) =>
             current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
           );
@@ -494,34 +551,61 @@ export default function App() {
     }
   };
 
+  const cancelAutosaves = () => {
+    autosaveTimers.current.forEach(({ timeout }) => window.clearTimeout(timeout));
+    autosaveTimers.current.clear();
+  };
+
   useEffect(() => {
-    const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || note.content === note.saved || !window.a11yNotebook) return;
-    const contentToSave = note.content;
-    const timeout = window.setTimeout(() => {
-      void window.a11yNotebook?.vault
-        .saveNote(note.path, contentToSave)
-        .then(() => {
-          setOpenNotes((current) =>
-            current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
-          );
-          setStatusMessage(`Saved ${note.title}.`);
-          void refreshLinkIndex();
-        })
-        .catch(() => setStatusMessage(`Could not save ${note.title}.`));
-    }, 900);
-    return () => window.clearTimeout(timeout);
-  }, [openNotes, selectedTab]);
+    const bridge = window.a11yNotebook;
+    for (const [noteId, timer] of autosaveTimers.current) {
+      const note = openNotes.find((item) => item.id === noteId);
+      if (!note || note.content === note.saved || note.content !== timer.content) {
+        window.clearTimeout(timer.timeout);
+        autosaveTimers.current.delete(noteId);
+      }
+    }
+    if (!bridge) return;
+    openNotes.forEach((note) => {
+      if (note.content === note.saved || autosaveTimers.current.has(note.id)) return;
+      const contentToSave = note.content;
+      const timeout = window.setTimeout(() => {
+        autosaveTimers.current.delete(note.id);
+        void bridge.vault
+          .saveNote(note.path, contentToSave)
+          .then(() => {
+            setOpenNotes((current) =>
+              current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
+            );
+            setStatusMessage(`Saved ${note.title}.`);
+            void refreshLinkIndex();
+          })
+          .catch(() => setStatusMessage(`Could not save ${note.title}.`));
+      }, 900);
+      autosaveTimers.current.set(note.id, { content: contentToSave, timeout });
+    });
+  }, [openNotes]);
+
+  useEffect(
+    () => () => {
+      autosaveTimers.current.forEach(({ timeout }) => window.clearTimeout(timeout));
+      autosaveTimers.current.clear();
+    },
+    [],
+  );
 
   const handleCommand = (commandId: CommandId) => {
     if (commandId === 'open-vault') {
+      const bridge = window.a11yNotebook;
+      if (!bridge) return;
       if (
         openNotes.some((note) => note.content !== note.saved) &&
         !window.confirm('Opening another vault will discard unsaved note changes. Continue?')
       ) {
         return;
       }
-      void window.a11yNotebook?.vault
+      cancelAutosaves();
+      void bridge.vault
         .open()
         .then((opened) => {
           if (opened) {
@@ -585,7 +669,7 @@ export default function App() {
 
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
-    if (activeDialog) {
+    if (activeDialog || nameDialog || document.querySelector('[role="dialog"][aria-modal="true"]')) {
       return;
     }
     if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.metaKey) {
@@ -674,7 +758,8 @@ export default function App() {
   };
 
   const currentNote = openNotes.find((item) => item.id === selectedTab);
-  const today = new Date().toISOString().slice(0, 10);
+  const date = new Date();
+  const today = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
   const taskNotebooks = [...new Set(tasks.map(notebookForTask))];
   const visibleTasks = tasks
     .filter((task) => taskStatusFilter === 'all' || (taskStatusFilter === 'done') === task.complete)
@@ -848,7 +933,7 @@ export default function App() {
                     ref={(element) => {
                       tabRefs.current[tab.id] = element;
                     }}
-                    id={`tab-${tab.id}`}
+                    id={`tab-${encodeURIComponent(tab.id)}`}
                     type="button"
                     className={selected ? 'tab active-tab' : 'tab'}
                     role="tab"
@@ -897,7 +982,7 @@ export default function App() {
             className={activeRegion === 'main' ? 'document active-panel' : 'document'}
             data-region="main"
             role="tabpanel"
-            aria-labelledby={`tab-${selectedTab}`}
+            aria-labelledby={`tab-${encodeURIComponent(selectedTab)}`}
             tabIndex={0}
           >
             {selectedTab === 'tasks' ? (
@@ -1005,7 +1090,6 @@ export default function App() {
                     )
                   }
                   onNavigate={(href) => void openLinkTarget(href)}
-                  onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                 />
               </>
             ) : (
@@ -1145,6 +1229,20 @@ export default function App() {
           }}
           onRetry={updater.check}
           onClose={closeDialog}
+        />
+      ) : null}
+      {nameDialog ? (
+        <NameDialog
+          title={nameDialog.title}
+          label={nameDialog.label}
+          initialValue={nameDialog.initialValue}
+          submitLabel={nameDialog.submitLabel}
+          onSubmit={(value) => {
+            const { onSubmit } = nameDialog;
+            setNameDialog(null);
+            void onSubmit(value);
+          }}
+          onClose={() => setNameDialog(null)}
         />
       ) : null}
     </div>

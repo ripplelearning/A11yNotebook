@@ -37,16 +37,29 @@ describe('Markdown task indexing', () => {
     ]);
   });
 
+  it('ignores checkbox examples inside fenced and indented code', () => {
+    expect(
+      parseMarkdownTasks(
+        '- [ ] Visible\n\n```md\n- [ ] Fenced\n```\n\n    - [ ] Indented\n\t- [ ] Tab-indented\n- [ ] Also visible',
+        'Class.md',
+      ).map(({ line, text }) => ({ line, text })),
+    ).toEqual([
+      { line: 1, text: 'Visible' },
+      { line: 9, text: 'Also visible' },
+    ]);
+  });
+
   it('updates a checkbox in its Markdown source and reindexes the task', async () => {
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-tasks-'));
     const service = createVaultService(temporaryDirectory);
     await service.initialize();
     await service.createNote('Tasks.md');
-    await service.saveNote('Tasks.md', '# Plan\n\n- [ ] First task\n');
+    await service.saveNote('Tasks.md', '# Plan\r\n\r\n- [ ] First task\r\n');
     const tasks = await service.getTasks();
     expect(tasks[0]).toMatchObject({ path: 'Tasks.md', line: 3, text: 'First task', complete: false });
     expect(await service.toggleTask('Tasks.md', 3, true)).toMatchObject([
       { path: 'Tasks.md', line: 3, text: 'First task', complete: true },
     ]);
+    expect(await service.readNote('Tasks.md')).toBe('# Plan\r\n\r\n- [x] First task\r\n');
   });
 });

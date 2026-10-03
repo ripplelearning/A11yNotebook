@@ -25,7 +25,7 @@ export function createVaultService(vaultPath: string) {
       !relativePath ||
       path.isAbsolute(relativePath) ||
       relativePath.split(/[\\/]/).some((part) => part === '..' || part === '.' || part === '') ||
-      relativePath.split(/[\\/]/)[0].toLowerCase() === '.a11ynotebook'
+      relativePath.split(/[\\/]/).some((part) => part.startsWith('.'))
     ) {
       throw new Error('The requested path is not valid inside this vault.');
     }
@@ -126,6 +126,7 @@ export function createVaultService(vaultPath: string) {
       bookmark.path === relativePath || bookmark.path.startsWith(`${relativePath}/`)
         ? {
             ...bookmark,
+            id: `${destinationRelative}${bookmark.path.slice(relativePath.length)}`,
             path: `${destinationRelative}${bookmark.path.slice(relativePath.length)}`,
             ...(bookmark.path === relativePath && path.extname(relativePath).toLowerCase() === '.md'
               ? { title: path.basename(newName, path.extname(newName)) }
@@ -162,14 +163,16 @@ export function createVaultService(vaultPath: string) {
     if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
       throw new Error('Invalid task location.');
     }
-    const lines = (await readFile(target, 'utf8')).split(/\r?\n/);
+    const content = await readFile(target, 'utf8');
+    const newline = content.includes('\r\n') ? '\r\n' : '\n';
+    const lines = content.split(/\r?\n/);
     const index = lineNumber - 1;
     const line = lines[index];
     if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
       throw new Error('The task no longer exists at this location.');
     }
     lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
-    await writeFile(target, lines.join('\n'), 'utf8');
+    await writeFile(target, lines.join(newline), 'utf8');
     return getTasks();
   }
 

@@ -3,6 +3,7 @@ import { copyFile, mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { app, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
+import { validateExternalUrl } from './external-url';
 import { createVaultService } from './service';
 
 type TrustedSender = (event: IpcMainInvokeEvent) => boolean;
@@ -89,17 +90,7 @@ export function setupVaultIpc(isTrustedSender: TrustedSender) {
   });
   ipcMain.handle(IPC_CHANNELS.vaultOpenUrl, async (event, rawUrl: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof rawUrl !== 'string') throw new Error('URL must be text.');
-    let url: URL;
-    try {
-      url = new URL(rawUrl);
-    } catch {
-      throw new Error('Invalid external URL.');
-    }
-    if (!['http:', 'https:', 'mailto:'].includes(url.protocol)) {
-      throw new Error('Unsupported external URL protocol.');
-    }
-    await shell.openExternal(url.href);
+    await shell.openExternal(validateExternalUrl(rawUrl));
   });
   ipcMain.handle(IPC_CHANNELS.vaultImport, async (event, notebookPath: unknown) => {
     assertTrusted(event, isTrustedSender);
