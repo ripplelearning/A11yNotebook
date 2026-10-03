@@ -54,6 +54,8 @@ debounce, and cleanup on vault switch/quit. Search refresh precedes a change eve
 tree/tasks/links and compares open notes. `useVaultChanges` preserves dirty content and pauses autosave. Renderer
 saves include their saved-content baseline for optimistic conflict detection. This is not an atomic lock against
 another process writing between the comparison and the write.
+Note edits and task toggles write a checked same-directory temporary file before atomic replacement, preserving
+the original if a write fails partially. Vault opening pauses editing; stale refresh responses are ignored.
 
 Moves use main-process validation, a native affected-note confirmation, source-content preflight, and explicit
 rewrites of unambiguous wiki/inline-relative links (including moved notes' outgoing references). Metadata paths

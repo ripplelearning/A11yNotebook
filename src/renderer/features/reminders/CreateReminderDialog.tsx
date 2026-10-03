@@ -31,16 +31,33 @@ export default function CreateReminderDialog({ notePaths, onCreate, onClose }: C
       onClose();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : 'Could not create reminder.');
-    } finally { setBusy(false); }
+    } finally {
+      setBusy(false);
+    }
   }
   return (
     <Modal titleId={`${id}-title`} title="Create reminder" onClose={onClose}>
-      <form onSubmit={(event) => { void submit(event); }}>
+      <form
+        onSubmit={(event) => {
+          void submit(event);
+        }}
+      >
         <label htmlFor={`${id}-name`}>Reminder title</label>
-        <input id={`${id}-name`} value={title} onChange={(event) => setTitle(event.target.value)} maxLength={500} required data-autofocus />
+        <input
+          id={`${id}-name`}
+          value={title}
+          onChange={(event) => setTitle(event.target.value)}
+          maxLength={500}
+          required
+          data-autofocus
+        />
         <label htmlFor={`${id}-note`}>Note</label>
         <select id={`${id}-note`} value={path} onChange={(event) => setPath(event.target.value)} required>
-          {notePaths.map((note) => <option key={note} value={note}>{note}</option>)}
+          {notePaths.map((note) => (
+            <option key={note} value={note}>
+              {note}
+            </option>
+          ))}
         </select>
         <label htmlFor={`${id}-date`}>Date</label>
         <input id={`${id}-date`} type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
@@ -48,8 +65,12 @@ export default function CreateReminderDialog({ notePaths, onCreate, onClose }: C
         <input id={`${id}-time`} type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
         <p>Times use your local timezone.</p>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy || notePaths.length === 0}>{busy ? 'Creating…' : 'Create reminder'}</button>
-        <button type="button" onClick={onClose}>Cancel</button>
+        <button type="submit" disabled={busy || notePaths.length === 0}>
+          {busy ? 'Creating…' : 'Create reminder'}
+        </button>
+        <button type="button" onClick={onClose}>
+          Cancel
+        </button>
       </form>
     </Modal>
   );

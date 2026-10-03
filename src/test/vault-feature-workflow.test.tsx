@@ -53,7 +53,7 @@ function setup(customBold = false) {
         {
           path: 'Note.md',
           title: 'Note',
-          kind: 'note',
+          kind: 'note' as const,
           notebook: '',
           tags: [],
           modified: '2026-10-03',
@@ -75,6 +75,7 @@ function setup(customBold = false) {
   render(<App />);
   return {
     bridge,
+    vault,
     external: (disk: string) => {
       content = disk;
       listener({ vaultPath: vault.path, paths: ['Note.md'] });
@@ -90,10 +91,55 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('ignores an old-vault refresh that finishes after opening a different vault', async () => {
+    const { bridge, vault } = setup();
+    const editor = await editNote();
+    const next: VaultInfo = {
+      name: 'Next',
+      path: '/next',
+      entries: [{ name: 'Other.md', path: 'Other.md', kind: 'note' }],
+    };
+    let finish: (value: VaultInfo) => void = () => undefined;
+    vi.mocked(bridge.vault.get)
+      .mockReturnValueOnce(
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+      )
+      .mockResolvedValue(next);
+    vi.mocked(bridge.vault.open).mockResolvedValue(next);
+    fireEvent.change(editor, { target: { value: 'Saved content' } });
+    fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
+    await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
+    fireEvent.click(screen.getByRole('button', { name: 'Open vault' }));
+    await screen.findByRole('treeitem', { name: /Other.md/ });
+    await act(async () => finish(vault));
+    expect(screen.getByRole('treeitem', { name: /Other.md/ })).toBeInTheDocument();
+    expect(screen.queryByRole('treeitem', { name: /Note.md/ })).not.toBeInTheDocument();
+  });
+  it('pauses editing while a new vault is initialized', async () => {
+    const { bridge } = setup();
+    const editor = await editNote();
+    let finish: (vault: VaultInfo | null) => void = () => undefined;
+    vi.mocked(bridge.vault.open).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open vault' }));
+    await screen.findByRole('dialog', { name: 'Opening vault' });
+    expect(editor).toBeDisabled();
+    fireEvent.change(editor, { target: { value: 'late edit' } });
+    expect(editor).toHaveValue('# Note\n\ntext');
+    await act(async () => finish(null));
+    expect(editor).not.toBeDisabled();
+    expect(editor).toHaveValue('# Note\n\ntext');
+  });
   it('opens a labelled creation dialog instead of a browser prompt', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('button', { name: 'New note', exact: true }));
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
     const dialog = screen.getByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'New' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));

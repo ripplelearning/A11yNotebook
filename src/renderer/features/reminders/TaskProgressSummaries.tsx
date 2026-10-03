@@ -21,13 +21,19 @@ export default function TaskProgressSummaries({ tasks }: { tasks: VaultTask[] })
     <section aria-labelledby={`${id}-title`}>
       <h2 id={`${id}-title`}>Notebook task progress</h2>
       {summaries.length ? (
-        <ul>{summaries.map(({ notebook, total, complete }) => (
-          <li key={notebook}>
-            <span>{notebook}: {complete} of {total} tasks complete</span>
-            <progress aria-label={`${notebook} task progress`} value={complete} max={total} />
-          </li>
-        ))}</ul>
-      ) : <p>No tasks.</p>}
+        <ul>
+          {summaries.map(({ notebook, total, complete }) => (
+            <li key={notebook}>
+              <span>
+                {notebook}: {complete} of {total} tasks complete
+              </span>
+              <progress aria-label={`${notebook} task progress`} value={complete} max={total} />
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p>No tasks.</p>
+      )}
     </section>
   );
 }

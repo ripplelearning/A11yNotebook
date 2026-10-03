@@ -67,17 +67,20 @@ export function parseReminderDate(value: string): Date | null {
     hour > 23 ||
     minute > 59 ||
     (zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59))
-  ) return null;
+  )
+    return null;
   const result = new Date(value);
   return Number.isFinite(result.getTime()) ? result : null;
 }
 
 export function isReminderPath(path: string): boolean {
-  return typeof path === 'string' &&
+  return (
+    typeof path === 'string' &&
     !/^[\\/]|^[a-z]:|[\0\r\n]/i.test(path) &&
     path.toLowerCase().endsWith('.md') &&
     path.split(/[\\/]/).every((part) => part !== '' && part !== '.' && part !== '..') &&
-    path.split(/[\\/]/)[0].toLowerCase() !== '.a11ynotebook';
+    path.split(/[\\/]/)[0].toLowerCase() !== '.a11ynotebook'
+  );
 }
 
 /** Tomorrow means the same local clock time on the next calendar day. */
@@ -95,7 +98,9 @@ export function groupReminders(reminders: Reminder[], now = new Date()) {
   const tomorrow = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
   const weekEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (7 - ((now.getDay() + 6) % 7)));
   const result: { overdue: Reminder[]; today: Reminder[]; thisWeek: Reminder[] } = {
-    overdue: [], today: [], thisWeek: [],
+    overdue: [],
+    today: [],
+    thisWeek: [],
   };
   for (const reminder of reminders) {
     if (reminder.status === 'dismissed') continue;

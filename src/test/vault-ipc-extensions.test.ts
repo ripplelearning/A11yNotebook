@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -11,8 +11,33 @@ const mock = vi.hoisted(() => ({
   root: '',
   userData: '',
   confirm: 1,
+  failIndexRefreshAt: 0,
+  refreshCount: 0,
+  failReminderWrite: false,
+  partialRepairWrite: false,
+  failRecentWrite: false,
+  notificationsSupported: false,
+  notifications: [] as { emit: (event: string) => void }[],
+  reminderEvents: [] as unknown[],
   protocol: undefined as undefined | ((request: { url: string }) => Promise<Response>),
 }));
+
+vi.mock('node:fs/promises', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return {
+    ...actual,
+    writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
+      if (mock.failRecentWrite && String(args[0]).endsWith('recent-vault.json'))
+        throw new Error('Recent-vault persistence failed.');
+      if (mock.partialRepairWrite && path.basename(String(args[0])).includes('Reference.md')) {
+        mock.partialRepairWrite = false;
+        await actual.writeFile(args[0], String(args[1]).slice(0, 4), args[2]);
+        throw Object.assign(new Error('Partial write: disk full.'), { code: 'ENOSPC' });
+      }
+      return actual.writeFile(...args);
+    },
+  };
+});
 
 vi.mock('electron', () => ({
   app: { getPath: () => mock.userData, on: (_name: string, callback: () => void) => mock.quit.push(callback) },
@@ -29,12 +54,64 @@ vi.mock('electron', () => ({
     },
   },
   Notification: class {
+    private listeners = new Map<string, () => void>();
+    constructor() {
+      mock.notifications.push(this);
+    }
+    on(event: string, callback: () => void) {
+      this.listeners.set(event, callback);
+    }
+    show() {}
+    close() {
+      this.emit('close');
+    }
+    emit(event: string) {
+      this.listeners.get(event)?.();
+    }
     static isSupported() {
-      return false;
+      return mock.notificationsSupported;
     }
   },
   shell: { showItemInFolder: vi.fn(), openPath: vi.fn(async () => ''), trashItem: vi.fn(async () => undefined) },
 }));
+
+vi.mock('../../electron/vault/search', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/search')>();
+  return {
+    ...actual,
+    createSearchIndex: (...args: Parameters<typeof actual.createSearchIndex>) => {
+      const index = actual.createSearchIndex(...args);
+      return {
+        ...index,
+        refresh: async () => {
+          mock.refreshCount += 1;
+          if (mock.refreshCount === mock.failIndexRefreshAt) throw new Error('Index write failed after disk mutation.');
+          return index.refresh();
+        },
+      };
+    },
+  };
+});
+
+vi.mock('../../electron/vault/metadata', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/metadata')>();
+  return {
+    ...actual,
+    createMetadataStore: (...args: Parameters<typeof actual.createMetadataStore>) => {
+      const store = actual.createMetadataStore(...args);
+      return {
+        ...store,
+        write: async (name: string, value: unknown) => {
+          if (name === 'reminders.json' && mock.failReminderWrite) {
+            mock.failReminderWrite = false;
+            throw new Error('Reminder migration failed.');
+          }
+          return store.write(name, value);
+        },
+      };
+    },
+  };
+});
 
 let temporary = '';
 const trusted = {};
@@ -45,6 +122,14 @@ beforeEach(async () => {
   mock.handlers.clear();
   mock.quit = [];
   mock.confirm = 1;
+  mock.failIndexRefreshAt = 0;
+  mock.refreshCount = 0;
+  mock.failReminderWrite = false;
+  mock.partialRepairWrite = false;
+  mock.failRecentWrite = false;
+  mock.notificationsSupported = false;
+  mock.notifications = [];
+  mock.reminderEvents = [];
   temporary = await mkdtemp(path.join(os.tmpdir(), 'a11y-ipc-'));
   mock.root = path.join(temporary, 'vault');
   mock.userData = path.join(temporary, 'app');
@@ -57,7 +142,9 @@ beforeEach(async () => {
   setupVaultIpc(
     (event) => event === trusted,
     () => undefined,
-    () => undefined,
+    (event) => {
+      mock.reminderEvents.push(event);
+    },
   );
   await invoke(IPC_CHANNELS.vaultOpen);
 });
@@ -69,6 +156,63 @@ afterEach(async () => {
 });
 
 describe('extended vault IPC integration', () => {
+  it('preserves the original repaired note if a replacement write fails partially', async () => {
+    mock.partialRepairWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('disk full');
+    expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe('[[Topic|subject]] [Topic](Topic.md)');
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
+    expect((await readdir(mock.root)).filter((name) => name.endsWith('.tmp'))).toEqual([]);
+  });
+  it('retains the current service when remembering a candidate vault fails', async () => {
+    const previous = mock.root;
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    await writeFile(path.join(mock.root, 'Topic.md'), '# Different vault\n');
+    mock.failRecentWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultOpen)).rejects.toThrow('persistence failed');
+    await expect(invoke(IPC_CHANNELS.vaultGet)).resolves.toEqual(expect.objectContaining({ path: previous }));
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toContain('alpha');
+  });
+  it.each([1, 2])('rolls back committed disk mutations when index update %i fails', async (failure) => {
+    mock.refreshCount = 0;
+    mock.failIndexRefreshAt = failure;
+    await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('Index write failed');
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
+    expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe('[[Topic|subject]] [Topic](Topic.md)');
+    await expect(readFile(path.join(mock.root, 'Folder/New.md'), 'utf8')).rejects.toThrow();
+  });
+  it('restarts scheduling after migration fails and rollback restores paths', async () => {
+    await invoke(IPC_CHANNELS.vaultReminderCreate, {
+      title: 'Future',
+      path: 'Topic.md',
+      scheduledAt: '2099-01-01 09:00',
+    });
+    mock.failReminderWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('migration failed');
+    expect(await invoke(IPC_CHANNELS.vaultReminders)).toEqual([
+      expect.objectContaining({ path: 'Topic.md', status: 'pending' }),
+    ]);
+    await expect(
+      invoke(IPC_CHANNELS.vaultReminderCreate, { title: 'Another', path: 'Topic.md', scheduledAt: '2099-01-02 09:00' }),
+    ).resolves.toHaveLength(2);
+  });
+  it('opens the migrated note when an already displayed notification is clicked', async () => {
+    mock.notificationsSupported = true;
+    await invoke(IPC_CHANNELS.vaultReminderCreate, {
+      title: 'Past',
+      path: 'Topic.md',
+      scheduledAt: '2000-01-01 09:00',
+    });
+    expect(mock.notifications).toHaveLength(1);
+    await invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md');
+    mock.notifications[0].emit('click');
+    expect(mock.reminderEvents.at(-1)).toEqual(
+      expect.objectContaining({
+        type: 'open',
+        reminder: expect.objectContaining({ path: 'Folder/New.md' }),
+      }),
+    );
+  });
   it('rejects untrusted senders on every registered channel', async () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');
   });

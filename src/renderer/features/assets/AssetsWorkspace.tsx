@@ -21,6 +21,8 @@ interface Props {
   refresh: () => Promise<void>;
   announce: (message: string) => void;
   onDirty: (dirty: boolean) => void;
+  onBusy: (busy: boolean) => void;
+  selectionVersion?: number;
 }
 
 const registry = createAssetRegistry(assetTypes);
@@ -32,7 +34,15 @@ const STARTERS: Record<string, { extension: string; source: string }> = {
   'markdown-grid': { extension: '.grid.md', source: '| Column 1 | Column 2 |\n| --- | --- |\n| | |\n' },
 };
 
-export default function AssetsWorkspace({ paths, initialPath, refresh, announce, onDirty }: Props) {
+export default function AssetsWorkspace({
+  paths,
+  initialPath,
+  refresh,
+  announce,
+  onDirty,
+  onBusy,
+  selectionVersion,
+}: Props) {
   const [path, setPath] = useState(initialPath ?? '');
   const [asset, setAsset] = useState<VaultAsset | null>(null);
   const [outline, setOutline] = useState<OutlineNode[]>([]);
@@ -45,7 +55,12 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [deckSource, setDeckSource] = useState('');
+  const [reviewReady, setReviewReady] = useState(false);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
+  useEffect(() => onBusy(busy), [busy, onBusy]);
+  useEffect(() => {
+    if (initialPath) setPath(initialPath);
+  }, [initialPath, selectionVersion]);
 
   useEffect(() => {
     if (!path) {
@@ -54,6 +69,7 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
     }
     let cancelled = false;
     setBusy(true);
+    setReviewReady(false);
     setAsset(null);
     void window
       .a11yNotebook!.vault.readAsset(path)
@@ -68,6 +84,7 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
           const stored = await window.a11yNotebook!.vault.getFlashcardSchedules(path);
           if (cancelled) return;
           setSchedules(stored);
+          setReviewReady(true);
         }
         setAsset(value);
         setDirty(false);
@@ -87,11 +104,17 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
   const save = (content: string) => {
     if (!asset || busy) return;
     setBusy(true);
+    if (asset.type === 'flashcards') setReviewReady(false);
     void window
       .a11yNotebook!.vault.saveAsset(asset.path, content, asset.content)
       .then(async () => {
         setAsset({ ...asset, content });
         setDirty(false);
+        if (asset.type === 'flashcards') {
+          setDeckSource(content);
+          setSchedules(await window.a11yNotebook!.vault.getFlashcardSchedules(asset.path));
+          setReviewReady(true);
+        }
         await refresh();
         announce('Cognitive asset saved.');
       })
@@ -182,12 +205,15 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
             }}
             onSave={save}
             onExportOutline={(content) => {
+              if (busy) return;
+              setBusy(true);
               const relative = asset.path.replace(/\.mindmap\.json$/i, '.outline.md');
               void window
                 .a11yNotebook!.vault.createAsset(relative, content)
                 .then(refresh)
                 .then(() => announce('Mind map exported as a Markdown outline.'))
-                .catch((failure: Error) => setError(failure.message));
+                .catch((failure: Error) => setError(failure.message))
+                .finally(() => setBusy(false));
             }}
           />
         ) : null}
@@ -211,15 +237,20 @@ export default function AssetsWorkspace({ paths, initialPath, refresh, announce,
             }}
           />
         ) : null}
-        {asset?.type === 'flashcards' ? (
+        {asset?.type === 'flashcards' && reviewReady && !dirty ? (
           <FlashcardReview
-            key={asset.path}
+            key={`${asset.path}:${asset.content}`}
             cards={parseFlashcards(asset.content)}
             schedules={schedules}
             announce={announce}
             onSchedule={async (id, schedule) => {
-              await window.a11yNotebook!.vault.saveFlashcardSchedule(asset.path, id, schedule, asset.content);
-              setSchedules((stored) => ({ ...stored, [id]: schedule }));
+              setBusy(true);
+              try {
+                await window.a11yNotebook!.vault.saveFlashcardSchedule(asset.path, id, schedule, asset.content);
+                setSchedules((stored) => ({ ...stored, [id]: schedule }));
+              } finally {
+                setBusy(false);
+              }
             }}
           />
         ) : null}

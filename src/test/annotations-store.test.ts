@@ -4,14 +4,19 @@ import { createAnnotationStore } from '../../electron/vault/annotations';
 import type { NewAnnotation } from '../shared/annotations';
 
 const input: NewAnnotation = {
-  path: 'Notes/Idea.md', color: 'green', label: 'Important', comment: 'Remember this',
+  path: 'Notes/Idea.md',
+  color: 'green',
+  label: 'Important',
+  comment: 'Remember this',
   anchor: { quote: 'words', prefix: '', suffix: ' after', start: 0, end: 5 },
 };
 
 function fixture(initial?: unknown) {
   let metadata: unknown = initial;
   const read = vi.fn(async () => structuredClone(metadata));
-  const write = vi.fn(async (value: unknown) => { metadata = structuredClone(value); });
+  const write = vi.fn(async (value: unknown) => {
+    metadata = structuredClone(value);
+  });
   const validateNote = vi.fn(async () => undefined);
   return { store: createAnnotationStore({ read, write, validateNote }), read, write, validateNote };
 }
@@ -40,9 +45,14 @@ describe('annotation persistence', () => {
   it('rejects malformed data, oversize fields, unsafe paths, and secure-note callback failures', async () => {
     const { store, write, validateNote } = fixture();
     const invalid = [
-      { ...input, label: '' }, { ...input, color: 'red' }, { ...input, comment: 'x'.repeat(10001) },
-      { ...input, anchor: { ...input.anchor, end: -1 } }, { ...input, path: 'C:\\note.md' },
-      { ...input, path: '/note.md' }, { ...input, path: 'notes/../note.md' }, { ...input, path: 'notes/file.pdf' },
+      { ...input, label: '' },
+      { ...input, color: 'red' },
+      { ...input, comment: 'x'.repeat(10001) },
+      { ...input, anchor: { ...input.anchor, end: -1 } },
+      { ...input, path: 'C:\\note.md' },
+      { ...input, path: '/note.md' },
+      { ...input, path: 'notes/../note.md' },
+      { ...input, path: 'notes/file.pdf' },
     ];
     for (const value of invalid) await expect(store.add(value as NewAnnotation)).rejects.toThrow();
     validateNote.mockRejectedValueOnce(new Error('Symlink rejected'));

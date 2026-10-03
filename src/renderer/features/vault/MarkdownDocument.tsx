@@ -9,7 +9,7 @@ function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
   const renderImage = markdown.renderer.rules.image!;
   markdown.renderer.rules.image = (tokens, index, options, environment, renderer) => {
-    const href = tokens[index].attrGet('src') ?? '';
+    const href = String(tokens[index].attrGet('src') ?? '');
     const parts = notePath?.split('/').slice(0, -1) ?? [];
     try {
       if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(href)) throw new Error('External image.');
@@ -61,6 +61,7 @@ interface MarkdownDocumentProps {
   onNavigate: (href: string) => void;
   editorRef?: RefObject<HTMLTextAreaElement>;
   notePath?: string;
+  disabled?: boolean;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
@@ -72,6 +73,7 @@ export default function MarkdownDocument({
   onNavigate,
   editorRef,
   notePath,
+  disabled,
 }: MarkdownDocumentProps) {
   if (mode === 'edit') {
     return (
@@ -79,6 +81,7 @@ export default function MarkdownDocument({
         Markdown source
         <textarea
           ref={editorRef}
+          disabled={disabled}
           aria-label="Markdown source"
           className="markdown-editor"
           value={content}
@@ -90,7 +93,7 @@ export default function MarkdownDocument({
 
   const html = DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
     ADD_URI_SAFE_ATTR: [],
-    ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+    ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
   });
   return (
     <div

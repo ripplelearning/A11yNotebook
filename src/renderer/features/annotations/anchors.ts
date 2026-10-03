@@ -14,7 +14,9 @@ function textNodes(root: HTMLElement): Text[] {
 }
 
 export function documentText(root: HTMLElement): string {
-  return textNodes(root).map((node) => node.data).join('');
+  return textNodes(root)
+    .map((node) => node.data)
+    .join('');
 }
 
 export function captureAnnotationAnchor(root: HTMLElement, selection: Selection | null): AnnotationAnchor | null {
@@ -27,7 +29,10 @@ export function captureAnnotationAnchor(root: HTMLElement, selection: Selection 
   let end = -1;
   // Range comparisons also handle selection boundaries that are element offsets.
   for (const node of nodes) {
-    for (const [boundary, isStart] of [[range.startContainer, true], [range.endContainer, false]] as const) {
+    for (const [boundary, isStart] of [
+      [range.startContainer, true],
+      [range.endContainer, false],
+    ] as const) {
       if (boundary === node) {
         if (isStart) start = position + range.startOffset;
         else end = position + range.endOffset;
@@ -49,7 +54,9 @@ export function captureAnnotationAnchor(root: HTMLElement, selection: Selection 
   const quote = text.slice(start, end);
   if (!quote.trim() || quote.length > ANNOTATION_LIMITS.quote) return null;
   return {
-    quote, start, end,
+    quote,
+    start,
+    end,
     prefix: text.slice(Math.max(0, start - ANNOTATION_LIMITS.context), start),
     suffix: text.slice(end, end + ANNOTATION_LIMITS.context),
   };
@@ -63,9 +70,11 @@ export function resolveAnnotationAnchor(text: string, anchor: AnnotationAnchor):
     candidates.push(index);
   }
   if (candidates.length === 1) return { start: candidates[0], end: candidates[0] + anchor.quote.length };
-  const contextual = candidates.filter((start) =>
-    (!anchor.prefix || text.slice(Math.max(0, start - anchor.prefix.length), start) === anchor.prefix) &&
-    (!anchor.suffix || text.slice(start + anchor.quote.length, start + anchor.quote.length + anchor.suffix.length) === anchor.suffix),
+  const contextual = candidates.filter(
+    (start) =>
+      (!anchor.prefix || text.slice(Math.max(0, start - anchor.prefix.length), start) === anchor.prefix) &&
+      (!anchor.suffix ||
+        text.slice(start + anchor.quote.length, start + anchor.quote.length + anchor.suffix.length) === anchor.suffix),
   );
   if (contextual.length !== 1) return null;
   return { start: contextual[0], end: contextual[0] + anchor.quote.length };
@@ -84,10 +93,12 @@ const backgrounds = { yellow: '#fff0a6', green: '#c7efc8', blue: '#cce6ff', pink
 export function renderAnnotationMarks(root: HTMLElement, annotations: NoteAnnotation[]): Set<string> {
   clearAnnotationMarks(root);
   const text = documentText(root);
-  const resolved = annotations.flatMap((annotation) => {
-    const range = resolveAnnotationAnchor(text, annotation.anchor);
-    return range ? [{ annotation, ...range }] : [];
-  }).sort((a, b) => a.start - b.start || a.end - b.end);
+  const resolved = annotations
+    .flatMap((annotation) => {
+      const range = resolveAnnotationAnchor(text, annotation.anchor);
+      return range ? [{ annotation, ...range }] : [];
+    })
+    .sort((a, b) => a.start - b.start || a.end - b.end);
   const accepted: typeof resolved = [];
   for (const range of resolved) {
     if (accepted.length && range.start < accepted[accepted.length - 1].end) continue;
@@ -109,7 +120,10 @@ export function renderAnnotationMarks(root: HTMLElement, annotations: NoteAnnota
       mark.tabIndex = -1;
       mark.style.backgroundColor = backgrounds[range.annotation.color];
       mark.style.color = '#171717';
-      mark.setAttribute('aria-description', `${range.annotation.color} highlight: ${range.annotation.label}${range.annotation.comment ? `. ${range.annotation.comment}` : ''}`);
+      mark.setAttribute(
+        'aria-description',
+        `${range.annotation.color} highlight: ${range.annotation.label}${range.annotation.comment ? `. ${range.annotation.comment}` : ''}`,
+      );
       mark.title = `${range.annotation.label}${range.annotation.comment ? `: ${range.annotation.comment}` : ''}`;
       selected.replaceWith(mark);
       mark.append(selected);
@@ -120,8 +134,9 @@ export function renderAnnotationMarks(root: HTMLElement, annotations: NoteAnnota
 }
 
 export function jumpToAnnotation(root: HTMLElement, id: string): boolean {
-  const mark = Array.from(root.querySelectorAll<HTMLElement>('mark[data-annotation-id]'))
-    .find((element) => element.dataset.annotationId === id);
+  const mark = Array.from(root.querySelectorAll<HTMLElement>('mark[data-annotation-id]')).find(
+    (element) => element.dataset.annotationId === id,
+  );
   if (!mark) return false;
   mark.scrollIntoView?.({ block: 'center' });
   mark.focus();

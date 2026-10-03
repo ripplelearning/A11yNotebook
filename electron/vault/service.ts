@@ -1,6 +1,7 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
-import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import { buildVaultLinkIndex } from './links';
@@ -155,6 +156,22 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return readFile(target, 'utf8');
   }
 
+  async function replaceNote(relativePath: string, content: string, expectedContent?: string) {
+    const target = await resolveEntry(relativePath);
+    const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+    try {
+      const stat = await lstat(target);
+      await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: stat.mode & 0o777 });
+      await resolveEntry(path.relative(root, temporary));
+      await resolveEntry(relativePath);
+      if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
+        throw new Error('Note changed on disk. Resolve the conflict before saving.');
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
   function saveNote(relativePath: string, content: string, expectedContent?: string): Promise<void> {
     return serializeNoteWrite(async () => {
       if (typeof content !== 'string') throw new Error('Note content must be text.');
@@ -174,7 +191,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         }
         throw error;
       }
-      await writeFile(target, content, 'utf8');
+      await replaceNote(relativePath, content, expectedContent);
       await refreshSearchIndex();
     });
   }
@@ -260,14 +277,15 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
         throw new Error('Invalid task location.');
       }
-      const lines = (await readFile(target, 'utf8')).split(/\r?\n/);
+      const original = await readFile(target, 'utf8');
+      const lines = original.split(/\r?\n/);
       const index = lineNumber - 1;
       const line = lines[index];
       if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
         throw new Error('The task no longer exists at this location.');
       }
       lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
-      await writeFile(target, lines.join('\n'), 'utf8');
+      await replaceNote(relativePath, lines.join('\n'), original);
       await refreshSearchIndex();
       return getTasks();
     });

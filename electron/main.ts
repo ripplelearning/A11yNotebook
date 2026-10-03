@@ -104,7 +104,8 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // The renderer does not need camera, microphone, notifications, or other permissions yet.
+    if (process.platform === 'win32') app.setAppUserModelId('com.ripplelearning.a11ynotebook');
+    // Renderer permissions stay blocked; native reminders are created in the main process.
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
     setupUpdater({

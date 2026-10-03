@@ -34,9 +34,13 @@ function text(value: unknown, max: number, required = false): string {
 function notePath(value: unknown): string {
   const path = text(value, 4096, true);
   if (
-    path.includes('\\') || path.includes('\0') || path.startsWith('/') || /^[A-Za-z]:/.test(path) ||
+    path.includes('\\') ||
+    path.includes('\0') ||
+    path.startsWith('/') ||
+    /^[A-Za-z]:/.test(path) ||
     path.split('/').some((part) => !part || part === '.' || part === '..')
-  ) throw new Error('Invalid annotation note path.');
+  )
+    throw new Error('Invalid annotation note path.');
   return path;
 }
 
@@ -44,9 +48,12 @@ function anchor(value: unknown): AnnotationAnchor {
   const data = object(value);
   const quote = text(data.quote, ANNOTATION_LIMITS.quote, true);
   if (
-    !Number.isSafeInteger(data.start) || !Number.isSafeInteger(data.end) ||
-    (data.start as number) < 0 || (data.end as number) - (data.start as number) !== quote.length
-  ) throw new Error('Invalid annotation offsets.');
+    !Number.isSafeInteger(data.start) ||
+    !Number.isSafeInteger(data.end) ||
+    (data.start as number) < 0 ||
+    (data.end as number) - (data.start as number) !== quote.length
+  )
+    throw new Error('Invalid annotation offsets.');
   return {
     quote,
     prefix: text(data.prefix, ANNOTATION_LIMITS.context),
@@ -124,7 +131,12 @@ export function createAnnotationStore({ read, write, validateNote }: AnnotationS
         if (metadata.annotations.length >= ANNOTATION_LIMITS.records) throw new Error('Annotation limit reached.');
         const now = new Date().toISOString();
         const added: NoteAnnotation = {
-          id: randomUUID(), path, anchor: validAnchor, ...validFields, createdAt: now, updatedAt: now,
+          id: randomUUID(),
+          path,
+          anchor: validAnchor,
+          ...validFields,
+          createdAt: now,
+          updatedAt: now,
         };
         metadata.annotations.push(added);
         await write(metadata);

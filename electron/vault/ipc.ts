@@ -11,7 +11,7 @@ import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
-import type { VaultEntry } from '../../src/shared/types';
+import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { createAssetStore } from './assets';
@@ -28,6 +28,14 @@ let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
 let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
 const notifications = new Set<Notification>();
+const notificationTargets = new Map<Notification, { path: string }>();
+let vaultOperations: Promise<unknown> = Promise.resolve();
+
+function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = vaultOperations.then(operation, operation);
+  vaultOperations = result.catch(() => undefined);
+  return result;
+}
 
 function assertTrusted(event: IpcMainInvokeEvent, isTrustedSender: TrustedSender) {
   if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender.');
@@ -43,13 +51,25 @@ async function rememberVault(vaultPath: string) {
   await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath }), 'utf8');
 }
 
-async function openVault(vaultPath: string) {
+function openVault(vaultPath: string) {
+  return serializeVaultOperation(() => openVaultNow(vaultPath));
+}
+
+async function openVaultNow(vaultPath: string) {
   const nextService = createVaultService(vaultPath);
-  const vault = await nextService.initialize();
+  let vault: VaultInfo;
+  try {
+    vault = await nextService.initialize();
+    await rememberVault(vault.path);
+  } catch (error) {
+    await nextService.dispose().catch(() => undefined);
+    throw error;
+  }
   reminderService?.stop();
   for (const notification of notifications) notification.close();
   notifications.clear();
-  await service?.dispose();
+  notificationTargets.clear();
+  await service?.dispose().catch(() => undefined);
   service = nextService;
   metadata = createMetadataStore(nextService);
   assets = createAssetStore(nextService, metadata);
@@ -60,7 +80,42 @@ async function openVault(vaultPath: string) {
       await nextService.resolveEntry(relative);
     },
   });
-  const nextReminders = createReminderService({
+  const nextReminders = makeReminders(nextService, vault);
+  reminderService = nextReminders;
+  await nextReminders.initialize().catch(() =>
+    sendReminder({
+      type: 'error',
+      vaultPath: vault.path,
+      message: 'Could not initialize reminders. Check vault metadata.',
+    }),
+  );
+  await nextService
+    .startWatcher(
+      (event) => {
+        sendChanged(event);
+        if (service === nextService) void reminderService?.refresh().catch(() => undefined);
+      },
+      () => {
+        if (service === nextService)
+          sendReminder({
+            type: 'error',
+            vaultPath: vault.path,
+            message: 'Could not synchronize external changes. Use Refresh links and check file permissions.',
+          });
+      },
+    )
+    .catch(() =>
+      sendReminder({
+        type: 'error',
+        vaultPath: vault.path,
+        message: 'External-change watching is unavailable. Use Refresh links to refresh manually.',
+      }),
+    );
+  return vault;
+}
+
+function makeReminders(nextService: VaultService, vault: VaultInfo) {
+  return createReminderService({
     readStore: () => metadataFor(nextService).read('reminders.json'),
     writeStore: (value) => metadataFor(nextService).write('reminders.json', value),
     validateNote: async (relative) => {
@@ -82,11 +137,17 @@ async function openVault(vaultPath: string) {
       sendReminder({ type: 'fired', vaultPath: vault.path, reminder });
       if (Notification.isSupported()) {
         const notification = new Notification({ title: 'A11y Notebook reminder', body: reminder.title });
+        const target = { path: reminder.path };
+        notificationTargets.set(notification, target);
         notifications.add(notification);
         notification.on('click', () => {
-          if (service === nextService) sendReminder({ type: 'open', vaultPath: vault.path, reminder });
+          if (service === nextService)
+            sendReminder({ type: 'open', vaultPath: vault.path, reminder: { ...reminder, path: target.path } });
         });
-        notification.on('close', () => notifications.delete(notification));
+        notification.on('close', () => {
+          notifications.delete(notification);
+          notificationTargets.delete(notification);
+        });
         notification.show();
       }
     },
@@ -98,38 +159,6 @@ async function openVault(vaultPath: string) {
         sendReminder({ type: 'error', vaultPath: vault.path, message: 'Could not update reminders.' });
     },
   });
-  reminderService = nextReminders;
-  await nextReminders.initialize().catch(() =>
-    sendReminder({
-      type: 'error',
-      vaultPath: vault.path,
-      message: 'Could not initialize reminders. Check vault metadata.',
-    }),
-  );
-  await nextService
-    .startWatcher(
-      (event) => {
-        sendChanged(event);
-        void nextReminders.refresh().catch(() => undefined);
-      },
-      () => {
-        if (service === nextService)
-          sendReminder({
-            type: 'error',
-            vaultPath: vault.path,
-            message: 'Could not synchronize external changes. Use Refresh links and check file permissions.',
-          });
-      },
-    )
-    .catch(() =>
-      sendReminder({
-        type: 'error',
-        vaultPath: vault.path,
-        message: 'External-change watching is unavailable. Use Refresh links to refresh manually.',
-      }),
-    );
-  await rememberVault(vault.path);
-  return vault;
 }
 
 function metadataFor(vault: VaultService) {
@@ -138,8 +167,12 @@ function metadataFor(vault: VaultService) {
 }
 
 async function relocate(relative: string, destination: string) {
+  if (relative === destination || relative.includes('\\') || destination.includes('\\'))
+    throw new Error('Choose a different, vault-relative destination using forward slashes.');
   const vault = requireService();
-  await vault.resolveEntry(relative);
+  const currentAnnotations = annotations;
+  const currentReminders = reminderService;
+  const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
   if (/\.md$/i.test(relative) && !/\.md$/i.test(destination))
     throw new Error('Markdown notes must keep the .md extension.');
@@ -176,7 +209,8 @@ async function relocate(relative: string, destination: string) {
   const annotationSnapshot = await store.read('annotations.json');
   const flashcards = await store.read('flashcards.json');
   const imageAlts = await store.read('image-alts.json');
-  const reminderSnapshot = await store.read('reminders.json');
+  const bookmarksSnapshot = await store.read('bookmarks.json');
+  let reminderSnapshot: unknown = null;
   const written: typeof repairs = [];
   let moved = false;
   let rolledBack = false;
@@ -190,16 +224,34 @@ async function relocate(relative: string, destination: string) {
     await store.write('flashcards.json', flashcards).catch(() => undefined);
     await store.write('image-alts.json', imageAlts).catch(() => undefined);
     await store.write('reminders.json', reminderSnapshot).catch(() => undefined);
+    await store.write('bookmarks.json', bookmarksSnapshot).catch(() => undefined);
   };
   const operation = async () => {
     try {
-      await vault.moveEntry(relative, destination);
-      moved = true;
-      for (const item of repairs) {
-        await vault.saveNote(item.nextPath, item.after, item.before);
-        written.push(item);
+      metadataFor(vault);
+      reminderSnapshot = await store.read('reminders.json');
+      try {
+        await vault.moveEntry(relative, destination);
+        moved = true;
+      } catch (error) {
+        // Index/metadata updates may fail after the filesystem rename has committed.
+        try {
+          const targetStat = await lstat(await vault.resolveEntry(destination));
+          const sourceMissing = await lstat(await vault.resolveEntry(relative, true)).then(
+            () => false,
+            (failure: NodeJS.ErrnoException) => failure.code === 'ENOENT',
+          );
+          moved = sourceMissing && targetStat.dev === sourceStat.dev && targetStat.ino === sourceStat.ino;
+        } catch {
+          /* The move did not commit. */
+        }
+        throw error;
       }
-      await annotations?.migratePaths(relative, destination);
+      for (const item of repairs) {
+        written.push(item);
+        await vault.saveNote(item.nextPath, item.after, item.before);
+      }
+      await currentAnnotations?.migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
         ['image-alts.json', imageAlts],
@@ -223,11 +275,28 @@ async function relocate(relative: string, destination: string) {
     }
   };
   try {
-    return reminderService
-      ? await reminderService.withPathMigration(relative, destination, operation)
+    const result = currentReminders
+      ? await currentReminders.withPathMigration(relative, destination, operation)
       : await operation();
+    for (const target of notificationTargets.values()) {
+      if (target.path === relative || target.path.startsWith(`${relative}/`))
+        target.path = destination + target.path.slice(relative.length);
+    }
+    return result;
   } catch (error) {
     await rollback();
+    if (moved && currentReminders && service === vault) {
+      currentReminders.stop();
+      const vaultInfo = await vault.getVault();
+      reminderService = makeReminders(vault, vaultInfo);
+      await reminderService.initialize().catch(() =>
+        sendReminder({
+          type: 'error',
+          vaultPath: vaultInfo.path,
+          message: 'Could not restart reminders after a failed move. Reopen the vault.',
+        }),
+      );
+    }
     throw error;
   }
 }
@@ -367,12 +436,14 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string' || typeof name !== 'string') throw new Error('Invalid rename request.');
     if (!name || name === '.' || name === '..' || /[\\/:]/.test(name)) throw new Error('Invalid item name.');
-    return relocate(relativePath, path.posix.join(path.posix.dirname(relativePath), name));
+    return serializeVaultOperation(() =>
+      relocate(relativePath, path.posix.join(path.posix.dirname(relativePath), name)),
+    );
   });
   ipcMain.handle(IPC_CHANNELS.vaultMove, async (event, relative: unknown, destination: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || typeof destination !== 'string') throw new Error('Invalid move request.');
-    return relocate(relative, destination);
+    return serializeVaultOperation(() => relocate(relative, destination));
   });
   ipcMain.handle(IPC_CHANNELS.vaultSearch, async (event, query: unknown) => {
     assertTrusted(event, isTrustedSender);

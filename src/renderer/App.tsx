@@ -55,6 +55,7 @@ import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
 import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
+import Modal from './components/Modal';
 
 type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert';
 
@@ -134,6 +135,17 @@ export default function App() {
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
   const [assetDirty, setAssetDirty] = useState(false);
+  const [assetBusy, setAssetBusy] = useState(false);
+  const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
+  const [switchingVault, setSwitchingVault] = useState(false);
+  const switchingRef = useRef(false);
+  const vaultGenerationRef = useRef(0);
+  const vaultPathRef = useRef(vault?.path);
+  vaultPathRef.current = vault?.path;
+  const updateNoteContent = (id: string, content: string) => {
+    if (switchingRef.current) return;
+    setOpenNotes((items) => items.map((note) => (note.id === id ? { ...note, content } : note)));
+  };
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
@@ -203,8 +215,10 @@ export default function App() {
   const reminderState = useReminders(
     vault?.path,
     (relative) => {
+      if (switchingRef.current) return;
       const entry = findEntry(vault?.entries ?? [], relative);
       if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open reminder note.'));
+      else setStatusMessage('The reminder note is no longer available in this vault.');
     },
     setStatusMessage,
   );
@@ -244,22 +258,31 @@ export default function App() {
 
   useEffect(() => {
     const bridge = window.a11yNotebook;
+    const generation = vaultGenerationRef.current;
     if (bridge)
       void bridge.vault
         .get()
-        .then(setVault)
+        .then((latest) => {
+          if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
+        })
         .catch(() => setStatusMessage('Could not open the last vault.'));
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
     if (!vault || !window.a11yNotebook) {
       setTasks([]);
       return;
     }
     void window.a11yNotebook.vault
       .getTasks()
-      .then(setTasks)
+      .then((items) => {
+        if (!cancelled) setTasks(items);
+      })
       .catch(() => setStatusMessage('Could not load tasks.'));
+    return () => {
+      cancelled = true;
+    };
   }, [vault]);
   useEffect(() => {
     let cancelled = false;
@@ -279,6 +302,7 @@ export default function App() {
   }, [vault]);
 
   useEffect(() => {
+    let cancelled = false;
     if (!vault || !window.a11yNotebook) {
       setLinks([]);
       setBookmarks([]);
@@ -286,10 +310,14 @@ export default function App() {
     }
     void Promise.all([window.a11yNotebook.vault.getLinkIndex(), window.a11yNotebook.vault.getBookmarks()])
       .then(([index, savedBookmarks]) => {
+        if (cancelled) return;
         setLinks(index.links);
         setBookmarks(savedBookmarks);
       })
       .catch(() => setStatusMessage('Could not refresh vault links and bookmarks.'));
+    return () => {
+      cancelled = true;
+    };
   }, [vault]);
 
   useEffect(() => {
@@ -420,22 +448,30 @@ export default function App() {
 
   const openEntry = async (entry: VaultEntry) => {
     const bridge = window.a11yNotebook;
-    if (!bridge) return;
+    if (!bridge || switchingRef.current) return;
+    const root = vaultPathRef.current;
     setTreeSelection(entry.path);
     if (assetRegistry.resolve(entry.path)) {
-      if (!assetTabOpen) {
-        setAssetInitialPath(entry.path);
-        setAssetTabOpen(true);
+      if (assetDirty || assetBusy) {
+        setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
+        return;
       }
+      setAssetInitialPath(entry.path);
+      setAssetSelectionVersion((version) => version + 1);
+      setAssetTabOpen(true);
       setSelectedTab('assets');
       return;
     }
     if (entry.kind === 'attachment') {
       if (/\.(?:txt|csv|html?)$/i.test(entry.path)) {
-        setAttachment(await bridge.vault.readAttachment(entry.path));
+        const preview = await bridge.vault.readAttachment(entry.path);
+        if (switchingRef.current || vaultPathRef.current !== root) return;
+        setAttachment(preview);
         setSelectedTab('attachment');
       } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(entry.path)) {
-        setImageAlt(await bridge.vault.getImageAlt(entry.path));
+        const alt = await bridge.vault.getImageAlt(entry.path);
+        if (switchingRef.current || vaultPathRef.current !== root) return;
+        setImageAlt(alt);
         setAttachment({ path: entry.path, text: '', kind: 'image' });
         setSelectedTab('attachment');
       } else {
@@ -451,6 +487,7 @@ export default function App() {
       return;
     }
     const content = await bridge.vault.readNote(entry.path);
+    if (switchingRef.current || vaultPathRef.current !== root) return;
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
@@ -475,13 +512,25 @@ export default function App() {
   };
 
   const refreshVault = async () => {
+    const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
     const latest = await window.a11yNotebook?.vault.get();
-    if (latest) setVault(latest);
+    if (
+      latest &&
+      latest.path === root &&
+      vaultPathRef.current === root &&
+      !switchingRef.current &&
+      generation === vaultGenerationRef.current
+    )
+      setVault(latest);
   };
 
   const refreshLinkIndex = async () => {
+    const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
     const index = await window.a11yNotebook?.vault.getLinkIndex();
     const savedBookmarks = await window.a11yNotebook?.vault.getBookmarks();
+    if (switchingRef.current || vaultPathRef.current !== root || generation !== vaultGenerationRef.current) return;
     if (index) setLinks(index.links);
     if (savedBookmarks) setBookmarks(savedBookmarks);
   };
@@ -747,6 +796,7 @@ export default function App() {
   }, [openNotes, selectedTab, activeConflict, checkingDisk, checkDisk, settings.autosaveDelay, itemDialog]);
 
   const handleCommand = (commandId: CommandId) => {
+    if (switchingRef.current) return;
     if (commandId === 'insert-attachment') {
       if (!currentNote || mode !== 'edit') {
         setStatusMessage('Open a note in edit mode first.');
@@ -779,6 +829,7 @@ export default function App() {
         setStatusMessage('Open a vault before using a template.');
         return;
       }
+      const root = vault.path;
       void Promise.all(
         allEntries
           .filter((entry) => entry.kind === 'note' && entry.path.startsWith('Templates/'))
@@ -789,6 +840,7 @@ export default function App() {
           })),
       )
         .then((templates) => {
+          if (switchingRef.current || vaultPathRef.current !== root) return;
           setUserTemplates(templates);
           setActiveDialog('template');
         })
@@ -818,14 +870,24 @@ export default function App() {
       return;
     }
     if (commandId === 'open-vault') {
-      if (assetDirty || openNotes.some((note) => note.content !== note.saved) || activeConflict) {
+      if (
+        assetDirty ||
+        assetBusy ||
+        openNotes.some((note) => note.content !== note.saved) ||
+        activeConflict ||
+        switchingRef.current
+      ) {
         setStatusMessage('Save or resolve unsaved changes before opening another vault.');
         return;
       }
+      switchingRef.current = true;
+      vaultGenerationRef.current += 1;
+      setSwitchingVault(true);
       void window.a11yNotebook?.vault
         .open()
         .then((opened) => {
           if (opened) {
+            vaultPathRef.current = opened.path;
             setVault(opened);
             setOpenNotes([]);
             setAttachment(null);
@@ -836,7 +898,15 @@ export default function App() {
             setStatusMessage(`Opened vault ${opened.name}.`);
           }
         })
-        .catch(() => setStatusMessage('Could not open the selected vault.'));
+        .catch(() => setStatusMessage('Could not open the selected vault.'))
+        .finally(() => {
+          switchingRef.current = false;
+          setSwitchingVault(false);
+        });
+      if (!window.a11yNotebook) {
+        switchingRef.current = false;
+        setSwitchingVault(false);
+      }
       return;
     }
     if (commandId === 'new-notebook') {
@@ -854,9 +924,14 @@ export default function App() {
     }
     if (commandId === 'close-current-tab') {
       if (selectedTab === 'assets') {
+        if (assetBusy) {
+          setStatusMessage('Wait for the cognitive asset operation to finish.');
+          return;
+        }
         if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
         setAssetTabOpen(false);
         setAssetDirty(false);
+        setAssetBusy(false);
         setAssetInitialPath(undefined);
         setSelectedTab('welcome');
         return;
@@ -1140,7 +1215,9 @@ export default function App() {
               entries={vault.entries}
               selectedPath={treeSelection}
               onSelect={(entry) => setTreeSelection(entry.path)}
-              onOpen={(entry) => void openEntry(entry)}
+              onOpen={(entry) =>
+                void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'))
+              }
               onRename={renameEntry}
               onDelete={(entryPath) => void deleteEntry(entryPath)}
               onAction={handleTreeAction}
@@ -1213,9 +1290,14 @@ export default function App() {
                       aria-label={`Close ${tab.label}`}
                       onClick={() => {
                         if (tab.id === 'assets') {
+                          if (assetBusy) {
+                            setStatusMessage('Wait for the cognitive asset operation to finish.');
+                            return;
+                          }
                           if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
                           setAssetTabOpen(false);
                           setAssetDirty(false);
+                          setAssetBusy(false);
                           setAssetInitialPath(undefined);
                           if (selected) setSelectedTab('welcome');
                           return;
@@ -1268,9 +1350,11 @@ export default function App() {
                 <AssetsWorkspace
                   paths={allEntries.filter((entry) => entry.kind !== 'notebook').map((entry) => entry.path)}
                   initialPath={assetInitialPath}
+                  selectionVersion={assetSelectionVersion}
                   refresh={refreshVault}
                   announce={setStatusMessage}
                   onDirty={setAssetDirty}
+                  onBusy={setAssetBusy}
                 />
               </div>
             ) : null}
@@ -1415,27 +1499,20 @@ export default function App() {
                     notePaths={notePaths}
                     announce={setStatusMessage}
                     onRequestAttachment={() => handleCommand('insert-attachment')}
-                    onContentChange={(content) =>
-                      setOpenNotes((items) =>
-                        items.map((note) => (note.id === currentNote.id ? { ...note, content } : note)),
-                      )
-                    }
+                    onContentChange={(content) => updateNoteContent(currentNote.id, content)}
                   />
                 ) : (
                   annotationTools.toolbar
                 )}
                 <div ref={annotationTools.documentRef}>
                   <MarkdownDocument
+                    disabled={switchingVault}
                     notePath={currentNote.path}
                     editorRef={editorRef}
                     content={currentNote.content}
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
-                    onChange={(content) =>
-                      setOpenNotes((current) =>
-                        current.map((note) => (note.id === currentNote.id ? { ...note, content } : note)),
-                      )
-                    }
+                    onChange={(content) => updateNoteContent(currentNote.id, content)}
                     onNavigate={(href) => void openLinkTarget(href)}
                   />
                 </div>
@@ -1582,9 +1659,7 @@ export default function App() {
           textareaRef={editorRef}
           announce={setStatusMessage}
           onClose={closeDialog}
-          onChange={(content) =>
-            setOpenNotes((items) => items.map((note) => (note.id === currentNote.id ? { ...note, content } : note)))
-          }
+          onChange={(content) => updateNoteContent(currentNote.id, content)}
         />
       ) : null}
       {activeDialog === 'template' ? (
@@ -1614,6 +1689,17 @@ export default function App() {
           onClose={() => setItemDialog(null)}
           onSubmit={submitItem}
         />
+      ) : null}
+      {switchingVault ? (
+        <Modal
+          title="Opening vault"
+          titleId="opening-vault-title"
+          onClose={() => setStatusMessage('Wait for the folder selection or vault initialization to finish.')}
+        >
+          <p>
+            Choose a folder in the native dialog, or wait while it is opened. Editing is paused to protect your notes.
+          </p>
+        </Modal>
       ) : null}
       {activeConflict && !itemDialog && !activeDialog ? (
         <ConflictDialog key={activeConflict.path} conflict={activeConflict} onResolve={resolveConflict} />

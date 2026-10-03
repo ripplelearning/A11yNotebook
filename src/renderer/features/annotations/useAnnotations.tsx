@@ -27,7 +27,11 @@ export interface UseAnnotationsOptions {
 
 type Draft = { path: string; anchor: AnnotationAnchor; annotation?: NoteAnnotation };
 
-function AnnotationEditor({ draft, onSave, onClose }: {
+function AnnotationEditor({
+  draft,
+  onSave,
+  onClose,
+}: {
   draft: Draft;
   onSave: (values: { color: AnnotationColor; label: string; comment: string }) => Promise<void>;
   onClose: () => void;
@@ -39,42 +43,83 @@ function AnnotationEditor({ draft, onSave, onClose }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   return (
-    <Modal titleId={`${id}-title`} title={draft.annotation ? 'Edit annotation' : 'Add annotation'} onClose={() => { if (!busy) onClose(); }}>
-      <form onSubmit={async (event) => {
-        event.preventDefault();
-        setBusy(true);
-        setError('');
-        try {
-          await onSave({ color, label: label.trim(), comment });
-        } catch {
-          setError('Could not save annotation. Please try again.');
-          setBusy(false);
-        }
-      }}>
+    <Modal
+      titleId={`${id}-title`}
+      title={draft.annotation ? 'Edit annotation' : 'Add annotation'}
+      onClose={() => {
+        if (!busy) onClose();
+      }}
+    >
+      <form
+        onSubmit={async (event) => {
+          event.preventDefault();
+          setBusy(true);
+          setError('');
+          try {
+            await onSave({ color, label: label.trim(), comment });
+          } catch {
+            setError('Could not save annotation. Please try again.');
+            setBusy(false);
+          }
+        }}
+      >
         <div className="modal-body">
           <blockquote>{draft.anchor.quote}</blockquote>
           <label htmlFor={`${id}-color`}>Highlight color</label>
-          <select id={`${id}-color`} value={color} disabled={busy} onChange={(event) => setColor(event.target.value as AnnotationColor)}>
-            {ANNOTATION_COLORS.map((value) => <option key={value} value={value}>{value}</option>)}
+          <select
+            id={`${id}-color`}
+            value={color}
+            disabled={busy}
+            onChange={(event) => setColor(event.target.value as AnnotationColor)}
+          >
+            {ANNOTATION_COLORS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
           </select>
           <label htmlFor={`${id}-label`}>Highlight label</label>
-          <input id={`${id}-label`} data-autofocus value={label} required maxLength={ANNOTATION_LIMITS.label} disabled={busy}
-            onChange={(event) => setLabel(event.target.value)} />
+          <input
+            id={`${id}-label`}
+            data-autofocus
+            value={label}
+            required
+            maxLength={ANNOTATION_LIMITS.label}
+            disabled={busy}
+            onChange={(event) => setLabel(event.target.value)}
+          />
           <label htmlFor={`${id}-comment`}>Comment</label>
-          <textarea id={`${id}-comment`} value={comment} maxLength={ANNOTATION_LIMITS.comment} disabled={busy}
-            onChange={(event) => setComment(event.target.value)} />
+          <textarea
+            id={`${id}-comment`}
+            value={comment}
+            maxLength={ANNOTATION_LIMITS.comment}
+            disabled={busy}
+            onChange={(event) => setComment(event.target.value)}
+          />
           {error && <p role="alert">{error}</p>}
         </div>
         <div className="modal-actions">
-          <button type="submit" disabled={busy || !label.trim()}>{busy ? 'Saving…' : 'Save annotation'}</button>
-          <button type="button" disabled={busy} onClick={onClose}>Cancel</button>
+          <button type="submit" disabled={busy || !label.trim()}>
+            {busy ? 'Saving…' : 'Save annotation'}
+          </button>
+          <button type="button" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
         </div>
       </form>
     </Modal>
   );
 }
 
-export function AnnotationPane({ annotations, renderedIds, enabled, busy, onEdit, onDelete, onJump }: {
+export function AnnotationPane({
+  annotations,
+  renderedIds,
+  enabled,
+  busy,
+  onEdit,
+  onDelete,
+  onJump,
+}: {
   annotations: NoteAnnotation[];
   renderedIds: ReadonlySet<string>;
   enabled: boolean;
@@ -93,13 +138,33 @@ export function AnnotationPane({ annotations, renderedIds, enabled, busy, onEdit
             <strong>{annotation.label}</strong> <span>({annotation.color} highlight)</span>
             <blockquote>{annotation.anchor.quote}</blockquote>
             {annotation.comment && <p>{annotation.comment}</p>}
-            {enabled && !renderedIds.has(annotation.id) && <p>Highlight unavailable: text changed, is ambiguous, or overlaps another annotation.</p>}
-            <button type="button" disabled={!enabled || !renderedIds.has(annotation.id)}
-              aria-label={`Jump to annotation: ${annotation.label}`} onClick={() => onJump(annotation)}>Jump to text</button>
-            <button type="button" disabled={busy} aria-label={`Edit annotation: ${annotation.label}`}
-              onClick={() => onEdit(annotation)}>Edit</button>
-            <button type="button" disabled={busy} aria-label={`Delete annotation: ${annotation.label}`}
-              onClick={() => onDelete(annotation)}>Delete</button>
+            {enabled && !renderedIds.has(annotation.id) && (
+              <p>Highlight unavailable: text changed, is ambiguous, or overlaps another annotation.</p>
+            )}
+            <button
+              type="button"
+              disabled={!enabled || !renderedIds.has(annotation.id)}
+              aria-label={`Jump to annotation: ${annotation.label}`}
+              onClick={() => onJump(annotation)}
+            >
+              Jump to text
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-label={`Edit annotation: ${annotation.label}`}
+              onClick={() => onEdit(annotation)}
+            >
+              Edit
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              aria-label={`Delete annotation: ${annotation.label}`}
+              onClick={() => onDelete(annotation)}
+            >
+              Delete
+            </button>
           </li>
         ))}
       </ul>
@@ -109,7 +174,15 @@ export function AnnotationPane({ annotations, renderedIds, enabled, busy, onEdit
 
 /** Attach documentRef around MarkdownDocument only; put toolbar above it and pane in the right-hand pane. */
 export function useAnnotations({
-  path, content, enabled, annotations, onAdd, onUpdate, onDelete, bindShortcut = true, announce,
+  path,
+  content,
+  enabled,
+  annotations,
+  onAdd,
+  onUpdate,
+  onDelete,
+  bindShortcut = true,
+  announce,
 }: UseAnnotationsOptions) {
   const documentRef = useRef<HTMLDivElement>(null);
   const [draft, setDraft] = useState<Draft | null>(null);
@@ -126,8 +199,15 @@ export function useAnnotations({
   useLayoutEffect(() => {
     const root = documentRef.current;
     if (!root) return;
-    const next = enabled ? renderAnnotationMarks(root, annotations.filter((item) => item.path === path)) : new Set<string>();
-    setRenderedIds((previous) => previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next);
+    const next = enabled
+      ? renderAnnotationMarks(
+          root,
+          annotations.filter((item) => item.path === path),
+        )
+      : new Set<string>();
+    setRenderedIds((previous) =>
+      previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next,
+    );
     return () => clearAnnotationMarks(root);
   }, [annotations, content, enabled, path]);
 
@@ -151,7 +231,16 @@ export function useAnnotations({
   useEffect(() => {
     if (!bindShortcut) return;
     const handleKey = (event: KeyboardEvent) => {
-      if (enabled && !document.querySelector('[role="dialog"]') && !event.defaultPrevented && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === 'a') {
+      if (
+        enabled &&
+        !document.querySelector('[role="dialog"]') &&
+        !event.defaultPrevented &&
+        event.ctrlKey &&
+        event.shiftKey &&
+        !event.altKey &&
+        !event.metaKey &&
+        event.key.toLowerCase() === 'a'
+      ) {
         event.preventDefault();
         beginRef.current();
       }
@@ -163,40 +252,63 @@ export function useAnnotations({
   const activeDraft = draft?.path === path ? draft : null;
   const toolbar = (
     <>
-      <button type="button" disabled={!enabled || !path || busy} aria-keyshortcuts={bindShortcut ? 'Control+Shift+A' : undefined}
-        onMouseDown={(event) => event.preventDefault()} onClick={begin}>Annotate selection</button>
+      <button
+        type="button"
+        disabled={!enabled || !path || busy}
+        aria-keyshortcuts={bindShortcut ? 'Control+Shift+A' : undefined}
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={begin}
+      >
+        Annotate selection
+      </button>
       {!announce && <p role="status">{status}</p>}
-      {activeDraft && <AnnotationEditor key={activeDraft.annotation?.id ?? 'new'} draft={activeDraft}
-        onClose={() => setDraft(null)}
-        onSave={async (values) => {
-          if (currentPath.current !== activeDraft.path) throw new Error('The selected note changed.');
-          if (activeDraft.annotation) await onUpdate(activeDraft.annotation.id, values);
-          else await onAdd({ path: activeDraft.path, anchor: activeDraft.anchor, ...values });
-          setDraft(null);
-          report('Annotation saved.');
-        }} />}
+      {activeDraft && (
+        <AnnotationEditor
+          key={activeDraft.annotation?.id ?? 'new'}
+          draft={activeDraft}
+          onClose={() => setDraft(null)}
+          onSave={async (values) => {
+            if (currentPath.current !== activeDraft.path) throw new Error('The selected note changed.');
+            if (activeDraft.annotation) await onUpdate(activeDraft.annotation.id, values);
+            else await onAdd({ path: activeDraft.path, anchor: activeDraft.anchor, ...values });
+            setDraft(null);
+            report('Annotation saved.');
+          }}
+        />
+      )}
     </>
   );
-  const pane = <AnnotationPane annotations={current} renderedIds={renderedIds} enabled={enabled} busy={busy}
-    onEdit={(annotation) => setDraft({ path: annotation.path, anchor: annotation.anchor, annotation })}
-    onJump={(annotation) => {
-      if (documentRef.current && !jumpToAnnotation(documentRef.current, annotation.id)) report('Annotation text could not be located.');
-    }}
-    onDelete={async (annotation) => {
-      setBusy(true);
-      try {
-        await onDelete(annotation.id);
-        report('Annotation deleted.');
-      } catch {
-        report('Could not delete annotation. Please try again.');
-      } finally {
-        setBusy(false);
-      }
-    }} />;
+  const pane = (
+    <AnnotationPane
+      annotations={current}
+      renderedIds={renderedIds}
+      enabled={enabled}
+      busy={busy}
+      onEdit={(annotation) => setDraft({ path: annotation.path, anchor: annotation.anchor, annotation })}
+      onJump={(annotation) => {
+        if (documentRef.current && !jumpToAnnotation(documentRef.current, annotation.id))
+          report('Annotation text could not be located.');
+      }}
+      onDelete={async (annotation) => {
+        setBusy(true);
+        try {
+          await onDelete(annotation.id);
+          report('Annotation deleted.');
+        } catch {
+          report('Could not delete annotation. Please try again.');
+        } finally {
+          setBusy(false);
+        }
+      }}
+    />
+  );
   return { documentRef, toolbar, pane, begin };
 }
 
-export function AnnotationDocument({ documentRef, children }: {
+export function AnnotationDocument({
+  documentRef,
+  children,
+}: {
   documentRef: RefObject<HTMLDivElement>;
   children: ReactNode;
 }) {

@@ -7,7 +7,9 @@ function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
   let notes = [{ path: 'Study.md', content }];
   const notify = vi.fn();
-  const writeStore = vi.fn(async (store: ReminderStore) => { persisted = structuredClone(store); });
+  const writeStore = vi.fn(async (store: ReminderStore) => {
+    persisted = structuredClone(store);
+  });
   const getNotes = vi.fn(async () => notes);
   const options = {
     readStore: async () => persisted,
@@ -20,8 +22,14 @@ function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
     onError: vi.fn(),
   };
   return {
-    service: createReminderService(options), options, notify, writeStore, getNotes,
-    setNotes: (next: typeof notes) => { notes = next; },
+    service: createReminderService(options),
+    options,
+    notify,
+    writeStore,
+    getNotes,
+    setNotes: (next: typeof notes) => {
+      notes = next;
+    },
     persisted: () => persisted,
   };
 }
@@ -34,14 +42,19 @@ afterEach(() => vi.useRealTimers());
 
 describe('reminder parsing and validation', () => {
   it('parses both markers, retains source lines, and ignores code fences and malformed dates', () => {
-    const tasks = parseTaskReminders([
-      '- [ ] Read remind:2026-10-03 09:00',
-      '- [X] Submit ⏰ 2026-10-05 12:30',
-      '- [ ] Bad remind:2026-02-30 10:00',
-      '- [ ] Bad remind:2026-10-03 25:00',
-      '- [ ] Bad remind:2026-10-03 10:00:30',
-      '```md', '- [ ] Example remind:2026-10-03 09:00', '```',
-    ].join('\n'), 'Study.md');
+    const tasks = parseTaskReminders(
+      [
+        '- [ ] Read remind:2026-10-03 09:00',
+        '- [X] Submit ⏰ 2026-10-05 12:30',
+        '- [ ] Bad remind:2026-02-30 10:00',
+        '- [ ] Bad remind:2026-10-03 25:00',
+        '- [ ] Bad remind:2026-10-03 10:00:30',
+        '```md',
+        '- [ ] Example remind:2026-10-03 09:00',
+        '```',
+      ].join('\n'),
+      'Study.md',
+    );
     expect(tasks).toHaveLength(2);
     expect(tasks[0]).toMatchObject({ title: 'Read', line: 1, complete: false });
     expect(tasks[1]).toMatchObject({ title: 'Submit', line: 2, complete: true });
@@ -49,7 +62,14 @@ describe('reminder parsing and validation', () => {
   });
 
   it('rejects impossible calendar dates and timestamps rather than normalizing them', () => {
-    for (const value of ['2026-02-29 10:00', '2026-04-31 10:00', '2026-00-01 10:00', '2026-10-03 10:60', '2026-02-30T10:00:00Z', '2026-10-03T10:00:00+24:00']) {
+    for (const value of [
+      '2026-02-29 10:00',
+      '2026-04-31 10:00',
+      '2026-00-01 10:00',
+      '2026-10-03 10:60',
+      '2026-02-30T10:00:00Z',
+      '2026-10-03T10:00:00+24:00',
+    ]) {
       expect(parseReminderDate(value)).toBeNull();
     }
     expect(parseReminderDate('2028-02-29 10:00')).toBeInstanceOf(Date);
@@ -110,11 +130,21 @@ describe('vault reminder scheduler', () => {
   it('combines validated standalone reminders and task reminders, rejecting unsafe inputs', async () => {
     const f = fixture('- [ ] Read remind:2026-10-03 11:00');
     await f.service.initialize();
-    const items = await f.service.createReminder({ title: 'Appointment', path: 'Study.md', scheduledAt: '2026-10-03 10:05' });
+    const items = await f.service.createReminder({
+      title: 'Appointment',
+      path: 'Study.md',
+      scheduledAt: '2026-10-03 10:05',
+    });
     expect(items.map((item) => item.source)).toEqual(['standalone', 'task']);
-    await expect(f.service.createReminder({ title: 'Bad', path: '../Study.md', scheduledAt: '2026-10-03 10:05' })).rejects.toThrow();
-    await expect(f.service.createReminder({ title: 'Bad', path: 'Study.md', scheduledAt: '2026-02-30 10:05' })).rejects.toThrow();
-    await expect(f.service.createReminder({ title: 'Bad', path: 'Missing.md', scheduledAt: '2026-10-03 10:05' })).rejects.toThrow('Missing');
+    await expect(
+      f.service.createReminder({ title: 'Bad', path: '../Study.md', scheduledAt: '2026-10-03 10:05' }),
+    ).rejects.toThrow();
+    await expect(
+      f.service.createReminder({ title: 'Bad', path: 'Study.md', scheduledAt: '2026-02-30 10:05' }),
+    ).rejects.toThrow();
+    await expect(
+      f.service.createReminder({ title: 'Bad', path: 'Missing.md', scheduledAt: '2026-10-03 10:05' }),
+    ).rejects.toThrow('Missing');
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(f.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Appointment', status: 'fired' }));
     expect(f.persisted()).toMatchObject({ version: 1, standalone: [{ status: 'fired' }] });
@@ -140,7 +170,10 @@ describe('vault reminder scheduler', () => {
     let finish: (() => void) | undefined;
     const service = createReminderService({
       ...f.options,
-      writeStore: () => new Promise<void>((resolve) => { finish = resolve; }),
+      writeStore: () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
     });
     const initialized = service.initialize();
     await vi.waitFor(() => expect(finish).toBeDefined());
@@ -250,7 +283,9 @@ describe('vault reminder scheduler', () => {
     let finish: (() => void) | undefined;
     const moved = f.service.withPathMigration('Study.md', 'Moved.md', async () => {
       f.setNotes([{ path: 'Moved.md', content: '- [ ] Read remind:2026-10-03 09:00' }]);
-      await new Promise<void>((resolve) => { finish = resolve; });
+      await new Promise<void>((resolve) => {
+        finish = resolve;
+      });
       return 'relocated';
     });
     await vi.waitFor(() => expect(finish).toBeDefined());
@@ -270,9 +305,11 @@ describe('vault reminder scheduler', () => {
     const f = fixture();
     await f.service.initialize();
     const snapshot = structuredClone(f.persisted());
-    await expect(f.service.withPathMigration('Study.md', 'Moved.md', async () => {
-      throw new Error('Cannot move');
-    })).rejects.toThrow('Cannot move');
+    await expect(
+      f.service.withPathMigration('Study.md', 'Moved.md', async () => {
+        throw new Error('Cannot move');
+      }),
+    ).rejects.toThrow('Cannot move');
     expect(f.persisted()).toEqual(snapshot);
     const operation = vi.fn(async () => 'should not run');
     await expect(f.service.withPathMigration('../Study.md', 'Moved.md', operation)).rejects.toThrow('migration path');
@@ -285,10 +322,12 @@ describe('vault reminder scheduler', () => {
     const f = fixture();
     await f.service.initialize();
     f.writeStore.mockRejectedValueOnce(new Error('Disk full'));
-    await expect(f.service.withPathMigration('Study.md', 'Moved.md', async () => {
-      f.setNotes([{ path: 'Moved.md', content: '- [ ] Read remind:2026-10-03 09:00' }]);
-      return 'relocated';
-    })).rejects.toThrow('Disk full');
+    await expect(
+      f.service.withPathMigration('Study.md', 'Moved.md', async () => {
+        f.setNotes([{ path: 'Moved.md', content: '- [ ] Read remind:2026-10-03 09:00' }]);
+        return 'relocated';
+      }),
+    ).rejects.toThrow('Disk full');
     await expect(f.service.refresh()).rejects.toThrow('not active');
     expect(f.notify).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
