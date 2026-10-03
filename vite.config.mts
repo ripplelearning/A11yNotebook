@@ -9,13 +9,13 @@ const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self'",
   "style-src 'self'",
-  "img-src 'self' data:",
+  "img-src 'self' data: vault-file:",
   "font-src 'self'",
   "connect-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-src 'none'",
+  "frame-src 'self'",
 ].join('; ');
 
 function contentSecurityPolicy(): Plugin {

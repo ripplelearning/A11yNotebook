@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
@@ -10,6 +10,7 @@ import { setupVaultIpc } from './vault/ipc';
 
 const isDevelopment = !app.isPackaged;
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
+protocol.registerSchemesAsPrivileged([{ scheme: 'vault-file', privileges: { standard: true, secure: true } }]);
 
 // Compiled output lives in dist-electron/electron/, the renderer build in dist/.
 const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -110,7 +111,21 @@ if (!app.requestSingleInstanceLock()) {
       send: (status) => sendToRenderer(IPC_CHANNELS.updaterStatus, status),
       isTrustedSender,
     });
-    setupVaultIpc(isTrustedSender);
+    setupVaultIpc(
+      isTrustedSender,
+      (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.vaultChanged, event);
+      },
+      (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.vaultReminderEvent, event);
+          if (event.type === 'open') {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+    );
 
     Menu.setApplicationMenu(
       buildApplicationMenu((command) => {

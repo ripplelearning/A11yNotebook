@@ -1,10 +1,32 @@
 // Renders notes as sanitized semantic Markdown or a native textarea for editing.
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
+import type { RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
+import { imageUrl } from '../../../shared/attachments';
 
-function createMarkdown(links: VaultLink[]) {
+function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+  const renderImage = markdown.renderer.rules.image!;
+  markdown.renderer.rules.image = (tokens, index, options, environment, renderer) => {
+    const href = tokens[index].attrGet('src') ?? '';
+    const parts = notePath?.split('/').slice(0, -1) ?? [];
+    try {
+      if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(href)) throw new Error('External image.');
+      for (const part of decodeURIComponent(href).split('/')) {
+        if (part === '..') {
+          if (!parts.length) throw new Error('Outside vault.');
+          parts.pop();
+        } else if (part && part !== '.') parts.push(part);
+      }
+      const relative = parts.join('/');
+      if (!/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(relative)) throw new Error('Unsupported image.');
+      tokens[index].attrSet('src', imageUrl(relative));
+    } catch {
+      tokens[index].attrSet('src', '');
+    }
+    return renderImage(tokens, index, options, environment, renderer);
+  };
   markdown.inline.ruler.before('link', 'wiki_link', (state, silent) => {
     const match = /^\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]/.exec(state.src.slice(state.pos));
     if (!match) return false;
@@ -37,15 +59,26 @@ interface MarkdownDocumentProps {
   links: VaultLink[];
   onChange: (content: string) => void;
   onNavigate: (href: string) => void;
+  editorRef?: RefObject<HTMLTextAreaElement>;
+  notePath?: string;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
-export default function MarkdownDocument({ content, mode, links, onChange, onNavigate }: MarkdownDocumentProps) {
+export default function MarkdownDocument({
+  content,
+  mode,
+  links,
+  onChange,
+  onNavigate,
+  editorRef,
+  notePath,
+}: MarkdownDocumentProps) {
   if (mode === 'edit') {
     return (
       <label className="editor-label">
         Markdown source
         <textarea
+          ref={editorRef}
           aria-label="Markdown source"
           className="markdown-editor"
           value={content}
@@ -55,7 +88,10 @@ export default function MarkdownDocument({ content, mode, links, onChange, onNav
     );
   }
 
-  const html = DOMPurify.sanitize(createMarkdown(links).render(content));
+  const html = DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
+    ADD_URI_SAFE_ATTR: [],
+    ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.-:]|$))/i,
+  });
   return (
     <div
       className="document-body markdown-body"

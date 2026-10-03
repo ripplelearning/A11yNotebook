@@ -1,16 +1,46 @@
 import type { MenuCommand } from './ipc';
 import type { UpdaterStatus } from './updater';
 import type { VaultBookmark, VaultInfo, VaultLinkIndex, VaultTask } from './types';
+import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
+import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
+import type { AttachmentPreview } from './attachments';
+import type { NotebookSettings } from './settings';
+import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
+import type { VaultAsset } from './asset-bridge';
+import type { CardSchedule } from './assets';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;
   readNote(path: string): Promise<string>;
-  saveNote(path: string, content: string): Promise<void>;
+  saveNote(path: string, content: string, expectedContent?: string): Promise<void>;
   createNotebook(path: string): Promise<VaultInfo>;
-  createNote(path: string): Promise<VaultInfo>;
+  createNote(path: string, content?: string): Promise<VaultInfo>;
   rename(path: string, name: string): Promise<VaultInfo>;
+  move(path: string, destination: string): Promise<VaultInfo>;
+  search(query: VaultSearchQuery): Promise<VaultSearchResult[]>;
+  getTags(): Promise<string[]>;
+  onChanged(callback: (event: VaultChangedEvent) => void): () => void;
+  getAnnotations(path: string): Promise<NoteAnnotation[]>;
+  addAnnotation(annotation: NewAnnotation): Promise<NoteAnnotation>;
+  updateAnnotation(path: string, id: string, update: AnnotationUpdate): Promise<NoteAnnotation>;
+  deleteAnnotation(path: string, id: string): Promise<void>;
+  readAttachment(path: string): Promise<AttachmentPreview>;
+  getImageAlt(path: string): Promise<string>;
+  saveImageAlt(path: string, alt: string): Promise<void>;
+  getSettings(): Promise<NotebookSettings>;
+  saveSettings(settings: NotebookSettings): Promise<void>;
+  getReminders(): Promise<Reminder[]>;
+  createReminder(input: CreateReminderInput): Promise<Reminder[]>;
+  dismissReminder(id: string): Promise<Reminder[]>;
+  snoozeReminder(id: string, duration: SnoozeDuration): Promise<Reminder[]>;
+  onReminder(callback: (event: VaultReminderEvent) => void): () => void;
+  readAsset(path: string): Promise<VaultAsset>;
+  saveAsset(path: string, content: string, expectedContent: string): Promise<void>;
+  createAsset(path: string, content: string): Promise<VaultInfo>;
+  getFlashcardSchedules(path: string): Promise<Record<string, CardSchedule>>;
+  saveFlashcardSchedule(path: string, id: string, schedule: CardSchedule, expectedContent: string): Promise<void>;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;

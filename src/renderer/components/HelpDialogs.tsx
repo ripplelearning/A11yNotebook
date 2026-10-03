@@ -1,5 +1,6 @@
 import { APP_NAME, REPOSITORY_URL } from '../../shared/app-info';
-import { getKeyboardShortcuts } from '../../shared/command-registry';
+import { COMMANDS } from '../../shared/command-registry';
+import type { NotebookSettings } from '../../shared/settings';
 import Modal from './Modal';
 
 type DialogProps = { onClose: () => void };
@@ -11,8 +12,17 @@ const NAVIGATION_SHORTCUTS = [
   { label: 'Close a dialog', shortcut: 'Escape' },
 ];
 
-export function KeyboardShortcutsDialog({ onClose }: DialogProps) {
-  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts()];
+export function KeyboardShortcutsDialog({
+  onClose,
+  shortcuts = {},
+}: DialogProps & { shortcuts?: NotebookSettings['shortcuts'] }) {
+  const rows = [
+    ...NAVIGATION_SHORTCUTS,
+    ...COMMANDS.flatMap((command) => {
+      const shortcut = shortcuts[command.id] ?? command.shortcut;
+      return shortcut ? [{ label: command.label, shortcut }] : [];
+    }),
+  ];
   return (
     <Modal titleId="shortcuts-dialog-title" title="Keyboard Shortcuts" onClose={onClose} className="wide-modal">
       <div className="modal-body table-scroll">
