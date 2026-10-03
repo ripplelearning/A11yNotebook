@@ -173,6 +173,7 @@ export default function App() {
   const { checking: checkingDisk, checkDisk, clearAllConflicts } = synchronization;
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
+  const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
   const currentNoteEditLocked = currentNote?.path === lockedEditPath;
   const allEntries = flattenEntries(vault?.entries ?? []);
@@ -204,16 +205,21 @@ export default function App() {
 
   useEffect(() => {
     if (!(settings.noteEditLockMinutes ?? 0)) return;
-    if (!currentNote || currentNote.content === currentNote.saved) return;
+    if (!currentNote || currentNote.content === currentNote.saved) {
+      editLockStart.current = null;
+      return;
+    }
     const path = currentNote.path;
     const title = currentNote.title;
+    if (editLockStart.current?.path !== path) editLockStart.current = { path, timestamp: Date.now() };
+    const remaining = (settings.noteEditLockMinutes ?? 0) * 60_000 - (Date.now() - editLockStart.current.timestamp);
     const timer = window.setTimeout(
       () => {
         setLockedEditPath(path);
         setMode('read-only');
         setStatusMessage(`Editing locked for ${title}; save the unsaved changes to continue.`);
       },
-      (settings.noteEditLockMinutes ?? 0) * 60_000,
+      Math.max(0, remaining),
     );
     return () => window.clearTimeout(timer);
   }, [currentNote, settings.noteEditLockMinutes]);
