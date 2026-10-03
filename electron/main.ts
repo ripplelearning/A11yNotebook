@@ -6,6 +6,7 @@ import { IPC_CHANNELS, isMenuCommand, type MenuCommand } from '../src/shared/ipc
 import type { UpdaterStatus } from '../src/shared/updater';
 import { buildApplicationMenu } from './menu';
 import { setupUpdater } from './updater';
+import { setupVaultIpc } from './vault/ipc';
 
 const isDevelopment = !app.isPackaged;
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
@@ -109,6 +110,7 @@ if (!app.requestSingleInstanceLock()) {
       send: (status) => sendToRenderer(IPC_CHANNELS.updaterStatus, status),
       isTrustedSender,
     });
+    setupVaultIpc(isTrustedSender);
 
     Menu.setApplicationMenu(
       buildApplicationMenu((command) => {

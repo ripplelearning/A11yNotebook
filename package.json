@@ -29,13 +29,16 @@
     "lint": "eslint . --max-warnings 0",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "docs:shortcuts": "node scripts/generate-shortcuts.mjs",
     "test": "vitest run",
     "test:watch": "vitest",
     "package:win": "npm run build && electron-builder --win --publish never",
     "release:win": "npm run build && electron-builder --win --publish always"
   },
   "dependencies": {
+    "dompurify": "^3.4.16",
     "electron-updater": "^6.8.9",
+    "markdown-it": "^15.0.2",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

@@ -18,3 +18,11 @@
 - [ ] Update download progress is exposed as a progress bar with its value and announced politely about every 10 percent, never on every tick and never twice.
 - [ ] Update errors are announced as alerts and shown as readable text, never only visually.
 - [ ] The update dialog's buttons (Download, Not now, Hide, Restart and install, Install on exit, Try again, Close) have clear, unique accessible names.
+- [ ] The vault tree exposes tree/treeitem/group roles, expansion and selection state, and a single roving tab stop.
+- [ ] The tree supports arrows, Home/End, Enter, F2, Delete, type-ahead, and sibling expansion with `*`.
+- [ ] Vault file operations remain in the main process and reject traversal and symlink paths.
+- [ ] Markdown reading uses semantic headings, lists, tables, and links; edit mode uses a native textarea.
+- [ ] Open note tabs expose unsaved state, a labelled close action, and confirmation before discarding edits.
+- [ ] Manual JAWS, NVDA, and Narrator validation of the vault tree and Markdown reader/editor is completed on Windows.
+- [ ] Tasks are exposed in a labelled table with sortable headers and labelled filters; toggles update their Markdown source.
+- [ ] Internal and missing-note links have distinguishable accessible text; backlinks and bookmarks are lists under headings.

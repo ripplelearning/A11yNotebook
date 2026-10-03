@@ -22,52 +22,51 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 
 ## Phase 2 — Vault and notebook model
 
-- Typed local vault/notebook/file models
-- JSON-backed vault storage and import/export
-- Notebook creation, rename, move, delete, and metadata handling
-- File tree view with labels and keyboard navigation
-- Basic search and filter across notebook entries
+- ✅ A vault is a local folder; notebook folders, Markdown notes, and attachments are read directly from disk.
+- ✅ Human-readable hidden `.a11ynotebook/` metadata directory; the note format remains ordinary Markdown.
+- ✅ Native folder picker, recent-vault restoration, create notebook/note, rename, import, reveal, external open, and recycle-bin delete.
+- ✅ Main-process filesystem service validates relative paths and rejects symlinks; renderer receives only typed IPC operations.
+- ✅ Accessible tree with roving focus, expansion, arrows, Home/End, Enter, F2, Delete, type-ahead, and `*`.
+- ✅ Global search across Markdown names and bodies.
+- ⏳ External-change watching, moves, metadata/index cache, search filters, richer context menus, and recent-vault picker.
 
 ## Phase 3 — Reader and editor experience
 
-- Read-only document viewer with semantic navigation
-- Edit mode with focus-safe document editing
-- Structured headings, bookmarks, and notes
-- Local link and backlink awareness
-- Keyboard commands for editing and navigation
+- ✅ Sanitized semantic Markdown rendering and native textarea source editing.
+- ✅ Open-note tabs with close controls, unsaved state, Ctrl+W, Ctrl+Tab, and auto-save.
+- ✅ Wiki links and relative Markdown links with resolved/missing state; readable JSON link index, outgoing links, and backlinks.
+- ✅ Persistent note bookmarks with an accessible list and jump action.
+- ⏳ Formatting commands, heading/position bookmarks, annotations, and link repair prompts.
 
 ## Phase 4 — Search, indexing, and annotations
 
-- Full-text local search across notes, documents, PDFs, ePubs, and web captures
-- Bookmarks and annotations
-- Link graph and backlink tracking
+- ⏳ Persistent indexed search, search filters, and annotations.
+- ⏳ Search beyond Markdown notes (documents, PDFs, ePubs, and web captures).
 - User-generated tags and metadata suggestions
 
 ## Phase 5 — Tasks, reminders, and project planning
 
-- Todo lists and checklist items
-- Reminders and calendar-like organization patterns
+- ✅ Markdown checkbox tasks with optional due dates/priorities, filters, sortable table, and source-file toggles.
+- ⏳ Native reminders/notifications and calendar-like organization.
 - Project tracking and milestone summaries
 - Sortable tables and cognitive assets
 
 ## Phase 6 — Cognitive assets and templates
 
-- Mind maps, outlines, flashcards, and tables
-- User-editable templates and custom asset modules
+- ⏳ Mind maps, outlines, flashcards, and tables.
+- ⏳ User-editable templates and custom asset modules.
 - Extensible asset model for later plugin architecture
 
 ## Phase 7 — Security and local protection
 
-- Optional vault password protection
-- Editing lock requirements
+- ⏳ Optional vault password protection and editing locks (requires a reviewed encryption design).
 - Secure local storage model
 - Audit logging for sensitive changes
 
 ## Phase 8 — Import and document support
 
-- Markdown, PDF, ePub, HTML, and web capture previews
-- File attachments and reference panes
-- Link resolution and file metadata extraction
+- ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
+- ⏳ In-app PDF/ePub/HTML/web capture previews and link resolution.
 
 ## Phase 9 — Accessibility validation and release readiness
 

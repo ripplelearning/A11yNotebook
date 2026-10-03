@@ -1,20 +1,27 @@
 # A11y Notebook
 
 A11y Notebook is a desktop app for keeping personal knowledge organized locally and securely. It is built for
-Windows first and designed for accessibility from the start. This early version covers the application shell,
-command system, keyboard model, Windows installer, and in-app updater. The full knowledge vault comes in later
-phases.
+Windows first and designed for accessibility from the start. The current phase includes local folders as vaults,
+Markdown notes, attachments, an accessible file tree, note tabs, a sanitized reader, and a plain-text editor.
 
 ## Current scope
 
 - An accessible shell with a header, menu bar, navigation pane, tabs, main content pane, right pane, and status bar.
+- Local vault folders with notebooks as subfolders, Markdown notes, and attachments. Vault metadata is stored as
+  readable JSON under `.a11ynotebook/`.
+- Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
+  Explorer reveal, external open, and recent-vault restoration.
+- Semantic Markdown reading and a native textarea editor with Ctrl+S and idle autosave.
+- Global text search over Markdown note names and contents.
+- Checkbox tasks indexed from Markdown, with due dates and priorities, filters, and a sortable table that updates source notes.
+- Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
 - A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
-- Tabs that follow the WAI-ARIA tabs pattern (arrow keys, Home, End, roving focus).
+- Closable tabs that follow the WAI-ARIA tabs pattern (arrow keys, Home, End, roving focus).
 - Switching between read-only and edit mode, with announcements in the status bar.
 - A Help menu with **Check for Updates**, **Keyboard Shortcuts**, and **About A11y Notebook**.
 - A Windows installer (`.exe`), a portable `.exe`, and a secure in-app updater that uses GitHub Releases.
-- Tests for the command registry, focus management, dialogs, and updater logic.
+- Tests for vault path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
 - Documentation of how HomerDev influenced the design without copying it.
 
 ## Accessibility commitments
@@ -47,6 +54,7 @@ npm test           # run the Vitest suite
 npm run typecheck  # type check the renderer and the Electron main/preload code
 npm run lint       # ESLint
 npm run format     # Prettier
+npm run docs:shortcuts # regenerate docs/keyboard-shortcuts.md from the command registry
 npm run build      # build the renderer (dist/) and the main/preload code (dist-electron/)
 ```
 
@@ -120,8 +128,8 @@ the latest changes.
   page inside the app cannot change it.
 - The app embeds no GitHub token. Public releases do not need one.
 - The renderer runs with `contextIsolation`, `sandbox`, and without Node integration. It can reach only a small,
-  typed updater API. The main process accepts calls only on whitelisted IPC channels, and only from the app's own
-  window.
+  typed updater and vault APIs. The main process accepts calls only on whitelisted IPC channels, and only from the
+  app's own window. Vault paths are validated against the open vault.
 - Release notes are shown as plain text, never as HTML.
 - **Code signing:** production releases should be signed with a Windows code-signing certificate (add
   `WINDOWS_CERTIFICATE` and `WINDOWS_CERTIFICATE_PASSWORD` repository secrets and uncomment the `CSC_LINK` and
@@ -142,9 +150,16 @@ the latest changes.
 
 ## Roadmap summary
 
-Phase 1 (the foundation, packaging, and updater) is done. Later phases add vault and notebook persistence,
-document editing, full-text search, task management, cognitive assets, templates, annotations, bookmarks,
-PDF/ePub/web viewing, and password protection. See [`docs/roadmap.md`](docs/roadmap.md).
+The vault, basic Markdown reading/editing, and note search are implemented in this phase. Link indexing,
+annotations, bookmarks, tasks, shortcut customization, and advanced document support remain planned. See
+[`docs/roadmap.md`](docs/roadmap.md) for completed work and limitations.
+
+## Documentation
+
+- [User guide](docs/user-guide.md)
+- [Architecture](docs/architecture.md)
+- [Keyboard shortcuts](docs/keyboard-shortcuts.md) (`npm run docs:shortcuts` regenerates this file)
+- [Accessibility testing strategy](docs/accessibility/testing-strategy.md)
 
 ## License
 

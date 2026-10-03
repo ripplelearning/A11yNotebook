@@ -25,7 +25,7 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 
 - Smoke-test the Electron shell startup path.
 - Confirm the browser window loads the renderer and displays the expected app shell.
-- Confirm the preload bridge is enabled without exposing Node to the renderer. `window.a11yNotebook` has only `updater` and `onMenuCommand`, and `require` and `process` are undefined.
+- Confirm the preload bridge is enabled without exposing Node to the renderer. `window.a11yNotebook` exposes only typed updater, vault, and menu-command operations; `require` and `process` are undefined.
 - Confirm the packaged build loads `dist/index.html` from the asar archive with the Content Security Policy in place.
 - Updater state machine unit tests (`src/test/updater-controller.test.ts`): development and portable builds never contact GitHub, nothing downloads without consent, and errors are reported once.
 
@@ -44,6 +44,11 @@ Recommended manual checks:
 - NVDA on Windows 11
 - Narrator on Windows 11
 - Keyboard-only navigation of menu bar, panes, tabs, search, and command palette
+- Vault tree arrow navigation, expansion, selection, rename, and delete confirmation
+- Opening notes in tabs, unsaved state, saving, and Markdown browse-mode navigation
+- Global Markdown search and opening a result
+- Task filters, sortable table metadata, and task toggles reflected in the source note
+- Internal wiki-link activation, missing-link announcement, backlink navigation, and bookmark persistence
 - Read-only and edit mode transitions
 - Status bar reading and command feedback
 

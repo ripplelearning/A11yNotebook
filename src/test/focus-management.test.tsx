@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
+import type { NotebookBridge } from '../shared/bridge';
+import type { VaultInfo } from '../shared/types';
+
+afterEach(() => {
+  delete window.a11yNotebook;
+});
 
 const pressF6 = (shiftKey = false) =>
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F6', shiftKey });
@@ -130,31 +136,75 @@ describe('command palette', () => {
 });
 
 describe('tabs', () => {
-  it('follows the WAI-ARIA tabs pattern with roving tabindex', () => {
+  it('starts with one real welcome tab and a labelled tab panel', () => {
     render(<App />);
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
-    const [welcome, notes, tasks] = within(tablist).getAllByRole('tab');
+    const tabs = within(tablist).getAllByRole('tab');
+    const [welcome] = tabs;
 
+    expect(tabs).toHaveLength(1);
     expect(welcome).toHaveAttribute('aria-selected', 'true');
     expect(welcome).toHaveAttribute('tabindex', '0');
-    expect(notes).toHaveAttribute('tabindex', '-1');
     expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', welcome.id);
+  });
 
-    welcome.focus();
-    fireEvent.keyDown(welcome, { key: 'ArrowRight' });
-    expect(notes).toHaveFocus();
-    expect(notes).toHaveAttribute('aria-selected', 'true');
-    expect(notes).toHaveAttribute('tabindex', '0');
-    expect(welcome).toHaveAttribute('tabindex', '-1');
-    expect(screen.getByRole('tabpanel', { name: 'Notes' })).toBeInTheDocument();
+  it('moves focus and selection across multiple tabs with arrow, Home, and End keys', async () => {
+    const vault: VaultInfo = {
+      name: 'Study',
+      path: '/study',
+      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note' }],
+    };
+    window.a11yNotebook = {
+      updater: { onStatus: () => () => undefined },
+      onMenuCommand: () => () => undefined,
+      vault: {
+        get: async () => vault,
+        getTasks: async () => [],
+        getLinkIndex: async () => ({ links: [] }),
+        getBookmarks: async () => [],
+        readNote: async () => '# Note',
+      },
+    } as unknown as NotebookBridge;
+    render(<App />);
 
-    fireEvent.keyDown(notes, { key: 'End' });
-    expect(tasks).toHaveFocus();
-    fireEvent.keyDown(tasks, { key: 'ArrowRight' });
+    const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
+    const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
+    fireEvent.click(await within(navigation).findByRole('button', { name: 'Open Tasks' }));
+    const noteItem = await screen.findByRole('treeitem', { name: /Note\.md/ });
+    await act(async () => {
+      fireEvent.click(noteItem);
+    });
+
+    const tabs = within(tablist).getAllByRole('tab');
+    expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Welcome', 'Tasks', 'Note']);
+    const [welcome, tasks, note] = tabs;
+    const panel = screen.getByRole('tabpanel');
+    expect(note).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', note.id);
+
+    fireEvent.keyDown(note, { key: 'ArrowRight' });
     expect(welcome).toHaveFocus();
+    expect(welcome).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
+
     fireEvent.keyDown(welcome, { key: 'ArrowLeft' });
-    expect(tasks).toHaveFocus();
-    fireEvent.keyDown(tasks, { key: 'Home' });
+    expect(note).toHaveFocus();
+    expect(note).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', note.id);
+
+    fireEvent.keyDown(note, { key: 'Home' });
     expect(welcome).toHaveFocus();
+    expect(welcome).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
+
+    fireEvent.keyDown(welcome, { key: 'End' });
+    expect(note).toHaveFocus();
+    expect(note).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', note.id);
+
+    fireEvent.keyDown(note, { key: 'ArrowLeft' });
+    expect(tasks).toHaveFocus();
+    expect(tasks).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAttribute('aria-labelledby', tasks.id);
   });
 });
