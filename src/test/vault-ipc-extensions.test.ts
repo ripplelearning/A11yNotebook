@@ -213,11 +213,11 @@ describe('extended vault IPC integration', () => {
       }),
     );
   });
-  it('locks a password-protected vault and encrypts notes and credentials in the main process', async () => {
+  it('locks a password-protected vault and encrypts notes with note-specific passwords and credentials', async () => {
     const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: false });
-    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original);
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password');
     const encryptedOnDisk = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     expect(encryptedOnDisk).not.toContain('alpha');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
@@ -240,7 +240,11 @@ describe('extended vault IPC integration', () => {
     );
     const reopened = await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
     expect(reopened).toEqual(expect.objectContaining({ path: mock.root }));
-    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/note’s password/);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md', 'wrong note password')).rejects.toThrow(
+      /Incorrect note password/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md', 'note-specific password')).resolves.toBe(original);
     await invoke(IPC_CHANNELS.vaultSaveNote, 'Topic.md', '# Updated\n', original);
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');

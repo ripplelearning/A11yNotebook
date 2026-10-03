@@ -20,9 +20,14 @@ import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '..
 import { createAssetStore } from './assets';
 import {
   createVaultSecurityConfig,
+  decryptPasswordEncryptedNote,
   decryptRecord,
   encryptRecord,
   isEncryptedRecord,
+  isPasswordEncryptedNote,
+  encryptNoteWithPassword,
+  reencryptPasswordNote,
+  unlockPasswordEncryptedNote,
   unlockVault,
   type VaultSecurityConfig,
 } from './security';
@@ -39,6 +44,7 @@ let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
+const noteKeys = new Map<string, Buffer>();
 let idleLockTimer: NodeJS.Timeout | undefined;
 let idleLockMinutes = 15;
 let sendSecurityLocked: () => void = () => undefined;
@@ -65,6 +71,8 @@ function lockVault() {
   const wasUnlocked = masterKey !== null;
   masterKey?.fill(0);
   masterKey = null;
+  for (const key of noteKeys.values()) key.fill(0);
+  noteKeys.clear();
   if (wasUnlocked) {
     reminderService?.stop();
     reminderService = null;
@@ -416,24 +424,35 @@ export function setupVaultIpc(
     if (!securityConfig) throw new Error('Vault password protection is not configured.');
     lockVault();
   });
-  ipcMain.handle(IPC_CHANNELS.vaultNoteEncrypt, async (event, relative: unknown, expected: unknown) => {
-    assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || typeof expected !== 'string' || !masterKey)
-      throw new Error('Invalid note encryption request.');
-    const vault = requireService();
-    const existing = await vault.readNote(relative);
-    if (existing !== expected) throw new Error('Note changed on disk. Resolve the conflict before encrypting.');
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(existing);
-    } catch {
-      parsed = null;
-    }
-    if (isEncryptedRecord(parsed)) throw new Error('This note is already encrypted.');
-    const encrypted = encryptRecord(masterKey, 'note', randomUUID(), existing);
-    await vault.saveNote(relative, JSON.stringify(encrypted), existing);
-    resetIdleLock();
-  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultNoteEncrypt,
+    async (event, relative: unknown, expected: unknown, password: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || typeof expected !== 'string' || typeof password !== 'string' || !masterKey)
+        throw new Error('Invalid note encryption request.');
+      const vault = requireService();
+      const existing = await vault.readNote(relative);
+      if (existing !== expected) throw new Error('Note changed on disk. Resolve the conflict before encrypting.');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(existing);
+      } catch {
+        parsed = null;
+      }
+      if (isEncryptedRecord(parsed) || isPasswordEncryptedNote(parsed))
+        throw new Error('This note is already encrypted.');
+      const encrypted = await encryptNoteWithPassword(password, existing, randomUUID());
+      try {
+        await vault.saveNote(relative, JSON.stringify(encrypted.record), existing);
+        noteKeys.get(encrypted.record.id)?.fill(0);
+        noteKeys.set(encrypted.record.id, encrypted.key);
+      } catch (error) {
+        encrypted.key.fill(0);
+        throw error;
+      }
+      resetIdleLock();
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultNoteEncryptionStatus, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid note path.');
@@ -444,7 +463,7 @@ export function setupVaultIpc(
     } catch {
       return false;
     }
-    return isEncryptedRecord(parsed);
+    return isEncryptedRecord(parsed) || isPasswordEncryptedNote(parsed);
   });
   ipcMain.handle(IPC_CHANNELS.vaultCredentialsRead, async (event) => {
     assertTrusted(event, isTrustedSender);
@@ -659,15 +678,25 @@ export function setupVaultIpc(
       return null;
     }
   });
-  ipcMain.handle(IPC_CHANNELS.vaultReadNote, async (event, relativePath: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultReadNote, async (event, relativePath: unknown, password: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relativePath !== 'string') throw new Error('Note path must be text.');
+    if (typeof relativePath !== 'string' || (password !== undefined && typeof password !== 'string'))
+      throw new Error('Note path or password is invalid.');
     const content = await requireService().readNote(relativePath);
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
     } catch {
       parsed = null;
+    }
+    if (isPasswordEncryptedNote(parsed)) {
+      const cachedKey = noteKeys.get(parsed.id);
+      if (cachedKey) return decryptPasswordEncryptedNote(cachedKey, parsed);
+      if (typeof password !== 'string') throw new Error('Enter this note’s password to open it.');
+      const unlocked = await unlockPasswordEncryptedNote(password, parsed);
+      noteKeys.set(parsed.id, unlocked.key);
+      resetIdleLock();
+      return unlocked.plaintext;
     }
     if (!isEncryptedRecord(parsed)) return content;
     if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
@@ -688,7 +717,13 @@ export function setupVaultIpc(
       } catch {
         parsed = null;
       }
-      if (isEncryptedRecord(parsed)) {
+      if (isPasswordEncryptedNote(parsed)) {
+        const key = noteKeys.get(parsed.id);
+        if (!key) throw new Error('Unlock this note with its password before editing.');
+        if (expectedContent !== undefined && decryptPasswordEncryptedNote(key, parsed) !== expectedContent)
+          throw new Error('Note changed on disk. Resolve the conflict before saving.');
+        await vault.saveNote(relativePath, JSON.stringify(reencryptPasswordNote(key, parsed, content)), onDisk);
+      } else if (isEncryptedRecord(parsed)) {
         if (!masterKey) throw new Error('Unlock the vault before editing this encrypted note.');
         if (expectedContent !== undefined && decryptRecord(masterKey, 'note', parsed) !== expectedContent)
           throw new Error('Note changed on disk. Resolve the conflict before saving.');

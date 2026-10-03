@@ -49,7 +49,7 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 - ✅ Persistent main-process indexed search and Markdown annotations.
 - ✅ Markdown, plain-text, CSV, and extracted HTML search; unsupported files have filename-only records.
 - 🚧 Inline/front-matter tag extraction and tag filtering; general YAML metadata editing/suggestions remain planned.
-- ⏳ PDF/ePub text extraction and web capture indexing.
+- ✅ Bounded PDF/ePub text extraction; ⏳ indexing captured web pages.
 
 ## Phase 5 — Tasks, reminders, and project planning
 
@@ -73,8 +73,9 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 - ✅ Optional vault password gate, configurable idle lock, and unsaved-edit timeout.
 - Secure local storage model
 - Audit logging for sensitive changes
-- ✅ AES-256-GCM encrypted notes selected by the user and encrypted credential storage using a main-process scrypt key.
-- ⏳ Per-note passwords, password generator, clipboard auto-clear, audit logging, and whole-vault encryption.
+- ✅ AES-256-GCM encrypted credential storage using the main-process vault key.
+- ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
+- ⏳ Password generator, clipboard auto-clear, audit logging, and whole-vault encryption.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support

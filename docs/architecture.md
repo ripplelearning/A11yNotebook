@@ -83,9 +83,10 @@ format handlers use Node built-ins rather than bundled pdf.js/epub.js workers an
 those libraries. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.
 
-`electron/vault/security.ts` derives a vault key with scrypt and encrypts selected note records and the credentials
-store with AES-256-GCM. The key is held only in main-process memory; typed IPC gates vault operations when
-password protection is enabled and the vault is locked. Idle lock and unsaved-edit lock delays are validated settings.
+`electron/vault/security.ts` derives vault and per-note keys with scrypt and encrypts selected notes and the credentials
+store with AES-256-GCM. Unlocked keys remain only in main-process memory and are cleared on vault lock or switch.
+Typed IPC gates vault operations when password protection is enabled and the vault is locked. Idle lock and
+unsaved-edit lock delays are validated settings.
 Password protection is an access lock, not whole-vault encryption: unmarked notes, the search index, other metadata,
-and filesystem names remain plaintext. Per-note passwords, full PDF.js/ePub.js fidelity, and complete memory erasure
-are not provided.
+and filesystem names remain plaintext. Individually encrypted notes use separate scrypt-derived passwords. Full
+PDF.js/ePub.js fidelity and guaranteed memory erasure are not provided.

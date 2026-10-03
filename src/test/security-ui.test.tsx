@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import SecurityGate from '../renderer/features/security/SecurityGate';
+import NotePasswordDialog from '../renderer/features/security/NotePasswordDialog';
 import SettingsDialog from '../renderer/features/settings/SettingsDialog';
 
 describe('security controls', () => {
@@ -30,5 +31,28 @@ describe('security controls', () => {
       ),
     );
     expect(onClose).toHaveBeenCalled();
+  });
+
+  it('requires a confirmed note password before encrypting a note', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<NotePasswordDialog action="encrypt" noteName="Research" onSubmit={onSubmit} onClose={vi.fn()} />);
+    const submit = screen.getByRole('button', { name: 'Encrypt note' });
+    fireEvent.change(screen.getByLabelText('Note password'), { target: { value: 'private note password' } });
+    fireEvent.change(screen.getByLabelText('Confirm note password'), { target: { value: 'different password' } });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Confirm note password'), {
+      target: { value: 'private note password' },
+    });
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('private note password'));
+  });
+
+  it('shows note-password errors without closing the unlock dialog', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Incorrect note password.'));
+    render(<NotePasswordDialog action="unlock" noteName="Research" onSubmit={onSubmit} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Note password'), { target: { value: 'wrong password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock note' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect note password.');
+    expect(screen.getByRole('heading', { name: 'Unlock encrypted note' })).toBeInTheDocument();
   });
 });

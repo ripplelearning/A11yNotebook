@@ -57,6 +57,7 @@ import { assetTypes, createAssetRegistry } from '../shared/assets';
 import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
 import Modal from './components/Modal';
 import SecurityGate from './features/security/SecurityGate';
+import NotePasswordDialog from './features/security/NotePasswordDialog';
 import WebCaptureDialog from './features/previews/WebCaptureDialog';
 
 type DialogId =
@@ -162,6 +163,10 @@ export default function App() {
   const [securityLocked, setSecurityLocked] = useState(false);
   const [lockedEditPath, setLockedEditPath] = useState<string | null>(null);
   const [encryptedNotePath, setEncryptedNotePath] = useState<string | null>(null);
+  const [notePasswordDialog, setNotePasswordDialog] = useState<{
+    action: 'encrypt' | 'unlock';
+    entry: VaultEntry;
+  } | null>(null);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
   const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
   const [imageAlt, setImageAlt] = useState('');
@@ -340,6 +345,7 @@ export default function App() {
       setSecurityLocked(true);
       clearAllConflicts();
       setOpenNotes([]);
+      setNotePasswordDialog(null);
       setAttachment(null);
       setLockedEditPath(null);
       setNoteAnnotations([]);
@@ -556,7 +562,7 @@ export default function App() {
     updater.check();
   };
 
-  const openEntry = async (entry: VaultEntry) => {
+  const openEntry = async (entry: VaultEntry, notePassword?: string) => {
     const bridge = window.a11yNotebook;
     if (!bridge || switchingRef.current) return;
     const root = vaultPathRef.current;
@@ -573,7 +579,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (switchingRef.current || vaultPathRef.current !== root) return;
         setAttachment(preview);
@@ -596,7 +602,16 @@ export default function App() {
       setSelectedTab(existingNote.id);
       return;
     }
-    const content = await bridge.vault.readNote(entry.path);
+    let content: string;
+    try {
+      content = await bridge.vault.readNote(entry.path, notePassword);
+    } catch (error) {
+      if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
+        setNotePasswordDialog({ action: 'unlock', entry });
+        return;
+      }
+      throw error;
+    }
     if (switchingRef.current || vaultPathRef.current !== root) return;
     const note: OpenNote = {
       id: entry.path,
@@ -611,6 +626,7 @@ export default function App() {
         : [...current, note],
     );
     setSelectedTab(note.id);
+    setNotePasswordDialog(null);
   };
 
   const createNote = async () => {
@@ -1001,6 +1017,7 @@ export default function App() {
             vaultPathRef.current = opened.path;
             setVault(opened);
             setOpenNotes([]);
+            setNotePasswordDialog(null);
             setAttachment(null);
             setAssetTabOpen(false);
             setAssetInitialPath(undefined);
@@ -1618,14 +1635,10 @@ export default function App() {
                       type="button"
                       disabled={currentNote.content !== currentNote.saved}
                       onClick={() => {
-                        const encrypt = window.a11yNotebook?.vault.encryptNote;
-                        if (!encrypt) return;
-                        void encrypt(currentNote.path, currentNote.saved)
-                          .then(() => {
-                            setEncryptedNotePath(currentNote.path);
-                            setStatusMessage('Note encrypted.');
-                          })
-                          .catch(() => setStatusMessage('Could not encrypt this note.'));
+                        setNotePasswordDialog({
+                          action: 'encrypt',
+                          entry: { name: currentNote.title, path: currentNote.path, kind: 'note' },
+                        });
                       }}
                     >
                       Encrypt note
@@ -1815,6 +1828,7 @@ export default function App() {
             await window.a11yNotebook?.vault.lockVault?.();
             setSecurityLocked(true);
             setOpenNotes([]);
+            setNotePasswordDialog(null);
             setAttachment(null);
             setMode('read-only');
           }}
@@ -1827,6 +1841,28 @@ export default function App() {
             const remove = window.a11yNotebook?.vault.deleteCredential;
             if (!remove) throw new Error('Credential storage is unavailable.');
             await remove(id);
+          }}
+        />
+      ) : null}
+      {notePasswordDialog ? (
+        <NotePasswordDialog
+          action={notePasswordDialog.action}
+          noteName={notePasswordDialog.entry.name}
+          onClose={() => setNotePasswordDialog(null)}
+          onSubmit={async (password) => {
+            const { action, entry } = notePasswordDialog;
+            if (action === 'unlock') {
+              await openEntry(entry, password);
+              return;
+            }
+            const encrypt = window.a11yNotebook?.vault.encryptNote;
+            if (!encrypt) throw new Error('Note encryption is unavailable.');
+            const note = openNotes.find((item) => item.path === entry.path);
+            if (!note) throw new Error('This note is no longer open.');
+            await encrypt(entry.path, note.saved, password);
+            setEncryptedNotePath(entry.path);
+            setNotePasswordDialog(null);
+            setStatusMessage('Note encrypted.');
           }}
         />
       ) : null}

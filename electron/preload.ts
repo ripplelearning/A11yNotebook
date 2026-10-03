@@ -95,7 +95,7 @@ const bridge: NotebookBridge = {
   vault: {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
-    readNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath),
+    readNote: (relativePath, password) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath, password),
     saveNote: (relativePath, content, expectedContent) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveNote, relativePath, content, expectedContent),
     createNotebook: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultCreateNotebook, relativePath),
@@ -131,7 +131,8 @@ const bridge: NotebookBridge = {
     setupVaultPassword: (password) => ipcRenderer.invoke(CHANNELS.vaultSecuritySetup, password),
     unlockVault: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityUnlock, password),
     lockVault: () => ipcRenderer.invoke(CHANNELS.vaultSecurityLock),
-    encryptNote: (relative, expected) => ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected),
+    encryptNote: (relative, expected, password) =>
+      ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected, password),
     isNoteEncrypted: (relative) => ipcRenderer.invoke(CHANNELS.vaultNoteEncryptionStatus, relative),
     readCredentials: () => ipcRenderer.invoke(CHANNELS.vaultCredentialsRead),
     saveCredential: (id, username, password) =>

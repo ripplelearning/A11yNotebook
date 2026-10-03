@@ -2,9 +2,14 @@
 import { describe, expect, it } from 'vitest';
 import {
   createVaultSecurityConfig,
+  decryptPasswordEncryptedNote,
   decryptRecord,
   encryptRecord,
+  encryptNoteWithPassword,
   isEncryptedRecord,
+  isPasswordEncryptedNote,
+  reencryptPasswordNote,
+  unlockPasswordEncryptedNote,
   unlockVault,
 } from '../../electron/vault/security';
 
@@ -34,5 +39,35 @@ describe('vault security primitives', () => {
     await expect(
       unlockVault({ version: 1, salt: 'bad', nonce: '', tag: '', verifier: '' }, 'long enough password'),
     ).rejects.toThrow(/metadata is invalid/);
+  });
+
+  it('encrypts notes with independent passwords and authenticates subsequent edits', async () => {
+    const { record, key } = await encryptNoteWithPassword('note-specific password', 'private note', 'note-1');
+    expect(isPasswordEncryptedNote(record)).toBe(true);
+    expect(decryptPasswordEncryptedNote(key, record)).toBe('private note');
+    await expect(unlockPasswordEncryptedNote('incorrect note password', record)).rejects.toThrow(
+      /Incorrect note password/,
+    );
+
+    const unlocked = await unlockPasswordEncryptedNote('note-specific password', record);
+    expect(unlocked.plaintext).toBe('private note');
+    const updated = reencryptPasswordNote(unlocked.key, record, 'updated private note');
+    expect(updated.id).toBe(record.id);
+    expect(updated.salt).toBe(record.salt);
+    expect(decryptPasswordEncryptedNote(unlocked.key, updated)).toBe('updated private note');
+    key.fill(0);
+    unlocked.key.fill(0);
+  });
+
+  it('rejects malformed password-encrypted note envelopes', async () => {
+    const { record, key } = await encryptNoteWithPassword('note-specific password', 'private note', 'note-1');
+    await expect(encryptNoteWithPassword('short', 'private note', 'note-2')).rejects.toThrow(/between 8/);
+    await expect(unlockPasswordEncryptedNote('note-specific password', { ...record, salt: 'invalid' })).rejects.toThrow(
+      /malformed/,
+    );
+    expect(() => decryptPasswordEncryptedNote(key, { ...record, ciphertext: `${record.ciphertext}x` })).toThrow(
+      /malformed/,
+    );
+    key.fill(0);
   });
 });

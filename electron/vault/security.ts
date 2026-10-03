@@ -5,11 +5,21 @@ const NONCE_BYTES = 12;
 const TAG_BYTES = 16;
 const SCRYPT_OPTIONS = { N: 32768, r: 8, p: 1, maxmem: 64 * 1024 * 1024 };
 const FORMAT = 'a11ynotebook-encrypted-v1';
+const PASSWORD_NOTE_FORMAT = 'a11ynotebook-password-note-v1';
 const VERIFIER = 'a11ynotebook-password-check-v1';
 
 export interface EncryptedRecord {
   format: typeof FORMAT;
   id: string;
+  nonce: string;
+  tag: string;
+  ciphertext: string;
+}
+
+export interface PasswordEncryptedNote {
+  format: typeof PASSWORD_NOTE_FORMAT;
+  id: string;
+  salt: string;
   nonce: string;
   tag: string;
   ciphertext: string;
@@ -44,12 +54,12 @@ function domainKey(key: Buffer, domain: string) {
   return Buffer.from(hkdfSync('sha256', key, Buffer.alloc(0), `a11ynotebook:${domain}:v1`, KEY_BYTES));
 }
 
-function encryptBytes(key: Buffer, domain: string, id: string, plaintext: Buffer) {
+function encryptBytes(key: Buffer, domain: string, id: string, plaintext: Buffer, format = FORMAT) {
   const nonce = randomBytes(NONCE_BYTES);
   const encryptionKey = domainKey(key, domain);
   try {
     const cipher = createCipheriv('aes-256-gcm', encryptionKey, nonce, { authTagLength: TAG_BYTES });
-    cipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
+    cipher.setAAD(Buffer.from(`${format}:${domain}:${id}`, 'utf8'));
     const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
     return { nonce: nonce.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext };
   } finally {
@@ -57,7 +67,15 @@ function encryptBytes(key: Buffer, domain: string, id: string, plaintext: Buffer
   }
 }
 
-function decryptBytes(key: Buffer, domain: string, id: string, nonce: string, tag: string, ciphertext: string) {
+function decryptBytes(
+  key: Buffer,
+  domain: string,
+  id: string,
+  nonce: string,
+  tag: string,
+  ciphertext: string,
+  format = FORMAT,
+) {
   const nonceBytes = Buffer.from(nonce, 'base64');
   const tagBytes = Buffer.from(tag, 'base64');
   const encrypted = Buffer.from(ciphertext, 'base64');
@@ -73,7 +91,7 @@ function decryptBytes(key: Buffer, domain: string, id: string, nonce: string, ta
   const decryptionKey = domainKey(key, domain);
   try {
     const decipher = createDecipheriv('aes-256-gcm', decryptionKey, nonceBytes, { authTagLength: TAG_BYTES });
-    decipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
+    decipher.setAAD(Buffer.from(`${format}:${domain}:${id}`, 'utf8'));
     decipher.setAuthTag(tagBytes);
     return Buffer.concat([decipher.update(encrypted), decipher.final()]);
   } finally {
@@ -169,6 +187,115 @@ export function decryptRecord(key: Buffer, domain: 'note' | 'credentials', value
   } finally {
     plaintext.fill(0);
   }
+}
+
+export async function encryptNoteWithPassword(
+  password: string,
+  plaintext: string,
+  id: string,
+): Promise<{ record: PasswordEncryptedNote; key: Buffer }> {
+  validatePassword(password);
+  if (!id || id.length > 512 || typeof plaintext !== 'string') throw new Error('Invalid encrypted note.');
+  const salt = randomBytes(SALT_BYTES);
+  const key = await deriveKey(password, salt);
+  try {
+    const encrypted = encryptBytes(key, 'note', id, Buffer.from(plaintext, 'utf8'), PASSWORD_NOTE_FORMAT);
+    return {
+      key,
+      record: {
+        format: PASSWORD_NOTE_FORMAT,
+        id,
+        salt: salt.toString('base64'),
+        nonce: encrypted.nonce,
+        tag: encrypted.tag,
+        ciphertext: encrypted.ciphertext.toString('base64'),
+      },
+    };
+  } catch (error) {
+    key.fill(0);
+    throw error;
+  }
+}
+
+function validatePasswordEncryptedNote(value: unknown): PasswordEncryptedNote {
+  if (
+    !value ||
+    typeof value !== 'object' ||
+    (value as PasswordEncryptedNote).format !== PASSWORD_NOTE_FORMAT ||
+    typeof (value as PasswordEncryptedNote).id !== 'string' ||
+    !(value as PasswordEncryptedNote).id ||
+    (value as PasswordEncryptedNote).id.length > 512 ||
+    typeof (value as PasswordEncryptedNote).salt !== 'string' ||
+    typeof (value as PasswordEncryptedNote).nonce !== 'string' ||
+    typeof (value as PasswordEncryptedNote).tag !== 'string' ||
+    typeof (value as PasswordEncryptedNote).ciphertext !== 'string'
+  ) {
+    throw new Error('Encrypted note is malformed.');
+  }
+  const record = value as PasswordEncryptedNote;
+  const salt = Buffer.from(record.salt, 'base64');
+  if (salt.length !== SALT_BYTES || salt.toString('base64') !== record.salt) {
+    throw new Error('Encrypted note is malformed.');
+  }
+  return record;
+}
+
+export async function unlockPasswordEncryptedNote(
+  password: string,
+  value: unknown,
+): Promise<{ key: Buffer; plaintext: string }> {
+  validatePassword(password);
+  const record = validatePasswordEncryptedNote(value);
+  const key = await deriveKey(password, Buffer.from(record.salt, 'base64'));
+  try {
+    const plaintext = decryptBytes(
+      key,
+      'note',
+      record.id,
+      record.nonce,
+      record.tag,
+      record.ciphertext,
+      PASSWORD_NOTE_FORMAT,
+    );
+    try {
+      return { key, plaintext: plaintext.toString('utf8') };
+    } finally {
+      plaintext.fill(0);
+    }
+  } catch {
+    key.fill(0);
+    throw new Error('Incorrect note password or damaged encrypted note.');
+  }
+}
+
+export function decryptPasswordEncryptedNote(key: Buffer, value: unknown): string {
+  if (key.length !== KEY_BYTES) throw new Error('Invalid encrypted note key.');
+  const record = validatePasswordEncryptedNote(value);
+  const plaintext = decryptBytes(
+    key,
+    'note',
+    record.id,
+    record.nonce,
+    record.tag,
+    record.ciphertext,
+    PASSWORD_NOTE_FORMAT,
+  );
+  try {
+    return plaintext.toString('utf8');
+  } finally {
+    plaintext.fill(0);
+  }
+}
+
+export function reencryptPasswordNote(key: Buffer, value: unknown, plaintext: string): PasswordEncryptedNote {
+  if (key.length !== KEY_BYTES || typeof plaintext !== 'string') throw new Error('Invalid encrypted note update.');
+  const record = validatePasswordEncryptedNote(value);
+  const encrypted = encryptBytes(key, 'note', record.id, Buffer.from(plaintext, 'utf8'), PASSWORD_NOTE_FORMAT);
+  return { ...record, nonce: encrypted.nonce, tag: encrypted.tag, ciphertext: encrypted.ciphertext.toString('base64') };
+}
+
+export function isPasswordEncryptedNote(value: unknown): value is PasswordEncryptedNote {
+  return !!value && typeof value === 'object' && (value as PasswordEncryptedNote).format === PASSWORD_NOTE_FORMAT;
 }
 
 export function isEncryptedRecord(value: unknown): value is EncryptedRecord {

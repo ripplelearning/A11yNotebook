@@ -13,7 +13,7 @@ import type { CardSchedule } from './assets';
 export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;
-  readNote(path: string): Promise<string>;
+  readNote(path: string, password?: string): Promise<string>;
   saveNote(path: string, content: string, expectedContent?: string): Promise<void>;
   createNotebook(path: string): Promise<VaultInfo>;
   createNote(path: string, content?: string): Promise<VaultInfo>;
@@ -45,7 +45,7 @@ export interface VaultBridge {
   setupVaultPassword?(password: string): Promise<void>;
   unlockVault?(password: string): Promise<VaultInfo>;
   lockVault?(): Promise<void>;
-  encryptNote?(path: string, expectedContent: string): Promise<void>;
+  encryptNote?(path: string, expectedContent: string, password: string): Promise<void>;
   isNoteEncrypted?(path: string): Promise<boolean>;
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;
   saveCredential?(id: string, username: string, password: string): Promise<void>;

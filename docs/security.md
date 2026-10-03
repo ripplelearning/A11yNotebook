@@ -21,11 +21,13 @@ the key until manual lock, configured idle timeout, vault switch, or application
 the renderer clears open notes, search results, credentials, and other content state. JavaScript cannot guarantee
 that every copy in memory is erased.
 
-Notes are encrypted only after the user selects **Encrypt note**. Their `.md` file then contains a versioned
-AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random stable record ID, and authenticated format,
-domain, and record ID. `credentials.json` stores the encrypted credential list with a separate HKDF key domain.
-Wrong passwords, malformed envelopes, and authentication failures are rejected without returning plaintext.
-Renaming/moving an encrypted note preserves its record ID. The renderer never receives the derived key.
+Notes are encrypted only after the user selects **Encrypt note** and supplies a separate note password. Their `.md`
+file then contains a versioned AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random salt and stable
+record ID, and authenticated format, domain, and record ID. The note key is derived with scrypt and cached only in
+main-process memory until vault lock, switch, or exit. `credentials.json` stores the encrypted credential list with a
+separate HKDF key domain. Wrong passwords, malformed envelopes, and authentication failures are rejected without
+returning plaintext. Renaming/moving an encrypted note preserves its record ID. The renderer never receives a derived
+key.
 
 Vault idle lock defaults to 15 minutes and can be disabled or set from 1–240 minutes. The optional unsaved-edit
 timeout changes the editor to read-only and requires saving before editing again. This edit timeout is an interface
@@ -37,8 +39,8 @@ Vault password protection gates app IPC but **does not encrypt the whole vault**
 annotations, settings, reminders, and other metadata remain plaintext. Search indexing scans ordinary Markdown and
 its persisted index may contain plaintext; it is not a secure store. Encrypted note content is not searchable and
 does not contribute tasks or link data. Credentials are encrypted at rest, but are decrypted into renderer memory
-when the credential manager is open. Per-note passwords and password recovery are not implemented. Losing the vault
-password makes encrypted records unrecoverable. Protect the vault with OS account controls and disk encryption.
+when the credential manager is open. Password recovery is not implemented. Losing either password makes its encrypted
+records unrecoverable. Protect the vault with OS account controls and disk encryption.
 
 PDF preview uses the Chromium document viewer plus bounded best-effort text extraction, not pdf.js. ePub preview
 supports bounded ZIP entries using the built-in zlib implementation, not epub.js. Complex PDFs/fonts/encryption and
