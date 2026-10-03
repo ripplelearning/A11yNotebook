@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -7,7 +7,9 @@ import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService } from './service';
 import { createAnnotationStore } from './annotations';
 import { createMetadataStore } from './metadata';
-import { IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
+import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
+import { readDocumentAttachment } from './document-preview';
+import { captureWebPage } from './web-capture';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import type { VaultChangedEvent } from '../../src/shared/search';
@@ -38,6 +40,7 @@ let assets: ReturnType<typeof createAssetStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
 let idleLockTimer: NodeJS.Timeout | undefined;
+let idleLockMinutes = 15;
 let sendSecurityLocked: () => void = () => undefined;
 let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
 const notifications = new Set<Notification>();
@@ -68,7 +71,8 @@ function lockVault() {
 function resetIdleLock() {
   if (idleLockTimer) clearTimeout(idleLockTimer);
   if (!masterKey) return;
-  idleLockTimer = setTimeout(lockVault, 15 * 60 * 1000);
+  if (idleLockMinutes === 0) return;
+  idleLockTimer = setTimeout(lockVault, idleLockMinutes * 60 * 1000);
   idleLockTimer.unref();
 }
 
@@ -97,6 +101,16 @@ async function openVaultNow(vaultPath: string) {
   try {
     vault = await nextService.initialize();
     const savedSecurity = await createMetadataStore(nextService).read('security.json');
+    const savedSettings = await createMetadataStore(nextService).read('settings.json');
+    if (savedSettings) {
+      try {
+        idleLockMinutes = validateSettings(savedSettings).vaultLockMinutes ?? 15;
+      } catch {
+        idleLockMinutes = 15;
+      }
+    } else {
+      idleLockMinutes = 15;
+    }
     if (savedSecurity && typeof savedSecurity === 'object' && !Array.isArray(savedSecurity)) {
       nextSecurity = savedSecurity as VaultSecurityConfig;
     }
@@ -405,6 +419,18 @@ export function setupVaultIpc(
     await vault.saveNote(relative, JSON.stringify(encrypted), existing);
     resetIdleLock();
   });
+  ipcMain.handle(IPC_CHANNELS.vaultNoteEncryptionStatus, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string') throw new Error('Invalid note path.');
+    const content = await requireService().readNote(relative);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return false;
+    }
+    return isEncryptedRecord(parsed);
+  });
   ipcMain.handle(IPC_CHANNELS.vaultCredentialsRead, async (event) => {
     assertTrusted(event, isTrustedSender);
     if (!masterKey) throw new Error('Unlock the vault first.');
@@ -444,8 +470,9 @@ export function setupVaultIpc(
       const credentials = saved
         ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string; username: string; password: string }[])
         : [];
-      const next = credentials.filter((item) => item.id !== id);
-      next.push({ id: id.trim(), username, password });
+      const normalizedId = id.trim();
+      const next = credentials.filter((item) => item.id !== normalizedId);
+      next.push({ id: normalizedId, username, password });
       await metadataFor(requireService()).write(
         'credentials.json',
         encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next)),
@@ -469,6 +496,46 @@ export function setupVaultIpc(
       ),
     );
     resetIdleLock();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof url !== 'string' || typeof notebookPath !== 'string' || notebookPath.length > 2048) {
+      throw new Error('Invalid web capture request.');
+    }
+    const vault = requireService();
+    const root = (await vault.getVault()).path;
+    const notebook = notebookPath ? await vault.resolveEntry(notebookPath) : root;
+    if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder for the capture.');
+    const captureId = randomUUID();
+    const captureFolder = path.posix.join(notebookPath, 'Attachments', `Capture-${captureId}`);
+    const noteDirectory = notebookPath ? `${notebookPath}/` : '';
+    let attachmentFolder: string | undefined;
+    let noteCreated = false;
+    try {
+      const capture = await captureWebPage(url, `Attachments/Capture-${captureId}/`);
+      attachmentFolder = await vault.resolveEntry(captureFolder, true);
+      await mkdir(attachmentFolder, { recursive: true });
+      for (const [index, image] of capture.images.entries()) {
+        const imagePath = path.posix.join(captureFolder, `image-${index + 1}${image.extension}`);
+        await writeFile(await vault.resolveEntry(imagePath, true), image.bytes, { flag: 'wx', mode: 0o600 });
+      }
+      const safeTitle =
+        [...capture.title]
+          .filter((character) => character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127 && !'<>:"/\\|?*'.includes(character))
+          .join('')
+          .replace(/[. ]+$/g, '')
+          .trim()
+          .slice(0, 100) || 'Web capture';
+      const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}.md`;
+      const content = `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
+      await vault.createNote(notePath, content);
+      noteCreated = true;
+      return vault.getVault();
+    } catch (error) {
+      if (attachmentFolder && !noteCreated)
+        await rm(attachmentFolder, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
   });
   ipcMain.handle(IPC_CHANNELS.vaultAssetRead, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -505,6 +572,7 @@ export function setupVaultIpc(
     },
   );
   app.on('before-quit', () => {
+    lockVault();
     void service?.dispose().catch(() => undefined);
     reminderService?.stop();
   });
@@ -538,11 +606,12 @@ export function setupVaultIpc(
   protocol.handle('vault-file', async (request) => {
     try {
       const relative = protocolPath(request.url);
-      const mime = IMAGE_TYPES[path.extname(relative).toLowerCase()];
+      const extension = path.extname(relative).toLowerCase();
+      const mime = IMAGE_TYPES[extension] ?? DOCUMENT_TYPES[extension];
       if (!mime) return new Response('Unsupported preview.', { status: 415 });
       const target = await requireService().resolveEntry(relative);
       const stat = await lstat(target);
-      if (!stat.isFile() || stat.size > 20 * 1024 * 1024) return new Response('Image too large.', { status: 413 });
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return new Response('Attachment too large.', { status: 413 });
       const bytes = await readFile(target);
       return new Response(new Uint8Array(bytes), {
         headers: { 'Content-Type': mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' },
@@ -667,6 +736,7 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReadAttachment, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid attachment path.');
+    if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative);
     return readTextAttachment(requireService().resolveEntry, relative);
   });
   ipcMain.handle(IPC_CHANNELS.vaultImageAlt, async (event, relative: unknown) => {
@@ -702,10 +772,16 @@ export function setupVaultIpc(
     const vault = service;
     if (vault) {
       const saved = await metadataFor(vault).read('settings.json');
-      if (saved) return validateSettings(saved);
+      if (saved) {
+        const validated = validateSettings(saved);
+        idleLockMinutes = validated.vaultLockMinutes ?? 15;
+        return validated;
+      }
     }
     try {
-      return validateSettings(JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')));
+      const validated = validateSettings(JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')));
+      idleLockMinutes = validated.vaultLockMinutes ?? 15;
+      return validated;
     } catch {
       return { ...DEFAULT_SETTINGS, shortcuts: {} };
     }
@@ -713,11 +789,13 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.settingsSave, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
     const settings = validateSettings(value);
+    idleLockMinutes = settings.vaultLockMinutes ?? 15;
     if (service) await metadataFor(service).write('settings.json', settings);
     await mkdir(app.getPath('userData'), { recursive: true });
     await writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify(settings, null, 2), {
       mode: 0o600,
     });
+    resetIdleLock();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReveal, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

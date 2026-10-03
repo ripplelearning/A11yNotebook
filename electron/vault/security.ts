@@ -46,10 +46,15 @@ function domainKey(key: Buffer, domain: string) {
 
 function encryptBytes(key: Buffer, domain: string, id: string, plaintext: Buffer) {
   const nonce = randomBytes(NONCE_BYTES);
-  const cipher = createCipheriv('aes-256-gcm', domainKey(key, domain), nonce, { authTagLength: TAG_BYTES });
-  cipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
-  const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
-  return { nonce: nonce.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext };
+  const encryptionKey = domainKey(key, domain);
+  try {
+    const cipher = createCipheriv('aes-256-gcm', encryptionKey, nonce, { authTagLength: TAG_BYTES });
+    cipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
+    const ciphertext = Buffer.concat([cipher.update(plaintext), cipher.final()]);
+    return { nonce: nonce.toString('base64'), tag: cipher.getAuthTag().toString('base64'), ciphertext };
+  } finally {
+    encryptionKey.fill(0);
+  }
 }
 
 function decryptBytes(key: Buffer, domain: string, id: string, nonce: string, tag: string, ciphertext: string) {
@@ -65,10 +70,15 @@ function decryptBytes(key: Buffer, domain: string, id: string, nonce: string, ta
   ) {
     throw new Error('Encrypted data is malformed.');
   }
-  const decipher = createDecipheriv('aes-256-gcm', domainKey(key, domain), nonceBytes, { authTagLength: TAG_BYTES });
-  decipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
-  decipher.setAuthTag(tagBytes);
-  return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  const decryptionKey = domainKey(key, domain);
+  try {
+    const decipher = createDecipheriv('aes-256-gcm', decryptionKey, nonceBytes, { authTagLength: TAG_BYTES });
+    decipher.setAAD(Buffer.from(`${FORMAT}:${domain}:${id}`, 'utf8'));
+    decipher.setAuthTag(tagBytes);
+    return Buffer.concat([decipher.update(encrypted), decipher.final()]);
+  } finally {
+    decryptionKey.fill(0);
+  }
 }
 
 export async function createVaultSecurityConfig(password: string): Promise<{ config: VaultSecurityConfig; key: Buffer }> {
@@ -104,8 +114,12 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
   const key = await deriveKey(password, salt);
   try {
     const verifier = decryptBytes(key, 'verifier', VERIFIER, config.nonce, config.tag, config.verifier);
-    if (!verifier.equals(Buffer.from(VERIFIER))) throw new Error('Incorrect vault password.');
-    return key;
+    try {
+      if (!verifier.equals(Buffer.from(VERIFIER))) throw new Error('Incorrect vault password.');
+      return key;
+    } finally {
+      verifier.fill(0);
+    }
   } catch {
     key.fill(0);
     throw new Error('Incorrect vault password or damaged security metadata.');
@@ -141,7 +155,12 @@ export function decryptRecord(key: Buffer, domain: 'note' | 'credentials', value
     throw new Error('Encrypted data is malformed.');
   }
   const record = value as EncryptedRecord;
-  return decryptBytes(key, domain, record.id, record.nonce, record.tag, record.ciphertext).toString('utf8');
+  const plaintext = decryptBytes(key, domain, record.id, record.nonce, record.tag, record.ciphertext);
+  try {
+    return plaintext.toString('utf8');
+  } finally {
+    plaintext.fill(0);
+  }
 }
 
 export function isEncryptedRecord(value: unknown): value is EncryptedRecord {

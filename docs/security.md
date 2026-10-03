@@ -4,45 +4,44 @@
 
 The sandboxed renderer has no Node/Electron filesystem access. Fixed typed IPC methods check the trusted
 top-level application frame. Vault and metadata paths reject traversal, absolute paths, and symlinks.
-Markdown/HTML are sanitized; HTML previews have an empty sandbox and a default-src-none policy. The image
-protocol allows only bounded local raster files, never executable HTML/SVG. There is no generic IPC or remote
-resource fetch API. Updater channels and their user-consent flow remain separate.
+Markdown/HTML are sanitized; HTML previews have an empty sandbox and a default-src-none policy. The attachment
+protocol serves bounded local raster/PDF data with nosniff and no-store. Web capture is an explicit user action:
+main-process requests require public HTTPS DNS addresses, pin an address for each request, revalidate redirects,
+and bound page/image sizes.
 
 These checks are not protection against a malicious process running as the same OS user that races filesystem
 changes. Optimistic note/asset baselines reject stale writes but do not lock out external writers.
 Multi-file move/link-repair rollback is best effort, not crash-atomic.
 
-## No confidentiality or password protection yet
+## Password locks and encrypted records
 
-**Vault passwords, editing locks, idle auto-lock, encrypted notes, an encrypted credentials store, clipboard
-auto-clear, password generation, and sensitive-action audit logging are not implemented.** No UI control pretends
-to enable them. All ordinary notes, extracted search text, annotations, reminders, settings, and schedules are
-plaintext. The search index can contain note text even after editing; do not treat it as a secure store.
-Do not keep passwords or other secrets in this build. Protect the vault with OS account controls and appropriate
-disk encryption/backups. Notifications expose reminder titles through the Windows notification UI.
+Vault password protection uses scrypt (`N=32768`, `r=8`, `p=1`, 16-byte random salt) to derive a 256-bit key in
+the main process. `security.json` stores only the salt and an AES-GCM-encrypted verifier. The main process caches
+the key until manual lock, configured idle timeout, vault switch, or application exit; locks clear the Buffer and
+the renderer clears open notes, search results, credentials, and other content state. JavaScript cannot guarantee
+that every copy in memory is erased.
 
-## Proposed encryption design — not implemented or validated
+Notes are encrypted only after the user selects **Encrypt note**. Their `.md` file then contains a versioned
+AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random stable record ID, and authenticated format,
+domain, and record ID. `credentials.json` stores the encrypted credential list with a separate HKDF key domain.
+Wrong passwords, malformed envelopes, and authentication failures are rejected without returning plaintext.
+Renaming/moving an encrypted note preserves its record ID. The renderer never receives the derived key.
 
-A future implementation needs a reviewed format and threat model before shipping:
+Vault idle lock defaults to 15 minutes and can be disabled or set from 1–240 minutes. The optional unsaved-edit
+timeout changes the editor to read-only and requires saving before editing again. This edit timeout is an interface
+guard, not a substitute for OS-level access control.
 
-- Derive a per-vault key in the main process with Node `crypto.scrypt`, a random per-vault salt, and versioned,
-  bounded work parameters in `security.json`. Validate parameters before allocation/derivation.
-- Authenticate an encrypted verifier rather than storing a password or reversible plaintext verifier. Wrong
-  passwords and corrupted authentication tags must fail without writing files or returning partial plaintext.
-- Use AES-256-GCM with a fresh random 96-bit nonce for every encryption and a 128-bit authentication tag.
-  Authenticate format version and stable record identity as additional authenticated data. Renames must not
-  silently invalidate identity or reuse nonces.
-- Separate keys/record domains for notes and credentials. Keep derived keys in main only; decrypt selected
-  notes in memory. Never put decrypted encrypted-note text in the persisted search cache, temp files, backups,
-  logs, or crash reports. A reviewed in-memory search strategy is needed.
-- Locking must clear main key buffers and renderer decrypted documents, cancel autosave/pending sensitive
-  operations, require reauthentication for editing, and stop timers leaking protected content. JavaScript
-  garbage collection cannot promise complete memory erasure; document that limitation.
-- Audit only action names, record identifiers, timestamps, and outcomes, never passwords, key bytes, note
-  plaintext, or credential values. Clipboard clearing must only clear the value this app copied, without
-  erasing newer clipboard contents from another app.
-- Test wrong passwords, tampering, nonce/key separation, interrupted writes, rename/move migration, startup,
-  idle-lock races, clipboard replacement, and renderer/key isolation. App locking alone is not disk encryption.
+## Important limitations
 
-This design is a roadmap constraint, not a security guarantee. There are deliberately no partial crypto helpers
-or credential-entry widgets in the current build.
+Vault password protection gates app IPC but **does not encrypt the whole vault**. Unmarked notes, file names,
+annotations, settings, reminders, and other metadata remain plaintext. Search indexing scans ordinary Markdown and
+its persisted index may contain plaintext; it is not a secure store. Encrypted note content is not searchable and
+does not contribute tasks or link data. Credentials are encrypted at rest, but are decrypted into renderer memory
+when the credential manager is open. Per-note passwords and password recovery are not implemented. Losing the vault
+password makes encrypted records unrecoverable. Protect the vault with OS account controls and disk encryption.
+
+PDF preview uses the Chromium document viewer plus bounded best-effort text extraction, not pdf.js. ePub preview
+supports bounded ZIP entries using the built-in zlib implementation, not epub.js. Complex PDFs/fonts/encryption and
+some ePub packaging/content remain unsupported. Web capture preserves common HTML formatting and downloads only
+supported raster images. Clipboard auto-clear, password generation, and sensitive-action audit logging are not
+implemented. Notifications may expose reminder titles through the OS notification UI.

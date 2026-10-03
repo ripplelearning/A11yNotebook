@@ -1,5 +1,5 @@
 import DOMPurify from 'dompurify';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { imageUrl, parseCsv, type AttachmentPreview } from '../../../shared/attachments';
 
 interface Props {
@@ -12,6 +12,9 @@ interface Props {
 
 export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, announce }: Props) {
   const [description, setDescription] = useState(alt);
+  const [pageIndex, setPageIndex] = useState(0);
+  const pages = preview.pages?.length ? preview.pages : [preview.text];
+  useEffect(() => setPageIndex(0), [preview.path]);
   const image = /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(preview.path);
   let rows: string[][] = [];
   let csvError = '';
@@ -72,6 +75,43 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
           sandbox=""
           srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">${html}`}
         />
+      ) : preview.kind === '.pdf' ? (
+        <>
+          <iframe title={`PDF preview: ${preview.path}`} sandbox="" src={imageUrl(preview.path)} />
+          <section aria-label="Extracted PDF text">
+            <h3>
+              Page {pageIndex + 1} of {pages.length}
+            </h3>
+            <button type="button" disabled={pageIndex === 0} onClick={() => setPageIndex((page) => page - 1)}>
+              Previous page
+            </button>
+            <button
+              type="button"
+              disabled={pageIndex >= pages.length - 1}
+              onClick={() => setPageIndex((page) => Math.min(pages.length - 1, page + 1))}
+            >
+              Next page
+            </button>
+            <pre>{pages[pageIndex] || 'No extractable text was found on this page.'}</pre>
+          </section>
+        </>
+      ) : preview.kind === '.epub' ? (
+        <section aria-label="ePub book content">
+          <h3>
+            Section {pageIndex + 1} of {pages.length}
+          </h3>
+          <button type="button" disabled={pageIndex === 0} onClick={() => setPageIndex((page) => page - 1)}>
+            Previous section
+          </button>
+          <button
+            type="button"
+            disabled={pageIndex >= pages.length - 1}
+            onClick={() => setPageIndex((page) => Math.min(pages.length - 1, page + 1))}
+          >
+            Next section
+          </button>
+          <pre>{pages[pageIndex]}</pre>
+        </section>
       ) : preview.kind === '.csv' ? (
         csvError ? (
           <p>{csvError}</p>

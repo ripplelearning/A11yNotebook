@@ -28,6 +28,7 @@ export default function SettingsDialog({
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [vaultPassword, setVaultPassword] = useState('');
+  const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState('');
   const [credentials, setCredentials] = useState<{ id: string; username: string; password: string }[]>([]);
   const [credentialId, setCredentialId] = useState('');
   const [credentialUsername, setCredentialUsername] = useState('');
@@ -88,6 +89,26 @@ export default function SettingsDialog({
             onChange={(event) => setDraft({ ...draft, fontSize: Number(event.target.value) })}
           />
         </label>
+        <label>
+          Vault idle lock in minutes (0 disables; maximum 240)
+          <input
+            type="number"
+            min={0}
+            max={240}
+            value={draft.vaultLockMinutes ?? 15}
+            onChange={(event) => setDraft({ ...draft, vaultLockMinutes: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          Lock editing after unsaved changes in minutes (0 disables; maximum 240)
+          <input
+            type="number"
+            min={0}
+            max={240}
+            value={draft.noteEditLockMinutes ?? 0}
+            onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
+          />
+        </label>
         <fieldset>
           <legend>Keyboard shortcuts</legend>
           <p>Leave a shortcut empty to disable it. Pane and tab navigation keys are reserved.</p>
@@ -125,13 +146,24 @@ export default function SettingsDialog({
                   onChange={(event) => setVaultPassword(event.target.value)}
                 />
               </label>
+              <label>
+                Confirm vault password
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  maxLength={1024}
+                  value={vaultPasswordConfirm}
+                  onChange={(event) => setVaultPasswordConfirm(event.target.value)}
+                />
+              </label>
               <button
                 type="button"
-                disabled={vaultPassword.length < 8}
+                disabled={vaultPassword.length < 8 || vaultPassword !== vaultPasswordConfirm}
                 onClick={() => {
                   void onSetVaultPassword(vaultPassword)
                     .then(() => {
                       setVaultPassword('');
+                      setVaultPasswordConfirm('');
                       setError('Vault password protection enabled.');
                     })
                     .catch(() => setError('Could not enable vault password protection.'));

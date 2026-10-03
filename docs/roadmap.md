@@ -70,17 +70,19 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 
 ## Phase 7 — Security and local protection
 
-- ⏳ Optional vault password protection and editing locks (requires a reviewed encryption design).
+- ✅ Optional vault password gate, configurable idle lock, and unsaved-edit timeout.
 - Secure local storage model
 - Audit logging for sensitive changes
-- ⏳ Encrypted notes/credentials, password generator, clipboard auto-clear, and idle locking.
-- ✅ Current protection limits and a clearly unimplemented encryption design documented in `security.md`.
+- ✅ AES-256-GCM encrypted notes selected by the user and encrypted credential storage using a main-process scrypt key.
+- ⏳ Per-note passwords, password generator, clipboard auto-clear, audit logging, and whole-vault encryption.
+- ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
 
 - ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
-- ⏳ PDF/ePub text layers/navigation/find/zoom, web capture, SVG support, and PDF/ePub annotations.
+- ✅ Sandboxed PDF preview with best-effort text extraction/page navigation, bounded ePub spine extraction/navigation, and HTTPS web capture with local raster images.
+- ⏳ Full pdf.js/epub.js rendering fidelity, advanced PDF/ePub navigation/find/zoom, SVG support, and PDF/ePub annotations.
 
 ## Phase 9 — Accessibility validation and release readiness
 
@@ -91,5 +93,5 @@ Status key: ✅ complete · 🚧 in progress · ⏳ planned
 - ✅ Persisted autosave, theme/font size, customizable shortcut conflict detection/reset, and active-binding help.
 - ⏳ Complete manual JAWS/NVDA/Narrator/forced-colors checks for the new widgets and installed/portable Windows smoke tests.
 
-This increment adds no new dependencies, changes no app version, and publishes no release. Completion marks describe
+This increment adds no new runtime dependencies, changes no app version, and publishes no release. Completion marks describe
 implemented functionality, not a claim that manual Windows accessibility or the remaining security/import phases are finished.

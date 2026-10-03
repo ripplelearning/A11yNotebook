@@ -46,6 +46,7 @@ export interface VaultBridge {
   unlockVault?(password: string): Promise<VaultInfo>;
   lockVault?(): Promise<void>;
   encryptNote?(path: string, expectedContent: string): Promise<void>;
+  isNoteEncrypted?(path: string): Promise<boolean>;
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;
   saveCredential?(id: string, username: string, password: string): Promise<void>;
   deleteCredential?(id: string): Promise<void>;

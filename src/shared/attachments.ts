@@ -2,6 +2,7 @@ export interface AttachmentPreview {
   path: string;
   text: string;
   kind: string;
+  pages?: string[];
 }
 
 export function imageUrl(relative: string) {

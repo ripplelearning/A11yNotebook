@@ -59,6 +59,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultSecurityUnlock: 'vault:security-unlock',
   vaultSecurityLock: 'vault:security-lock',
   vaultNoteEncrypt: 'vault:note-encrypt',
+  vaultNoteEncryptionStatus: 'vault:note-encryption-status',
   vaultCredentialsRead: 'vault:credentials-read',
   vaultCredentialsSave: 'vault:credentials-save',
   vaultCredentialsDelete: 'vault:credentials-delete',
@@ -131,6 +132,7 @@ const bridge: NotebookBridge = {
     unlockVault: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityUnlock, password),
     lockVault: () => ipcRenderer.invoke(CHANNELS.vaultSecurityLock),
     encryptNote: (relative, expected) => ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected),
+    isNoteEncrypted: (relative) => ipcRenderer.invoke(CHANNELS.vaultNoteEncryptionStatus, relative),
     readCredentials: () => ipcRenderer.invoke(CHANNELS.vaultCredentialsRead),
     saveCredential: (id, username, password) =>
       ipcRenderer.invoke(CHANNELS.vaultCredentialsSave, id, username, password),

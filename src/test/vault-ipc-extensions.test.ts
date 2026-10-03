@@ -239,6 +239,13 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
   });
+  it('rejects unsafe web capture destinations and paths before network access', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '')).rejects.toThrow(/HTTPS/);
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside')).rejects.toThrow(
+      /valid inside this vault/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 42, '')).rejects.toThrow(/Invalid web capture request/);
+  });
   it('rejects untrusted senders on every registered channel', async () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');
   });
@@ -275,9 +282,20 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultReadAttachment, '../outside.txt')).rejects.toThrow();
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
   });
-  it('serves only validated raster images through the protocol', async () => {
+  it('serves validated raster and PDF documents through the protocol', async () => {
     await writeFile(path.join(mock.root, 'Photo.png'), new Uint8Array([1, 2, 3]));
+    await writeFile(
+      path.join(mock.root, 'Guide.pdf'),
+      Buffer.from('%PDF-1.7\n<< /Length 24 >>\nstream\nBT (Guide text) Tj ET\nendstream\n', 'latin1'),
+    );
     expect((await mock.protocol!({ url: 'vault-file://attachment/Photo.png' })).status).toBe(200);
+    const documentResponse = await mock.protocol!({ url: 'vault-file://attachment/Guide.pdf' });
+    expect(documentResponse.status).toBe(200);
+    expect(documentResponse.headers.get('Content-Type')).toBe('application/pdf');
+    await expect(invoke(IPC_CHANNELS.vaultReadAttachment, 'Guide.pdf')).resolves.toMatchObject({
+      kind: '.pdf',
+      pages: ['Guide text'],
+    });
     expect((await mock.protocol!({ url: 'vault-file://attachment/Topic.md' })).status).toBe(415);
     expect((await mock.protocol!({ url: 'vault-file://attachment/%2e%2e/Photo.png' })).status).toBe(404);
     await symlink(path.join(mock.root, 'Photo.png'), path.join(mock.root, 'Escape.png'));

@@ -57,8 +57,17 @@ import { assetTypes, createAssetRegistry } from '../shared/assets';
 import InsertAttachmentDialog from './features/editor/InsertAttachmentDialog';
 import Modal from './components/Modal';
 import SecurityGate from './features/security/SecurityGate';
+import WebCaptureDialog from './features/previews/WebCaptureDialog';
 
-type DialogId = 'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert';
+type DialogId =
+  | 'palette'
+  | 'updates'
+  | 'shortcuts'
+  | 'about'
+  | 'settings'
+  | 'template'
+  | 'attachment-insert'
+  | 'web-capture';
 
 function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
@@ -158,6 +167,8 @@ export default function App() {
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
+  const [lockedEditPath, setLockedEditPath] = useState<string | null>(null);
+  const [encryptedNotePath, setEncryptedNotePath] = useState<string | null>(null);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
   const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
   const [imageAlt, setImageAlt] = useState('');
@@ -170,6 +181,7 @@ export default function App() {
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
+  const currentNoteEditLocked = currentNote?.path === lockedEditPath;
   const allEntries = flattenEntries(vault?.entries ?? []);
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
   const notePaths = allEntries.filter((entry) => entry.kind === 'note').map((entry) => entry.path);
@@ -196,6 +208,19 @@ export default function App() {
       setNoteAnnotations((items) => items.filter((item) => item.id !== id));
     },
   });
+
+  useEffect(() => {
+    if (!(settings.noteEditLockMinutes ?? 0)) return;
+    if (!currentNote || currentNote.content === currentNote.saved) return;
+    const path = currentNote.path;
+    const title = currentNote.title;
+    const timer = window.setTimeout(() => {
+      setLockedEditPath(path);
+      setMode('read-only');
+      setStatusMessage(`Editing locked for ${title}; save the unsaved changes to continue.`);
+    }, (settings.noteEditLockMinutes ?? 0) * 60_000);
+    return () => window.clearTimeout(timer);
+  }, [currentNote, settings.noteEditLockMinutes]);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
@@ -247,6 +272,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setNoteAnnotations([]);
+    setLockedEditPath(null);
     if (currentNote?.path)
       void window.a11yNotebook?.vault
         .getAnnotations?.(currentNote.path)
@@ -254,6 +280,23 @@ export default function App() {
           if (!cancelled) setNoteAnnotations(items);
         })
         .catch(() => setStatusMessage('Could not load annotations.'));
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNote?.path, vault]);
+
+  useEffect(() => {
+    const status = window.a11yNotebook?.vault.isNoteEncrypted;
+    const path = currentNote?.path;
+    if (!path || !status) return;
+    let cancelled = false;
+    void status(path)
+      .then((encrypted) => {
+        if (!cancelled) setEncryptedNotePath(encrypted ? path : null);
+      })
+      .catch(() => {
+        if (!cancelled) setEncryptedNotePath(null);
+      });
     return () => {
       cancelled = true;
     };
@@ -295,7 +338,17 @@ export default function App() {
       setSecurityLocked(true);
       setOpenNotes([]);
       setAttachment(null);
+      setLockedEditPath(null);
       setNoteAnnotations([]);
+      setTasks([]);
+      setLinks([]);
+      setBookmarks([]);
+      setSearchResults([]);
+      setTags([]);
+      setUserTemplates([]);
+      setActiveDialog(null);
+      setAssetTabOpen(false);
+      setAssetDirty(false);
       setMode('read-only');
       setVault((current) => (current ? { ...current, entries: [] } : current));
       setStatusMessage('Vault locked. Unlock it to continue.');
@@ -778,6 +831,7 @@ export default function App() {
       setOpenNotes((current) =>
         current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
       );
+      setLockedEditPath((lockedPath) => (lockedPath === note.path ? null : lockedPath));
       setStatusMessage(`Saved ${note.title}.`);
       await refreshVault();
       await refreshLinkIndex();
@@ -1016,7 +1070,13 @@ export default function App() {
     const result = dispatchCommand(commandId, {
       mode,
       rightPaneOpen,
-      setMode,
+      setMode: (nextMode) => {
+        if (nextMode === 'edit' && currentNoteEditLocked) {
+          setStatusMessage('Save this note before editing it again.');
+          return;
+        }
+        setMode(nextMode);
+      },
       setRightPaneOpen,
       setCommandPaletteOpen: (open) => setActiveDialog(open ? 'palette' : null),
       setSelectedTab,
@@ -1176,6 +1236,13 @@ export default function App() {
             placeholder="Search vault, notes, tasks, files"
           />
         </div>
+        <button
+          type="button"
+          disabled={!vault || openNotes.some((note) => note.content !== note.saved)}
+          onClick={() => setActiveDialog('web-capture')}
+        >
+          Capture webpage
+        </button>
       </header>
 
       <nav className="menu-bar" aria-label="Main menu">
@@ -1538,23 +1605,35 @@ export default function App() {
                   </button>
                 ) : null}
                 {mode === 'read-only' && securityEnabled ? (
-                  <button
-                    type="button"
-                    disabled={currentNote.content !== currentNote.saved}
-                    onClick={() => {
-                      const encrypt = window.a11yNotebook?.vault.encryptNote;
-                      if (!encrypt) return;
-                      void encrypt(currentNote.path, currentNote.saved)
-                        .then(() => setStatusMessage('Note encrypted.'))
-                        .catch(() => setStatusMessage('Could not encrypt this note.'));
-                    }}
-                  >
-                    Encrypt note
-                  </button>
+                  encryptedNotePath === currentNote.path ? (
+                    <span role="status">Encrypted note</span>
+                  ) : (
+                    <button
+                      type="button"
+                      disabled={currentNote.content !== currentNote.saved}
+                      onClick={() => {
+                        const encrypt = window.a11yNotebook?.vault.encryptNote;
+                        if (!encrypt) return;
+                        void encrypt(currentNote.path, currentNote.saved)
+                          .then(() => {
+                            setEncryptedNotePath(currentNote.path);
+                            setStatusMessage('Note encrypted.');
+                          })
+                          .catch(() => setStatusMessage('Could not encrypt this note.'));
+                      }}
+                    >
+                      Encrypt note
+                    </button>
+                  )
                 ) : null}
                 {mode === 'edit' ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
                     Save note
+                  </button>
+                ) : null}
+                {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
+                  <button type="button" onClick={() => void saveActiveNote()}>
+                    Save locked note changes
                   </button>
                 ) : null}
                 {mode === 'edit' ? (
@@ -1715,6 +1794,7 @@ export default function App() {
           onSave={async (value) => {
             await window.a11yNotebook!.vault.saveSettings(value);
             setSettings(value);
+            if (!value.noteEditLockMinutes) setLockedEditPath(null);
             setStatusMessage('Settings saved.');
           }}
           onSetVaultPassword={async (password) => {
@@ -1765,6 +1845,25 @@ export default function App() {
           announce={setStatusMessage}
           onClose={closeDialog}
           onChange={(content) => updateNoteContent(currentNote.id, content)}
+        />
+      ) : null}
+      {activeDialog === 'web-capture' && vault ? (
+        <WebCaptureDialog
+          notebooks={[
+            ...notebooks.map((relative) => ({ path: relative, name: relative })),
+          ]}
+          onClose={closeDialog}
+          onCapture={async (url, notebookPath) => {
+            if (openNotes.some((note) => note.content !== note.saved) || activeConflict) {
+              throw new Error('Save or resolve note changes before capturing a page.');
+            }
+            const capture = window.a11yNotebook?.vault.captureWeb;
+            if (!capture) throw new Error('Web capture is unavailable.');
+            const updated = await capture(url, notebookPath);
+            setVault(updated);
+            setSelectedTab('welcome');
+            setStatusMessage('Web page captured as a Markdown note.');
+          }}
         />
       ) : null}
       {activeDialog === 'template' ? (
