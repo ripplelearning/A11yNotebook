@@ -96,6 +96,21 @@ export function convertNoteContent(
   if (from === to) return source;
   if (to === 'html') {
     const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+    markdown.inline.ruler.before('link', 'wiki_link', (state, silent) => {
+      const match = /^\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]/.exec(state.src.slice(state.pos));
+      if (!match) return false;
+      if (!silent) {
+        const title = match[1].trim();
+        const label = match[2]?.trim() || title;
+        const open = state.push('link_open', 'a', 1);
+        open.attrs = [['href', `#wiki:${encodeURIComponent(title)}`]];
+        const text = state.push('text', '', 0);
+        text.content = label;
+        state.push('link_close', 'a', -1);
+      }
+      state.pos += match[0].length;
+      return true;
+    });
     return sanitizeNoteHtml(
       markdownToHtml(source, (value) => markdown.render(value)),
       targetPath,

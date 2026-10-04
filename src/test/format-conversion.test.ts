@@ -1,11 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { convertNoteContent, formatConversionWarning } from '../renderer/features/vault/format-conversion';
+import { sanitizeNoteHtml } from '../renderer/features/vault/sanitize-html';
 
 describe('note format conversion', () => {
   it('converts Markdown into sanitized HTML while preserving semantic structure', () => {
-    const html = convertNoteContent('# Heading\n\n**Important**', 'markdown', 'html', 'Notes/Entry.html');
+    const html = convertNoteContent(
+      '# Heading\n\n**Important**\n\n[[Linked note|Link label]]',
+      'markdown',
+      'html',
+      'Notes/Entry.html',
+    );
     expect(html).toContain('<h1>Heading</h1>');
     expect(html).toContain('<strong>Important</strong>');
+    expect(html).toContain('<a href="#wiki:Linked%20note">Link label</a>');
     expect(html).not.toContain('<script');
   });
 
@@ -29,5 +36,11 @@ describe('note format conversion', () => {
     expect(warning).toContain('sibling copy');
     expect(warning).toContain('original');
     expect(warning).toMatch(/unsupported formatting/i);
+  });
+
+  it('removes form controls instead of injecting unlabeled controls into rendered notes', () => {
+    const safe = sanitizeNoteHtml('<form><label>Input <input value="unsafe"></label><button>Run</button></form>');
+    expect(safe).not.toMatch(/<(?:form|input|button)\b/i);
+    expect(safe).toContain('Input');
   });
 });

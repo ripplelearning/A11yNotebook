@@ -201,6 +201,13 @@ a:focus-visible,
   border-color: rgba(125, 211, 252, 0.7);
 }
 
+.document-page-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 1rem;
+}
+
 .side-panel h2 {
   margin-top: 0;
 }
