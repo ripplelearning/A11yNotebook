@@ -31,6 +31,18 @@ describe('note format conversion', () => {
     ).toContain('CSS classes, inline styling');
   });
 
+  it('preserves checklist completion, due dates, and priorities across format conversion', () => {
+    const html = convertNoteContent('- [x] Read chapter due:2026-10-05 priority:high', 'markdown', 'html', 'Read.html');
+    expect(html).toMatch(/data-a11y-task-complete="true"/);
+    expect(html).toMatch(/data-a11y-task-due="2026-10-05"/);
+    expect(html).toMatch(/data-a11y-task-priority="high"/);
+    expect(html).not.toContain('[x]');
+    expect(convertNoteContent(html, 'html', 'markdown', 'Read.md')).toContain(
+      '- [x] Read chapter due:2026-10-05 priority:high',
+    );
+    expect(formatConversionWarning(html, 'html', 'markdown')).toContain('task identities');
+  });
+
   it('escapes backslashes in plain HTML text when converting to Markdown', () => {
     const markdown = convertNoteContent('<p>Folder \\path\\file</p>', 'html', 'markdown', 'Notes/Entry.md');
     expect(markdown).toBe('Folder \\\\path\\\\file');
@@ -52,5 +64,15 @@ describe('note format conversion', () => {
     const safe = sanitizeNoteHtml('<form><label>Input <input value="unsafe"></label><button>Run</button></form>');
     expect(safe).not.toMatch(/<(?:form|input|button)\b/i);
     expect(safe).toContain('Input');
+  });
+
+  it('preserves documented task metadata through sanitization', () => {
+    const safe = sanitizeNoteHtml(
+      '<ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="2026-10-05" onclick="run()">Task</li></ul>',
+      'Notes/Tasks.html',
+    );
+    expect(safe).toContain('data-a11y-task-id="task-1234"');
+    expect(safe).toContain('data-a11y-task-complete="false"');
+    expect(safe).not.toContain('onclick');
   });
 });

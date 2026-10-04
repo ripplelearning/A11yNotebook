@@ -65,6 +65,7 @@ describe('local vault workflow', () => {
             complete: true,
           },
         ]),
+        setHtmlTaskDueDate: vi.fn(async () => []),
         getLinkIndex: vi.fn(async () => ({ links: [] })),
         getBookmarks: vi.fn(async () => []),
         toggleBookmark: vi.fn(async () => [
@@ -110,9 +111,11 @@ describe('local vault workflow', () => {
         name: 'Open Tasks',
       }),
     );
-    const taskTable = await screen.findByRole('table', { name: 'Markdown checkbox tasks in the open vault' });
+    const taskTable = await screen.findByRole('table', { name: 'Markdown and HTML checklist tasks in the open vault' });
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
-    await waitFor(() => expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true));
+    await waitFor(() =>
+      expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true, undefined),
+    );
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task marked complete.');
 
     fireEvent.click(within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }));

@@ -45,15 +45,25 @@ export interface VaultInfo {
   entries: VaultEntry[];
 }
 
-/** A checkbox task parsed from one Markdown line in the open vault. */
+/** A checkbox task parsed from Markdown or a semantic HTML checklist. */
 export interface VaultTask {
   id: string;
   path: string;
-  line: number;
+  line?: number;
+  taskId?: string;
+  htmlTask?: boolean;
+  revision?: string;
+  remindAt?: string;
   text: string;
   complete: boolean;
   dueDate?: string;
   priority?: 'low' | 'normal' | 'high' | 'urgent';
+}
+
+export interface VaultCaptureResult {
+  vault: VaultInfo;
+  notePath: string;
+  omittedImages: number;
 }
 
 /** One Markdown reference and its best-effort resolution in the open vault. */

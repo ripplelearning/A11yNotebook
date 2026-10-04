@@ -9,7 +9,16 @@ protocol serves bounded local raster, PDF, and ePub data with nosniff and no-sto
 epub.js processes the local archive as accessible text without rendering book markup or loading remote resources.
 Web capture is an explicit user action:
 main-process requests require public HTTPS DNS addresses, pin an address for each request, revalidate redirects,
-and bound page/image sizes.
+and bound page/image sizes. Both capture formats use the same URL checks and deadlines. HTML capture is sanitized in
+the main process with an allowlist; it contains no scripts, handlers, forms, or remote resources. Only downloaded
+raster images with descriptions are localized, and failures are reported.
+
+Note export uses a fixed typed IPC method, validates the source path inside the open vault, and asks the operating
+system for a destination. It refuses to overwrite the source note and requests native overwrite confirmation.
+Standalone HTML is sanitized again in the main process, contains a restrictive `default-src 'none'` policy, and
+embeds only bounded local raster images as data URIs. Relative links and other attachments are not copied. The UI
+requires explicit consent before exporting decrypted protected-note content; locked vaults and individually encrypted
+notes without an unlocked note key cannot be exported. No generic renderer-supplied filesystem path is accepted.
 
 These checks are not protection against a malicious process running as the same OS user that races filesystem
 changes. Optimistic note/asset baselines reject stale writes but do not lock out external writers.
@@ -44,15 +53,18 @@ erase unrelated clipboard content.
 Vault password protection gates app IPC but **does not encrypt the whole vault**. Unmarked notes, file names,
 annotations, settings, reminders, and other metadata remain plaintext. Search indexing scans ordinary Markdown and
 its persisted index may contain plaintext; it is not a secure store. Encrypted note content is not searchable and
-does not contribute tasks or link data. Credentials are encrypted at rest, but are decrypted into renderer memory
+does not contribute tasks or link data. HTML task indexing does not decrypt or inspect encrypted note envelopes.
+Credentials are encrypted at rest, but are decrypted into renderer memory
 when the credential manager is open. Password recovery is not implemented. Losing either password makes its encrypted
 records unrecoverable. Recovery keys, encrypted indexes, and whole-vault encryption are not implemented. Protect
 the vault with OS account controls and disk encryption.
 
-PDF.js renders bounded pages and provides accessible text/page navigation/search; ePub.js provides bounded spine-section
-text navigation/search, not full visual reflow. The reader's text extraction is capped at 500 pages and 20 MB.
-Complex PDFs/fonts/encryption and some ePub packaging/content remain unsupported. Web capture preserves common HTML
-formatting and downloads only
-supported raster images. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles
+PDF.js renders one bounded-scale canvas page and separately exposes extracted page text; it has no selectable PDF text
+layer or stable page-position selection mapping. ePub.js provides bounded flattened spine-section text navigation/search,
+not styled reflow or TOC rendering. Document annotation anchors and UI are not implemented. These are open design and
+implementation tasks, not blocked on external tooling. The reader's text extraction is capped at 500 pages and 20 MB.
+Complex PDFs/fonts/encryption and some ePub packaging/content remain unsupported. Web capture preserves common semantic
+HTML and downloads only supported raster images. HTML task IDs and scheduling metadata are ordinary note content and
+are not a security boundary. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles
 through the OS notification UI. Clipboard auto-clear applies only to generated note passwords copied from the
 encryption dialog, not arbitrary text or other secrets.

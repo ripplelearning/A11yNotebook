@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -10,6 +10,7 @@ import { createMetadataStore } from './metadata';
 import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
+import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import type { VaultChangedEvent } from '../../src/shared/search';
@@ -57,6 +58,52 @@ function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
   const result = vaultOperations.then(operation, operation);
   vaultOperations = result.catch(() => undefined);
   return result;
+}
+
+async function prepareHtmlExport(content: string, notePath: string, vault: VaultService) {
+  let omittedImages = 0;
+  let fragment = sanitizeHtmlFragment(content, { allowVaultImages: true });
+  const imageTag = /<img\b[^>]*>/gi;
+  const replacements: Array<{ source: string; replacement: string }> = [];
+  for (const match of fragment.matchAll(imageTag)) {
+    const tag = match[0];
+    const sourceAttribute = /\bsrc="([^"]*)"/i.exec(tag);
+    if (!sourceAttribute) continue;
+    const source = sourceAttribute[1];
+    if (/^data:image\//i.test(source)) continue;
+    try {
+      let relative: string;
+      if (/^vault-file:\/\/attachment\//i.test(source)) {
+        relative = protocolPath(source);
+      } else {
+        if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(source) || source.includes('\\'))
+          throw new Error('Unsafe image path.');
+        const decoded = decodeURIComponent(source.split(/[?#]/, 1)[0]);
+        relative = path.posix.normalize(path.posix.join(path.posix.dirname(notePath), decoded));
+        if (relative === '..' || relative.startsWith('../') || path.posix.isAbsolute(relative))
+          throw new Error('Image path leaves the vault.');
+      }
+      if (!IMAGE_TYPES[path.extname(relative).toLowerCase()]) throw new Error('Unsupported image type.');
+      const absolute = await vault.resolveEntry(relative);
+      const stat = await lstat(absolute);
+      if (!stat.isFile() || stat.size > 20 * 1024 * 1024) throw new Error('Unsupported image size.');
+      const bytes = await readFile(absolute);
+      const dataUri = `data:${IMAGE_TYPES[path.extname(relative).toLowerCase()]};base64,${bytes.toString('base64')}`;
+      replacements.push({
+        source: tag,
+        replacement: tag.replace(sourceAttribute[0], `src="${dataUri}"`),
+      });
+    } catch {
+      omittedImages += 1;
+      replacements.push({ source: tag, replacement: tag.replace(sourceAttribute[0], 'src=""') });
+    }
+  }
+  for (const replacement of replacements) fragment = fragment.replace(replacement.source, replacement.replacement);
+  fragment = sanitizeHtmlFragment(fragment, { renderTaskControls: true });
+  return {
+    html: standaloneHtml(path.basename(notePath, path.extname(notePath)), fragment),
+    omittedImages,
+  };
 }
 
 function assertTrusted(event: IpcMainInvokeEvent, isTrustedSender: TrustedSender, allowLocked = false) {
@@ -537,9 +584,14 @@ export function setupVaultIpc(
     );
     resetIdleLock();
   });
-  ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown, format: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof url !== 'string' || typeof notebookPath !== 'string' || notebookPath.length > 2048) {
+    if (
+      typeof url !== 'string' ||
+      typeof notebookPath !== 'string' ||
+      notebookPath.length > 2048 ||
+      !['markdown', 'html'].includes(String(format))
+    ) {
       throw new Error('Invalid web capture request.');
     }
     const vault = requireService();
@@ -569,17 +621,87 @@ export function setupVaultIpc(
           .replace(/[. ]+$/g, '')
           .trim()
           .slice(0, 100) || 'Web capture';
-      const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}.md`;
-      const content = `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
+      const extension = format === 'html' ? '.html' : '.md';
+      const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}${extension}`;
+      const content =
+        format === 'html' ? capture.html : `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
       await vault.createNote(notePath, content);
       noteCreated = true;
-      return vault.getVault();
+      return { vault: await vault.getVault(), notePath, omittedImages: capture.omittedImages };
     } catch (error) {
       if (attachmentFolder && !noteCreated)
         await rm(attachmentFolder, { recursive: true, force: true }).catch(() => undefined);
       throw error;
     }
   });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultExportNote,
+    async (event, relativePath: unknown, format: unknown, content: unknown, protectedConsent: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        typeof relativePath !== 'string' ||
+        typeof format !== 'string' ||
+        !['html', 'markdown'].includes(format) ||
+        typeof content !== 'string' ||
+        Buffer.byteLength(content, 'utf8') > 8 * 1024 * 1024 ||
+        typeof protectedConsent !== 'boolean'
+      ) {
+        throw new Error('Invalid note export request.');
+      }
+      const vault = requireService();
+      const sourcePath = await vault.resolveEntry(relativePath);
+      if (!['.md', '.html'].includes(path.extname(sourcePath).toLowerCase())) {
+        throw new Error('Only Markdown and HTML notes can be exported.');
+      }
+      let stored: unknown;
+      try {
+        stored = JSON.parse(await vault.readNote(relativePath));
+      } catch {
+        stored = null;
+      }
+      let protectedNote = false;
+      if (isPasswordEncryptedNote(stored)) {
+        protectedNote = true;
+        const key = noteKeys.get(stored.id);
+        if (!key) throw new Error('Unlock this note with its password before exporting.');
+        decryptPasswordEncryptedNote(key, stored);
+      } else if (isEncryptedRecord(stored)) {
+        protectedNote = true;
+        if (!masterKey) throw new Error('Unlock the vault before exporting this note.');
+        decryptRecord(masterKey, 'note', stored);
+      }
+      if (protectedNote && !protectedConsent) {
+        throw new Error('Explicit consent is required before exporting protected note content.');
+      }
+      const extension = format === 'html' ? '.html' : '.md';
+      const basename = path.basename(relativePath, path.extname(relativePath));
+      const result = await dialog.showSaveDialog({
+        title: `Export ${basename}`,
+        defaultPath: `${basename}${extension}`,
+        filters: [
+          { name: format === 'html' ? 'HTML document' : 'Markdown document', extensions: [extension.slice(1)] },
+        ],
+        properties: ['showOverwriteConfirmation'],
+      });
+      if (result.canceled || !result.filePath) return { cancelled: true, omittedImages: 0 };
+      const destination = await realpath(result.filePath).catch(() => path.resolve(result.filePath));
+      if (destination === path.resolve(sourcePath)) {
+        throw new Error('Choose a different location so the original note is not overwritten.');
+      }
+      if (path.extname(result.filePath).toLowerCase() !== extension) {
+        throw new Error(`Choose a ${extension} filename for this export.`);
+      }
+      let exported = content;
+      let omittedImages = 0;
+      if (format === 'html') {
+        const prepared = await prepareHtmlExport(content, relativePath, vault);
+        exported = prepared.html;
+        omittedImages = prepared.omittedImages;
+      }
+      await writeFile(destination, exported, { encoding: 'utf8', mode: 0o600 });
+      return { cancelled: false, omittedImages };
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultAssetRead, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !assets) throw new Error('Invalid asset request.');
@@ -923,12 +1045,32 @@ export function setupVaultIpc(
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultToggleTask,
-    async (event, relativePath: unknown, line: unknown, complete: unknown) => {
+    async (event, relativePath: unknown, location: unknown, complete: unknown, revision: unknown) => {
       assertTrusted(event, isTrustedSender);
-      if (typeof relativePath !== 'string' || typeof line !== 'number' || typeof complete !== 'boolean') {
+      if (
+        typeof relativePath !== 'string' ||
+        (typeof location !== 'number' && typeof location !== 'string') ||
+        typeof complete !== 'boolean' ||
+        (revision !== undefined && typeof revision !== 'string')
+      ) {
         throw new Error('Invalid task update request.');
       }
-      return requireService().toggleTask(relativePath, line, complete);
+      return requireService().toggleTask(relativePath, location, complete, revision);
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.vaultTaskDueDate,
+    async (event, relativePath: unknown, taskId: unknown, dueDate: unknown, revision: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        typeof relativePath !== 'string' ||
+        typeof taskId !== 'string' ||
+        typeof dueDate !== 'string' ||
+        typeof revision !== 'string'
+      ) {
+        throw new Error('Invalid HTML task due-date request.');
+      }
+      return requireService().setHtmlTaskDueDate(relativePath, taskId, dueDate, revision);
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultGetLinkIndex, async (event) => {

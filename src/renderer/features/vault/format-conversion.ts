@@ -67,10 +67,16 @@ function blockMarkdown(node: Node): string {
   if (tag === 'ul' || tag === 'ol') {
     const items = Array.from(node.children)
       .filter((item) => item.tagName.toLowerCase() === 'li')
-      .map(
-        (item, index) =>
-          `${tag === 'ol' ? `${index + 1}.` : '-'} ${Array.from(item.childNodes, inlineMarkdown).join('').trim()}`,
-      );
+      .map((item, index) => {
+        const content = Array.from(item.childNodes, inlineMarkdown).join('').trim();
+        const task = item.getAttribute('data-a11y-task-id');
+        if (!task) return `${tag === 'ol' ? `${index + 1}.` : '-'} ${content}`;
+        const checked = item.getAttribute('data-a11y-task-complete') === 'true';
+        const due = item.getAttribute('data-a11y-task-due');
+        const priority = item.getAttribute('data-a11y-task-priority');
+        const reminder = item.getAttribute('data-a11y-task-remind');
+        return `- [${checked ? 'x' : ' '}] ${content}${due ? ` due:${due}` : ''}${priority ? ` priority:${priority}` : ''}${reminder ? ` remind:${reminder}` : ''}`;
+      });
     return items.join('\n');
   }
   if (tag === 'table') {
@@ -124,10 +130,39 @@ export function convertNoteContent(
       state.pos += match[0].length;
       return true;
     });
-    return sanitizeNoteHtml(
+    const html = sanitizeNoteHtml(
       markdownToHtml(source, (value) => markdown.render(value)),
       targetPath,
     );
+    const template = document.createElement('template');
+    template.innerHTML = html;
+    template.content.querySelectorAll<HTMLLIElement>('li').forEach((item) => {
+      const originalText = item.textContent ?? '';
+      const checkbox = /^\s*\[([ xX])\]\s*/.exec(originalText);
+      if (!checkbox) return;
+      const due = originalText.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
+      const priority = originalText.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase();
+      const reminder = originalText.match(/remind:(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
+      item.setAttribute('data-a11y-task-id', crypto.randomUUID());
+      item.setAttribute('data-a11y-task-complete', String(checkbox[1].toLowerCase() === 'x'));
+      if (due) item.setAttribute('data-a11y-task-due', due);
+      if (priority) item.setAttribute('data-a11y-task-priority', priority);
+      if (reminder) item.setAttribute('data-a11y-task-remind', reminder);
+      const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+      let textNode = walker.nextNode();
+      let prefix = true;
+      while (textNode) {
+        let current = textNode.textContent ?? '';
+        if (prefix) current = current.replace(/^\s*\[[ xX]\]\s*/, '');
+        textNode.textContent = current
+          .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+          .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
+          .replace(/remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '');
+        prefix = false;
+        textNode = walker.nextNode();
+      }
+    });
+    return sanitizeNoteHtml(template.innerHTML, targetPath);
   }
   return htmlToMarkdown(source);
 }
@@ -136,6 +171,9 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
   const losses =
     from === 'html'
       ? [
+          /data-a11y-task-id/i.test(source)
+            ? 'HTML task identities and reminder scheduling metadata are not portable to Markdown'
+            : '',
           /<(?:script|style|form|iframe|object|embed|video|audio|svg|math)\b/i.test(source)
             ? 'active or embedded HTML content is not retained'
             : '',

@@ -2,6 +2,7 @@ export interface NoteTemplate {
   id: string;
   name: string;
   content: string;
+  format?: 'markdown' | 'html';
 }
 
 export interface TemplateContext {
@@ -89,9 +90,17 @@ export function validateNoteTitle(title: string): string | null {
   return null;
 }
 
-export function templateNotePath(notebookPath: string, title: string): string {
+export function templateNotePath(
+  notebookPath: string,
+  title: string,
+  format: 'markdown' | 'html' = 'markdown',
+): string {
   const error = validateNoteTitle(title);
   if (error) throw new Error(error);
-  const filename = /\.md$/i.test(title.trim()) ? title.trim() : `${title.trim()}.md`;
+  const trimmedTitle = title.trim();
+  const existingExtension = trimmedTitle.match(/\.(md|html)$/i)?.[0];
+  const base = existingExtension ? trimmedTitle.slice(0, -existingExtension.length) : trimmedTitle;
+  const extension = format === 'html' ? '.html' : '.md';
+  const filename = `${base}${existingExtension?.toLowerCase() === extension ? existingExtension : extension}`;
   return notebookPath ? `${notebookPath.replace(/\/$/, '')}/${filename}` : filename;
 }

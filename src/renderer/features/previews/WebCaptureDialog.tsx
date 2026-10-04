@@ -3,13 +3,14 @@ import Modal from '../../components/Modal';
 
 interface Props {
   notebooks: { path: string; name: string }[];
-  onCapture: (url: string, notebookPath: string) => Promise<void>;
+  onCapture: (url: string, notebookPath: string, format: 'markdown' | 'html') => Promise<void>;
   onClose: () => void;
 }
 
 export default function WebCaptureDialog({ notebooks, onCapture, onClose }: Props) {
   const [url, setUrl] = useState('');
   const [notebookPath, setNotebookPath] = useState('');
+  const [format, setFormat] = useState<'markdown' | 'html'>('markdown');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   return (
@@ -19,7 +20,7 @@ export default function WebCaptureDialog({ notebooks, onCapture, onClose }: Prop
           event.preventDefault();
           setBusy(true);
           setError('');
-          void onCapture(url, notebookPath)
+          void onCapture(url, notebookPath, format)
             .then(onClose)
             .catch((failure: unknown) => setError((failure as Error).message || 'Could not capture this page.'))
             .finally(() => setBusy(false));
@@ -47,6 +48,13 @@ export default function WebCaptureDialog({ notebooks, onCapture, onClose }: Prop
                 {notebook.name}
               </option>
             ))}
+          </select>
+        </label>
+        <label>
+          Output format
+          <select value={format} onChange={(event) => setFormat(event.target.value as 'markdown' | 'html')}>
+            <option value="markdown">Markdown (.md)</option>
+            <option value="html">HTML (.html)</option>
           </select>
         </label>
         {error ? <p role="alert">{error}</p> : null}

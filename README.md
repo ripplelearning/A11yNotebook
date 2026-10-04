@@ -12,8 +12,11 @@ and a sandboxed reader.
 - Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
   Explorer reveal, external open, and recent-vault restoration.
 - Sanitized semantic Markdown/HTML reading, plain-source editing, and accessible rich-text editing with Ctrl+S and idle autosave.
-- Markdown and HTML note creation; rich-text paste is sanitized. HTML notes support relative links and search.
+- Markdown and HTML note creation; rich-text paste is sanitized. HTML notes support relative links, search, stable-ID checklists, task filters/toggles, and text annotations.
 - Convert a note into a Markdown/HTML sibling copy with a loss warning; the source file is retained.
+- Create from Markdown or safe HTML templates, including built-ins converted to either format, with placeholders and cursor placement.
+- Export HTML or Markdown notes through a native save dialog as sanitized standalone HTML or Markdown. Local raster images are embedded in HTML exports; relative links are not packaged. Protected notes require explicit decrypted-content consent.
+- Capture public HTTPS pages as Markdown or HTML. Capture HTML is sanitized in the main process; headings, lists, tables and links are retained, raster images are localized, and partial image failures are noted.
 - Persistent main-process full-text search with snippets, notebook/kind/tag/modified-date filters, and debounced queries.
 - External-change watching, clean-note reloads, and explicit conflict resolution that preserves unsaved edits.
 - Confirmed moves/renames with repair of unambiguous wiki and inline relative Markdown links.
@@ -21,10 +24,9 @@ and a sandboxed reader.
 - Built-in and user-editable note templates; outline, mind-map, flashcard, CSV, and Markdown-table tools.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
-- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search.
-- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search.
+- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search. PDF zoom/selectable text layers and ePub visual reflow/TOC remain open.
 - Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
-- Checkbox tasks indexed from Markdown, with due dates and priorities, filters, and a sortable table that updates source notes.
+- Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
 - A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
@@ -164,11 +166,12 @@ the latest changes.
 ## Roadmap summary
 
 This remains an unfinished development build. Vault password gating and selected-note encryption exist, but
-whole-vault encryption, recovery keys, and sensitive-action audit logging do not. PDF.js renders pages and supports
-accessible text/search; epub.js provides searchable accessible section text, but full visual reflow, advanced
-navigation, and annotations remain open. HTML/rich-text support includes warned sibling-copy conversion; checklist,
-task, template, and export integration remain partial. Several roadmap items still need implementation, and Windows
-UI Automation and manual screen-reader validation have not been run.
+whole-vault encryption, recovery keys, and sensitive-action audit logging do not. PDF.js currently draws a bounded
+canvas page and exposes separately flattened page text; there is no selectable/zoomable text layer. epub.js exposes
+flattened spine-section text, not styled reflow or a navigation TOC. PDF/ePub annotations remain open. Markdown and
+HTML notes support text annotations, with HTML anchored in the sanitized rendered note. HTML tasks, two-format
+templates, sanitized export and HTML capture are implemented with documented metadata and asset limits. Several other
+roadmap items still need implementation, and Windows UI Automation and manual screen-reader validation have not been run.
 See [`docs/roadmap.md`](docs/roadmap.md), [`docs/security.md`](docs/security.md), and the manual accessibility matrix.
 No app version was changed and no release was published by this feature work.
 

@@ -29,6 +29,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
+  vaultTaskDueDate: 'vault:task-due-date',
   vaultGetLinkIndex: 'vault:get-link-index',
   vaultGetBookmarks: 'vault:get-bookmarks',
   vaultToggleBookmark: 'vault:toggle-bookmark',
@@ -65,6 +66,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultCredentialsSave: 'vault:credentials-save',
   vaultCredentialsDelete: 'vault:credentials-delete',
   vaultCaptureWeb: 'vault:capture-web',
+  vaultExportNote: 'vault:export-note',
   vaultSecurityLocked: 'vault:security-locked',
 };
 
@@ -139,7 +141,9 @@ const bridge: NotebookBridge = {
     saveCredential: (id, username, password) =>
       ipcRenderer.invoke(CHANNELS.vaultCredentialsSave, id, username, password),
     deleteCredential: (id) => ipcRenderer.invoke(CHANNELS.vaultCredentialsDelete, id),
-    captureWeb: (url, notebookPath) => ipcRenderer.invoke(CHANNELS.vaultCaptureWeb, url, notebookPath),
+    captureWeb: (url, notebookPath, format) => ipcRenderer.invoke(CHANNELS.vaultCaptureWeb, url, notebookPath, format),
+    exportNote: (relativePath, format, content, protectedConsent) =>
+      ipcRenderer.invoke(CHANNELS.vaultExportNote, relativePath, format, content, protectedConsent),
     onSecurityLocked: (callback) => subscribe<boolean>(CHANNELS.vaultSecurityLocked, () => callback()),
     reveal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReveal, relativePath),
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
@@ -147,8 +151,10 @@ const bridge: NotebookBridge = {
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
-    toggleTask: (relativePath, line, complete) =>
-      ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, line, complete),
+    toggleTask: (relativePath, location, complete, revision) =>
+      ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, location, complete, revision),
+    setHtmlTaskDueDate: (relativePath, taskId, dueDate, revision) =>
+      ipcRenderer.invoke(CHANNELS.vaultTaskDueDate, relativePath, taskId, dueDate, revision),
     getLinkIndex: () => ipcRenderer.invoke(CHANNELS.vaultGetLinkIndex),
     getBookmarks: () => ipcRenderer.invoke(CHANNELS.vaultGetBookmarks),
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),

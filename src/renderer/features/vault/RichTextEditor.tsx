@@ -20,6 +20,7 @@ const tools = [
   { label: 'Insert link', command: 'link' },
   { label: 'Insert table', command: 'table' },
   { label: 'Insert image', command: 'image' },
+  { label: 'Insert checklist task', command: 'task' },
 ];
 
 export default function RichTextEditor({ content, notePath, onChange }: Props) {
@@ -61,6 +62,13 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
           target.append(image);
         }
       }
+    } else if (command === 'task') {
+      const id = crypto.randomUUID();
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<ul><li data-a11y-task-id="${id}" data-a11y-task-complete="false" data-a11y-task-due="" data-a11y-task-priority="normal">Task</li></ul>`,
+      );
     } else {
       document.execCommand(command);
     }

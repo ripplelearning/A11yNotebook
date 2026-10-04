@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
-import type { VaultInfo } from '../shared/types';
+import type { VaultInfo, VaultTask } from '../shared/types';
 import type { VaultChangedEvent } from '../shared/search';
 import type { VaultReminderEvent } from '../shared/reminders';
 import { DEFAULT_SETTINGS } from '../shared/settings';
@@ -12,15 +12,15 @@ afterEach(() => {
   delete window.a11yNotebook;
 });
 
-function setup(customBold = false) {
-  let content = '# Note\n\ntext';
+function setup(customBold = false, note?: { path: string; content: string; tasks: VaultTask[] }) {
+  let content = note?.content ?? '# Note\n\ntext';
   let listener: (event: VaultChangedEvent) => void = () => undefined;
   let lock: () => void = () => undefined;
   let reminderListener: (event: VaultReminderEvent) => void = () => undefined;
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
-    entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note' }],
+    entries: [{ name: note?.path.split('/').at(-1) ?? 'Note.md', path: note?.path ?? 'Note.md', kind: 'note' }],
   };
   const bridge: NotebookBridge = {
     vault: {
@@ -39,8 +39,16 @@ function setup(customBold = false) {
       openExternal: vi.fn(async () => undefined),
       openUrl: vi.fn(async () => undefined),
       importFile: vi.fn(async () => null),
-      getTasks: vi.fn(async () => []),
-      toggleTask: vi.fn(async () => []),
+      getTasks: vi.fn(async () => note?.tasks ?? []),
+      toggleTask: vi.fn(async (_path: string, _location: string | number, complete: boolean) => {
+        if (note?.path.endsWith('.html')) {
+          content = content.replace(
+            /data-a11y-task-complete="(?:true|false)"/,
+            `data-a11y-task-complete="${complete}"`,
+          );
+        }
+        return (note?.tasks ?? []).map((task) => ({ ...task, complete }));
+      }),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
@@ -94,6 +102,7 @@ function setup(customBold = false) {
       content = disk;
       listener({ vaultPath: vault.path, paths: ['Note.md'] });
     },
+    readContent: () => content,
   };
 }
 
@@ -114,6 +123,37 @@ describe('feature wiring in the application shell', () => {
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'html' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.html'));
+  });
+  it('renders HTML task semantics accessibly and toggles by stable task identity', async () => {
+    const task: VaultTask = {
+      id: 'Note.html#task-1234',
+      path: 'Note.html',
+      taskId: 'task-1234',
+      htmlTask: true,
+      revision: 'a'.repeat(64),
+      text: 'Read chapter',
+      complete: false,
+      dueDate: '2026-10-05',
+      priority: 'high',
+    };
+    const { bridge, readContent } = setup(false, {
+      path: 'Note.html',
+      content:
+        '<h1>Note</h1><ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false">Read chapter</li></ul>',
+      tasks: [task],
+    });
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Note\.html/ }));
+    const checkbox = await screen.findByRole('checkbox', { name: 'Mark complete: Read chapter' });
+    expect(checkbox).toHaveAttribute('aria-checked', 'false');
+    fireEvent.click(checkbox);
+    await waitFor(() =>
+      expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Note.html', 'task-1234', true, 'a'.repeat(64)),
+    );
+    expect(await screen.findByRole('checkbox', { name: 'Mark incomplete: Read chapter' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(readContent()).not.toContain('data-a11y-task-complete="false"');
   });
 
   it('removes reminder content and ignores stale reminder events after locking', async () => {
@@ -232,7 +272,7 @@ describe('feature wiring in the application shell', () => {
     const menu = screen.getByRole('menu', { name: 'Actions for Note.md' });
     expect(within(menu).getByRole('menuitem', { name: 'Open' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
-    expect(within(menu).getByRole('menuitem', { name: 'Encrypt note' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Export note…' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(item).toHaveFocus();
     expect(menu).not.toBeInTheDocument();

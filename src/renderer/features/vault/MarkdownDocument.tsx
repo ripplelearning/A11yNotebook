@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import { useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
+import type { VaultTask } from '../../../shared/types';
 import { imageUrl } from '../../../shared/attachments';
 import RichTextEditor from './RichTextEditor';
 import { htmlToMarkdown, markdownToHtml } from './format-conversion';
@@ -67,6 +68,8 @@ interface MarkdownDocumentProps {
   notePath?: string;
   format?: 'markdown' | 'html';
   disabled?: boolean;
+  htmlTasks?: VaultTask[];
+  onToggleHtmlTask?: (taskId: string) => void;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
@@ -81,6 +84,8 @@ export default function MarkdownDocument({
   notePath,
   format = 'markdown',
   disabled,
+  htmlTasks = [],
+  onToggleHtmlTask,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
   if (mode === 'edit') {
@@ -134,10 +139,41 @@ export default function MarkdownDocument({
           ADD_URI_SAFE_ATTR: [],
           ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
         });
+  const renderedHtml =
+    format === 'html' && mode === 'read-only' && htmlTasks.length
+      ? (() => {
+          const template = document.createElement('template');
+          template.innerHTML = html;
+          const byTaskId = new Map(htmlTasks.filter((task) => task.taskId).map((task) => [task.taskId!, task]));
+          template.content.querySelectorAll<HTMLLIElement>('li[data-a11y-task-id]').forEach((item) => {
+            const task = byTaskId.get(item.dataset.a11yTaskId ?? '');
+            if (!task?.taskId) return;
+            const toggle = document.createElement('button');
+            toggle.type = 'button';
+            toggle.setAttribute('role', 'checkbox');
+            toggle.setAttribute('aria-checked', String(task.complete));
+            toggle.setAttribute('aria-label', `${task.complete ? 'Mark incomplete' : 'Mark complete'}: ${task.text}`);
+            toggle.dataset.htmlTaskId = task.taskId;
+            toggle.dataset.taskId = task.taskId;
+            toggle.dataset.context = 'task-row';
+            toggle.dataset.path = task.path;
+            toggle.textContent = task.complete ? 'Completed' : 'Incomplete';
+            item.insertBefore(toggle, item.firstChild);
+          });
+          return template.innerHTML;
+        })()
+      : html;
   return (
     <div
       className="document-body markdown-body"
       onClick={(event) => {
+        const taskToggle = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-html-task-id]');
+        if (taskToggle) {
+          event.preventDefault();
+          const id = taskToggle.dataset.htmlTaskId;
+          if (id) onToggleHtmlTask?.(id);
+          return;
+        }
         const anchor = (event.target as HTMLElement).closest('a');
         const href = anchor?.getAttribute('href');
         if (!href || (href.startsWith('#') && !href.startsWith('#wiki:'))) return;
@@ -149,7 +185,7 @@ export default function MarkdownDocument({
         }
         onNavigate(href);
       }}
-      dangerouslySetInnerHTML={{ __html: html }}
+      dangerouslySetInnerHTML={{ __html: renderedHtml }}
     />
   );
 }

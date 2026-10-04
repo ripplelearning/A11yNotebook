@@ -1,8 +1,9 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import AttachmentView from '../renderer/features/previews/AttachmentView';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 import { relativeReference } from '../renderer/features/editor/InsertAttachmentDialog';
+import WebCaptureDialog from '../renderer/features/previews/WebCaptureDialog';
 
 describe('safe preview rendering and image insertion', () => {
   afterEach(() => vi.unstubAllGlobals());
@@ -44,6 +45,14 @@ describe('safe preview rendering and image insertion', () => {
     expect(screen.getByAltText('Diagram')).toHaveAttribute('src', 'vault-file://attachment/Images/My%20image.png');
     expect(screen.getByAltText('Remote')).not.toHaveAttribute('src', 'https://example.org/image.png');
     expect(relativeReference('Notes/N.md', 'Images/My image.png')).toBe('../Images/My%20image.png');
+  });
+  it('provides a labelled capture format selector and sends the selected format', async () => {
+    const onCapture = vi.fn(async () => undefined);
+    render(<WebCaptureDialog notebooks={[]} onCapture={onCapture} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('HTTPS page URL'), { target: { value: 'https://example.org/' } });
+    fireEvent.change(screen.getByLabelText('Output format'), { target: { value: 'html' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Capture page' }));
+    await waitFor(() => expect(onCapture).toHaveBeenCalledWith('https://example.org/', '', 'html'));
   });
   it('routes PDF previews into the local accessible reader', () => {
     vi.stubGlobal(

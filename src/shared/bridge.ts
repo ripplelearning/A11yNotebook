@@ -1,6 +1,6 @@
 import type { MenuCommand } from './ipc';
 import type { UpdaterStatus } from './updater';
-import type { VaultBookmark, VaultInfo, VaultLinkIndex, VaultTask } from './types';
+import type { VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { AttachmentPreview } from './attachments';
@@ -50,7 +50,16 @@ export interface VaultBridge {
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;
   saveCredential?(id: string, username: string, password: string): Promise<void>;
   deleteCredential?(id: string): Promise<void>;
-  captureWeb?(url: string, notebookPath: string): Promise<VaultInfo>;
+  captureWeb?(url: string, notebookPath: string, format: 'markdown' | 'html'): Promise<VaultCaptureResult>;
+  exportNote?(
+    path: string,
+    format: 'html' | 'markdown',
+    content: string,
+    protectedContentConsent: boolean,
+  ): Promise<{
+    cancelled: boolean;
+    omittedImages: number;
+  }>;
   onSecurityLocked?(callback: () => void): () => void;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
@@ -58,7 +67,8 @@ export interface VaultBridge {
   importFile(notebookPath: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
-  toggleTask(path: string, line: number, complete: boolean): Promise<VaultTask[]>;
+  toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;
+  setHtmlTaskDueDate(path: string, taskId: string, dueDate: string, revision: string): Promise<VaultTask[]>;
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;

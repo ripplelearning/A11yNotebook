@@ -38,6 +38,7 @@ function installBridge() {
       delete: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       getTasks: vi.fn(async () => []),
       toggleTask: vi.fn(async () => []),
+      setHtmlTaskDueDate: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),

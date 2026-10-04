@@ -19,7 +19,7 @@ The vault IPC methods are `vault:open`, `vault:get`, `vault:read-note`, `vault:s
 `vault:import`, `vault:delete`, `vault:get-tasks`, `vault:toggle-task`, `vault:get-link-index`,
 `vault:get-bookmarks`, and `vault:toggle-bookmark`. Destructive delete uses an OS confirmation dialog and moves
 the selected resource to the Recycle Bin. Extended channels for search, move/link repair, annotations, assets,
-attachments, reminders, and settings are declared in `src/shared/ipc.ts` and mirrored by type-checked preload
+attachments, reminders, settings, task metadata, note export, and web capture are declared in `src/shared/ipc.ts` and mirrored by type-checked preload
 constants. Only `vault:changed` and `vault:reminder-event` are subscribable vault events; listeners never receive
 the raw Electron event. Updater handlers remain separate.
 
@@ -57,7 +57,31 @@ are removed; local raster image references use the vault attachment protocol and
 remains a native textarea. Rich-text editing uses a labelled multiline contenteditable and a one-tab-stop toolbar;
 Markdown content is converted to and from a supported semantic HTML subset while in this mode. Format conversion
 creates a sibling note only after a warning; the original is kept. This avoids destructive conversion but does not
-provide complete loss analysis or in-place path/metadata migration. Full HTML checklist/task/template/export integration remains incomplete.
+provide complete loss analysis or in-place path/metadata migration.
+
+HTML checklist items are semantic `<li>` elements with stable `data-a11y-task-id` identifiers and
+`data-a11y-task-complete="true|false"` state. Optional `data-a11y-task-due="YYYY-MM-DD"`,
+`data-a11y-task-priority="low|normal|high|urgent"`, and `data-a11y-task-remind="YYYY-MM-DD HH:mm"` fields carry
+task metadata. Sanitization explicitly preserves only these task attributes. The main-process task index rejects
+missing/duplicate IDs, hashes HTML note snapshots for optimistic stale-write checks, and changes only the target
+completion or due-date attribute. The reader creates labelled keyboard-operable checkbox controls; the rich-text
+toolbar inserts a task item, while source editing can adjust its metadata. Markdown task line IDs and toggling remain
+unchanged. Encrypted note envelopes are not parsed into tasks.
+
+Templates retain Markdown defaults, accept HTML templates, and convert built-ins to the chosen output format. HTML
+template output is sanitized after placeholders expand; title/notebook values are escaped for HTML, and the cursor
+marker is carried through conversion. Export uses a narrow typed IPC method and a native save dialog, rejects writing
+over the source note, requests native overwrite confirmation, and requires explicit consent before a protected note's
+decrypted content is exported. The main process sanitizes standalone HTML again, embeds only bounded local raster
+images as data URIs, and applies a `default-src 'none'` policy. Relative links/attachments are not copied and
+annotation JSON is not exported; the UI warns about those portability limits. The Markdown output is plain Markdown.
+
+Web capture's typed request selects Markdown or HTML. The existing pinned-public-HTTPS requests, redirect/IP checks,
+download bounds, deadlines, and interrupted-response handling are shared across both formats. In HTML mode the main
+process allowlist sanitizer retains semantic headings, lists, tables and safe links, maps downloaded raster images to
+vault-local references with alt text, removes active content and remote resources, and records final-URL attribution.
+Missing image downloads are counted, described in the note, and announced in the status region. The created note uses
+the selected extension and is opened after indexing.
 
 ## Indexes, synchronization, and transactions
 
@@ -72,7 +96,8 @@ tree/tasks/links and compares open notes. `useVaultChanges` preserves dirty cont
 saves include their saved-content baseline for optimistic conflict detection. This is not an atomic lock against
 another process writing between the comparison and the write.
 Note edits and task toggles write a checked same-directory temporary file before atomic replacement, preserving
-the original if a write fails partially. Vault opening pauses editing; stale refresh responses are ignored.
+the original if a write fails partially. HTML task updates also require the indexed whole-note digest and stable item
+identity; stale or duplicate IDs fail without a source rewrite. Vault opening pauses editing; stale refresh responses are ignored.
 
 Moves use main-process validation, a native affected-note confirmation, source-content preflight, and explicit
 rewrites of unambiguous wiki/inline-relative links (including moved notes' outgoing references). Metadata paths
@@ -85,7 +110,8 @@ Renderer modules live under `features/editor`, `annotations`, `templates`, `remi
 `settings`, and `search`; hooks coordinate status announcements and vault events. `src/shared/assets.ts` provides
 an extensible suffix-based registry and pure serialization/scheduling functions. It does not load executable plugins.
 
-`annotations.json` stores versioned labelled quote/context/offset anchors associated with paths.
+`annotations.json` stores versioned labelled quote/context/offset anchors associated with Markdown and HTML note paths.
+HTML anchors resolve against sanitized rendered note text; task identity/metadata attributes are not annotation anchors.
 `reminders.json` stores standalone reminders and task delivery/snooze state. A main-process scheduler persists
 delivery before native notifications, reschedules on startup, and stops on vault switch. No background OS service
 is installed. `flashcards.json` maps deck paths and question/answer fingerprints to SM-2-style schedules.
@@ -94,10 +120,13 @@ app userData defaults. Metadata operations reject symlink directories/files and 
 
 The `vault-file://attachment/` protocol serves bounded, validated raster images and local PDF/ePub bytes with
 no-store/nosniff. HTML attachment previews are sanitized and put into a sandboxed srcdoc frame. PDF.js runs with a
-bundled local worker, renders pages, extracts accessible text, and provides page navigation and text search. The
-epub.js reader parses the local archive and presents spine sections as searchable accessible text without executing
-book markup or loading its remote resources. Both readers reject files over 40 MB and bound text extraction. PDF/ePub
-visual refinements, EPUB reflow/TOC navigation, zoom, selection, and annotations remain incomplete. The earlier
+bundled local worker, renders one page on a bounded canvas at a fixed maximum scale, extracts page text separately,
+and provides page navigation and text search. It has no selectable text layer or coordinate mapping for zoom/highlights.
+The epub.js reader parses the local archive and presents flattened spine-section text without executing book markup or
+loading its remote resources; it does not render book styles/resources or the navigation TOC. Both readers reject files
+over 40 MB and bound text extraction. PDF/ePub zoomable/selectable layers, styled reflow/TOC navigation, stable document
+anchors, and annotation UI are open implementation work; none is blocked on external tooling. The follow-up plan is in
+`docs/roadmap.md`. Manual Windows screen-reader/UI Automation validation is separate and still required. The earlier
 bounded main-process extractors are retained for input validation; ePub's XML parser is overridden to patched
 `@xmldom/xmldom` 0.8.15. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.
