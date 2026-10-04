@@ -1,10 +1,11 @@
-import { fireEvent, render, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import AttachmentView from '../renderer/features/previews/AttachmentView';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 import { relativeReference } from '../renderer/features/editor/InsertAttachmentDialog';
 
 describe('safe preview rendering and image insertion', () => {
+  afterEach(() => vi.unstubAllGlobals());
   it('removes active HTML and external resources and adds a sandbox policy', () => {
     render(
       <AttachmentView
@@ -44,7 +45,11 @@ describe('safe preview rendering and image insertion', () => {
     expect(screen.getByAltText('Remote')).not.toHaveAttribute('src', 'https://example.org/image.png');
     expect(relativeReference('Notes/N.md', 'Images/My image.png')).toBe('../Images/My%20image.png');
   });
-  it('shows sandboxed PDF previews with extracted-text page navigation', () => {
+  it('routes PDF previews into the local accessible reader', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => undefined)),
+    );
     render(
       <AttachmentView
         preview={{ path: 'Docs/Guide.pdf', kind: '.pdf', text: 'First\n\nSecond', pages: ['First', 'Second'] }}
@@ -54,12 +59,13 @@ describe('safe preview rendering and image insertion', () => {
         announce={vi.fn()}
       />,
     );
-    expect(screen.getByTitle('PDF preview: Docs/Guide.pdf')).toHaveAttribute('sandbox', '');
-    expect(screen.getByText('First')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(screen.getByText('Loading pdf document…')).toBeInTheDocument();
   });
-  it('navigates extracted ePub sections', () => {
+  it('routes ePub previews into the local accessible reader', () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => new Promise(() => undefined)),
+    );
     render(
       <AttachmentView
         preview={{ path: 'Books/Guide.epub', kind: '.epub', text: 'Start\n\nEnd', pages: ['Start', 'End'] }}
@@ -69,8 +75,6 @@ describe('safe preview rendering and image insertion', () => {
         announce={vi.fn()}
       />,
     );
-    expect(screen.getByText('Start')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
-    expect(screen.getByText('End')).toBeInTheDocument();
+    expect(screen.getByText('Loading epub document…')).toBeInTheDocument();
   });
 });

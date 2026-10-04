@@ -10,13 +10,14 @@ export interface ItemDialogRequest {
 interface Props {
   request: ItemDialogRequest;
   notebooks: string[];
-  onSubmit: (name: string, notebook: string) => Promise<void>;
+  onSubmit: (name: string, notebook: string, format?: 'markdown' | 'html') => Promise<void>;
   onClose: () => void;
 }
 
 export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Props) {
   const [name, setName] = useState(request.name ?? '');
   const [notebook, setNotebook] = useState('');
+  const [format, setFormat] = useState<'markdown' | 'html'>('markdown');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const title = { 'new-note': 'New note', 'new-notebook': 'New notebook', rename: 'Rename item', move: 'Move item' }[
@@ -35,7 +36,7 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
             return;
           }
           setBusy(true);
-          void onSubmit(name.trim(), notebook)
+          void onSubmit(name.trim(), notebook, format)
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
             .finally(() => setBusy(false));
@@ -61,6 +62,15 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
             <input data-autofocus value={name} maxLength={200} onChange={(event) => setName(event.target.value)} />
           </label>
         )}
+        {request.action === 'new-note' ? (
+          <label>
+            Note format
+            <select value={format} onChange={(event) => setFormat(event.target.value as 'markdown' | 'html')}>
+              <option value="markdown">Markdown (.md)</option>
+              <option value="html">HTML (.html)</option>
+            </select>
+          </label>
+        ) : null}
         {error ? <p role="alert">{error}</p> : null}
         <button type="submit" disabled={busy}>
           {title}

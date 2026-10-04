@@ -4,6 +4,7 @@ import {
   cycleFocusRegions,
   dispatchCommand,
   getCommandById,
+  getContextMenuCommands,
   getKeyboardShortcuts,
   matchesShortcut,
   toAriaKeyShortcut,
@@ -89,6 +90,23 @@ describe('command registry', () => {
     const shortcuts = getKeyboardShortcuts();
     expect(shortcuts).toContainEqual({ commandId: 'command-search', label: 'Open command search', shortcut: 'Ctrl+K' });
     expect(shortcuts.every((item) => item.shortcut.length > 0)).toBe(true);
+  });
+
+  it('builds context-specific menus from registry metadata and retains disabled selection actions', () => {
+    expect(getContextMenuCommands('tree-note').map(({ id }) => id)).toContain('context-bookmark');
+    expect(getContextMenuCommands('tree-folder').map(({ id }) => id)).toContain('context-new-note');
+    expect(getContextMenuCommands('tree-folder').map(({ id }) => id)).not.toContain('context-bookmark');
+    expect(getContextMenuCommands('tab').map(({ id }) => id)).toContain('context-close-other-tabs');
+    expect(getContextMenuCommands('reader-link').map(({ id }) => id)).toContain('context-copy-link');
+    expect(getContextMenuCommands('task-row').map(({ id }) => id)).toContain('context-set-due-date');
+    expect(getContextMenuCommands('search-result').map(({ id }) => id)).toContain('context-open');
+    expect(getContextMenuCommands('annotation').map(({ id }) => id)).toContain('context-delete');
+    expect(getContextMenuCommands('reminder').map(({ id }) => id)).toContain('context-delete');
+    expect(getContextMenuCommands('attachment').map(({ id }) => id)).toContain('context-reveal');
+    expect(getContextMenuCommands('document-preview').map(({ id }) => id)).toContain('context-open-external');
+    expect(getContextMenuCommands('editor-selection', false).map(({ id }) => id)).toContain('context-copy');
+    expect(getContextMenuCommands('editor-selection', true).map(({ id }) => id)).toContain('format-bold');
+    expect(getContextMenuCommands('general').map(({ id }) => id)).toContain('open-vault');
   });
 });
 

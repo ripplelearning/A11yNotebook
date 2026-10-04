@@ -28,6 +28,9 @@ export type CommandId =
   | 'format-heading1'
   | 'format-heading2'
   | 'format-heading3'
+  | 'format-heading4'
+  | 'format-heading5'
+  | 'format-heading6'
   | 'format-bullet'
   | 'format-numbered'
   | 'format-checkbox'
@@ -35,7 +38,40 @@ export type CommandId =
   | 'format-code'
   | 'insert-link'
   | 'insert-table'
-  | 'insert-attachment';
+  | 'insert-attachment'
+  | 'context-open'
+  | 'context-rename'
+  | 'context-move'
+  | 'context-delete'
+  | 'context-reveal'
+  | 'context-bookmark'
+  | 'context-new-note'
+  | 'context-close-tab'
+  | 'context-close-other-tabs'
+  | 'context-pin-tab'
+  | 'context-cut'
+  | 'context-copy'
+  | 'context-paste'
+  | 'context-open-external'
+  | 'context-copy-link'
+  | 'context-toggle-task'
+  | 'context-set-due-date'
+  | 'context-open-source'
+  | 'context-encrypt-note';
+
+export type MenuContext =
+  | 'general'
+  | 'tree-note'
+  | 'tree-folder'
+  | 'tab'
+  | 'editor-selection'
+  | 'reader-link'
+  | 'task-row'
+  | 'search-result'
+  | 'annotation'
+  | 'reminder'
+  | 'attachment'
+  | 'document-preview';
 
 export type CommandActionContext = {
   mode: AppMode;
@@ -59,6 +95,8 @@ export type CommandDefinition = {
   label: string;
   description: string;
   shortcut?: string;
+  contexts?: readonly MenuContext[];
+  requiresSelection?: boolean;
 };
 
 export type KeyboardShortcutDefinition = {
@@ -68,6 +106,107 @@ export type KeyboardShortcutDefinition = {
 };
 
 export const COMMANDS: CommandDefinition[] = [
+  {
+    id: 'context-open',
+    label: 'Open',
+    description: 'Open the focused item.',
+    contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
+  },
+  {
+    id: 'context-rename',
+    label: 'Rename',
+    description: 'Rename the selected vault item.',
+    contexts: ['tree-note', 'tree-folder'],
+  },
+  {
+    id: 'context-move',
+    label: 'Move',
+    description: 'Move the selected vault item.',
+    contexts: ['tree-note', 'tree-folder'],
+  },
+  {
+    id: 'context-delete',
+    label: 'Delete',
+    description: 'Delete the selected vault item.',
+    contexts: ['tree-note', 'tree-folder', 'annotation', 'reminder'],
+  },
+  {
+    id: 'context-reveal',
+    label: 'Reveal in Explorer',
+    description: 'Reveal the selected vault item.',
+    contexts: ['tree-note', 'tree-folder', 'attachment'],
+  },
+  {
+    id: 'context-bookmark',
+    label: 'Bookmark',
+    description: 'Toggle a bookmark for the selected note.',
+    contexts: ['tree-note'],
+  },
+  {
+    id: 'context-new-note',
+    label: 'New note',
+    description: 'Create a note in this notebook.',
+    contexts: ['tree-folder'],
+  },
+  { id: 'context-close-tab', label: 'Close tab', description: 'Close this tab.', contexts: ['tab'] },
+  {
+    id: 'context-close-other-tabs',
+    label: 'Close other tabs',
+    description: 'Close all other unpinned tabs.',
+    contexts: ['tab'],
+  },
+  {
+    id: 'context-pin-tab',
+    label: 'Pin tab',
+    description: 'Keep this tab open when closing other tabs.',
+    contexts: ['tab'],
+  },
+  {
+    id: 'context-cut',
+    label: 'Cut',
+    description: 'Cut the selected text.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'context-copy',
+    label: 'Copy',
+    description: 'Copy the selected text.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  { id: 'context-paste', label: 'Paste', description: 'Paste text into the editor.', contexts: ['editor-selection'] },
+  {
+    id: 'context-open-external',
+    label: 'Open external link',
+    description: 'Open the link in the default application.',
+    contexts: ['reader-link', 'attachment', 'document-preview'],
+  },
+  { id: 'context-copy-link', label: 'Copy link', description: 'Copy the link address.', contexts: ['reader-link'] },
+  {
+    id: 'context-toggle-task',
+    label: 'Toggle task',
+    description: 'Change the task completion state.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-set-due-date',
+    label: 'Set due date',
+    description: 'Set a due date for this task.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-open-source',
+    label: 'Open source note',
+    description: 'Open the note containing this task.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-encrypt-note',
+    label: 'Encrypt note',
+    description: 'Protect this note with a separate password.',
+    contexts: ['tree-note', 'editor-selection'],
+  },
   {
     id: 'insert-attachment',
     label: 'Insert image or attachment',
@@ -102,34 +241,125 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Cognitive tools',
     description: 'Edit outlines, mind maps, tables, and review flashcards.',
   },
-  { id: 'format-bold', label: 'Bold', description: 'Format the editor selection as bold.', shortcut: 'Ctrl+B' },
-  { id: 'format-italic', label: 'Italic', description: 'Format the editor selection as italic.', shortcut: 'Ctrl+I' },
-  { id: 'format-heading1', label: 'Heading 1', description: 'Format selected lines as level-one headings.' },
-  { id: 'format-heading2', label: 'Heading 2', description: 'Format selected lines as level-two headings.' },
-  { id: 'format-heading3', label: 'Heading 3', description: 'Format selected lines as level-three headings.' },
-  { id: 'format-bullet', label: 'Bulleted list', description: 'Format selected lines as a bullet list.' },
-  { id: 'format-numbered', label: 'Numbered list', description: 'Format selected lines as a numbered list.' },
-  { id: 'format-checkbox', label: 'Checkbox list', description: 'Format selected lines as checkbox tasks.' },
-  { id: 'format-quote', label: 'Quote', description: 'Format selected lines as a quote.' },
-  { id: 'format-code', label: 'Code block', description: 'Wrap selected text in a fenced code block.' },
+  {
+    id: 'format-bold',
+    label: 'Bold',
+    description: 'Format the editor selection as bold.',
+    shortcut: 'Ctrl+B',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-italic',
+    label: 'Italic',
+    description: 'Format the editor selection as italic.',
+    shortcut: 'Ctrl+I',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading1',
+    label: 'Heading 1',
+    description: 'Format selected lines as level-one headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading2',
+    label: 'Heading 2',
+    description: 'Format selected lines as level-two headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading3',
+    label: 'Heading 3',
+    description: 'Format selected lines as level-three headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading4',
+    label: 'Heading 4',
+    description: 'Format selected lines as level-four headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading5',
+    label: 'Heading 5',
+    description: 'Format selected lines as level-five headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-heading6',
+    label: 'Heading 6',
+    description: 'Format selected lines as level-six headings.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-bullet',
+    label: 'Bulleted list',
+    description: 'Format selected lines as a bullet list.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-numbered',
+    label: 'Numbered list',
+    description: 'Format selected lines as a numbered list.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-checkbox',
+    label: 'Checkbox list',
+    description: 'Format selected lines as checkbox tasks.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-quote',
+    label: 'Quote',
+    description: 'Format selected lines as a quote.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
+  {
+    id: 'format-code',
+    label: 'Code block',
+    description: 'Wrap selected text in a fenced code block.',
+    contexts: ['editor-selection'],
+    requiresSelection: true,
+  },
   {
     id: 'insert-link',
     label: 'Insert link',
     description: 'Insert a web or wiki link with a labelled dialog.',
     shortcut: 'Ctrl+Shift+L',
+    contexts: ['editor-selection'],
   },
-  { id: 'insert-table', label: 'Insert table', description: 'Choose Markdown table rows and columns.' },
+  {
+    id: 'insert-table',
+    label: 'Insert table',
+    description: 'Choose Markdown table rows and columns.',
+    contexts: ['editor-selection'],
+  },
   {
     id: 'open-vault',
     label: 'Open vault',
     description: 'Select and open a vault from local storage.',
     shortcut: 'Ctrl+O',
+    contexts: ['general'],
   },
   {
     id: 'new-notebook',
     label: 'New notebook',
     description: 'Create a new notebook entry within the current vault.',
     shortcut: 'Ctrl+N',
+    contexts: ['general', 'tree-folder'],
   },
   {
     id: 'save-current-note',
@@ -166,6 +396,7 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Focus search',
     description: 'Move focus to the global search box.',
     shortcut: 'Ctrl+L',
+    contexts: ['general'],
   },
   {
     id: 'focus-navigation',
@@ -190,6 +421,7 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open command search',
     description: 'Open the command palette to run key commands.',
     shortcut: 'Ctrl+K',
+    contexts: ['general'],
   },
   {
     id: 'refresh-links',
@@ -220,6 +452,14 @@ export const FOCUS_REGION_ORDER: readonly FocusRegion[] = ['navigation', 'tabs',
 
 export function getCommandById(commandId: CommandId) {
   return COMMANDS.find((command) => command.id === commandId);
+}
+
+export function getContextMenuCommands(context: MenuContext, hasSelection = false) {
+  return COMMANDS.filter(
+    (command) =>
+      command.contexts?.includes(context) &&
+      (!command.requiresSelection || hasSelection || context === 'editor-selection'),
+  );
 }
 
 export function getKeyboardShortcuts(): KeyboardShortcutDefinition[] {

@@ -12,9 +12,11 @@ import {
   dispatchCommand,
   FOCUS_REGION_ORDER,
   getCommandById,
+  getContextMenuCommands,
   matchesShortcut,
   toAriaKeyShortcut,
   type CommandId,
+  type MenuContext,
 } from '../shared/command-registry';
 import { isMenuCommand } from '../shared/ipc';
 import type {
@@ -28,16 +30,18 @@ import type {
   VaultTask,
 } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
+import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
+import { sanitizeNoteHtml } from './features/vault/sanitize-html';
+import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
 import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
 import ConflictDialog from './features/vault/ConflictDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
-import type { TreeAction } from './features/vault/TreeContextMenu';
 import SearchResults from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
@@ -62,6 +66,21 @@ import WebCaptureDialog from './features/previews/WebCaptureDialog';
 
 type DialogId =
   'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'web-capture';
+type TreeAction = 'new-note' | 'new-template' | 'rename' | 'move' | 'delete' | 'reveal' | 'external' | 'bookmark';
+
+interface ContextMenuRequest {
+  context: MenuContext;
+  invoker: HTMLElement;
+  x: number;
+  y: number;
+  path?: string;
+  href?: string;
+  tabId?: string;
+  selection?: string;
+  selectionStart?: number;
+  selectionEnd?: number;
+  selectionRange?: Range;
+}
 
 function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flattenEntries(entry.children ?? [])]);
@@ -105,6 +124,9 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'format-heading1',
       'format-heading2',
       'format-heading3',
+      'format-heading4',
+      'format-heading5',
+      'format-heading6',
       'format-bullet',
       'format-numbered',
       'format-checkbox',
@@ -129,6 +151,8 @@ export default function App() {
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [selectedTab, setSelectedTab] = useState('welcome');
+  const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
+  const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [openNotes, setOpenNotes] = useState<OpenNote[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
@@ -604,7 +628,8 @@ export default function App() {
     }
     let content: string;
     try {
-      content = await bridge.vault.readNote(entry.path, notePassword);
+      const loaded = await bridge.vault.readNote(entry.path, notePassword);
+      content = /\.html$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
     } catch (error) {
       if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
         setNotePasswordDialog({ action: 'unlock', entry });
@@ -616,7 +641,7 @@ export default function App() {
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
-      title: entry.name.replace(/\.md$/i, ''),
+      title: entry.name.replace(/\.(?:md|html)$/i, ''),
       content,
       saved: content,
     };
@@ -705,6 +730,30 @@ export default function App() {
     if (targetEntry) await openEntry(targetEntry);
   };
 
+  const convertActiveNoteFormat = async () => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    const bridge = window.a11yNotebook?.vault;
+    if (!note || !bridge) return;
+    if (await bridge.isNoteEncrypted?.(note.path)) {
+      setStatusMessage('Decrypt this note to a separate unprotected copy before converting it.');
+      return;
+    }
+    const from = /\.html$/i.test(note.path) ? 'html' : 'markdown';
+    const to = from === 'html' ? 'markdown' : 'html';
+    const targetPath = note.path.replace(/\.(?:md|html)$/i, to === 'html' ? '.html' : '.md');
+    if (!window.confirm(formatConversionWarning(note.content, from, to))) return;
+    try {
+      const converted = convertNoteContent(note.content, from, to, targetPath);
+      const updated = await bridge.createNote(targetPath, converted);
+      setVault(updated);
+      const created = findEntry(updated.entries, targetPath);
+      if (created) await openEntry(created);
+      setStatusMessage(`Created ${to.toUpperCase()} copy. The original note was kept.`);
+    } catch {
+      setStatusMessage('Could not convert this note. Check whether a sibling note already exists.');
+    }
+  };
+
   const toggleActiveBookmark = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
@@ -744,7 +793,7 @@ export default function App() {
     setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
   };
 
-  const submitItem = async (name: string, notebook: string) => {
+  const submitItem = async (name: string, notebook: string, format: 'markdown' | 'html' = 'markdown') => {
     const bridge = window.a11yNotebook?.vault;
     if (!bridge || !vault || !itemDialog) return;
     const request = itemDialog;
@@ -752,7 +801,10 @@ export default function App() {
       const selected = findEntry(vault.entries, treeSelection);
       const parent =
         selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? '');
-      const leaf = request.action === 'new-note' ? `${name.replace(/\.md$/i, '')}.md` : name;
+      const leaf =
+        request.action === 'new-note'
+          ? `${name.replace(/\.(?:md|html)$/i, '')}.${format === 'html' ? 'html' : 'md'}`
+          : name;
       const relative = [parent, leaf].filter(Boolean).join('/');
       setVault(
         request.action === 'new-note' ? await bridge.createNote(relative) : await bridge.createNotebook(relative),
@@ -783,7 +835,10 @@ export default function App() {
           ...note,
           id: nextPath,
           path: nextPath,
-          title: nextPath.split('/').at(-1)!.replace(/\.md$/i, ''),
+          title: nextPath
+            .split('/')
+            .at(-1)!
+            .replace(/\.(?:md|html)$/i, ''),
           content,
           saved: content,
         };
@@ -816,13 +871,288 @@ export default function App() {
       )?.catch(() => setStatusMessage('Could not open the selected item.'));
   };
 
+  const openContextMenu = (target: HTMLElement, pointer?: { x: number; y: number }) => {
+    if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"]')) return;
+    const link = target.closest<HTMLAnchorElement>('a[href]');
+    const marker = target.closest<HTMLElement>('[data-context]');
+    const editable = target.closest<HTMLElement>('textarea, input:not([type="checkbox"]), [contenteditable="true"]');
+    const context = (
+      link ? 'reader-link' : (marker?.dataset.context ?? (editable ? 'editor-selection' : 'general'))
+    ) as MenuContext;
+    const contextElement = marker ?? link ?? editable ?? target;
+    const path = contextElement.dataset.path ?? contextElement.closest<HTMLElement>('[data-path]')?.dataset.path;
+    const tabId = contextElement.dataset.tabId ?? contextElement.closest<HTMLElement>('[data-tab-id]')?.dataset.tabId;
+    const selection =
+      editable instanceof HTMLTextAreaElement || editable instanceof HTMLInputElement
+        ? editable.value.slice(editable.selectionStart ?? 0, editable.selectionEnd ?? 0)
+        : (document.getSelection()?.toString() ?? '');
+    const range = document.getSelection();
+    const selectionRange = range && !range.isCollapsed ? range.getRangeAt(0).cloneRange() : undefined;
+    const invoker = contextElement.matches(
+      'button, a, [role="treeitem"], [role="tab"], textarea, input, [contenteditable="true"], [data-context]',
+    )
+      ? contextElement
+      : document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : contextElement;
+    if (invoker === contextElement && contextElement.dataset.context) contextElement.focus();
+    if (contextElement.matches('[role="treeitem"]')) {
+      invoker.focus();
+      if (path) setTreeSelection(path);
+    }
+    if (tabId) setSelectedTab(tabId);
+    const bounds = invoker.getBoundingClientRect();
+    setContextMenu({
+      context,
+      invoker,
+      path,
+      tabId,
+      href: link?.getAttribute('href') ?? undefined,
+      selection,
+      selectionStart:
+        editable instanceof HTMLTextAreaElement || editable instanceof HTMLInputElement
+          ? (editable.selectionStart ?? undefined)
+          : undefined,
+      selectionEnd:
+        editable instanceof HTMLTextAreaElement || editable instanceof HTMLInputElement
+          ? (editable.selectionEnd ?? undefined)
+          : undefined,
+      selectionRange,
+      x: pointer?.x ?? bounds.left,
+      y: pointer?.y ?? bounds.bottom,
+    });
+  };
+
+  const closeContextTab = (tabId: string) => {
+    const note = openNotes.find((item) => item.id === tabId);
+    if (note) {
+      if (note.content !== note.saved && !window.confirm(`Discard unsaved changes to ${note.title}?`)) return;
+      setOpenNotes((current) => current.filter((item) => item.id !== tabId));
+    } else if (tabId === 'tasks') setTaskTabOpen(false);
+    else if (tabId === 'reminders') setReminderTabOpen(false);
+    else if (tabId === 'assets') {
+      if (assetBusy || (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?'))) return;
+      setAssetTabOpen(false);
+      setAssetDirty(false);
+      setAssetInitialPath(undefined);
+    } else if (tabId === 'attachment') setAttachment(null);
+    setPinnedTabs((current) => new Set([...current].filter((id) => id !== tabId)));
+    if (selectedTab === tabId) setSelectedTab('welcome');
+  };
+
+  const handleContextCommand = async (commandId: CommandId) => {
+    const request = contextMenu;
+    if (!request) return;
+    const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
+    if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
+      await openLinkTarget(request.href);
+    } else if (commandId === 'context-open' && request.context === 'annotation') {
+      request.invoker.querySelector<HTMLButtonElement>('button[aria-label^="Jump to annotation"]')?.click();
+    } else if (commandId === 'context-delete' && request.context === 'annotation') {
+      request.invoker.querySelector<HTMLButtonElement>('button[aria-label^="Delete annotation"]')?.click();
+    } else if (commandId === 'context-delete' && request.context === 'reminder') {
+      Array.from(request.invoker.querySelectorAll<HTMLButtonElement>('button'))
+        .find((button) => /dismiss/i.test(button.textContent ?? ''))
+        ?.click();
+    } else if (commandId === 'context-open' && entry) {
+      await openEntry(entry);
+    } else if (commandId === 'context-open-external') {
+      if (request.context === 'reader-link' && request.href) await window.a11yNotebook?.vault.openUrl(request.href);
+      else if (request.path) await window.a11yNotebook?.vault.openExternal(request.path);
+    } else if (commandId === 'context-copy-link' && request.href) {
+      try {
+        await navigator.clipboard.writeText(request.href);
+        setStatusMessage('Link copied.');
+      } catch {
+        setStatusMessage('Could not copy the link.');
+      }
+    } else if (
+      entry &&
+      request.context.startsWith('tree-') &&
+      [
+        'context-rename',
+        'context-move',
+        'context-delete',
+        'context-reveal',
+        'context-bookmark',
+        'context-new-note',
+      ].includes(commandId)
+    ) {
+      const actions: Partial<Record<CommandId, TreeAction>> = {
+        'context-rename': 'rename',
+        'context-move': 'move',
+        'context-delete': 'delete',
+        'context-reveal': 'reveal',
+        'context-bookmark': 'bookmark',
+        'context-new-note': 'new-note',
+      };
+      const action = actions[commandId];
+      if (action) handleTreeAction(entry, action);
+    } else if (commandId === 'context-close-tab' && request.tabId) {
+      closeContextTab(request.tabId);
+    } else if (commandId === 'context-close-other-tabs' && request.tabId) {
+      const retained = (id: string) => id === request.tabId || pinnedTabs.has(id);
+      const dirty = openNotes.filter((note) => !retained(note.id) && note.content !== note.saved);
+      if (dirty.length && !window.confirm('Discard changes in the other open notes?')) return;
+      setOpenNotes((current) => current.filter((note) => retained(note.id)));
+      setTaskTabOpen(retained('tasks') && taskTabOpen);
+      setReminderTabOpen(retained('reminders') && reminderTabOpen);
+      setAssetTabOpen(retained('assets') && assetTabOpen);
+      if (!retained('attachment')) setAttachment(null);
+      setSelectedTab(request.tabId);
+    } else if (commandId === 'context-pin-tab' && request.tabId) {
+      setPinnedTabs((current) => {
+        const next = new Set(current);
+        if (next.has(request.tabId!)) next.delete(request.tabId!);
+        else next.add(request.tabId!);
+        return next;
+      });
+    } else if (commandId === 'context-cut' || commandId === 'context-copy') {
+      try {
+        await navigator.clipboard.writeText(request.selection ?? '');
+      } catch {
+        setStatusMessage('Clipboard access is unavailable.');
+        return;
+      }
+      if (commandId === 'context-cut') {
+        if (request.invoker instanceof HTMLTextAreaElement || request.invoker instanceof HTMLInputElement) {
+          request.invoker.setRangeText('', request.selectionStart ?? 0, request.selectionEnd ?? 0, 'start');
+          request.invoker.dispatchEvent(new Event('input', { bubbles: true }));
+        } else if (request.selectionRange) {
+          request.selectionRange.deleteContents();
+          request.invoker.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'deleteByCut' }));
+        }
+      }
+    } else if (commandId === 'context-paste') {
+      try {
+        request.invoker.focus();
+        if (request.invoker instanceof HTMLTextAreaElement || request.invoker instanceof HTMLInputElement) {
+          const text = await navigator.clipboard.readText();
+          request.invoker.setRangeText(
+            text,
+            request.selectionStart ?? request.selectionEnd ?? 0,
+            request.selectionEnd ?? 0,
+            'end',
+          );
+          request.invoker.dispatchEvent(new Event('input', { bubbles: true }));
+        } else {
+          const clipboardItems = await navigator.clipboard.read();
+          const clipboardItem = clipboardItems[0];
+          const contentType = clipboardItem?.types.includes('text/html') ? 'text/html' : 'text/plain';
+          const blob = clipboardItem ? await clipboardItem.getType(contentType) : null;
+          const value = blob ? await blob.text() : await navigator.clipboard.readText();
+          const html = contentType === 'text/html';
+          const currentSelection = document.getSelection();
+          if (request.selectionRange && currentSelection) {
+            const range = request.selectionRange;
+            range.deleteContents();
+            if (html) {
+              const template = document.createElement('template');
+              template.innerHTML = sanitizeNoteHtml(value, request.path);
+              range.insertNode(template.content);
+            } else range.insertNode(document.createTextNode(value));
+            range.collapse(false);
+            currentSelection.removeAllRanges();
+            currentSelection.addRange(range);
+            request.invoker.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertFromPaste' }));
+          } else
+            document.execCommand(
+              html ? 'insertHTML' : 'insertText',
+              false,
+              html ? sanitizeNoteHtml(value, request.path) : value,
+            );
+        }
+      } catch {
+        setStatusMessage('Clipboard access is unavailable.');
+      }
+    } else if (
+      commandId === 'context-toggle-task' ||
+      commandId === 'context-set-due-date' ||
+      commandId === 'context-open-source'
+    ) {
+      const task = tasks.find(
+        (item) =>
+          item.path === request.path &&
+          String(item.line) === request.invoker.closest<HTMLElement>('[data-task-line]')?.dataset.taskLine,
+      );
+      if (!task || !window.a11yNotebook) return;
+      if (commandId === 'context-toggle-task') await toggleTask(task);
+      else if (commandId === 'context-open-source') {
+        const source = findEntry(vault?.entries ?? [], task.path);
+        if (source) await openEntry(source);
+      } else {
+        const dueDate = window.prompt('Due date (YYYY-MM-DD)', task.dueDate ?? '');
+        if (dueDate === null || (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))) return;
+        const source = await window.a11yNotebook.vault.readNote(task.path);
+        const lines = source.split(/\r?\n/);
+        const line = lines[task.line - 1];
+        if (!line) return;
+        lines[task.line - 1] =
+          `${line.replace(/\s+(?:due:\d{4}-\d{2}-\d{2}|📅\s+\d{4}-\d{2}-\d{2})/g, '')}${dueDate ? ` due:${dueDate}` : ''}`;
+        await window.a11yNotebook.vault.saveNote(task.path, lines.join('\n'), source);
+        setTasks(await window.a11yNotebook.vault.getTasks());
+      }
+    } else if (commandId === 'context-encrypt-note' && entry?.kind === 'note' && securityEnabled) {
+      setNotePasswordDialog({ action: 'encrypt', entry });
+    } else if (
+      request.invoker.isContentEditable &&
+      (commandId.startsWith('format-') || commandId === 'insert-link' || commandId === 'insert-table')
+    ) {
+      request.invoker.focus();
+      const action =
+        commandId === 'format-bold'
+          ? 'bold'
+          : commandId === 'format-italic'
+            ? 'italic'
+            : commandId === 'format-heading1'
+              ? 'h1'
+              : commandId === 'format-heading2'
+                ? 'h2'
+                : commandId === 'format-heading3'
+                  ? 'h3'
+                  : commandId === 'format-heading4'
+                    ? 'h4'
+                    : commandId === 'format-heading5'
+                      ? 'h5'
+                      : commandId === 'format-heading6'
+                        ? 'h6'
+                        : commandId === 'format-bullet'
+                          ? 'insertUnorderedList'
+                          : commandId === 'format-numbered'
+                            ? 'insertOrderedList'
+                            : commandId === 'format-quote'
+                              ? 'blockquote'
+                              : commandId === 'format-code'
+                                ? 'pre'
+                                : '';
+      if (commandId === 'insert-link') {
+        const url = window.prompt('Link address');
+        if (url) document.execCommand('createLink', false, url);
+      } else if (commandId === 'insert-table') {
+        document.execCommand(
+          'insertHTML',
+          false,
+          '<table><thead><tr><th scope="col">Column 1</th><th scope="col">Column 2</th></tr></thead><tbody><tr><td></td><td></td></tr></tbody></table>',
+        );
+      } else if (/^h[1-6]$/.test(action) || action === 'blockquote' || action === 'pre') {
+        document.execCommand('formatBlock', false, action);
+      } else if (action) document.execCommand(action);
+      request.invoker.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+    } else if (commandId.startsWith('format-') || commandId === 'insert-link' || commandId === 'insert-table') {
+      handleCommand(commandId);
+    } else if (!commandId.startsWith('context-')) {
+      handleCommand(commandId);
+    }
+  };
+
   const resolveConflict = async (choice: 'mine' | 'disk' | 'copy') => {
     if (!activeConflict || !window.a11yNotebook) return;
     const note = openNotes.find((item) => item.path === activeConflict.path);
     if (!note) return;
     const bridge = window.a11yNotebook.vault;
     if (choice === 'copy') {
-      const copyPath = note.path.replace(/\.md$/i, ` (conflict copy ${Date.now()}).md`);
+      const extension = /\.html$/i.test(note.path) ? '.html' : '.md';
+      const copyPath = note.path.replace(/\.(?:md|html)$/i, ` (conflict copy ${Date.now()})${extension}`);
       setVault(await bridge.createNote(copyPath, note.content));
       setOpenNotes((items) => items.filter((item) => item.path !== note.path));
       synchronization.clearConflict(note.path);
@@ -847,7 +1177,7 @@ export default function App() {
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook || activeConflict || synchronization.checking) return;
-    const contentToSave = note.content;
+    const contentToSave = /\.html$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     try {
       await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
       setOpenNotes((current) =>
@@ -903,7 +1233,7 @@ export default function App() {
       itemDialog
     )
       return;
-    const contentToSave = note.content;
+    const contentToSave = /\.html$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     const timeout = window.setTimeout(() => {
       void window.a11yNotebook?.vault
         .saveNote(note.path, contentToSave, note.saved)
@@ -1124,6 +1454,11 @@ export default function App() {
     if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"]')) {
       return;
     }
+    if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+      event.preventDefault();
+      if (document.activeElement instanceof HTMLElement) openContextMenu(document.activeElement);
+      return;
+    }
     if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.metaKey) {
       event.preventDefault();
       const current = regionContaining(document.activeElement);
@@ -1156,10 +1491,28 @@ export default function App() {
   // Always call the latest handler without re-registering the listener on every render.
   const keyDownHandlerRef = useRef(handleGlobalKeyDown);
   keyDownHandlerRef.current = handleGlobalKeyDown;
+  const contextMenuHandlerRef = useRef(openContextMenu);
+  contextMenuHandlerRef.current = openContextMenu;
   useEffect(() => {
     const listener = (event: KeyboardEvent) => keyDownHandlerRef.current(event);
+    const contextListener = (event: MouseEvent) => {
+      if (document.querySelector('[role="dialog"]')) return;
+      const target =
+        event.target instanceof HTMLElement
+          ? event.target
+          : event.target instanceof Node
+            ? event.target.parentElement
+            : null;
+      if (!target) return;
+      event.preventDefault();
+      contextMenuHandlerRef.current(target, { x: event.clientX, y: event.clientY });
+    };
     window.addEventListener('keydown', listener);
-    return () => window.removeEventListener('keydown', listener);
+    window.addEventListener('contextmenu', contextListener);
+    return () => {
+      window.removeEventListener('keydown', listener);
+      window.removeEventListener('contextmenu', contextListener);
+    };
   }, []);
 
   // Commands chosen from the native Windows menu (Help menu items).
@@ -1230,6 +1583,33 @@ export default function App() {
       return leftDate.localeCompare(rightDate) * (dueAscending ? 1 : -1);
     });
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
+  const contextCommands = contextMenu
+    ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection)).map((command) =>
+        command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
+          ? { ...command, label: 'Unpin tab' }
+          : command,
+      )
+    : [];
+  const disabledContextCommands = new Set<CommandId>();
+  if (contextMenu && !contextMenu.selection)
+    contextCommands
+      .filter((command) => command.requiresSelection)
+      .forEach((command) => disabledContextCommands.add(command.id));
+  if (contextMenu?.context === 'tab' && tabs.length <= 1) disabledContextCommands.add('context-close-other-tabs');
+  if (contextMenu?.tabId === 'welcome') disabledContextCommands.add('context-close-tab');
+  if (contextMenu?.context === 'tree-note' && (!securityEnabled || encryptedNotePath === contextMenu.path))
+    disabledContextCommands.add('context-encrypt-note');
+  const contextMenuLabel = contextMenu?.path
+    ? `Actions for ${contextMenu.path.split('/').at(-1)}`
+    : contextMenu?.tabId
+      ? `Actions for ${tabs.find((tab) => tab.id === contextMenu.tabId)?.label ?? contextMenu.tabId}`
+      : contextMenu?.context === 'editor-selection'
+        ? contextMenu.selection
+          ? 'Actions for selected text'
+          : 'Editor actions'
+        : contextMenu?.context === 'reader-link'
+          ? 'Link actions'
+          : 'Application actions';
   useEffect(() => {
     document.title =
       currentNote && vault
@@ -1239,6 +1619,18 @@ export default function App() {
 
   return (
     <div className="app-shell" aria-label="A11y Notebook application shell">
+      {contextMenu ? (
+        <GlobalContextMenu
+          commands={contextCommands}
+          label={contextMenuLabel}
+          x={contextMenu.x}
+          y={contextMenu.y}
+          invoker={contextMenu.invoker}
+          disabled={disabledContextCommands}
+          onClose={() => setContextMenu(null)}
+          onSelect={(command) => void handleContextCommand(command)}
+        />
+      ) : null}
       <header className="app-header" aria-label="Application header">
         <div className="title-block">
           <h1>A11y Notebook</h1>
@@ -1361,7 +1753,6 @@ export default function App() {
               }
               onRename={renameEntry}
               onDelete={(entryPath) => void deleteEntry(entryPath)}
-              onAction={handleTreeAction}
             />
           ) : (
             <p>Open a folder as a local vault from the Vault menu.</p>
@@ -1412,12 +1803,14 @@ export default function App() {
                       tabRefs.current[tab.id] = element;
                     }}
                     id={`tab-${tab.id}`}
+                    data-context="tab"
+                    data-tab-id={tab.id}
                     type="button"
                     className={selected ? 'tab active-tab' : 'tab'}
                     role="tab"
                     aria-selected={selected}
                     aria-controls={TAB_PANEL_ID}
-                    aria-label={tab.label}
+                    aria-label={`${tab.label}${pinnedTabs.has(tab.id) ? ', pinned' : ''}`}
                     tabIndex={selected ? 0 : -1}
                     onClick={() => setSelectedTab(tab.id)}
                     onKeyDown={(event) => handleTabKeyDown(event, index)}
@@ -1600,7 +1993,13 @@ export default function App() {
                     </thead>
                     <tbody>
                       {visibleTasks.map((task) => (
-                        <tr key={task.id}>
+                        <tr
+                          key={task.id}
+                          data-context="task-row"
+                          data-path={task.path}
+                          data-task-line={task.line}
+                          tabIndex={-1}
+                        >
                           <th scope="row">
                             <label>
                               <input type="checkbox" checked={task.complete} onChange={() => void toggleTask(task)} />
@@ -1646,9 +2045,18 @@ export default function App() {
                   )
                 ) : null}
                 {mode === 'edit' ? (
-                  <button type="button" onClick={() => void saveActiveNote()}>
-                    Save note
-                  </button>
+                  <>
+                    <button type="button" onClick={() => void saveActiveNote()}>
+                      Save note
+                    </button>
+                    <button
+                      type="button"
+                      disabled={currentNote.path === encryptedNotePath}
+                      onClick={() => void convertActiveNoteFormat()}
+                    >
+                      Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
+                    </button>
+                  </>
                 ) : null}
                 {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
@@ -1674,6 +2082,7 @@ export default function App() {
                     notePath={currentNote.path}
                     editorRef={editorRef}
                     content={currentNote.content}
+                    format={/\.html$/i.test(currentNote.path) ? 'html' : 'markdown'}
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}

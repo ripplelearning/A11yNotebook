@@ -16,7 +16,11 @@ Use **New note**, **New notebook**, or **Import file** in the navigation pane. I
 selected notebook. The tree's filesystem context may be revealed in Explorer or opened in its default external app
 using the corresponding vault actions.
 
-Shift+F10 or the Applications key opens the tree action menu. Use Up/Down, Home/End, Enter, and Escape.
+Shift+F10, the Applications key, or right-click opens the global context menu. Its registry-backed commands depend
+on the focused item: vault files, tabs, selected editor text, links, tasks, search results, annotations, reminders,
+and attachment previews have different actions. Use Up/Down, Home/End, type-ahead, Enter/Space, or Escape. Disabled
+actions are announced as unavailable, and Escape returns focus to the invoking element. The menu does not replace
+modal-dialog keyboard behavior.
 **Move** chooses a destination notebook. Save all open edits before a rename/move; the native confirmation
 lists notes whose links will change. Cancelling leaves the files untouched. Bookmarks, annotations, image
 descriptions, flashcard schedules, and reminders follow app-managed moves. Ambiguous title links are not repaired;
@@ -24,15 +28,22 @@ use qualified wiki paths such as `[[Notebook/Title]]`. Reference-style Markdown 
 
 ## Read and edit notes
 
-Notes open in tabs. The read view contains semantic headings, paragraphs, lists, links, and code rendered from
-Markdown; unsafe embedded HTML is removed. Toggle **Read-only/edit mode** with Ctrl+E to edit the Markdown source
-in a native text area. Ctrl+S saves immediately; edits also save after a short idle period. A tab marks unsaved
-content and asks before discarding it when closed.
+Notes open in tabs. Create either Markdown (`.md`) or HTML (`.html`) notes using the **Note format** selector.
+The read view contains semantic content; Markdown renders with unsafe raw HTML removed, and HTML notes are sanitized
+on load, edit, paste, save, and render. Scripts, forms, active embedded content, event handlers, remote images, and
+unsafe URL schemes are not allowed. HTML images must have alternative text and use local raster files.
+Toggle **Read-only/edit mode** with Ctrl+E. **Plain source** edits Markdown or HTML source in a native text area;
+**Rich text** exposes an accessible formatting toolbar and multiline textbox. Ctrl+S saves immediately; edits also
+save after a short idle period. A tab marks unsaved content and asks before discarding it when closed.
 
-The Format menu and formatting toolbar offer bold, italic, heading levels 1–3, lists, quote, and fenced code.
+The Format menu and formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
 rows and columns. Insert image or attachment chooses an already imported vault file and requires a text description.
-The editor attempts to preserve native undo; fallback programmatic insertion may not retain an undo entry.
+Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
+headings, lists, block quotes, code, links, tables, and local images with required descriptions. Conversion between
+Markdown and HTML file formats is not available yet; create a new note in the desired format and copy the content
+after reviewing it instead. Plain-source formatting commands continue to target the Markdown editor. The editor
+attempts to preserve native undo; fallback programmatic insertion may not retain an undo entry.
 
 External edits reload clean notes silently. If you have unsaved text, autosave pauses and a conflict dialog offers
 **Keep mine** (explicitly save your version), **Load disk version**, or **Save copy** (a new timestamped note).
@@ -45,8 +56,9 @@ Type in **Global search**; queries wait 250 ms after typing. A main-process inde
 `.a11ynotebook/search-index.json` and refreshed incrementally when files change. Results show match context and
 announce the displayed count through the status bar. Search filters select notebook, note/attachment kind, tag,
 and modified-date range. `#tag` terms also filter by tag. Inline hashtags and supported front-matter tag fields
-are indexed; this is not a general YAML editor. Text/CSV/HTML attachment contents are searchable; PDF/ePub bodies
-are not. Unsupported attachments are searchable by filename. Results are capped at 100 in the UI.
+are indexed; this is not a general YAML editor. Text/CSV/HTML attachment and note contents, plus bounded PDF/ePub
+extracted text, are searchable. Unsupported or invalid attachments are searchable by filename. Results are capped at
+100 in the UI.
 
 ## Tasks
 
@@ -103,10 +115,11 @@ External asset changes are rejected at save time; preserve your work separately 
 
 ## Attachment previews
 
-Text and CSV have a text view/table. HTML is sanitized in a sandboxed frame; scripts, forms, links, styling,
-and external resources are disabled. Raster images use a vault-validated custom protocol and have an editable
-description saved in metadata. Image references in Markdown require local raster files. SVG/PDF/ePub are not
-rendered internally. **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
+Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
+description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
+for page rendering, accessible text, page navigation, and in-document search. ePub uses epub.js to navigate and
+search accessible spine-section text; it does not yet provide full visual reflow. Both are limited to 40 MB.
+**Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
 ## Settings
 
@@ -114,7 +127,17 @@ rendered internally. **Open in external app** remains available. Text previews a
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.
 Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the vault's
 `.a11ynotebook/settings.json` and app userData defaults. Keyboard Shortcuts and the palette display active bindings;
-the generated documentation lists defaults. Idle locking and reminder-default settings are not implemented.
+the generated documentation lists defaults. Vault idle locking is available in Security settings; reminder-default
+settings are not implemented.
+
+## Security
+
+Security settings can enable the vault password gate and configure idle locking. Selected notes can use distinct
+passwords through **Encrypt note**; the dialog can generate a password and clear it from the clipboard after 30
+seconds if it has not been replaced. Losing a note password is currently unrecoverable. Vault protection gates app
+access but does not encrypt unmarked files, filenames, search indexes, or most metadata. Recovery keys, whole-vault
+encryption, and sensitive-action audit history are not implemented; see [Security](security.md) before storing
+sensitive information.
 
 ## Keyboard shortcuts
 
@@ -134,18 +157,21 @@ the generated documentation lists defaults. Idle locking and reminder-default se
 | F6 / Shift+F6                                                | Move focus to next / previous pane             |
 | Alt+1 / Alt+2 / Alt+3                                        | Focus navigation / main / right pane           |
 | F9                                                           | Show or hide the right pane                    |
+| Shift+F10 / Applications key / right-click                   | Open the context-aware command menu            |
 | In the tree: Up/Down, Left/Right, Home/End                   | Navigate and expand/collapse                   |
 | In the tree: Enter, F2, Delete, `*`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
 
 ## Accessibility notes
 
-Use Tab for normal controls, and F6 or Shift+F6 to move between the application panes. The editor is a plain
-textarea to preserve standard keyboard and screen-reader editing behavior. Manual JAWS, NVDA, and Narrator testing
-is still needed; see the [testing strategy](accessibility/testing-strategy.md).
+Use Tab for normal controls, and F6 or Shift+F6 to move between the application panes. Plain-source mode uses a
+native textarea; rich-text mode uses a labelled multiline editor and a one-tab-stop toolbar. Manual JAWS, NVDA, and
+Narrator testing is still needed; see the [testing strategy](accessibility/testing-strategy.md).
 
 ## Not available yet
 
-Vault passwords, editing and idle locks, encrypted notes and credentials, and audit logging; PDF/ePub previews,
-text extraction, and annotations; web capture; general YAML metadata editing; heading 4–6 formatting; reminder
-defaults; and named milestones are not available yet. Manual Windows screen-reader and installer smoke tests
-remain release gates.
+HTML checklist/task/template/export integration, recovery keys, whole-vault encryption, encrypted indexes, and
+sensitive-action audit logging are not available yet. Format conversion creates a warned sibling copy and keeps the
+original; complete loss analysis and in-place conversion remain open. PDF zoom, ePub visual reflow/TOC, and PDF/ePub
+annotations remain open. Recent-vault selection, heading and position bookmarks, named milestones, general YAML
+metadata editing, and calendar organization remain open.
+Manual Windows screen-reader and UI Automation smoke tests have not been run.

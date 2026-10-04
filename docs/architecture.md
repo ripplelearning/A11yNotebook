@@ -5,7 +5,7 @@
 ```text
 React renderer ── typed methods ── sandboxed preload ── whitelisted IPC ── Electron main
     │                                                                    ├─ vault filesystem service
-    └─ semantic UI and local Markdown rendering                           ├─ native dialogs / shell
+    └─ semantic UI and local sanitized note rendering                     ├─ native dialogs / shell
                                                                          └─ updater controller
 ```
 
@@ -27,12 +27,12 @@ the raw Electron event. Updater handlers remain separate.
 
 - `electron/vault/`: filesystem-backed vault operations and IPC registration.
 - `electron/`: window, preload bridge, native menus, updater, and persistence.
-- `src/renderer/features/vault/`: accessible file tree and Markdown reader/editor.
+- `src/renderer/features/vault/`: accessible file tree, Markdown/HTML reader, source editor, and rich-text editor.
 - `src/shared/`: IPC names, command registry, bridge types, and data contracts.
 - `src/test/`: Vitest tests for renderer interactions and main-process logic.
-- Vault folders contain notebook subfolders, `.md` notes, and ordinary attachment files. `.a11ynotebook/` is
+- Vault folders contain notebook subfolders, `.md`/`.html` notes, and ordinary attachment files. `.a11ynotebook/` is
   reserved for readable JSON metadata including `links.json` and `bookmarks.json`; notes are not converted to a
-  proprietary format. Link indexes are rebuilt from Markdown source when the vault is opened/refreshed or a note
+  proprietary format. Link indexes are rebuilt from Markdown and supported HTML references when the vault is opened/refreshed or a note
   is saved.
 
 ## Adding a command or feature
@@ -43,11 +43,27 @@ and `src/shared/ipc.ts`, map it in preload, and validate its sender and inputs i
 generic IPC, Node modules, or an arbitrary filesystem path to the renderer. Add interaction and security tests, and
 update the user guide and roadmap to describe only working behavior.
 
+## Context menu and note editing
+
+The global context menu is generated from `COMMANDS` metadata in `src/shared/command-registry.ts`. Context comes
+from the focused element or its `data-context` marker; the renderer supplies the selected vault path, tab, link, task,
+or text selection. Shift+F10, the Applications key, and pointer context-menu events route to one menu component, which
+uses the WAI-ARIA menu keyboard pattern and restores focus to its invoker. Modal dialogs suppress the app menu. Menu
+context is presentation state only; filesystem access still uses fixed IPC channels and main-process validation.
+
+`.md` and `.html` files are editable notes. HTML is sanitized with DOMPurify in the renderer on read, render, paste,
+and save. Script-capable and embedded elements, forms, event handlers, remote image sources, and unsafe URI schemes
+are removed; local raster image references use the vault attachment protocol and require alt text. Markdown source
+remains a native textarea. Rich-text editing uses a labelled multiline contenteditable and a one-tab-stop toolbar;
+Markdown content is converted to and from a supported semantic HTML subset while in this mode. Format conversion
+creates a sibling note only after a warning; the original is kept. This avoids destructive conversion but does not
+provide complete loss analysis or in-place path/metadata migration. Full HTML checklist/task/template/export integration remains incomplete.
+
 ## Indexes, synchronization, and transactions
 
 `electron/vault/search.ts` owns a versioned, atomically persisted inverted index with startup freshness checks.
-Changed documents update postings without rereading unchanged bodies. Markdown and bounded text/CSV/HTML extraction
-are supported; other formats have filename-only records. Queries and filters are validated in main. The renderer
+Changed documents update postings without rereading unchanged bodies. Markdown and bounded text/CSV/HTML/PDF/ePub
+extraction are supported; other formats have filename-only records. Queries and filters are validated in main. The renderer
 debounces queries and receives only results, never scans all note bodies.
 
 `watcher.ts` uses recursive Windows/macOS `fs.watch`, with per-directory fallback, hidden-path exclusion,
@@ -76,12 +92,14 @@ is installed. `flashcards.json` maps deck paths and question/answer fingerprints
 `image-alts.json` stores image descriptions. `settings.json` stores appearance/autosave/shortcut overrides, with
 app userData defaults. Metadata operations reject symlink directories/files and atomically replace JSON.
 
-The `vault-file://attachment/` protocol serves bounded, validated raster images and inline PDF bytes with
-no-store/nosniff. HTML is sanitized with existing DOMPurify and put into a sandboxed srcdoc frame. PDF text
-extraction handles common literal/hex strings in uncompressed and Flate streams; PDF rendering uses the bundled
-Chromium viewer when available. ePub extraction reads bounded stored/deflate ZIP entries in spine order. These
-format handlers use Node built-ins rather than bundled pdf.js/epub.js workers and are not complete replacements for
-those libraries. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
+The `vault-file://attachment/` protocol serves bounded, validated raster images and local PDF/ePub bytes with
+no-store/nosniff. HTML attachment previews are sanitized and put into a sandboxed srcdoc frame. PDF.js runs with a
+bundled local worker, renders pages, extracts accessible text, and provides page navigation and text search. The
+epub.js reader parses the local archive and presents spine sections as searchable accessible text without executing
+book markup or loading its remote resources. Both readers reject files over 40 MB and bound text extraction. PDF/ePub
+visual refinements, EPUB reflow/TOC navigation, zoom, selection, and annotations remain incomplete. The earlier
+bounded main-process extractors are retained for input validation; ePub's XML parser is overridden to patched
+`@xmldom/xmldom` 0.8.15. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.
 
 `electron/vault/security.ts` derives vault and per-note keys with scrypt and encrypts selected notes and the credentials

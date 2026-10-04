@@ -33,12 +33,15 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "package:win": "npm run build && electron-builder --win --publish never",
-    "release:win": "npm run build && electron-builder --win --publish always"
+    "release:win": "npm run build && electron-builder --win --publish always",
+    "test:ui-smoke": "powershell -ExecutionPolicy Bypass -File scripts/windows-ui-automation-smoke.ps1"
   },
   "dependencies": {
     "dompurify": "^3.4.16",
     "electron-updater": "^6.8.9",
+    "epubjs": "^0.4.2",
     "markdown-it": "^15.0.2",
+    "pdfjs-dist": "^6.4.299",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },
@@ -64,5 +67,10 @@
     "vite": "^6.4.3",
     "vitest": "^5.0.3",
     "wait-on": "^8.0.0"
+  },
+  "overrides": {
+    "epubjs": {
+      "xmldom": "npm:@xmldom/xmldom@0.8.15"
+    }
   }
 }

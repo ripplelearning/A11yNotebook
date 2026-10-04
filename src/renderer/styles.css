@@ -201,6 +201,13 @@ a:focus-visible,
   border-color: rgba(125, 211, 252, 0.7);
 }
 
+.document-page-canvas {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  margin-block: 1rem;
+}
+
 .side-panel h2 {
   margin-top: 0;
 }
@@ -442,6 +449,60 @@ a:focus-visible,
   background: #0b1220;
   color: #f8fafc;
   font-family: Consolas, 'Cascadia Code', monospace;
+}
+
+.rich-text-editor {
+  min-height: 55vh;
+  font-family: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+[role='toolbar'] {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-block: 0.75rem;
+}
+
+.global-context-menu {
+  position: fixed;
+  z-index: 2000;
+  display: grid;
+  min-width: 13rem;
+  max-width: min(24rem, calc(100vw - 1rem));
+  padding: 0.35rem;
+  border: 1px solid #94a3b8;
+  border-radius: 0.4rem;
+  background: #0f172a;
+  box-shadow: 0 0.6rem 1.8rem rgb(0 0 0 / 45%);
+}
+
+.global-context-menu button {
+  display: flex;
+  justify-content: space-between;
+  gap: 1.5rem;
+  padding: 0.45rem 0.65rem;
+  border: 0;
+  border-radius: 0.2rem;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.global-context-menu button[aria-disabled='true'] {
+  color: #94a3b8;
+  cursor: not-allowed;
+}
+
+.global-context-menu button:focus-visible {
+  outline: 2px solid #7dd3fc;
+  outline-offset: -2px;
+  background: #1e3a5f;
+}
+
+.context-menu-shortcut {
+  color: #cbd5e1;
 }
 
 .markdown-body a {

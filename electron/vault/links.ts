@@ -24,6 +24,18 @@ export function parseMarkdownLinks(content: string): MarkdownReference[] {
   return references;
 }
 
+function parseHtmlLinks(content: string): MarkdownReference[] {
+  const references: MarkdownReference[] = [];
+  for (const match of content.matchAll(/\bhref\s*=\s*["']([^"']+)["']/gi)) {
+    const target = match[1].trim();
+    if (target && !/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i.test(target)) references.push({ target, isWiki: false });
+  }
+  for (const match of content.matchAll(/\[\[([^\]\n|]+)(?:\|[^\]\n]*)?\]\]/g)) {
+    references.push({ target: match[1].trim(), isWiki: true });
+  }
+  return references;
+}
+
 function flattenEntries(entries: VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...(entry.children ? flattenEntries(entry.children) : [])]);
 }
@@ -43,7 +55,7 @@ export function buildVaultLinkIndex(
   }
 
   const links = notes.flatMap(({ path: sourcePath, content }) =>
-    parseMarkdownLinks(content)
+    (path.posix.extname(sourcePath).toLowerCase() === '.html' ? parseHtmlLinks(content) : parseMarkdownLinks(content))
       .map(({ target, isWiki }) => {
         let candidatePath = target;
         if (!isWiki) {
@@ -54,7 +66,14 @@ export function buildVaultLinkIndex(
           }
           if (!candidatePath) return undefined;
           candidatePath = path.posix.normalize(path.posix.join(path.posix.dirname(sourcePath), candidatePath));
-          if (!path.posix.extname(candidatePath)) candidatePath += '.md';
+          if (!path.posix.extname(candidatePath)) {
+            const targetBase = path.posix.basename(candidatePath).toLocaleLowerCase();
+            const matchingNote = notesOnly.find(
+              (note) =>
+                path.posix.basename(note.path, path.posix.extname(note.path)).toLocaleLowerCase() === targetBase,
+            );
+            candidatePath += matchingNote ? path.posix.extname(matchingNote.path) : '.md';
+          }
         } else {
           candidatePath = '';
         }
@@ -62,7 +81,7 @@ export function buildVaultLinkIndex(
         const wikiCandidates = notesByTitle.get(wikiPath) ?? [];
         const resolved = isWiki
           ? wikiPath.includes('/')
-            ? byPath.get(`${wikiPath}.md`)
+            ? (byPath.get(`${wikiPath}.md`) ?? byPath.get(`${wikiPath}.html`))
             : wikiCandidates.length === 1
               ? wikiCandidates[0]
               : undefined

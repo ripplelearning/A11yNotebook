@@ -76,7 +76,12 @@ export default function SearchResults({ filters, onFilters, notebooks, results, 
           <ul aria-label="Search results">
             {results.map((result) => (
               <li key={result.path}>
-                <button type="button" onClick={() => onOpen(result.path)}>
+                <button
+                  type="button"
+                  data-context="search-result"
+                  data-path={result.path}
+                  onClick={() => onOpen(result.path)}
+                >
                   {result.title}
                 </button>
                 <p>{result.snippet}</p>

@@ -105,6 +105,17 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('creates HTML notes from the format picker', async () => {
+    const { bridge } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New note' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Briefing' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'html' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
+    await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.html'));
+  });
+
   it('removes reminder content and ignores stale reminder events after locking', async () => {
     const { lock, reminder, vault } = setup();
     await screen.findByRole('heading', { name: 'Study' });
@@ -219,9 +230,9 @@ describe('feature wiring in the application shell', () => {
     item.focus();
     fireEvent.keyDown(item, { key: 'F10', shiftKey: true });
     const menu = screen.getByRole('menu', { name: 'Actions for Note.md' });
-    expect(within(menu).getByRole('menuitem', { name: 'New note' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Open' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
-    expect(within(menu).getByRole('menuitem', { name: 'Bookmark' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Encrypt note' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(item).toHaveFocus();
     expect(menu).not.toBeInTheDocument();

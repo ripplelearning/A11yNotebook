@@ -1,17 +1,19 @@
 # A11y Notebook
 
-A11y Notebook is a desktop app for keeping personal knowledge organized locally and securely. It is built for
-Windows first and designed for accessibility from the start. The current phase includes local folders as vaults,
-Markdown notes, attachments, an accessible file tree, note tabs, a sanitized reader, and a plain-text editor.
+A11y Notebook is a local-first Windows desktop app for accessible personal knowledge management. It supports
+Markdown notes, sanitized HTML notes, a rich-text editing mode, attachments, an accessible file tree, note tabs,
+and a sandboxed reader.
 
 ## Current scope
 
 - An accessible shell with a header, menu bar, navigation pane, tabs, main content pane, right pane, and status bar.
-- Local vault folders with notebooks as subfolders, Markdown notes, and attachments. Vault metadata is stored as
+- Local vault folders with notebooks as subfolders, Markdown and HTML notes, and attachments. Vault metadata is stored as
   readable JSON under `.a11ynotebook/`.
 - Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
   Explorer reveal, external open, and recent-vault restoration.
-- Semantic Markdown reading and a native textarea editor with Ctrl+S and idle autosave.
+- Sanitized semantic Markdown/HTML reading, plain-source editing, and accessible rich-text editing with Ctrl+S and idle autosave.
+- Markdown and HTML note creation; rich-text paste is sanitized. HTML notes support relative links and search.
+- Convert a note into a Markdown/HTML sibling copy with a loss warning; the source file is retained.
 - Persistent main-process full-text search with snippets, notebook/kind/tag/modified-date filters, and debounced queries.
 - External-change watching, clean-note reloads, and explicit conflict resolution that preserves unsaved edits.
 - Confirmed moves/renames with repair of unambiguous wiki and inline relative Markdown links.
@@ -19,11 +21,14 @@ Markdown notes, attachments, an accessible file tree, note tabs, a sanitized rea
 - Built-in and user-editable note templates; outline, mind-map, flashcard, CSV, and Markdown-table tools.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
+- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search.
+- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search.
 - Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
 - Checkbox tasks indexed from Markdown, with due dates and priorities, filters, and a sortable table that updates source notes.
 - Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
 - A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
+- One context-aware menu driven by the command registry, available with Shift+F10, the Applications key, and right-click.
 - Closable tabs that follow the WAI-ARIA tabs pattern (arrow keys, Home, End, roving focus).
 - Switching between read-only and edit mode, with announcements in the status bar.
 - A Help menu with **Check for Updates**, **Keyboard Shortcuts**, and **About A11y Notebook**.
@@ -63,6 +68,7 @@ npm run lint       # ESLint
 npm run format     # Prettier
 npm run docs:shortcuts # regenerate docs/keyboard-shortcuts.md from the command registry
 npm run build      # build the renderer (dist/) and the main/preload code (dist-electron/)
+npm run test:ui-smoke # Windows only; run after npm run package:win
 ```
 
 ## Build the Windows `.exe`
@@ -138,9 +144,9 @@ the latest changes.
   typed updater and vault APIs. The main process accepts calls only on whitelisted IPC channels, and only from the
   app's own window. Vault paths are validated against the open vault.
 - Release notes are shown as plain text, never as HTML.
-- **Code signing:** production releases should be signed with a Windows code-signing certificate (add
-  `WINDOWS_CERTIFICATE` and `WINDOWS_CERTIFICATE_PASSWORD` repository secrets and uncomment the `CSC_LINK` and
-  `CSC_KEY_PASSWORD` lines in the release workflow). Signing prevents
+- **Code signing:** the release workflow automatically signs when the `WINDOWS_CERTIFICATE` and
+  `WINDOWS_CERTIFICATE_PASSWORD` repository secrets are configured. This branch wires secret-based signing; no
+  certificate is provided or used by this development build. Signing prevents
   SmartScreen warnings, and `electron-updater` then checks that every update is signed by the same publisher.
   **Unsigned builds still update, but without a signature check, so they are fine for testing and not safe for
   production.**
@@ -157,10 +163,12 @@ the latest changes.
 
 ## Roadmap summary
 
-This is a tested development increment, **not the completed product**. Vault passwords, editing/idle locks,
-encrypted notes and credentials, audit logging, PDF/ePub previews and text extraction, and web capture remain
-unimplemented. General YAML metadata editing, reminder defaults, milestone planning, and encrypted tree actions
-also remain gaps. Files and the search cache are plaintext; do not store passwords in this build.
+This remains an unfinished development build. Vault password gating and selected-note encryption exist, but
+whole-vault encryption, recovery keys, and sensitive-action audit logging do not. PDF.js renders pages and supports
+accessible text/search; epub.js provides searchable accessible section text, but full visual reflow, advanced
+navigation, and annotations remain open. HTML/rich-text support includes warned sibling-copy conversion; checklist,
+task, template, and export integration remain partial. Several roadmap items still need implementation, and Windows
+UI Automation and manual screen-reader validation have not been run.
 See [`docs/roadmap.md`](docs/roadmap.md), [`docs/security.md`](docs/security.md), and the manual accessibility matrix.
 No app version was changed and no release was published by this feature work.
 
