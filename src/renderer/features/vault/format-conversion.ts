@@ -4,6 +4,13 @@ import { sanitizeNoteHtml } from './sanitize-html';
 
 const MARKDOWN_SPECIAL_CHARACTERS = new Set('\\`*_{}[]()#+.!|>-');
 
+function markdownCodeSpan(value: string) {
+  const longestRun = Math.max(0, ...Array.from(value.matchAll(/`+/g), ([run]) => run.length));
+  const delimiter = '`'.repeat(longestRun + 1);
+  const content = value.startsWith('`') || value.endsWith('`') ? ` ${value} ` : value;
+  return `${delimiter}${content}${delimiter}`;
+}
+
 export function markdownToHtml(source: string, render: (source: string) => string) {
   return DOMPurify.sanitize(render(source));
 }
@@ -28,7 +35,7 @@ function inlineMarkdown(node: Node): string {
     case 'strike':
       return `~~${content}~~`;
     case 'code':
-      return `\`${content.replace(/`/g, '\\`')}\``;
+      return markdownCodeSpan(node.textContent ?? '');
     case 'a': {
       const href = node.getAttribute('href') ?? '';
       const wiki = href.startsWith('#wiki:') ? `[[${decodeURIComponent(href.slice(6))}]]` : `[${content}](${href})`;

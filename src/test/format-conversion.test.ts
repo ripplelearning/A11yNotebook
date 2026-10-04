@@ -36,6 +36,11 @@ describe('note format conversion', () => {
     expect(markdown).toBe('Folder \\\\path\\\\file');
   });
 
+  it('uses a longer code fence when code contains backticks and preserves backslashes', () => {
+    const markdown = convertNoteContent('<p><code>path\\with `ticks`</code></p>', 'html', 'markdown', 'Notes/Entry.md');
+    expect(markdown).toBe('`` path\\with `ticks` ``');
+  });
+
   it('warns that conversion keeps a sibling copy and may not preserve unsupported syntax', () => {
     const warning = formatConversionWarning('<custom-widget>data</custom-widget>', 'html', 'markdown');
     expect(warning).toContain('sibling copy');
