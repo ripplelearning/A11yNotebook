@@ -104,11 +104,14 @@ function requestHttps(url: URL, address: { address: string; family: number }, ma
           Accept: 'text/html,image/png,image/jpeg,image/gif,image/webp,image/bmp',
         },
         lookup: pinnedLookup,
+        family: address.family,
         timeout: 12_000,
       },
       (response) => {
         const chunks: Buffer[] = [];
         let size = 0;
+        response.on('error', reject);
+        response.on('aborted', () => reject(new Error('The remote download was interrupted.')));
         response.on('data', (chunk: Buffer) => {
           size += chunk.length;
           if (size > maximumBytes) {
@@ -126,6 +129,8 @@ function requestHttps(url: URL, address: { address: string; family: number }, ma
         );
       },
     );
+    const deadline = setTimeout(() => outgoing.destroy(new Error('The remote server timed out.')), 12_000);
+    outgoing.once('close', () => clearTimeout(deadline));
     outgoing.on('timeout', () => outgoing.destroy(new Error('The remote server timed out.')));
     outgoing.on('error', reject);
     outgoing.end();

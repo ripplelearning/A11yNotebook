@@ -4,6 +4,7 @@ import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
 import type { VaultChangedEvent } from '../shared/search';
+import type { VaultReminderEvent } from '../shared/reminders';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
 
@@ -14,6 +15,8 @@ afterEach(() => {
 function setup(customBold = false) {
   let content = '# Note\n\ntext';
   let listener: (event: VaultChangedEvent) => void = () => undefined;
+  let lock: () => void = () => undefined;
+  let reminderListener: (event: VaultReminderEvent) => void = () => undefined;
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
@@ -46,6 +49,14 @@ function setup(customBold = false) {
         autosaveDelay: 0,
         shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
       })),
+      onSecurityLocked: (callback) => {
+        lock = callback;
+        return () => undefined;
+      },
+      onReminder: (callback) => {
+        reminderListener = callback;
+        return () => undefined;
+      },
       onChanged: (callback) => {
         listener = callback;
         return () => undefined;
@@ -77,6 +88,8 @@ function setup(customBold = false) {
   return {
     bridge,
     vault,
+    lock: () => lock(),
+    reminder: (event: VaultReminderEvent) => reminderListener(event),
     external: (disk: string) => {
       content = disk;
       listener({ vaultPath: vault.path, paths: ['Note.md'] });
@@ -92,6 +105,28 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('removes reminder content and ignores stale reminder events after locking', async () => {
+    const { lock, reminder, vault } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    const item = {
+      id: 'private-reminder',
+      title: 'Private reminder title',
+      path: 'Note.md',
+      source: 'standalone' as const,
+      status: 'fired' as const,
+      scheduledAt: '2020-01-01T12:00:00Z',
+      originalScheduledAt: '2020-01-01T12:00:00Z',
+    };
+    act(() => reminder({ type: 'changed', vaultPath: vault.path, reminders: [item] }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open Reminders' }));
+    expect(screen.getByRole('button', { name: item.title })).toBeInTheDocument();
+    act(() => lock());
+    expect(screen.getByRole('dialog', { name: 'Vault locked' })).toBeInTheDocument();
+    expect(screen.queryByText(item.title)).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Reminders' })).not.toBeInTheDocument();
+    act(() => reminder({ type: 'fired', vaultPath: vault.path, reminder: item }));
+    expect(screen.queryByText(`Reminder: ${item.title}`)).not.toBeInTheDocument();
+  });
   it('ignores an old-vault refresh that finishes after opening a different vault', async () => {
     const { bridge, vault } = setup();
     const editor = await editNote();

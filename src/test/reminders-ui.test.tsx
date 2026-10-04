@@ -1,9 +1,11 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, renderHook, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import CreateReminderDialog from '../renderer/features/reminders/CreateReminderDialog';
 import RemindersView from '../renderer/features/reminders/RemindersView';
 import TaskProgressSummaries from '../renderer/features/reminders/TaskProgressSummaries';
 import { groupReminders, type Reminder } from '../shared/reminders';
+import { useReminders } from '../renderer/hooks/useReminders';
+import type { NotebookBridge } from '../shared/bridge';
 
 const now = new Date(2026, 9, 5, 10);
 function reminder(id: string, when: Date, status: Reminder['status'] = 'pending'): Reminder {
@@ -26,6 +28,33 @@ const reminders = [
 ];
 
 describe('accessible reminders UI', () => {
+  it('discards an in-flight reminder load when vault access is removed', async () => {
+    let finish: (items: Reminder[]) => void = () => undefined;
+    const unsubscribe = vi.fn();
+    const announce = vi.fn();
+    window.a11yNotebook = {
+      vault: {
+        getReminders: () =>
+          new Promise<Reminder[]>((resolve) => {
+            finish = resolve;
+          }),
+        onReminder: () => unsubscribe,
+      },
+    } as unknown as NotebookBridge;
+    try {
+      const { result, rerender } = renderHook(
+        ({ path }: { path: string | undefined }) => useReminders(path, vi.fn(), announce),
+        { initialProps: { path: '/vault' as string | undefined } },
+      );
+      rerender({ path: undefined });
+      await act(async () => finish(reminders));
+      expect(result.current.reminders).toEqual([]);
+      expect(announce).not.toHaveBeenCalled();
+      expect(unsubscribe).toHaveBeenCalledOnce();
+    } finally {
+      delete window.a11yNotebook;
+    }
+  });
   it('groups overdue, today and this calendar week without duplicating reminders', () => {
     const groups = groupReminders(reminders, now);
     expect(groups.overdue.map((item) => item.id)).toEqual(['Past']);

@@ -248,7 +248,7 @@ export default function App() {
     })),
   ];
   const reminderState = useReminders(
-    vault?.path,
+    securityLocked ? undefined : vault?.path,
     (relative) => {
       if (switchingRef.current) return;
       const entry = findEntry(vault?.entries ?? [], relative);
@@ -1499,7 +1499,7 @@ export default function App() {
                 />
               </div>
             ) : null}
-            {selectedTab === 'assets' ? null : selectedTab === 'reminders' ? (
+            {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'reminders' ? (
               <RemindersView
                 reminders={reminderState.reminders}
                 notePaths={notePaths}

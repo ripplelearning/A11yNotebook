@@ -22,9 +22,11 @@ export function useReminders(
         const missed = items.filter((item) => item.status === 'fired' && Date.parse(item.scheduledAt) <= Date.now());
         if (missed.length) announce(`${missed.length} fired or missed reminders are available in Reminders.`);
       })
-      .catch(() => announce('Could not load reminders.'));
+      .catch(() => {
+        if (!cancelled) announce('Could not load reminders.');
+      });
     const unsubscribe = bridge.onReminder((event) => {
-      if (event.vaultPath !== vaultPath) return;
+      if (cancelled || event.vaultPath !== vaultPath) return;
       if (event.type === 'changed' && event.reminders) setReminders(event.reminders);
       if (event.type === 'fired' && event.reminder) announce(`Reminder: ${event.reminder.title}`);
       if (event.type === 'open' && event.reminder) openRef.current(event.reminder.path);
