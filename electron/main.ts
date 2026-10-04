@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, session, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
@@ -10,6 +10,7 @@ import { setupVaultIpc } from './vault/ipc';
 
 const isDevelopment = !app.isPackaged;
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
+protocol.registerSchemesAsPrivileged([{ scheme: 'vault-file', privileges: { standard: true, secure: true } }]);
 
 // Compiled output lives in dist-electron/electron/, the renderer build in dist/.
 const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html');
@@ -103,14 +104,34 @@ if (!app.requestSingleInstanceLock()) {
   });
 
   app.whenReady().then(() => {
-    // The renderer does not need camera, microphone, notifications, or other permissions yet.
+    if (process.platform === 'win32') app.setAppUserModelId('com.ripplelearning.a11ynotebook');
+    // Renderer permissions stay blocked; native reminders are created in the main process.
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
 
     setupUpdater({
       send: (status) => sendToRenderer(IPC_CHANNELS.updaterStatus, status),
       isTrustedSender,
     });
-    setupVaultIpc(isTrustedSender);
+    setupVaultIpc(
+      isTrustedSender,
+      (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.vaultChanged, event);
+      },
+      (event) => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.vaultReminderEvent, event);
+          if (event.type === 'open') {
+            mainWindow.show();
+            mainWindow.focus();
+          }
+        }
+      },
+      () => {
+        if (mainWindow && !mainWindow.isDestroyed()) {
+          mainWindow.webContents.send(IPC_CHANNELS.vaultSecurityLocked, true);
+        }
+      },
+    );
 
     Menu.setApplicationMenu(
       buildApplicationMenu((command) => {

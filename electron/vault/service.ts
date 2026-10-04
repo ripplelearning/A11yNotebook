@@ -1,54 +1,125 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
-import { lstat, mkdir, readFile, readdir, realpath, rename, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import { buildVaultLinkIndex } from './links';
 import { parseMarkdownTasks } from './tasks';
+import type { VaultChangedEvent } from '../../src/shared/search';
+import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
+import { createVaultWatcher } from './watcher';
 
 /** Create an operations facade for one canonical vault folder. */
-export function createVaultService(vaultPath: string) {
+export function createVaultService(vaultPath: string, onChanged?: (event: VaultChangedEvent) => void | Promise<void>) {
   let root = '';
+  let searchIndex: ReturnType<typeof createSearchIndex> | undefined;
+  let watcher: Awaited<ReturnType<typeof createVaultWatcher>> | undefined;
+  let watcherStart: Promise<void> = Promise.resolve();
+  let disposed = false;
+  let initialization: Promise<VaultInfo> | undefined;
+  let noteWrites: Promise<unknown> = Promise.resolve();
 
-  async function initialize(): Promise<VaultInfo> {
-    root = await realpath(vaultPath);
-    const stat = await lstat(root);
-    if (!stat.isDirectory()) throw new Error('Vault must be a folder.');
-    await mkdir(path.join(root, '.a11ynotebook'), { recursive: true });
-    return getVault();
+  function serializeNoteWrite<T>(operation: () => Promise<T>): Promise<T> {
+    const result = noteWrites.then(operation);
+    noteWrites = result.catch(() => undefined);
+    return result;
+  }
+
+  function initialize(): Promise<VaultInfo> {
+    if (disposed) return Promise.reject(new Error('This vault is closed.'));
+    if (initialization) return initialization;
+    initialization = (async () => {
+      root = await realpath(vaultPath);
+      const stat = await lstat(root);
+      if (!stat.isDirectory()) throw new Error('Vault must be a folder.');
+      await ensureMetadataDirectory(root);
+      searchIndex = createSearchIndex(root);
+      await searchIndex.initialize();
+      if (onChanged) await startWatcher(onChanged);
+      return getVault();
+    })().catch(async (error: unknown) => {
+      await watcher?.dispose();
+      await searchIndex?.dispose();
+      searchIndex = undefined;
+      root = '';
+      initialization = undefined;
+      throw error;
+    });
+    return initialization;
+  }
+
+  async function refreshSearchIndex() {
+    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    await searchIndex.refresh();
+  }
+
+  async function search(query: unknown) {
+    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    return searchIndex.search(query);
+  }
+
+  async function getTags(): Promise<string[]> {
+    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    return searchIndex.getTags();
+  }
+
+  function startWatcher(
+    callback: (event: VaultChangedEvent) => void | Promise<void>,
+    onError?: (error: unknown) => void,
+  ): Promise<void> {
+    if (!searchIndex || disposed) return Promise.reject(new Error('Open a vault first.'));
+    if (typeof callback !== 'function') return Promise.reject(new Error('A change callback is required.'));
+    if (onError !== undefined && typeof onError !== 'function')
+      return Promise.reject(new Error('Invalid watcher error callback.'));
+    const next = watcherStart.then(async () => {
+      if (disposed) return;
+      await watcher?.dispose();
+      watcher = await createVaultWatcher(
+        root,
+        async (event) => {
+          await refreshSearchIndex();
+          if (!disposed) await callback(event);
+        },
+        { onError },
+      );
+    });
+    watcherStart = next.catch(() => undefined);
+    return next;
+  }
+
+  async function dispose() {
+    disposed = true;
+    await initialization?.catch(() => undefined);
+    await watcherStart;
+    await watcher?.dispose();
+    await noteWrites;
+    await searchIndex?.dispose();
+    root = '';
+  }
+
+  async function resolveMetadata(name: string, allowMissing = false): Promise<string> {
+    if (!root || disposed) throw new Error('Open a vault first.');
+    if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[\\/\0:]/.test(name)) {
+      throw new Error('Enter a valid metadata filename without folder separators.');
+    }
+    await ensureMetadataDirectory(root);
+    return checkedVaultPath(root, `.a11ynotebook/${name}`, allowMissing);
   }
 
   async function resolveEntry(relativePath: string, allowMissing = false) {
-    if (!root) throw new Error('Open a vault first.');
+    if (!root || disposed) throw new Error('Open a vault first.');
     if (
       typeof relativePath !== 'string' ||
       !relativePath ||
       path.isAbsolute(relativePath) ||
+      path.win32.isAbsolute(relativePath) ||
       relativePath.split(/[\\/]/).some((part) => part === '..' || part === '.' || part === '') ||
       relativePath.split(/[\\/]/)[0].toLowerCase() === '.a11ynotebook'
     ) {
       throw new Error('The requested path is not valid inside this vault.');
     }
-    const candidate = path.resolve(root, relativePath);
-    if (candidate === root || !candidate.startsWith(`${root}${path.sep}`)) {
-      throw new Error('The requested path is outside this vault.');
-    }
-    const segments = path.relative(root, candidate).split(path.sep);
-    let current = root;
-    for (let index = 0; index < segments.length; index += 1) {
-      current = path.join(current, segments[index]);
-      try {
-        const stat = await lstat(current);
-        if (stat.isSymbolicLink()) throw new Error('Symbolic links are not supported in vault paths.');
-        if (index < segments.length - 1 && !stat.isDirectory()) {
-          throw new Error('A parent path is not a folder.');
-        }
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === 'ENOENT' && allowMissing) break;
-        throw error;
-      }
-    }
-    return candidate;
+    return checkedVaultPath(root, relativePath, allowMissing);
   }
 
   async function scanDirectory(absolutePath: string, relativePath: string): Promise<VaultEntry[]> {
@@ -57,8 +128,8 @@ export function createVaultService(vaultPath: string) {
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
       if (entry.name === '.a11ynotebook' || entry.name.startsWith('.')) continue;
       const childRelative = relativePath ? `${relativePath}/${entry.name}` : entry.name;
-      const childPath = path.join(absolutePath, entry.name);
       if (entry.isSymbolicLink()) continue;
+      const childPath = await resolveEntry(childRelative);
       if (entry.isDirectory()) {
         result.push({
           name: entry.name,
@@ -75,7 +146,7 @@ export function createVaultService(vaultPath: string) {
   }
 
   async function getVault(): Promise<VaultInfo> {
-    if (!root) throw new Error('Open a vault first.');
+    if (!root || disposed) throw new Error('Open a vault first.');
     return { name: path.basename(root), path: root, entries: await scanDirectory(root, '') };
   }
 
@@ -85,60 +156,103 @@ export function createVaultService(vaultPath: string) {
     return readFile(target, 'utf8');
   }
 
-  async function saveNote(relativePath: string, content: string) {
-    if (typeof content !== 'string') throw new Error('Note content must be text.');
-    if (path.extname(relativePath).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+  async function replaceNote(relativePath: string, content: string, expectedContent?: string) {
     const target = await resolveEntry(relativePath);
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, content, 'utf8');
+    const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+    try {
+      const stat = await lstat(target);
+      await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: stat.mode & 0o777 });
+      await resolveEntry(path.relative(root, temporary));
+      await resolveEntry(relativePath);
+      if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
+        throw new Error('Note changed on disk. Resolve the conflict before saving.');
+      await rename(temporary, target);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  function saveNote(relativePath: string, content: string, expectedContent?: string): Promise<void> {
+    return serializeNoteWrite(async () => {
+      if (typeof content !== 'string') throw new Error('Note content must be text.');
+      if (expectedContent !== undefined && typeof expectedContent !== 'string')
+        throw new Error('Expected note content must be text.');
+      if (path.extname(relativePath).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+      let target: string;
+      try {
+        target = await resolveEntry(relativePath);
+        await mkdir(path.dirname(target), { recursive: true });
+        if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent) {
+          throw new Error('Note changed on disk. Resolve the conflict before saving.');
+        }
+      } catch (error) {
+        if (expectedContent !== undefined && (error as NodeJS.ErrnoException).code === 'ENOENT') {
+          throw new Error('Note changed on disk. Resolve the conflict before saving.');
+        }
+        throw error;
+      }
+      await replaceNote(relativePath, content, expectedContent);
+      await refreshSearchIndex();
+    });
   }
 
   async function createFolder(relativePath: string) {
     const target = await resolveEntry(relativePath, true);
     await mkdir(target);
+    await refreshSearchIndex();
     return getVault();
   }
 
-  async function createNote(relativePath: string) {
-    const target = await resolveEntry(relativePath, true);
-    if (path.extname(target).toLowerCase() !== '.md') throw new Error('Notes must use the .md extension.');
-    await mkdir(path.dirname(target), { recursive: true });
-    await writeFile(target, `# ${path.basename(target, '.md')}\n\n`, { flag: 'wx' });
-    return getVault();
+  function createNote(relativePath: string, content?: string): Promise<VaultInfo> {
+    return serializeNoteWrite(async () => {
+      if (content !== undefined && typeof content !== 'string') throw new Error('Note content must be text.');
+      const target = await resolveEntry(relativePath, true);
+      if (path.extname(target).toLowerCase() !== '.md') throw new Error('Notes must use the .md extension.');
+      await mkdir(path.dirname(target), { recursive: true });
+      await writeFile(target, content ?? `# ${path.basename(target, '.md')}\n\n`, { flag: 'wx' });
+      await refreshSearchIndex();
+      return getVault();
+    });
   }
 
   async function renameEntry(relativePath: string, newName: string) {
-    if (!newName || newName === '.' || newName === '..' || /[\\/]/.test(newName)) {
+    if (typeof newName !== 'string' || !newName || newName === '.' || newName === '..' || /[\\/\0]/.test(newName)) {
       throw new Error('Enter a valid name without folder separators.');
     }
+    return moveEntry(relativePath, path.posix.join(path.posix.dirname(relativePath), newName));
+  }
+
+  async function moveEntry(relativePath: string, destinationRelative: string): Promise<VaultInfo> {
     const source = await resolveEntry(relativePath);
-    const destinationRelative = path.posix.join(path.posix.dirname(relativePath), newName);
     const destination = await resolveEntry(destinationRelative, true);
+    if (destination.startsWith(`${source}${path.sep}`)) throw new Error('An item cannot be moved inside itself.');
+    const parent = await lstat(path.dirname(destination));
+    if (!parent.isDirectory() || parent.isSymbolicLink()) throw new Error('The destination notebook must be a folder.');
     try {
       await lstat(destination);
       throw new Error('An item with that name already exists.');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
+    const sourceRelative = path.relative(root, source).split(path.sep).join('/');
+    const nextRelative = path.relative(root, destination).split(path.sep).join('/');
+    const newName = path.basename(destination);
     const bookmarks = await getBookmarks();
     await rename(source, destination);
+    await refreshSearchIndex();
     const updatedBookmarks = bookmarks.map((bookmark) =>
-      bookmark.path === relativePath || bookmark.path.startsWith(`${relativePath}/`)
+      bookmark.path === sourceRelative || bookmark.path.startsWith(`${sourceRelative}/`)
         ? {
             ...bookmark,
-            path: `${destinationRelative}${bookmark.path.slice(relativePath.length)}`,
-            ...(bookmark.path === relativePath && path.extname(relativePath).toLowerCase() === '.md'
+            path: `${nextRelative}${bookmark.path.slice(sourceRelative.length)}`,
+            ...(bookmark.path === sourceRelative && path.extname(sourceRelative).toLowerCase() === '.md'
               ? { title: path.basename(newName, path.extname(newName)) }
               : {}),
           }
         : bookmark,
     );
     if (updatedBookmarks.some((bookmark, index) => bookmark !== bookmarks[index])) {
-      await writeFile(
-        path.join(root, '.a11ynotebook', 'bookmarks.json'),
-        JSON.stringify(updatedBookmarks, null, 2),
-        'utf8',
-      );
+      await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(updatedBookmarks, null, 2), 'utf8');
     }
     return getVault();
   }
@@ -157,20 +271,24 @@ export function createVaultService(vaultPath: string) {
     return taskGroups.flat();
   }
 
-  async function toggleTask(relativePath: string, lineNumber: number, complete: boolean) {
-    const target = await resolveEntry(relativePath);
-    if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
-      throw new Error('Invalid task location.');
-    }
-    const lines = (await readFile(target, 'utf8')).split(/\r?\n/);
-    const index = lineNumber - 1;
-    const line = lines[index];
-    if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
-      throw new Error('The task no longer exists at this location.');
-    }
-    lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
-    await writeFile(target, lines.join('\n'), 'utf8');
-    return getTasks();
+  function toggleTask(relativePath: string, lineNumber: number, complete: boolean) {
+    return serializeNoteWrite(async () => {
+      const target = await resolveEntry(relativePath);
+      if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
+        throw new Error('Invalid task location.');
+      }
+      const original = await readFile(target, 'utf8');
+      const lines = original.split(/\r?\n/);
+      const index = lineNumber - 1;
+      const line = lines[index];
+      if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
+        throw new Error('The task no longer exists at this location.');
+      }
+      lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
+      await replaceNote(relativePath, lines.join('\n'), original);
+      await refreshSearchIndex();
+      return getTasks();
+    });
   }
 
   async function getLinkIndex(): Promise<VaultLinkIndex> {
@@ -184,14 +302,12 @@ export function createVaultService(vaultPath: string) {
     const vault = await getVault();
     await collect(vault.entries);
     const index = buildVaultLinkIndex(notes, vault.entries);
-    const metadataDirectory = path.join(root, '.a11ynotebook');
-    await mkdir(metadataDirectory, { recursive: true });
-    await writeFile(path.join(metadataDirectory, 'links.json'), JSON.stringify(index, null, 2), 'utf8');
+    await writeFile(await resolveMetadata('links.json', true), JSON.stringify(index, null, 2), 'utf8');
     return index;
   }
 
   async function getBookmarks(): Promise<VaultBookmark[]> {
-    const bookmarkPath = path.join(root, '.a11ynotebook', 'bookmarks.json');
+    const bookmarkPath = await resolveMetadata('bookmarks.json', true);
     try {
       const parsed: unknown = JSON.parse(await readFile(bookmarkPath, 'utf8'));
       const candidates = Array.isArray(parsed)
@@ -236,9 +352,7 @@ export function createVaultService(vaultPath: string) {
             created: new Date().toISOString(),
           },
         ];
-    const metadataDirectory = path.join(root, '.a11ynotebook');
-    await mkdir(metadataDirectory, { recursive: true });
-    await writeFile(path.join(metadataDirectory, 'bookmarks.json'), JSON.stringify(next, null, 2), 'utf8');
+    await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
     return next;
   }
 
@@ -250,11 +364,18 @@ export function createVaultService(vaultPath: string) {
     createFolder,
     createNote,
     renameEntry,
+    moveEntry,
     getTasks,
     toggleTask,
     getLinkIndex,
     getBookmarks,
     toggleBookmark,
     resolveEntry,
+    resolveMetadata,
+    search,
+    getTags,
+    refreshSearchIndex,
+    startWatcher,
+    dispose,
   };
 }

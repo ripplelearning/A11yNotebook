@@ -19,12 +19,15 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
 
 button:focus-visible,
 input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
 a:focus-visible,
 [tabindex]:focus-visible {
   outline: 3px solid #7dd3fc;
@@ -488,5 +491,128 @@ a:focus-visible,
   :focus-visible,
   [role='treeitem'][aria-selected='true'] {
     outline: 2px solid Highlight;
+  }
+
+  form label,
+  details label {
+    display: grid;
+    gap: 0.25rem;
+    margin-block: 0.6rem;
+  }
+
+  [role='toolbar'] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-block: 0.75rem;
+  }
+
+  .tree-context-menu {
+    border: 2px solid currentColor;
+    padding: 0.5rem;
+    display: grid;
+    gap: 0.3rem;
+  }
+
+  [aria-label='Attachment preview'] img {
+    max-width: 100%;
+    height: auto;
+  }
+
+  [aria-label='Attachment preview'] iframe {
+    width: 100%;
+    min-height: 60vh;
+    background: white;
+  }
+
+  pre {
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+  }
+
+  mark[data-annotation-id] {
+    text-decoration: underline;
+  }
+
+  [role='grid'] th,
+  [role='grid'] td {
+    min-width: 5rem;
+    border: 1px solid currentColor;
+    padding: 0.4rem;
+  }
+
+  :root[data-theme='light'] {
+    color-scheme: light;
+    color: #172033;
+    background: #fff;
+  }
+
+  :root[data-theme='high-contrast'] {
+    color-scheme: dark;
+    color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='light'] body,
+  :root[data-theme='light'] .app-header,
+  :root[data-theme='light'] .menu-bar,
+  :root[data-theme='light'] .status-bar,
+  :root[data-theme='light'] .panel,
+  :root[data-theme='light'] .side-panel,
+  :root[data-theme='light'] .tab-bar,
+  :root[data-theme='light'] .document,
+  :root[data-theme='light'] .document-body,
+  :root[data-theme='light'] .modal,
+  :root[data-theme='light'] .markdown-body pre {
+    background: #fff;
+    color: #172033;
+  }
+
+  :root[data-theme='light'] .current-item,
+  :root[data-theme='light'] .menu-label,
+  :root[data-theme='light'] .menu-item,
+  :root[data-theme='light'] .side-panel dt,
+  :root[data-theme='light'] .side-panel dd,
+  :root[data-theme='light'] .tab,
+  :root[data-theme='light'] .vault-actions button,
+  :root[data-theme='light'] .close-tab,
+  :root[data-theme='light'] input,
+  :root[data-theme='light'] textarea {
+    background: #f1f5f9;
+    color: #172033;
+  }
+
+  :root[data-theme='light'] .markdown-body a {
+    color: #0645ad;
+  }
+
+  :root[data-theme='light'] [role='treeitem'][aria-selected='true'] {
+    background: #dbeafe;
+  }
+
+  :root[data-theme='high-contrast'] body,
+  :root[data-theme='high-contrast'] .app-header,
+  :root[data-theme='high-contrast'] .menu-bar,
+  :root[data-theme='high-contrast'] .status-bar,
+  :root[data-theme='high-contrast'] .panel,
+  :root[data-theme='high-contrast'] .side-panel,
+  :root[data-theme='high-contrast'] .tab-bar,
+  :root[data-theme='high-contrast'] .document,
+  :root[data-theme='high-contrast'] .document-body,
+  :root[data-theme='high-contrast'] .modal {
+    background: #000;
+    color: #fff;
+    border-color: #fff;
+  }
+
+  @media (forced-colors: active) {
+    mark[data-annotation-id] {
+      border-bottom: 2px solid Highlight;
+    }
+    [role='grid'] th,
+    [role='grid'] td,
+    .tree-context-menu {
+      border-color: CanvasText;
+    }
   }
 }

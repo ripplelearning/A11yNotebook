@@ -3,6 +3,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
+import { vaultExtensions } from './vault-extensions';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -158,6 +159,7 @@ describe('tabs', () => {
       updater: { onStatus: () => () => undefined },
       onMenuCommand: () => () => undefined,
       vault: {
+        ...vaultExtensions(),
         get: async () => vault,
         getTasks: async () => [],
         getLinkIndex: async () => ({ links: [] }),

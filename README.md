@@ -12,7 +12,14 @@ Markdown notes, attachments, an accessible file tree, note tabs, a sanitized rea
 - Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
   Explorer reveal, external open, and recent-vault restoration.
 - Semantic Markdown reading and a native textarea editor with Ctrl+S and idle autosave.
-- Global text search over Markdown note names and contents.
+- Persistent main-process full-text search with snippets, notebook/kind/tag/modified-date filters, and debounced queries.
+- External-change watching, clean-note reloads, and explicit conflict resolution that preserves unsaved edits.
+- Confirmed moves/renames with repair of unambiguous wiki and inline relative Markdown links.
+- Labelled Markdown highlights/comments; formatting tools and link/table/attachment dialogs.
+- Built-in and user-editable note templates; outline, mind-map, flashcard, CSV, and Markdown-table tools.
+- Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
+- Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
+- Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
 - Checkbox tasks indexed from Markdown, with due dates and priorities, filters, and a sortable table that updates source notes.
 - Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
@@ -150,14 +157,18 @@ the latest changes.
 
 ## Roadmap summary
 
-The vault, basic Markdown reading/editing, and note search are implemented in this phase. Link indexing,
-annotations, bookmarks, tasks, shortcut customization, and advanced document support remain planned. See
-[`docs/roadmap.md`](docs/roadmap.md) for completed work and limitations.
+This is a tested development increment, **not the completed product**. Vault passwords, editing/idle locks,
+encrypted notes and credentials, audit logging, PDF/ePub previews and text extraction, and web capture remain
+unimplemented. General YAML metadata editing, reminder defaults, milestone planning, and encrypted tree actions
+also remain gaps. Files and the search cache are plaintext; do not store passwords in this build.
+See [`docs/roadmap.md`](docs/roadmap.md), [`docs/security.md`](docs/security.md), and the manual accessibility matrix.
+No app version was changed and no release was published by this feature work.
 
 ## Documentation
 
 - [User guide](docs/user-guide.md)
 - [Architecture](docs/architecture.md)
+- [Security and remaining protection work](docs/security.md)
 - [Keyboard shortcuts](docs/keyboard-shortcuts.md) (`npm run docs:shortcuts` regenerates this file)
 - [Accessibility testing strategy](docs/accessibility/testing-strategy.md)
 

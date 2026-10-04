@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import { vaultExtensions } from './vault-extensions';
 import type { MenuCommand } from '../shared/ipc';
 import type { UpdaterStatus } from '../shared/updater';
 
@@ -22,6 +23,7 @@ function installBridge() {
       },
     },
     vault: {
+      ...vaultExtensions(),
       open: vi.fn(async () => null),
       get: vi.fn(async () => null),
       readNote: vi.fn(async () => ''),
@@ -106,11 +108,11 @@ describe('Help menu', () => {
     navigationAction.focus();
     fireEvent.click(navigationAction);
     let dialog = screen.getByRole('dialog', { name: 'New notebook' });
-    const nameInput = within(dialog).getByRole('textbox', { name: 'Notebook name' });
+    const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
     expect(nameInput).toHaveFocus();
     fireEvent.change(nameInput, { target: { value: 'Research' } });
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'New notebook' }));
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(bridge.vault.createNotebook).toHaveBeenCalledWith('Research');

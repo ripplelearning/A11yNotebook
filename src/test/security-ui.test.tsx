@@ -1,0 +1,58 @@
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { DEFAULT_SETTINGS } from '../shared/settings';
+import SecurityGate from '../renderer/features/security/SecurityGate';
+import NotePasswordDialog from '../renderer/features/security/NotePasswordDialog';
+import SettingsDialog from '../renderer/features/settings/SettingsDialog';
+
+describe('security controls', () => {
+  it('requires a password to unlock and reports authentication failures', async () => {
+    const onUnlock = vi.fn().mockRejectedValue(new Error('wrong password'));
+    render(<SecurityGate onUnlock={onUnlock} />);
+    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'wrong password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('incorrect');
+    expect(onUnlock).toHaveBeenCalledWith('wrong password');
+  });
+
+  it('saves configurable idle and unsaved-edit lock delays', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(<SettingsDialog settings={DEFAULT_SETTINGS} onSave={onSave} onClose={onClose} />);
+    fireEvent.change(screen.getByLabelText(/Vault idle lock in minutes/), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText(/Lock editing after unsaved changes/), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(
+        expect.objectContaining({
+          vaultLockMinutes: 25,
+          noteEditLockMinutes: 3,
+        }),
+      ),
+    );
+    expect(onClose).toHaveBeenCalled();
+  });
+
+  it('requires a confirmed note password before encrypting a note', async () => {
+    const onSubmit = vi.fn().mockResolvedValue(undefined);
+    render(<NotePasswordDialog action="encrypt" noteName="Research" onSubmit={onSubmit} onClose={vi.fn()} />);
+    const submit = screen.getByRole('button', { name: 'Encrypt note' });
+    fireEvent.change(screen.getByLabelText('Note password'), { target: { value: 'private note password' } });
+    fireEvent.change(screen.getByLabelText('Confirm note password'), { target: { value: 'different password' } });
+    expect(submit).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Confirm note password'), {
+      target: { value: 'private note password' },
+    });
+    fireEvent.click(submit);
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('private note password'));
+  });
+
+  it('shows note-password errors without closing the unlock dialog', async () => {
+    const onSubmit = vi.fn().mockRejectedValue(new Error('Incorrect note password.'));
+    render(<NotePasswordDialog action="unlock" noteName="Research" onSubmit={onSubmit} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Note password'), { target: { value: 'wrong password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock note' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Incorrect note password.');
+    expect(screen.getByRole('heading', { name: 'Unlock encrypted note' })).toBeInTheDocument();
+  });
+});

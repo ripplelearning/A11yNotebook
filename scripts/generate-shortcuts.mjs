@@ -18,4 +18,18 @@ const rows = [...commandList.matchAll(/\{([^{}]*)\}/g)]
   .map((item) => `| ${item.shortcut} | ${item.label} |`);
 
 const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the vault tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the vault tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |\n`;
-await writeFile(outputPath, await prettier.format(document, { parser: 'markdown' }));
+const featureNavigation = `
+## Feature navigation
+
+These are defaults; Settings can change command bindings. Help and the command palette show active bindings.
+Standard text editing and pane/tab navigation are reserved.
+
+| Context | Keys / behavior |
+| --- | --- |
+| Tree action menu | Shift+F10 / Applications key; Up/Down, Home/End, Enter, Escape |
+| Formatting toolbar | Left/Right, Home/End; Tab leaves toolbar |
+| Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder |
+| Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Escape cancel |
+| Flashcards | Tab to Show answer, then Again/Hard/Good/Easy |
+`;
+await writeFile(outputPath, await prettier.format(document + featureNavigation, { parser: 'markdown' }));
