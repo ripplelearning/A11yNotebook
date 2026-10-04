@@ -24,6 +24,7 @@ export const IPC_CHANNELS = {
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
+  vaultTaskDueDate: 'vault:task-due-date',
   vaultGetLinkIndex: 'vault:get-link-index',
   vaultGetBookmarks: 'vault:get-bookmarks',
   vaultToggleBookmark: 'vault:toggle-bookmark',
@@ -60,6 +61,7 @@ export const IPC_CHANNELS = {
   vaultCredentialsSave: 'vault:credentials-save',
   vaultCredentialsDelete: 'vault:credentials-delete',
   vaultCaptureWeb: 'vault:capture-web',
+  vaultExportNote: 'vault:export-note',
   vaultSecurityLocked: 'vault:security-locked',
 } as const;
 
@@ -83,6 +85,7 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultDelete,
   IPC_CHANNELS.vaultGetTasks,
   IPC_CHANNELS.vaultToggleTask,
+  IPC_CHANNELS.vaultTaskDueDate,
   IPC_CHANNELS.vaultGetLinkIndex,
   IPC_CHANNELS.vaultGetBookmarks,
   IPC_CHANNELS.vaultToggleBookmark,
@@ -117,6 +120,7 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultCredentialsSave,
   IPC_CHANNELS.vaultCredentialsDelete,
   IPC_CHANNELS.vaultCaptureWeb,
+  IPC_CHANNELS.vaultExportNote,
 ] as const;
 
 export const EVENT_CHANNELS = [IPC_CHANNELS.vaultSecurityLocked] as const;

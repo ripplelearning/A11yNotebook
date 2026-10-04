@@ -5,6 +5,13 @@ const SAFE_IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
 
 export function sanitizeNoteHtml(content: string, notePath = '') {
   const clean = DOMPurify.sanitize(content, {
+    ADD_ATTR: [
+      'data-a11y-task-id',
+      'data-a11y-task-complete',
+      'data-a11y-task-due',
+      'data-a11y-task-priority',
+      'data-a11y-task-remind',
+    ],
     ADD_URI_SAFE_ATTR: [],
     ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
     FORBID_ATTR: ['style', 'srcset', 'action', 'poster', 'background'],

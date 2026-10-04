@@ -3,6 +3,7 @@ import { isIP } from 'node:net';
 import { request, type RequestOptions } from 'node:https';
 import type { IncomingHttpHeaders } from 'node:http';
 import { decodeHtmlEntities } from './html-entities';
+import { sanitizeHtmlFragment } from './html-sanitize';
 
 const MAX_PAGE_BYTES = 5 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 3 * 1024 * 1024;
@@ -160,10 +161,17 @@ export interface CapturedImage {
   bytes: Buffer;
 }
 
-export async function downloadCaptureImages(html: string, pageUrl: string): Promise<CapturedImage[]> {
+async function downloadCaptureImagesDetailed(html: string, pageUrl: string) {
   const imageUrls = new Set<string>();
-  for (const match of html.matchAll(/<img\b[^>]*?\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/gi)) {
-    const source = decodeHtmlEntities(match[1] ?? match[2] ?? match[3] ?? '');
+  let missingAlt = 0;
+  for (const match of html.matchAll(/<img\b[^>]*>/gi)) {
+    const sourceMatch = /\bsrc\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(match[0]);
+    const altMatch = /\balt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(match[0]);
+    if (!altMatch || !decodeHtmlEntities(altMatch[1] ?? altMatch[2] ?? altMatch[3] ?? '').trim()) {
+      missingAlt += 1;
+      continue;
+    }
+    const source = decodeHtmlEntities(sourceMatch?.[1] ?? sourceMatch?.[2] ?? sourceMatch?.[3] ?? '');
     try {
       const url = new URL(source, pageUrl);
       if (url.protocol === 'https:') imageUrls.add(url.href);
@@ -189,7 +197,11 @@ export async function downloadCaptureImages(html: string, pageUrl: string): Prom
       continue;
     }
   }
-  return captured;
+  return { images: captured, omittedImages: missingAlt + Math.max(0, imageUrls.size - captured.length) };
+}
+
+export async function downloadCaptureImages(html: string, pageUrl: string): Promise<CapturedImage[]> {
+  return (await downloadCaptureImagesDetailed(html, pageUrl)).images;
 }
 
 export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: Map<string, string> = new Map()) {
@@ -208,7 +220,31 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
       return '';
     }
   });
+  source = source.replace(/<li\b([^>]*)>([\s\S]*?)<\/li\s*>/gi, (_tag, attributes: string, body: string) => {
+    const checkbox = /<input\b[^>]*\btype\s*=\s*(?:"checkbox"|'checkbox'|checkbox)[^>]*>/i.exec(body);
+    const prefix = checkbox ? (/\bchecked(?:\s|=|>)/i.test(checkbox[0]) ? '[x] ' : '[ ] ') : '';
+    return `<li>${prefix}${checkbox ? body.replace(checkbox[0], '') : body}</li>`;
+  });
   source = source
+    .replace(/<table\b[^>]*>([\s\S]*?)<\/table\s*>/gi, (_tag, table: string) => {
+      const rows = [...table.matchAll(/<tr\b[^>]*>([\s\S]*?)<\/tr\s*>/gi)].map(([, row]) => {
+        const cells = [...row.matchAll(/<(?:th|td)\b[^>]*>([\s\S]*?)<\/(?:th|td)\s*>/gi)].map(([, cell]) =>
+          decodeHtmlEntities(
+            cell
+              .replace(/<[^>]*>/g, ' ')
+              .replace(/\s+/g, ' ')
+              .trim(),
+          ).replace(/\|/g, '\\|'),
+        );
+        return cells.length ? `| ${cells.join(' | ')} |` : '';
+      });
+      const visible = rows.filter(Boolean);
+      if (visible.length > 1) {
+        const columns = (visible[0].match(/\|/g)?.length ?? 2) - 1;
+        visible.splice(1, 0, `| ${Array.from({ length: columns }, () => '---').join(' | ')} |`);
+      }
+      return `\n${visible.join('\n')}\n`;
+    })
     .replace(/<a\b([^>]*)>([\s\S]*?)<\/a\s*>/gi, (_tag, attributes: string, text: string) => {
       const rawHref = /\bhref\s*=\s*(?:"([^"]+)"|'([^']+)'|([^\s>]+))/i.exec(attributes);
       const href = rawHref?.[1] ?? rawHref?.[2] ?? rawHref?.[3] ?? '';
@@ -234,6 +270,7 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
     .replace(/<blockquote\b[^>]*>/gi, '\n> ')
     .replace(/<\/blockquote\s*>/gi, '\n\n')
     .replace(/<(?:br|\/p|\/div|\/section|\/article|\/ul|\/ol|\/main)\b[^>]*>/gi, '\n')
+    .replace(/<input\b[^>]*>/gi, '')
     .replace(/<[^>]*>/g, ' ');
   return decodeHtmlEntities(source)
     .replace(/[ \t]+\n/g, '\n')
@@ -258,14 +295,35 @@ export async function captureWebPage(value: string, imagePrefix = '') {
       .replace(/\s+/g, ' ')
       .trim()
       .slice(0, 120) || page.url.hostname;
-  const images = await downloadCaptureImages(html, page.url.href);
+  const { images, omittedImages } = await downloadCaptureImagesDetailed(html, page.url.href);
   const imageReferences = new Map(
     images.map((image, index) => [image.url, `${imagePrefix}image-${index + 1}${image.extension}`]),
+  );
+  const fragment = sanitizeHtmlFragment(html, {
+    allowVaultImages: true,
+    baseUrl: page.url.href,
+    imageReferences,
+  });
+  const safeTitle = title.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  const safeUrl = page.url.href.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const htmlContent = sanitizeHtmlFragment(
+    `<h1>${safeTitle}</h1><p>Source: <a href="${safeUrl}">${safeUrl}</a></p>${fragment}${
+      omittedImages
+        ? `<p><strong>Capture notice:</strong> ${omittedImages} image${omittedImages === 1 ? '' : 's'} could not be included. The page's text and other content were retained.</p>`
+        : ''
+    }`,
+    { allowVaultImages: true },
   );
   return {
     sourceUrl: page.url.href,
     title,
-    markdown: htmlToMarkdown(html, page.url.href, imageReferences),
+    markdown: `${htmlToMarkdown(html, page.url.href, imageReferences)}${
+      omittedImages
+        ? `\n\n> Capture notice: ${omittedImages} image${omittedImages === 1 ? '' : 's'} could not be included. The page's text and other content were retained.`
+        : ''
+    }`,
+    html: htmlContent,
     images,
+    omittedImages,
   };
 }

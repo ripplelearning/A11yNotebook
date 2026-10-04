@@ -46,7 +46,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Labelled Markdown annotations with robust anchors, accessible marks, jump/edit/delete.
 - ✅ Heading levels 4–6 formatting tools.
 - ⏳ Heading/position bookmarks and guaranteed fallback undo.
-- ⏳ PDF/ePub annotations are not implemented; the accessible text reader is available.
+- ⏳ PDF/ePub annotations are not implemented; Markdown and sanitized HTML note-text annotations are implemented.
 
 ## HTML notes and rich text
 
@@ -56,18 +56,22 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Search/index HTML notes and index local relative/wiki references in the link graph.
 - ✅ Convert Markdown/HTML note content into a sibling copy after an explicit format-loss warning; the source remains unchanged.
 - 🚧 Conversion warnings flag common CSS/active-content/table/image loss, but do not provide a complete itemized loss report or in-place path/metadata migration.
-- ⏳ HTML task checklists, templates, annotations end-to-end, web capture as HTML, and export integration.
+- ✅ HTML checklists use stable task IDs in `data-a11y-task-id`, `data-a11y-task-complete`, optional `data-a11y-task-due`, `data-a11y-task-priority`, and `data-a11y-task-remind` attributes. Rich text can insert a task item; source editing can edit its metadata. Task indexing, filters, due/priority sorting, targeted toggles, reminders, and progress summaries include HTML.
+- ✅ Built-in and vault HTML/Markdown templates can create either note format; placeholder escaping/sanitization, correct extension, preview, and cursor placement are supported. Markdown remains the default.
+- ✅ Markdown/HTML notes export through an accessible action and native save dialog to Markdown or sanitized standalone HTML. Export does not modify the source, protects the original from being selected as output, confirms overwrites, requires consent for decrypted protected notes, embeds local raster images in HTML, and warns that relative links/other metadata are not packaged.
+- ✅ Web capture offers Markdown or HTML. Main-process sanitization preserves semantic headings, lists, tables and safe links, localizes supported raster images with alt descriptions, records canonical source attribution, opens/indexes the note, and announces partial image failures.
+- ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. The feature does not extend to PDF/ePub.
 
 ## Phase 4 — Search, indexing, and annotations
 
-- ✅ Persistent main-process indexed search and Markdown annotations.
+- ✅ Persistent main-process indexed search and Markdown/HTML note annotations.
 - ✅ Markdown, HTML, plain-text, CSV, PDF, and ePub text search with bounded extraction; unsupported files have filename-only records.
 - 🚧 Inline/front-matter tag extraction and tag filtering; general YAML metadata editing/suggestions remain planned.
-- ✅ PDF.js PDF rendering with accessible text and page navigation/search; epub.js ePub spine text with section navigation/search. Captured pages saved as Markdown are indexed with other notes.
+- ✅ PDF.js PDF rendering with accessible text and page navigation/search; epub.js ePub spine text with section navigation/search. Captures in either supported note format are indexed with other notes.
 
 ## Phase 5 — Tasks, reminders, and project planning
 
-- ✅ Markdown checkbox tasks with optional due dates/priorities, filters, sortable table, and source-file toggles.
+- ✅ Markdown and semantic HTML checkbox tasks with optional due dates/priorities, filters, sortable table, and safe source-file toggles.
 - ✅ Task markers and standalone reminders, persisted main-process scheduler, native notification events, snooze/dismiss, startup missed reminders.
 - ✅ Accessible reminder table, grouped Overdue/Today/This week agenda, and notebook completion/progress summaries.
 - ⏳ Notification delivery while the app is closed, named milestones, and reminder-default settings.
@@ -78,7 +82,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Markdown outlines, JSON mind maps with primary accessible trees/decorative SVG, and Markdown outline export.
 - ✅ Q:/A: and :: flashcards, answer reveal, Again/Hard/Good/Easy ratings, persisted SM-2-style schedules.
 - ✅ CSV/Markdown-table grids with keyboard cell editing, sorting, and row/column controls.
-- ✅ Built-in Daily/Meeting/Project/Reading/Lecture templates, placeholders/cursor, preview, and editable `Templates/` Markdown.
+- ✅ Built-in Daily/Meeting/Project/Reading/Lecture templates, placeholders/cursor, preview, and editable `Templates/` Markdown/HTML.
 - ✅ Extensible shared asset-type registry; no executable plugin loading.
 - ⏳ Rich mind-map layout, background flashcard review notifications, general Markdown-to-outline conversion, crash recovery for unsaved asset edits.
 
@@ -98,7 +102,17 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
-- 🚧 ePub reading is a text-first accessible view, not full visual reflow. Advanced PDF selection/zoom, EPUB visual styling/TOC navigation, and PDF/ePub annotations remain open.
+- 🚧 PDF reading draws a single bounded-scale canvas page (maximum scale 1.25) and exposes separately flattened extracted page text; there is no selectable/zoomable PDF text layer or PDF annotation mapping.
+- 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
+
+### Document reader and annotation follow-up plan
+
+These are open implementation/design tasks, not externally blocked work:
+
+1. Add a PDF.js text layer aligned to the rendered viewport at each zoom level and map browser selections to stable page/quote/position anchors. Provide bounded zoom controls, selection and search-result navigation.
+2. Add a safe ePub rendition with accessible reflow, navigation-document TOC entries, and archive-relative image/font/style resource resolution. Keep scripts disabled, reject unsafe archive paths/resources, and revoke/release renderer resources on book changes.
+3. Version the annotation anchor model for PDF page and ePub spine/CFI locations, plus quote/context fallback. Migrate and validate metadata, then add selection capture, persisted highlight rendering, jump, edit, and delete UI with stale/ambiguous-anchor reporting.
+4. Test anchors and renderer lifecycle with PDF/ePub fixtures, unsafe archives, changed documents, and keyboard-only interaction. Manual Windows JAWS/NVDA/Narrator and UI Automation checks remain a separate validation step; passing them does not replace the missing implementation.
 
 ## Phase 9 — Accessibility validation and release readiness
 
@@ -111,8 +125,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ⛔ Complete manual JAWS/NVDA/Narrator/forced-colors checks and installed/portable Windows smoke tests.
 
 This increment uses `pdfjs-dist` and `epubjs` for the accessible document reader and overrides ePub's
-XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and publishes no release. Completion marks
-describe implemented functionality; blocked manual checks and unfinished integrations are explicitly called out above.
+XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and publishes no release. Completion marks describe implemented functionality; blocked manual checks and unfinished integrations are explicitly called out above. This development work does not change the app version or publish a release.
 
 ## Other requested roadmap items
 

@@ -4,6 +4,7 @@ import type { ClientRequest, IncomingMessage } from 'node:http';
 import { request, type RequestOptions } from 'node:https';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { captureWebPage, htmlToMarkdown, validateCaptureUrl } from '../../electron/vault/web-capture';
+import { sanitizeHtmlFragment } from '../../electron/vault/html-sanitize';
 
 vi.mock('node:dns/promises', () => ({
   lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]),
@@ -52,6 +53,51 @@ describe('web capture conversion and URL validation', () => {
     expect(output).toContain('![Photo](Attachments/Capture-1/image-1.png)');
     expect(output).not.toContain('steal');
     expect(output).not.toContain('remote.example');
+    expect(
+      htmlToMarkdown(
+        '<table><tr><th>A</th><th>B</th></tr><tr><td>1</td><td>2</td></tr></table>',
+        'https://example.org',
+      ),
+    ).toContain('| A | B |');
+  });
+
+  it('sanitizes capture HTML and keeps a partial-image notice in the saved representation', async () => {
+    const { result, response, outgoing } = await beginCapture();
+    response.emit(
+      'data',
+      Buffer.from(
+        '<title>Research</title><h1>Research</h1><script>steal()</script><form><input></form><a href="../source">Read</a><img src="https://example.org/missing.png">',
+      ),
+    );
+    response.emit('end');
+    outgoing.emit('close');
+    await expect(result).resolves.toMatchObject({
+      sourceUrl: 'https://example.org/article',
+      omittedImages: 1,
+      html: expect.stringContaining('Capture notice'),
+      markdown: expect.stringContaining('Capture notice'),
+    });
+    const capture = await result;
+    expect(capture.html).toContain('<h1>Research</h1>');
+    expect(capture.html).toContain('https://example.org/source');
+    expect(capture.html).not.toContain('<script');
+    expect(capture.html).not.toContain('<form');
+    expect(capture.html).not.toContain('steal()');
+  });
+
+  it('retains accessible headings, table structure, safe links, and localized raster references', () => {
+    const safe = sanitizeHtmlFragment(
+      '<h2>Section</h2><table><tr><th scope="col">A</th><td>B</td></tr></table><a href="../link">Link</a><img src="/image.png" alt="Chart">',
+      {
+        allowVaultImages: true,
+        baseUrl: 'https://example.org/page/',
+        imageReferences: new Map([['https://example.org/image.png', 'Attachments/Capture/image.png']]),
+      },
+    );
+    expect(safe).toContain('<h2>Section</h2>');
+    expect(safe).toContain('<table>');
+    expect(safe).toContain('href="https://example.org/link"');
+    expect(safe).toContain('src="Attachments/Capture/image.png" alt="Chart"');
   });
 
   describe('bounded HTTPS downloads', () => {

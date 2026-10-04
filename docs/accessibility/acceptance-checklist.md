@@ -25,6 +25,8 @@
 - [ ] Open note tabs expose unsaved state, a labelled close action, and confirmation before discarding edits.
 - [ ] Manual JAWS, NVDA, and Narrator validation of the vault tree and Markdown reader/editor is completed on Windows.
 - [ ] Tasks are exposed in a labelled table with sortable headers and labelled filters; toggles update their Markdown source.
+- [ ] HTML tasks expose a unique stable identity and state, labelled checkboxes, due/priority sorting and filtering; toggles update only the selected item's state and stale revisions fail without writing.
+- [ ] HTML task status survives source/rich editing, sanitization, save/reload, and supported format conversion; reminder and progress status are announced.
 - [ ] Internal and missing-note links have distinguishable accessible text; backlinks and bookmarks are lists under headings.
 - [ ] Indexed search filters and tag controls have labels; results expose snippets and announce the displayed count once in the existing status region.
 - [ ] External changes reload clean notes without stealing focus; dirty notes retain text, pause autosave, and offer Keep mine / Load disk version / Save copy.
@@ -35,6 +37,11 @@
 - [ ] Annotation selection works with each screen reader; marks expose label/comment descriptions and a non-color cue.
 - [ ] Annotation lists expose unavailable anchors, Jump/Edit/Delete names, and focus after deletion/jump.
 - [ ] Template selection, title/notebook controls, read-only preview, errors, and cursor placement are understandable.
+- [ ] Template output format has an accessible selector and Markdown remains the default; HTML output is sanitized and its extension, placeholders, and cursor position match the selected format.
+- [ ] Export format, format-loss warning, protected-content consent, save-dialog cancellation, overwrite confirmation, and completion/error status are keyboard and screen-reader accessible.
+- [ ] Web capture format selection, progress/errors, partial-image failure counts, and final saved-note status are accessible; HTML contains no remote resources.
+- [ ] HTML note-text annotations expose labels/descriptions and Jump/Edit/Delete; PDF/ePub selection mapping and document annotations are explicitly unimplemented.
+- [ ] PDF text is separately extracted from the fixed-scale canvas; do not treat it as a selectable/zoomable layer. ePub currently exposes flattened spine text, not styled reflow or TOC.
 - [ ] Reminder table and agenda headings expose local times, notification status, snooze/dismiss actions, and startup missed reminders.
 - [ ] Notebook task progress has an accessible label, completion count, and native progress value.
 - [ ] Outline and mind-map trees expose level/expansion/selection and support indent/reorder/new-item editing without trapping Tab.
@@ -44,3 +51,7 @@
 - [ ] HTML preview frame is labelled and keyboard reachable; image descriptions, text, and CSV headers read correctly.
 - [ ] Settings labels, validation errors, shortcut conflicts/reset/disable, active-binding help, and all themes work at enlarged font sizes.
 - [ ] All above widgets pass JAWS, NVDA, Narrator, keyboard-only, and Windows forced-colors checks; record results rather than checking boxes based on DOM tests.
+
+These items are acceptance criteria, not completed manual-validation claims. Windows screen-reader, UI Automation, and
+forced-colors checks must be recorded when run. PDF/ePub visual layers, reflow/TOC, and document annotations are open
+implementation work; see the [document reader and annotation follow-up plan](../roadmap.md#document-reader-and-annotation-follow-up-plan).

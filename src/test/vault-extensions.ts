@@ -26,5 +26,6 @@ export function vaultExtensions() {
     createAsset: vi.fn(),
     getFlashcardSchedules: vi.fn(async () => ({})),
     saveFlashcardSchedule: vi.fn(async () => undefined),
+    setHtmlTaskDueDate: vi.fn(async () => []),
   };
 }

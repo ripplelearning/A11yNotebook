@@ -9,6 +9,7 @@ import {
   type ReminderStore,
   type SnoozeDuration,
 } from '../../src/shared/reminders';
+import { parseHtmlTasks } from './tasks';
 
 export interface ReminderNote {
   path: string;
@@ -21,6 +22,25 @@ export interface ParsedReminderTask extends Reminder {
 /** Independent of the task index, so reminder markers need no task-parser changes. */
 export function parseTaskReminders(content: string, path: string): ParsedReminderTask[] {
   if (!isReminderPath(path)) return [];
+  if (/\.html$/i.test(path)) {
+    return parseHtmlTasks(content, path).flatMap((task) => {
+      const date = task.remindAt && parseReminderDate(task.remindAt);
+      if (!task.taskId || !date) return [];
+      const scheduledAt = date.toISOString();
+      return [
+        {
+          id: `task:${path}:html:${task.taskId}:${scheduledAt}`,
+          source: 'task' as const,
+          title: task.text || 'Task reminder',
+          path,
+          scheduledAt,
+          originalScheduledAt: scheduledAt,
+          status: 'pending' as const,
+          complete: task.complete,
+        },
+      ];
+    });
+  }
   let fence: string | null = null;
   return content.split(/\r?\n/).flatMap((line, index) => {
     const delimiter = /^\s{0,3}(`{3,}|~{3,})/.exec(line)?.[1];
@@ -72,6 +92,13 @@ function createPathMigrator(from: string, to: string) {
       ? `${destination}${normalized.slice(source.length)}`
       : path;
   };
+}
+
+function migrateTaskReminderId(id: string, migrate: (path: string) => string) {
+  const html = /^task:(.*):html:([\w-]+):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
+  if (html) return `task:${migrate(html[1])}:html:${html[2]}:${html[3]}`;
+  const markdown = /^task:(.*):(\d+):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
+  return markdown ? `task:${migrate(markdown[1])}:${markdown[2]}:${markdown[3]}` : id;
 }
 
 function state(value: unknown): value is ReminderState {
@@ -305,10 +332,7 @@ export function createReminderService(options: ReminderServiceOptions) {
     const migrate = createPathMigrator(from, to);
     const standalone = store.standalone.map((item) => ({ ...item, path: migrate(item.path) }));
     const states = Object.fromEntries(
-      Object.entries(store.states).map(([id, saved]) => {
-        const task = /^task:(.*):(\d+):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
-        return [task ? `task:${migrate(task[1])}:${task[2]}:${task[3]}` : id, saved];
-      }),
+      Object.entries(store.states).map(([id, saved]) => [migrateTaskReminderId(id, migrate), saved]),
     );
     await save(validateReminderStore({ ...store, standalone, states }));
     // Migration is permitted after stop() so a filesystem move cannot race notifications.
@@ -317,9 +341,7 @@ export function createReminderService(options: ReminderServiceOptions) {
       reminders = reminders.map((item) => ({
         ...item,
         path: migrate(item.path),
-        ...(item.source === 'task'
-          ? { id: `task:${migrate(item.path)}:${item.line}:${item.originalScheduledAt}` }
-          : {}),
+        ...(item.source === 'task' ? { id: migrateTaskReminderId(item.id, migrate) } : {}),
       }));
     return reminders.map((entry) => ({ ...entry }));
   }

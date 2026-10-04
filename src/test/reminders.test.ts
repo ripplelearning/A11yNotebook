@@ -61,6 +61,22 @@ describe('reminder parsing and validation', () => {
     expect(parseTaskReminders('- [ ] Read remind:2026-10-03 09:00', '../Study.md')).toEqual([]);
   });
 
+  it('parses HTML task reminder metadata using stable task identities', () => {
+    expect(
+      parseTaskReminders(
+        '<ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-remind="2026-10-04 09:30">Read</li></ul>',
+        'Study.html',
+      ),
+    ).toMatchObject([
+      {
+        id: expect.stringMatching(/^task:Study\.html:html:task-1234:/),
+        title: 'Read',
+        path: 'Study.html',
+        complete: false,
+      },
+    ]);
+  });
+
   it('rejects impossible calendar dates and timestamps rather than normalizing them', () => {
     for (const value of [
       '2026-02-29 10:00',

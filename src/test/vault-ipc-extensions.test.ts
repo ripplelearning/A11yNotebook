@@ -16,6 +16,9 @@ const mock = vi.hoisted(() => ({
   failReminderWrite: false,
   partialRepairWrite: false,
   failRecentWrite: false,
+  savePath: '',
+  saveCanceled: false,
+  saveOptions: undefined as unknown,
   notificationsSupported: false,
   notifications: [] as { emit: (event: string) => void }[],
   reminderEvents: [] as unknown[],
@@ -47,6 +50,10 @@ vi.mock('electron', () => ({
   dialog: {
     showOpenDialog: async () => ({ canceled: false, filePaths: [mock.root] }),
     showMessageBox: async () => ({ response: mock.confirm }),
+    showSaveDialog: async (options: unknown) => {
+      mock.saveOptions = options;
+      return { canceled: mock.saveCanceled, filePath: mock.savePath };
+    },
   },
   protocol: {
     handle: (_scheme: string, handler: (request: { url: string }) => Promise<Response>) => {
@@ -127,6 +134,8 @@ beforeEach(async () => {
   mock.failReminderWrite = false;
   mock.partialRepairWrite = false;
   mock.failRecentWrite = false;
+  mock.saveCanceled = false;
+  mock.saveOptions = undefined;
   mock.notificationsSupported = false;
   mock.notifications = [];
   mock.reminderEvents = [];
@@ -135,6 +144,7 @@ beforeEach(async () => {
   mock.userData = path.join(temporary, 'app');
   await mkdir(mock.root);
   await mkdir(mock.userData);
+  mock.savePath = path.join(temporary, 'export.md');
   await mkdir(path.join(mock.root, 'Folder'));
   await writeFile(path.join(mock.root, 'Topic.md'), '# Topic\n\nalpha #research\n');
   await writeFile(path.join(mock.root, 'Reference.md'), '[[Topic|subject]] [Topic](Topic.md)');
@@ -249,12 +259,53 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
   });
-  it('rejects unsafe web capture destinations and paths before network access', async () => {
-    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '')).rejects.toThrow(/HTTPS/);
-    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside')).rejects.toThrow(
-      /valid inside this vault/,
+  it('requires explicit consent for protected exports and uses the native save dialog', async () => {
+    const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password');
+    await expect(invoke(IPC_CHANNELS.vaultExportNote, 'Topic.md', 'markdown', original, false)).rejects.toThrow(
+      /Explicit consent/,
     );
-    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 42, '')).rejects.toThrow(/Invalid web capture request/);
+    await expect(invoke(IPC_CHANNELS.vaultExportNote, 'Topic.md', 'markdown', original, true)).resolves.toEqual({
+      cancelled: false,
+      omittedImages: 0,
+    });
+    expect(await readFile(mock.savePath, 'utf8')).toBe(original);
+    expect(mock.saveOptions).toEqual(expect.objectContaining({ properties: ['showOverwriteConfirmation'] }));
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('alpha');
+  });
+  it('exports sanitized HTML with embedded local images and preserves the source note', async () => {
+    const note = '<h1>Research</h1><script>unsafe()</script><img src="Images/chart.png" alt="Chart">';
+    await mkdir(path.join(mock.root, 'Images'));
+    await writeFile(path.join(mock.root, 'Images', 'chart.png'), Buffer.from([137, 80, 78, 71]));
+    await writeFile(path.join(mock.root, 'Research.html'), note);
+    mock.savePath = path.join(temporary, 'research.html');
+    await expect(invoke(IPC_CHANNELS.vaultExportNote, 'Research.html', 'html', note, false)).resolves.toEqual({
+      cancelled: false,
+      omittedImages: 0,
+    });
+    const output = await readFile(mock.savePath, 'utf8');
+    expect(output).toContain('data:image/png;base64,');
+    expect(output).toContain('<h1>Research</h1>');
+    expect(output).not.toContain('<script');
+    expect(await readFile(path.join(mock.root, 'Research.html'), 'utf8')).toBe(note);
+  });
+  it('does not write when the native export dialog is cancelled', async () => {
+    mock.saveCanceled = true;
+    await expect(invoke(IPC_CHANNELS.vaultExportNote, 'Topic.md', 'markdown', '# Copy', false)).resolves.toEqual({
+      cancelled: true,
+      omittedImages: 0,
+    });
+    await expect(readFile(mock.savePath, 'utf8')).rejects.toThrow();
+  });
+  it('rejects unsafe web capture destinations and paths before network access', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '', 'markdown')).rejects.toThrow(/HTTPS/);
+    await expect(
+      invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside', 'markdown'),
+    ).rejects.toThrow(/valid inside this vault/);
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 42, '', 'markdown')).rejects.toThrow(
+      /Invalid web capture request/,
+    );
   });
   it('rejects untrusted senders on every registered channel', async () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');

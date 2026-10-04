@@ -63,6 +63,51 @@ describe('new note from template dialog', () => {
     expect(onClose).toHaveBeenCalledOnce();
   });
 
+  it('converts a built-in template to safe HTML and uses the HTML extension', async () => {
+    const onCreate = vi.fn();
+    render(
+      <NewFromTemplateDialog
+        notebooks={[{ path: 'Notes', name: 'Notes' }]}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+        now={new Date(2026, 9, 3)}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Output format' }), { target: { value: 'html' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note title' }), { target: { value: 'Daily plan' } });
+    const preview = screen.getByRole('textbox', { name: 'HTML preview' }) as HTMLTextAreaElement;
+    expect(preview.value).toContain('<h1>Daily plan</h1>');
+    expect(preview.value).toContain('data-a11y-task-complete="false"');
+    expect(preview.value).not.toContain('{{cursor}}');
+    fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    expect(onCreate).toHaveBeenCalledWith('Notes/Daily plan.html', preview.value, expect.any(Number));
+    expect(preview.value.slice(onCreate.mock.calls[0][2])).toMatch(/<\/li>/);
+  });
+
+  it('sanitizes custom HTML templates and keeps the Markdown default', () => {
+    render(
+      <NewFromTemplateDialog
+        notebooks={[{ path: '', name: 'Vault root' }]}
+        templates={[
+          {
+            id: 'custom-html',
+            name: 'Custom HTML',
+            format: 'html',
+            content: '<h1>{{title}}</h1><script>unsafe()</script><p>{{cursor}}</p>',
+          },
+        ]}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Template' }), { target: { value: 'custom-html' } });
+    const preview = screen.getByRole('textbox', { name: 'Markdown preview' }) as HTMLTextAreaElement;
+    expect(preview.value).toContain('# Untitled');
+    expect(preview.value).not.toContain('unsafe()');
+    expect(screen.getByRole('combobox', { name: 'Output format' })).toHaveValue('markdown');
+  });
+
   it('disables creation when there are no notebooks', () => {
     render(<NewFromTemplateDialog notebooks={[]} onCreate={vi.fn()} onClose={vi.fn()} />);
     expect(screen.getByRole('button', { name: 'Create note' })).toBeDisabled();

@@ -4,8 +4,9 @@ import { useAnnotations, type UseAnnotationsOptions } from '../renderer/features
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 import type { NoteAnnotation } from '../shared/annotations';
 
-function Harness(props: Partial<UseAnnotationsOptions>) {
-  const mode = props.enabled === false ? 'edit' : 'read-only';
+function Harness(props: Partial<UseAnnotationsOptions> & { format?: 'markdown' | 'html' }) {
+  const { format = 'markdown', ...options } = props;
+  const mode = options.enabled === false ? 'edit' : 'read-only';
   const annotations = useAnnotations({
     path: 'Note.md',
     content: 'One **bold** phrase.',
@@ -14,7 +15,7 @@ function Harness(props: Partial<UseAnnotationsOptions>) {
     onAdd: vi.fn(async () => undefined),
     onUpdate: vi.fn(async () => undefined),
     onDelete: vi.fn(async () => undefined),
-    ...props,
+    ...options,
   });
   return (
     <>
@@ -24,11 +25,12 @@ function Harness(props: Partial<UseAnnotationsOptions>) {
       {annotations.toolbar}
       <div ref={annotations.documentRef}>
         <MarkdownDocument
-          content={props.content ?? 'One **bold** phrase.'}
+          content={options.content ?? 'One **bold** phrase.'}
           mode={mode}
           links={[]}
           onChange={vi.fn()}
           onNavigate={vi.fn()}
+          format={format}
         />
       </div>
       <aside>{annotations.pane}</aside>
@@ -95,6 +97,19 @@ describe('annotation reading UI', () => {
     expect(screen.getByRole('button', { name: 'Save annotation' })).toBeEnabled();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  it('captures annotations from sanitized HTML note text', async () => {
+    const onAdd = vi.fn(async () => undefined);
+    render(<Harness path="Note.html" format="html" content="<p>One <strong>bold</strong> phrase.</p>" onAdd={onAdd} />);
+    selectBold();
+    fireEvent.click(screen.getByRole('button', { name: 'Annotate selection' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Save annotation' }));
+    await waitFor(() =>
+      expect(onAdd).toHaveBeenCalledWith(
+        expect.objectContaining({ path: 'Note.html', anchor: expect.objectContaining({ quote: 'bold' }) }),
+      ),
+    );
   });
 
   it('lists annotations, jumps with focus, edits and deletes through host callbacks', async () => {

@@ -1,11 +1,11 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
 import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import { buildVaultLinkIndex } from './links';
-import { parseMarkdownTasks } from './tasks';
+import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDate } from './tasks';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
@@ -275,26 +275,71 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       });
     collect((await getVault()).entries);
     const taskGroups = await Promise.all(
-      notes.map(async (notePath) => parseMarkdownTasks(await readNote(notePath), notePath)),
+      notes.map(async (notePath) => {
+        const content = await readNote(notePath);
+        return path.extname(notePath).toLowerCase() === '.html'
+          ? parseHtmlTasks(content, notePath)
+          : parseMarkdownTasks(content, notePath);
+      }),
     );
     return taskGroups.flat();
   }
 
-  function toggleTask(relativePath: string, lineNumber: number, complete: boolean) {
+  function toggleTask(relativePath: string, taskLocation: string | number, complete: boolean, revision?: string) {
     return serializeNoteWrite(async () => {
       const target = await resolveEntry(relativePath);
-      if (path.extname(target).toLowerCase() !== '.md' || !Number.isInteger(lineNumber) || lineNumber < 1) {
+      const original = await readFile(target, 'utf8');
+      if (path.extname(target).toLowerCase() === '.html') {
+        if (
+          typeof taskLocation !== 'string' ||
+          !/^[\w-]{8,80}$/.test(taskLocation) ||
+          !/^[\da-f]{64}$/i.test(revision ?? '')
+        ) {
+          throw new Error('Invalid HTML task update request.');
+        }
+
+        const currentRevision = createHash('sha256').update(original, 'utf8').digest('hex');
+        if (currentRevision !== revision) throw new Error('Note changed on disk. Refresh tasks before toggling.');
+        await replaceNote(relativePath, toggleHtmlTask(original, taskLocation, complete), original);
+        await refreshSearchIndex();
+        return getTasks();
+      }
+      if (
+        path.extname(target).toLowerCase() !== '.md' ||
+        typeof taskLocation !== 'number' ||
+        !Number.isInteger(taskLocation) ||
+        taskLocation < 1
+      ) {
         throw new Error('Invalid task location.');
       }
-      const original = await readFile(target, 'utf8');
       const lines = original.split(/\r?\n/);
-      const index = lineNumber - 1;
+      const index = taskLocation - 1;
       const line = lines[index];
       if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
         throw new Error('The task no longer exists at this location.');
       }
       lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
       await replaceNote(relativePath, lines.join('\n'), original);
+      await refreshSearchIndex();
+      return getTasks();
+    });
+  }
+
+  function setHtmlTaskDueDate(relativePath: string, taskId: string, dueDate: string, revision: string) {
+    return serializeNoteWrite(async () => {
+      const target = await resolveEntry(relativePath);
+      if (
+        path.extname(target).toLowerCase() !== '.html' ||
+        !/^[\w-]{8,80}$/.test(taskId) ||
+        !/^[\da-f]{64}$/i.test(revision)
+      ) {
+        throw new Error('Invalid HTML task update request.');
+      }
+      const original = await readFile(target, 'utf8');
+      if (createHash('sha256').update(original, 'utf8').digest('hex') !== revision) {
+        throw new Error('Note changed on disk. Refresh tasks before updating this task.');
+      }
+      await replaceNote(relativePath, updateHtmlTaskDueDate(original, taskId, dueDate), original);
       await refreshSearchIndex();
       return getTasks();
     });
@@ -376,6 +421,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     moveEntry,
     getTasks,
     toggleTask,
+    setHtmlTaskDueDate,
     getLinkIndex,
     getBookmarks,
     toggleBookmark,

@@ -63,6 +63,7 @@ import Modal from './components/Modal';
 import SecurityGate from './features/security/SecurityGate';
 import NotePasswordDialog from './features/security/NotePasswordDialog';
 import WebCaptureDialog from './features/previews/WebCaptureDialog';
+import ExportNoteDialog from './features/vault/ExportNoteDialog';
 
 type DialogId =
   'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'web-capture';
@@ -114,7 +115,14 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
   { label: 'Vault', items: ['open-vault', 'new-notebook', 'refresh-links'] },
   {
     label: 'Note',
-    items: ['save-current-note', 'new-from-template', 'annotate-selection', 'toggle-bookmark', 'close-current-tab'],
+    items: [
+      'save-current-note',
+      'new-from-template',
+      'export-current-note',
+      'annotate-selection',
+      'toggle-bookmark',
+      'close-current-tab',
+    ],
   },
   {
     label: 'Format',
@@ -148,6 +156,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('read-only');
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
+  const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
   const [selectedTab, setSelectedTab] = useState('welcome');
@@ -176,8 +185,11 @@ export default function App() {
   };
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'low' | 'normal' | 'high' | 'urgent'>('all');
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
+  const [priorityAscending, setPriorityAscending] = useState(true);
+  const [taskSort, setTaskSort] = useState<'due' | 'priority'>('due');
   const [treeSelection, setTreeSelection] = useState<string | null>(null);
   const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
   const [tags, setTags] = useState<string[]>([]);
@@ -208,6 +220,14 @@ export default function App() {
   const allEntries = flattenEntries(vault?.entries ?? []);
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
   const notePaths = allEntries.filter((entry) => entry.kind === 'note').map((entry) => entry.path);
+  const beginExport = async (relativePath: string) => {
+    try {
+      const protectedNote = (await window.a11yNotebook?.vault.isNoteEncrypted?.(relativePath)) ?? false;
+      setExportRequest({ path: relativePath, protectedNote });
+    } catch {
+      setStatusMessage('Could not inspect note protection before export.');
+    }
+  };
   const activeConflict = synchronization.conflicts.find((conflict) =>
     openNotes.some((note) => note.path === conflict.path),
   );
@@ -944,7 +964,9 @@ export default function App() {
     const request = contextMenu;
     if (!request) return;
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
-    if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
+    if (commandId === 'context-export-note' && entry?.kind === 'note') {
+      await beginExport(entry.path);
+    } else if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
       await openLinkTarget(request.href);
     } else if (commandId === 'context-open' && request.context === 'annotation') {
       request.invoker.querySelector<HTMLButtonElement>('button[aria-label^="Jump to annotation"]')?.click();
@@ -1073,7 +1095,9 @@ export default function App() {
       const task = tasks.find(
         (item) =>
           item.path === request.path &&
-          String(item.line) === request.invoker.closest<HTMLElement>('[data-task-line]')?.dataset.taskLine,
+          (item.taskId
+            ? item.taskId === request.invoker.closest<HTMLElement>('[data-task-id]')?.dataset.taskId
+            : String(item.line) === request.invoker.closest<HTMLElement>('[data-task-line]')?.dataset.taskLine),
       );
       if (!task || !window.a11yNotebook) return;
       if (commandId === 'context-toggle-task') await toggleTask(task);
@@ -1081,9 +1105,32 @@ export default function App() {
         const source = findEntry(vault?.entries ?? [], task.path);
         if (source) await openEntry(source);
       } else {
+        if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
+          setStatusMessage('Save or resolve note changes before changing this task.');
+          return;
+        }
         const dueDate = window.prompt('Due date (YYYY-MM-DD)', task.dueDate ?? '');
         if (dueDate === null || (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))) return;
+        if (task.htmlTask) {
+          const updated = await window.a11yNotebook.vault.setHtmlTaskDueDate(
+            task.path,
+            task.taskId!,
+            dueDate,
+            task.revision!,
+          );
+          setTasks(updated);
+          const note = openNotes.find((item) => item.path === task.path);
+          if (note) {
+            const content = await window.a11yNotebook.vault.readNote(task.path);
+            setOpenNotes((items) =>
+              items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+            );
+          }
+          setStatusMessage('Task due date updated.');
+          return;
+        }
         const source = await window.a11yNotebook.vault.readNote(task.path);
+        if (!task.line) return;
         const lines = source.split(/\r?\n/);
         const line = lines[task.line - 1];
         if (!line) return;
@@ -1199,12 +1246,23 @@ export default function App() {
       return;
     }
     try {
-      const updated = await window.a11yNotebook?.vault.toggleTask(task.path, task.line, !task.complete);
+      const updated = await window.a11yNotebook?.vault.toggleTask(
+        task.path,
+        task.htmlTask ? task.taskId! : task.line!,
+        !task.complete,
+        task.revision,
+      );
       if (!updated) return;
       setTasks(updated);
       const nextComplete = !task.complete;
       const note = openNotes.find((item) => item.path === task.path);
-      if (note) {
+      if (note && task.htmlTask) {
+        const content = await window.a11yNotebook!.vault.readNote(task.path);
+        setOpenNotes((current) =>
+          current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+        );
+      } else if (note) {
+        if (!task.line) return;
         const lines = note.content.split(/\r?\n/);
         const line = lines[task.line - 1];
         if (line) {
@@ -1267,6 +1325,11 @@ export default function App() {
       setActiveDialog('settings');
       return;
     }
+    if (commandId === 'export-current-note') {
+      if (currentNote) void beginExport(currentNote.path);
+      else setStatusMessage('Open a note before exporting.');
+      return;
+    }
     if (commandId === 'show-reminders') {
       setReminderTabOpen(true);
       setSelectedTab('reminders');
@@ -1292,8 +1355,9 @@ export default function App() {
           .filter((entry) => entry.kind === 'note' && entry.path.startsWith('Templates/'))
           .map(async (entry) => ({
             id: `user:${entry.path}`,
-            name: entry.name.replace(/\.md$/i, ''),
+            name: entry.name.replace(/\.(?:md|html)$/i, ''),
             content: await window.a11yNotebook!.vault.readNote(entry.path),
+            format: /\.html$/i.test(entry.path) ? ('html' as const) : ('markdown' as const),
           })),
       )
         .then((templates) => {
@@ -1571,6 +1635,7 @@ export default function App() {
   const visibleTasks = tasks
     .filter((task) => taskStatusFilter === 'all' || (taskStatusFilter === 'done') === task.complete)
     .filter((task) => taskNotebookFilter === 'all' || notebookForTask(task) === taskNotebookFilter)
+    .filter((task) => taskPriorityFilter === 'all' || (task.priority ?? 'normal') === taskPriorityFilter)
     .filter((task) => {
       if (taskDueFilter === 'any') return true;
       if (taskDueFilter === 'today') return task.dueDate === today;
@@ -1578,6 +1643,13 @@ export default function App() {
       return !task.complete && Boolean(task.dueDate && task.dueDate > today);
     })
     .sort((left, right) => {
+      if (taskSort === 'priority') {
+        const order = ['low', 'normal', 'high', 'urgent'];
+        return (
+          (order.indexOf(left.priority ?? 'normal') - order.indexOf(right.priority ?? 'normal')) *
+          (priorityAscending ? 1 : -1)
+        );
+      }
       const leftDate = left.dueDate ?? '9999-12-31';
       const rightDate = right.dueDate ?? '9999-12-31';
       return leftDate.localeCompare(rightDate) * (dueAscending ? 1 : -1);
@@ -1965,6 +2037,19 @@ export default function App() {
                     </select>
                   </label>
                   <label>
+                    Task priority
+                    <select
+                      value={taskPriorityFilter}
+                      onChange={(event) => setTaskPriorityFilter(event.target.value as typeof taskPriorityFilter)}
+                    >
+                      <option value="all">All priorities</option>
+                      <option value="low">Low</option>
+                      <option value="normal">Normal</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </select>
+                  </label>
+                  <label>
                     Notebook
                     <select value={taskNotebookFilter} onChange={(event) => setTaskNotebookFilter(event.target.value)}>
                       <option value="all">All notebooks</option>
@@ -1978,17 +2063,41 @@ export default function App() {
                 </div>
                 <div className="table-scroll">
                   <table>
-                    <caption>Markdown checkbox tasks in the open vault</caption>
+                    <caption>Markdown and HTML checklist tasks in the open vault</caption>
                     <thead>
                       <tr>
                         <th scope="col">Task</th>
                         <th scope="col">Notebook</th>
-                        <th scope="col" aria-sort={dueAscending ? 'ascending' : 'descending'}>
-                          <button type="button" onClick={() => setDueAscending((ascending) => !ascending)}>
+                        <th
+                          scope="col"
+                          aria-sort={taskSort === 'due' ? (dueAscending ? 'ascending' : 'descending') : 'none'}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTaskSort('due');
+                              setDueAscending((ascending) => !ascending);
+                            }}
+                          >
                             Due date
                           </button>
                         </th>
-                        <th scope="col">Priority</th>
+                        <th
+                          scope="col"
+                          aria-sort={
+                            taskSort === 'priority' ? (priorityAscending ? 'ascending' : 'descending') : 'none'
+                          }
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTaskSort('priority');
+                              setPriorityAscending((ascending) => !ascending);
+                            }}
+                          >
+                            Priority
+                          </button>
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
@@ -1997,6 +2106,7 @@ export default function App() {
                           key={task.id}
                           data-context="task-row"
                           data-path={task.path}
+                          data-task-id={task.taskId ?? task.id}
                           data-task-line={task.line}
                           tabIndex={-1}
                         >
@@ -2044,6 +2154,9 @@ export default function App() {
                     </button>
                   )
                 ) : null}
+                <button type="button" onClick={() => void beginExport(currentNote.path)}>
+                  Export note…
+                </button>
                 {mode === 'edit' ? (
                   <>
                     <button type="button" onClick={() => void saveActiveNote()}>
@@ -2088,6 +2201,13 @@ export default function App() {
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
+                    htmlTasks={tasks.filter((task) => task.path === currentNote.path && task.htmlTask)}
+                    onToggleHtmlTask={(taskId) => {
+                      const task = tasks.find(
+                        (item) => item.path === currentNote.path && item.htmlTask && item.taskId === taskId,
+                      );
+                      if (task) void toggleTask(task);
+                    }}
                   />
                 </div>
               </>
@@ -2303,16 +2423,21 @@ export default function App() {
         <WebCaptureDialog
           notebooks={[...notebooks.map((relative) => ({ path: relative, name: relative }))]}
           onClose={closeDialog}
-          onCapture={async (url, notebookPath) => {
+          onCapture={async (url, notebookPath, format) => {
             if (openNotes.some((note) => note.content !== note.saved) || activeConflict) {
               throw new Error('Save or resolve note changes before capturing a page.');
             }
             const capture = window.a11yNotebook?.vault.captureWeb;
             if (!capture) throw new Error('Web capture is unavailable.');
-            const updated = await capture(url, notebookPath);
-            setVault(updated);
-            setSelectedTab('welcome');
-            setStatusMessage('Web page captured as a Markdown note.');
+            const result = await capture(url, notebookPath, format);
+            setVault(result.vault);
+            const entry = findEntry(result.vault.entries, result.notePath);
+            if (entry) await openEntry(entry);
+            setStatusMessage(
+              result.omittedImages
+                ? `Web page captured as ${format.toUpperCase()}. ${result.omittedImages} image${result.omittedImages === 1 ? ' was' : 's were'} unavailable; the note explains the omissions.`
+                : `Web page captured as ${format.toUpperCase()} and opened as a note.`,
+            );
           }}
         />
       ) : null}
@@ -2333,6 +2458,40 @@ export default function App() {
               editorRef.current?.focus();
               editorRef.current?.setSelectionRange(cursor, cursor);
             }, 0);
+          }}
+        />
+      ) : null}
+      {exportRequest ? (
+        <ExportNoteDialog
+          path={exportRequest.path}
+          content={openNotes.find((note) => note.path === exportRequest.path)?.content ?? ''}
+          sourceFormat={/\.html$/i.test(exportRequest.path) ? 'html' : 'markdown'}
+          protectedNote={exportRequest.protectedNote}
+          onClose={() => setExportRequest(null)}
+          onExport={async (format, protectedConsent) => {
+            const bridge = window.a11yNotebook?.vault;
+            if (!bridge?.exportNote) throw new Error('Note export is unavailable.');
+            if (exportRequest.protectedNote && !protectedConsent)
+              throw new Error('Explicit consent is required to export protected content.');
+            const sourceFormat = /\.html$/i.test(exportRequest.path) ? 'html' : 'markdown';
+            const source =
+              openNotes.find((note) => note.path === exportRequest.path)?.content ??
+              (await bridge.readNote(exportRequest.path));
+            const content =
+              format === 'html'
+                ? convertNoteContent(source, sourceFormat, 'html', exportRequest.path)
+                : sourceFormat === 'html'
+                  ? convertNoteContent(source, 'html', 'markdown', exportRequest.path)
+                  : source;
+            const result = await bridge.exportNote(exportRequest.path, format, content, protectedConsent);
+            if (result.cancelled)
+              setStatusMessage('Export cancelled. No file was created; the original note is unchanged.');
+            else
+              setStatusMessage(
+                result.omittedImages
+                  ? `Exported note. ${result.omittedImages} local image${result.omittedImages === 1 ? ' was' : 's were'} omitted.`
+                  : `Exported ${format.toUpperCase()} copy. The original note is unchanged.`,
+              );
           }}
         />
       ) : null}

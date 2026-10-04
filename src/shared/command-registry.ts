@@ -57,7 +57,9 @@ export type CommandId =
   | 'context-toggle-task'
   | 'context-set-due-date'
   | 'context-open-source'
-  | 'context-encrypt-note';
+  | 'context-encrypt-note'
+  | 'context-export-note'
+  | 'export-current-note';
 
 export type MenuContext =
   | 'general'
@@ -206,6 +208,18 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Encrypt note',
     description: 'Protect this note with a separate password.',
     contexts: ['tree-note', 'editor-selection'],
+  },
+  {
+    id: 'context-export-note',
+    label: 'Export note…',
+    description: 'Export this note as standalone HTML or Markdown.',
+    contexts: ['tree-note', 'tab'],
+  },
+  {
+    id: 'export-current-note',
+    label: 'Export current note…',
+    description: 'Export the current note as standalone HTML or Markdown.',
+    contexts: ['general'],
   },
   {
     id: 'insert-attachment',

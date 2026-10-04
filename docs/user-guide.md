@@ -3,7 +3,7 @@
 ## Open a vault
 
 Choose **Vault → Open vault** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
-as notebooks, `.md` files as notes, and other files as attachments. The last opened vault is restored next time.
+as notebooks, `.md` and `.html` files as notes, and other files as attachments. The last opened vault is restored next time.
 
 ## Navigate files
 
@@ -40,10 +40,11 @@ The Format menu and formatting toolbar offer bold, italic, heading levels 1–6,
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
 rows and columns. Insert image or attachment chooses an already imported vault file and requires a text description.
 Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
-headings, lists, block quotes, code, links, tables, and local images with required descriptions. Conversion between
-Markdown and HTML file formats is not available yet; create a new note in the desired format and copy the content
-after reviewing it instead. Plain-source formatting commands continue to target the Markdown editor. The editor
-attempts to preserve native undo; fallback programmatic insertion may not retain an undo entry.
+headings, lists, block quotes, code, links, tables, and local images with required descriptions. Format conversion
+creates a warned sibling copy and preserves the original. In an HTML note, **Insert checklist task** adds a semantic
+task item. Edit its title in rich text; edit its stable ID, completion, due date, priority, or reminder attributes in
+HTML source. Plain-source formatting commands continue to target the Markdown editor. The editor attempts to preserve
+native undo; fallback programmatic insertion may not retain an undo entry.
 
 External edits reload clean notes silently. If you have unsaved text, autosave pauses and a conflict dialog offers
 **Keep mine** (explicitly save your version), **Load disk version**, or **Save copy** (a new timestamped note).
@@ -62,10 +63,30 @@ extracted text, are searchable. Unsupported or invalid attachments are searchabl
 
 ## Tasks
 
-Choose **Open Tasks** in the navigation pane or command palette. Markdown checkboxes appear in a sortable table;
-the status, due-date, and notebook filters narrow the list. Checking or unchecking a task updates its checkbox in
-the source note. Optional dates use `due:YYYY-MM-DD` or `📅 YYYY-MM-DD`; priorities use `priority:low`,
-`priority:normal`, `priority:high`, or `priority:urgent`.
+Choose **Open Tasks** in the navigation pane or command palette. Markdown checkboxes and semantic HTML tasks appear
+in a sortable table; status, due-date, priority, and notebook filters narrow the list. Checking/unchecking a Markdown
+task updates its source checkbox. HTML tasks update only the completion attribute on the matching stable task ID;
+stale note revisions or duplicate/missing IDs fail safely. Markdown optional dates use `due:YYYY-MM-DD` or
+`📅 YYYY-MM-DD`; priorities use `priority:low|normal|high|urgent`.
+
+HTML checklist items are `<li>` elements with a unique stable ID and completion state, for example:
+
+```html
+<ul>
+  <li
+    data-a11y-task-id="task-1234"
+    data-a11y-task-complete="false"
+    data-a11y-task-due="2026-10-05"
+    data-a11y-task-priority="high"
+  >
+    Read chapter
+  </li>
+</ul>
+```
+
+Optional `data-a11y-task-remind="YYYY-MM-DD HH:mm"` schedules the same local-time reminder workflow as Markdown
+tasks. HTML tasks contribute to due/priority indexing, sorting and notebook progress summaries. Encrypted note
+envelopes are not parsed or exposed as tasks.
 
 ## Links and bookmarks
 
@@ -82,7 +103,9 @@ Ctrl+Shift+A or choose Annotate selection. Give the highlight a **text label**, 
 Annotations appear under the right-pane heading with Jump, Edit, and Delete controls. Highlights expose descriptions
 and are underlined, so color is never the only cue. Quote/context/offset anchors try to find shifted text; ambiguous,
 changed, or overlapping anchors are reported in the list rather than attached to unrelated text.
-Annotations persist in `.a11ynotebook/annotations.json`. PDF/ePub annotations are not available.
+Annotations persist in `.a11ynotebook/annotations.json`. The same text annotation UI works on sanitized `.html` note
+content. PDF/ePub annotations are not available; text-selection mapping, stable page/section anchors, and document
+highlight/jump/edit/delete still need implementation.
 
 ## Reminders and project progress
 
@@ -98,9 +121,10 @@ Tasks also show per-notebook completion counts and native progress elements; nam
 ## Templates and cognitive tools
 
 **New note from template** (Ctrl+Shift+N) offers Daily, Meeting, Project, Reading, and Lecture templates with a
-read-only preview. Place ordinary editable Markdown templates in `Templates/` to add your own. Supported
-placeholders are `{{title}}`, `{{date}}`, `{{time}}`, `{{notebook}}`, and `{{cursor}}`; the first cursor marker
-sets the editing position. Use normal note editing to modify user templates.
+read-only preview and Markdown/HTML output selector (Markdown is the default). Place safe editable Markdown or HTML
+templates in `Templates/` to add your own; HTML templates are sanitized after expansion. Supported placeholders are
+`{{title}}`, `{{date}}`, `{{time}}`, `{{weekday}}`, `{{notebook}}`, and `{{cursor}}`; the first cursor marker sets
+the editing position. Built-ins convert to the selected format.
 
 Choose **Cognitive tools** to create/open `.outline.md`, `.mindmap.json`, `.cards.md`, `.csv`, or `.grid.md` assets.
 Outline and mind-map trees use arrows for navigation, Enter for a new sibling, Tab/Shift+Tab for indentation,
@@ -113,12 +137,32 @@ SM-2-style schedules persist in `.a11ynotebook/flashcards.json` and changes to a
 Save before closing cognitive tools or switching files; unsaved data is kept while switching to another tab.
 External asset changes are rejected at save time; preserve your work separately before closing/reopening to reload.
 
+## Export and web capture
+
+Use **Export note…** on an open note, **Export current note…** in the command palette/menu, or **Export note…** in
+the note context menu. Choose standalone HTML or Markdown and then a location in the native save dialog. The source is
+never changed; overwrites require native confirmation and the original source cannot be selected as the destination.
+HTML output is sanitized in the main process, contains no scripts/forms/remote resources, and embeds bounded local
+raster images. Relative links and other attachments are not copied or rebased. Annotation metadata is stored separately
+and is not exported; Markdown conversion preserves checklist state/due date/priority where possible but not HTML task
+IDs/reminder scheduling. Review format-loss and asset-portability warnings before sharing. Exporting an individually
+encrypted or otherwise protected note requires checking the explicit consent box; locked content is never silently
+decrypted for export.
+
+Choose **Capture web page** and select Markdown or HTML output. The app accepts public HTTPS pages only, pins public
+DNS addresses per request, revalidates redirects, and applies existing byte/image/deadline limits. HTML output keeps
+semantic headings, lists, tables, safe links, and successfully downloaded raster images with their alt descriptions;
+scripts, handlers, forms, and remote resources are removed. Source attribution uses the validated final URL. When
+some images are unavailable or lack descriptions, the app announces the count and includes a notice in the saved note;
+the captured note is opened and indexed.
+
 ## Attachment previews
 
 Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
-for page rendering, accessible text, page navigation, and in-document search. ePub uses epub.js to navigate and
-search accessible spine-section text; it does not yet provide full visual reflow. Both are limited to 40 MB.
+for a bounded canvas page, separate extracted page text, page navigation, and in-document search; there is no
+selectable/zoomable text layer. ePub uses epub.js to navigate and search flattened spine-section text; it does not
+provide styled reflow or a TOC. Both are limited to 40 MB.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
 ## Settings
@@ -169,9 +213,10 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 ## Not available yet
 
-HTML checklist/task/template/export integration, recovery keys, whole-vault encryption, encrypted indexes, and
-sensitive-action audit logging are not available yet. Format conversion creates a warned sibling copy and keeps the
-original; complete loss analysis and in-place conversion remain open. PDF zoom, ePub visual reflow/TOC, and PDF/ePub
-annotations remain open. Recent-vault selection, heading and position bookmarks, named milestones, general YAML
+Recovery keys, whole-vault encryption, encrypted indexes, and sensitive-action audit logging are not available yet.
+Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
+remain open. PDF text-layer selection/zoom, ePub styled reflow/TOC, and PDF/ePub annotations are open implementation
+work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
+Recent-vault selection, heading and position bookmarks, named milestones, general YAML
 metadata editing, and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.
