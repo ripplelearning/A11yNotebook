@@ -110,7 +110,7 @@ export function createAnnotationStore({ read, write, validateNote }: AnnotationS
   }
   async function validate(path: unknown) {
     const safe = notePath(path);
-    if (!safe.toLowerCase().endsWith('.md')) throw new Error('Annotations require a Markdown note.');
+    if (!/\.(?:md|html)$/i.test(safe)) throw new Error('Annotations require a Markdown or HTML note.');
     await validateNote(safe);
     return safe;
   }

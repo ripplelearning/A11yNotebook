@@ -3,9 +3,11 @@ import { lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultSearchQuery, VaultSearchResult } from '../../src/shared/search';
+import { extractEpubPages, extractPdfPages } from './document-preview';
 
-const VERSION = 1;
+const VERSION = 3;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
+const MAX_INDEXED_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_CACHE_BYTES = 64 * 1024 * 1024;
 const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.csv', '.html', '.htm']);
 
@@ -80,6 +82,29 @@ async function readSafeText(root: string, relativePath: string, maximum: number)
     return { content, stat };
   } finally {
     await file.close();
+  }
+}
+
+async function readSafeBuffer(root: string, relativePath: string, maximum: number) {
+  const target = await checkedVaultPath(root, relativePath);
+  const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await file.stat();
+    if (!stat.isFile() || stat.size > maximum) return null;
+    const content = await file.readFile();
+    if (content.length > maximum) return null;
+    return { content, stat };
+  } finally {
+    await file.close();
+  }
+}
+
+function extractDocumentText(content: Buffer, extension: string) {
+  try {
+    const pages = extension === '.pdf' ? extractPdfPages(content) : extractEpubPages(content);
+    return pages.join('\n\n').slice(0, MAX_FILE_BYTES);
+  } catch {
+    return '';
   }
 }
 
@@ -270,23 +295,43 @@ export function createSearchIndex(root: string) {
               next.set(relative, cached);
               continue;
             }
-            const read =
+            const isDocument = extension === '.pdf' || extension === '.epub';
+            const textRead =
               TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES
                 ? await readSafeText(root, relative, MAX_FILE_BYTES)
                 : null;
-            const content = read?.content ?? '';
-            const title = extension === '.md' ? content.match(/^#\s+(.+)$/m)?.[1]?.trim() : undefined;
+            const documentRead =
+              isDocument && stat.size <= MAX_INDEXED_DOCUMENT_BYTES
+                ? await readSafeBuffer(root, relative, MAX_INDEXED_DOCUMENT_BYTES)
+                : null;
+            const content = textRead?.content ?? '';
+            const documentText = documentRead ? extractDocumentText(documentRead.content, extension) : '';
+            const indexedStat = textRead?.stat ?? documentRead?.stat ?? stat;
+            const title =
+              extension === '.md'
+                ? content.match(/^#\s+(.+)$/m)?.[1]?.trim()
+                : extension === '.html'
+                  ? content
+                      .match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
+                      ?.replace(/<[^>]*>/g, '')
+                      .trim()
+                  : undefined;
             next.set(relative, {
               path: relative,
               title: (title ?? path.basename(relative, extension)).slice(0, 1000),
-              kind: extension === '.md' ? 'note' : 'attachment',
+              kind: ['.md', '.html'].includes(extension) ? 'note' : 'attachment',
               notebook: path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative),
-              tags: extension === '.md' ? extractTags(content) : [],
-              text: extractText(content, extension),
-              size: (read?.stat ?? stat).size,
-              mtime: (read?.stat ?? stat).mtimeMs,
-              ctime: (read?.stat ?? stat).ctimeMs,
-              ino: (read?.stat ?? stat).ino,
+              tags:
+                extension === '.md'
+                  ? extractTags(content)
+                  : extension === '.html'
+                    ? extractTags(extractText(content, extension))
+                    : [],
+              text: isDocument ? documentText : extractText(content, extension),
+              size: indexedStat.size,
+              mtime: indexedStat.mtimeMs,
+              ctime: indexedStat.ctimeMs,
+              ino: indexedStat.ino,
             });
           }
         } catch (error) {

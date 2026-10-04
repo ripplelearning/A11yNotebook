@@ -47,6 +47,5 @@ jobs:
         run: npm run release:win
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Optional code signing. Add these repository secrets to sign releases:
-          # CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
-          # CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}

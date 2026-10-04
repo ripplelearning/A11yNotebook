@@ -2,10 +2,40 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import SecurityGate from '../renderer/features/security/SecurityGate';
-import NotePasswordDialog from '../renderer/features/security/NotePasswordDialog';
+import NotePasswordDialog, { generateNotePassword } from '../renderer/features/security/NotePasswordDialog';
 import SettingsDialog from '../renderer/features/settings/SettingsDialog';
 
 describe('security controls', () => {
+  it('generates a 24-character password and clears copied secrets only if unchanged', async () => {
+    const password = generateNotePassword();
+    expect(password).toHaveLength(24);
+    expect(() => generateNotePassword(7)).toThrow();
+    const original = Object.getOwnPropertyDescriptor(navigator, 'clipboard');
+    const clipboard = {
+      writeText: vi.fn().mockResolvedValue(undefined),
+      readText: vi.fn().mockResolvedValue(password),
+    };
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: clipboard });
+    vi.useFakeTimers();
+    try {
+      render(<NotePasswordDialog action="encrypt" noteName="Research" onSubmit={vi.fn()} onClose={vi.fn()} />);
+      fireEvent.click(screen.getByRole('button', { name: 'Generate password' }));
+      const input = screen.getByLabelText('Note password');
+      const generated = (input as HTMLInputElement).value;
+      expect(generated).toMatch(/^[A-Za-z0-9!@#$%^&*()\-_=+]{24}$/);
+      clipboard.readText.mockResolvedValue(generated);
+      fireEvent.click(screen.getByRole('button', { name: 'Copy generated password' }));
+      await Promise.resolve();
+      expect(clipboard.writeText).toHaveBeenCalledWith(generated);
+      await vi.advanceTimersByTimeAsync(30_000);
+      expect(clipboard.writeText).toHaveBeenLastCalledWith('');
+    } finally {
+      vi.useRealTimers();
+      if (original) Object.defineProperty(navigator, 'clipboard', original);
+      else Reflect.deleteProperty(navigator, 'clipboard');
+    }
+  });
+
   it('requires a password to unlock and reports authentication failures', async () => {
     const onUnlock = vi.fn().mockRejectedValue(new Error('wrong password'));
     render(<SecurityGate onUnlock={onUnlock} />);

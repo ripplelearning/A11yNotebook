@@ -10,6 +10,10 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
 
+function isNotePath(value: string) {
+  return ['.md', '.html'].includes(path.extname(value).toLowerCase());
+}
+
 /** Create an operations facade for one canonical vault folder. */
 export function createVaultService(vaultPath: string, onChanged?: (event: VaultChangedEvent) => void | Promise<void>) {
   let root = '';
@@ -138,7 +142,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
           children: await scanDirectory(childPath, childRelative),
         });
       } else if (entry.isFile()) {
-        const isNote = path.extname(entry.name).toLowerCase() === '.md';
+        const isNote = isNotePath(entry.name);
         result.push({ name: entry.name, path: childRelative, kind: isNote ? 'note' : 'attachment' });
       }
     }
@@ -152,7 +156,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function readNote(relativePath: string) {
     const target = await resolveEntry(relativePath);
-    if (path.extname(target).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+    if (!isNotePath(target)) throw new Error('Only Markdown and HTML notes can be edited.');
     return readFile(target, 'utf8');
   }
 
@@ -177,7 +181,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       if (typeof content !== 'string') throw new Error('Note content must be text.');
       if (expectedContent !== undefined && typeof expectedContent !== 'string')
         throw new Error('Expected note content must be text.');
-      if (path.extname(relativePath).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be edited.');
+      if (!isNotePath(relativePath)) throw new Error('Only Markdown and HTML notes can be edited.');
       let target: string;
       try {
         target = await resolveEntry(relativePath);
@@ -207,9 +211,14 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return serializeNoteWrite(async () => {
       if (content !== undefined && typeof content !== 'string') throw new Error('Note content must be text.');
       const target = await resolveEntry(relativePath, true);
-      if (path.extname(target).toLowerCase() !== '.md') throw new Error('Notes must use the .md extension.');
+      if (!isNotePath(target)) throw new Error('Notes must use the .md or .html extension.');
       await mkdir(path.dirname(target), { recursive: true });
-      await writeFile(target, content ?? `# ${path.basename(target, '.md')}\n\n`, { flag: 'wx' });
+      const initialContent =
+        content ??
+        (path.extname(target).toLowerCase() === '.html'
+          ? `<h1>${path.basename(target, path.extname(target))}</h1>\n<p></p>\n`
+          : `# ${path.basename(target, '.md')}\n\n`);
+      await writeFile(target, initialContent, { flag: 'wx' });
       await refreshSearchIndex();
       return getVault();
     });
@@ -245,7 +254,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         ? {
             ...bookmark,
             path: `${nextRelative}${bookmark.path.slice(sourceRelative.length)}`,
-            ...(bookmark.path === sourceRelative && path.extname(sourceRelative).toLowerCase() === '.md'
+            ...(bookmark.path === sourceRelative && isNotePath(sourceRelative)
               ? { title: path.basename(newName, path.extname(newName)) }
               : {}),
           }
@@ -325,7 +334,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         candidates.map(async (bookmark) => {
           try {
             const target = await resolveEntry(bookmark.path);
-            return path.extname(target).toLowerCase() === '.md' ? bookmark : null;
+            return isNotePath(target) ? bookmark : null;
           } catch {
             return null;
           }
@@ -339,7 +348,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function toggleBookmark(relativePath: string) {
     const target = await resolveEntry(relativePath);
-    if (path.extname(target).toLowerCase() !== '.md') throw new Error('Only Markdown notes can be bookmarked.');
+    if (!isNotePath(target)) throw new Error('Only notes can be bookmarked.');
     const bookmarks = await getBookmarks();
     const next = bookmarks.some((bookmark) => bookmark.path === relativePath)
       ? bookmarks.filter((bookmark) => bookmark.path !== relativePath)

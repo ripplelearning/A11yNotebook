@@ -120,7 +120,7 @@ export default function RemindersView({
           </thead>
           <tbody>
             {visible.map((item) => (
-              <tr key={item.id}>
+              <tr key={item.id} data-context="reminder" data-path={item.path} data-reminder-id={item.id} tabIndex={-1}>
                 <th scope="row">{title(item)}</th>
                 <td>{item.path}</td>
                 <td>{time(item)}</td>
@@ -144,7 +144,13 @@ export default function RemindersView({
               {items.length ? (
                 <ul>
                   {items.map((item) => (
-                    <li key={item.id}>
+                    <li
+                      key={item.id}
+                      data-context="reminder"
+                      data-path={item.path}
+                      data-reminder-id={item.id}
+                      tabIndex={-1}
+                    >
                       {title(item)} — {item.path} — {time(item)} {actions(item)}
                     </li>
                   ))}

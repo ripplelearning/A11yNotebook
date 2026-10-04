@@ -1,5 +1,17 @@
 export type FormatAction =
-  'bold' | 'italic' | 'heading1' | 'heading2' | 'heading3' | 'bullet' | 'numbered' | 'checkbox' | 'quote' | 'code';
+  | 'bold'
+  | 'italic'
+  | 'heading1'
+  | 'heading2'
+  | 'heading3'
+  | 'heading4'
+  | 'heading5'
+  | 'heading6'
+  | 'bullet'
+  | 'numbered'
+  | 'checkbox'
+  | 'quote'
+  | 'code';
 
 /** Offsets are UTF-16 textarea offsets; selection offsets address the resulting full text. */
 export interface TextEdit {

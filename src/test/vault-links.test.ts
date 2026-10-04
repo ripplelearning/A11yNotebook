@@ -56,6 +56,24 @@ describe('Markdown links', () => {
     ]);
   });
 
+  it('indexes relative and wiki references in HTML notes across note formats', () => {
+    const entries: VaultEntry[] = [
+      { name: 'Page.html', path: 'Page.html', kind: 'note' },
+      { name: 'Guide.md', path: 'Guide.md', kind: 'note' },
+      { name: 'Image.png', path: 'Image.png', kind: 'attachment' },
+    ];
+    expect(
+      buildVaultLinkIndex(
+        [{ path: 'Page.html', content: '<a href="./Guide.md">Guide</a> <a href="./Image.png">image</a> [[Guide]]' }],
+        entries,
+      ).links,
+    ).toMatchObject([
+      { targetPath: 'Guide.md', resolved: true, attachment: false },
+      { targetPath: 'Image.png', resolved: true, attachment: true },
+      { targetPath: 'Guide.md', resolved: true, attachment: false },
+    ]);
+  });
+
   it('writes a readable link index and persists bookmark toggles in vault metadata', async () => {
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-link-index-'));
     const service = createVaultService(temporaryDirectory);

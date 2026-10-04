@@ -1,7 +1,6 @@
 // Accessible filesystem tree for vault notebooks, Markdown notes, and attachments.
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { VaultEntry } from '../../../shared/types';
-import TreeContextMenu, { type TreeAction } from './TreeContextMenu';
 
 interface VaultTreeProps {
   entries: VaultEntry[];
@@ -10,7 +9,6 @@ interface VaultTreeProps {
   onOpen: (entry: VaultEntry) => void;
   onRename: (path: string, name?: string) => void;
   onDelete: (path: string) => void;
-  onAction?: (entry: VaultEntry, action: TreeAction) => void;
 }
 
 interface VisibleEntry {
@@ -29,18 +27,9 @@ function visibleEntries(entries: VaultEntry[], expanded: Set<string>, level = 1,
 }
 
 /** Provides treeview focus, expansion, selection, and the core APG keyboard model. */
-export default function VaultTree({
-  entries,
-  selectedPath,
-  onSelect,
-  onOpen,
-  onRename,
-  onDelete,
-  onAction,
-}: VaultTreeProps) {
+export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onRename, onDelete }: VaultTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
-  const [contextEntry, setContextEntry] = useState<VaultEntry | null>(null);
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
   const visible = visibleEntries(entries, expanded);
   const activePath = visible.some(({ entry }) => entry.path === focusedPath)
@@ -57,12 +46,6 @@ export default function VaultTree({
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, entry: VaultEntry) => {
-    if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
-      event.preventDefault();
-      event.stopPropagation();
-      setContextEntry(entry);
-      return;
-    }
     const index = visible.findIndex(({ entry: item }) => item.path === entry.path);
     const isExpanded = expanded.has(entry.path);
     const parentIndex = entry.path.includes('/')
@@ -149,6 +132,10 @@ export default function VaultTree({
               else itemRefs.delete(entry.path);
             }}
             role="treeitem"
+            data-context={
+              entry.kind === 'notebook' ? 'tree-folder' : entry.kind === 'note' ? 'tree-note' : 'attachment'
+            }
+            data-path={entry.path}
             aria-expanded={entry.children?.length ? isExpanded : undefined}
             aria-level={level}
             aria-setsize={items.length}
@@ -172,10 +159,6 @@ export default function VaultTree({
               } else onOpen(entry);
             }}
             onKeyDown={(event) => onKeyDown(event, entry)}
-            onContextMenu={(event) => {
-              event.preventDefault();
-              setContextEntry(entry);
-            }}
           >
             {entry.children?.length ? (isExpanded ? '▾ ' : '▸ ') : '　'}
             {entry.name}
@@ -192,13 +175,6 @@ export default function VaultTree({
         {render(entries)}
         {!entries.length ? <p>No files yet. Create a notebook or note to get started.</p> : null}
       </div>
-      {contextEntry ? (
-        <TreeContextMenu
-          entry={contextEntry}
-          onClose={() => setContextEntry(null)}
-          onAction={(action) => onAction?.(contextEntry, action)}
-        />
-      ) : null}
     </>
   );
 }

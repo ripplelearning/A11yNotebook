@@ -134,7 +134,13 @@ export function AnnotationPane({
       {!annotations.length && <p>No annotations for this note.</p>}
       <ul>
         {annotations.map((annotation) => (
-          <li key={annotation.id}>
+          <li
+            key={annotation.id}
+            data-context="annotation"
+            data-path={annotation.path}
+            data-annotation-id={annotation.id}
+            tabIndex={-1}
+          >
             <strong>{annotation.label}</strong> <span>({annotation.color} highlight)</span>
             <blockquote>{annotation.anchor.quote}</blockquote>
             {annotation.comment && <p>{annotation.comment}</p>}

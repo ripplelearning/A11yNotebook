@@ -19,14 +19,25 @@ afterEach(async () => {
 });
 
 describe('vault filesystem service', () => {
-  it('rejects traversal, absolute paths, and non-Markdown note writes', async () => {
+  it('rejects traversal, absolute paths, and unsupported note writes', async () => {
     const service = await openService();
     await expect(service.readNote('../outside.md')).rejects.toThrow('not valid inside this vault');
     await expect(service.readNote('.A11YNOTEBOOK/settings.json')).rejects.toThrow('not valid inside this vault');
     await expect(service.readNote(path.join(temporaryDirectory, 'outside.md'))).rejects.toThrow(
       'not valid inside this vault',
     );
-    await expect(service.saveNote('note.txt', 'unsafe')).rejects.toThrow('Only Markdown notes can be edited');
+    await expect(service.saveNote('note.txt', 'unsafe')).rejects.toThrow('Only Markdown and HTML notes can be edited');
+  });
+
+  it('creates, reads, saves, and lists HTML notes as notes', async () => {
+    const service = await openService();
+    await service.createNote('Research.html');
+    expect(await service.readNote('Research.html')).toContain('<h1>Research</h1>');
+    await service.saveNote('Research.html', '<h1>Updated</h1>');
+    expect(await service.readNote('Research.html')).toBe('<h1>Updated</h1>');
+    expect((await service.getVault()).entries).toEqual([
+      { name: 'Research.html', path: 'Research.html', kind: 'note' },
+    ]);
   });
 
   it('creates, saves, reads, and lists Markdown notes while hiding metadata', async () => {

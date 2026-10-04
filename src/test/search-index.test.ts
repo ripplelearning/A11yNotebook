@@ -20,6 +20,43 @@ async function open(root: string) {
   return service;
 }
 
+function storedZip(entries: Record<string, string>) {
+  const local: Buffer[] = [];
+  const central: Buffer[] = [];
+  let offset = 0;
+  for (const [name, value] of Object.entries(entries)) {
+    const filename = Buffer.from(name);
+    const content = Buffer.from(value);
+    const header = Buffer.alloc(30);
+    header.writeUInt32LE(0x04034b50, 0);
+    header.writeUInt16LE(20, 4);
+    header.writeUInt16LE(0x800, 6);
+    header.writeUInt32LE(content.length, 18);
+    header.writeUInt32LE(content.length, 22);
+    header.writeUInt16LE(filename.length, 26);
+    local.push(header, filename, content);
+    const record = Buffer.alloc(46);
+    record.writeUInt32LE(0x02014b50, 0);
+    record.writeUInt16LE(20, 4);
+    record.writeUInt16LE(20, 6);
+    record.writeUInt16LE(0x800, 8);
+    record.writeUInt32LE(content.length, 20);
+    record.writeUInt32LE(content.length, 24);
+    record.writeUInt16LE(filename.length, 28);
+    record.writeUInt32LE(offset, 42);
+    central.push(record, filename);
+    offset += header.length + filename.length + content.length;
+  }
+  const directory = Buffer.concat(central);
+  const end = Buffer.alloc(22);
+  end.writeUInt32LE(0x06054b50, 0);
+  end.writeUInt16LE(Object.keys(entries).length, 8);
+  end.writeUInt16LE(Object.keys(entries).length, 10);
+  end.writeUInt32LE(directory.length, 12);
+  end.writeUInt32LE(offset, 16);
+  return Buffer.concat([...local, directory, end]);
+}
+
 afterEach(async () => {
   await Promise.all(services.splice(0).map((service) => service.dispose()));
   await Promise.all(directories.splice(0).map((directory) => rm(directory, { recursive: true, force: true })));
@@ -62,6 +99,34 @@ describe('persistent vault search', () => {
     expect(await service.search({ text: '', modifiedAfter: '2000-01-01', modifiedBefore: '2099-01-01' })).toHaveLength(
       3,
     );
+  });
+
+  it('indexes HTML notes by their text as note results', async () => {
+    const service = await open(await folder());
+    await service.createNote('briefing.html', '<h1>Briefing</h1><p>Accessible research finding</p>');
+    const results = await service.search({ text: 'research finding', kind: 'note' });
+    expect(results).toMatchObject([{ path: 'briefing.html', title: 'Briefing', kind: 'note' }]);
+  });
+
+  it('indexes bounded text extracted from valid PDF and ePub attachments', async () => {
+    const root = await folder();
+    await writeFile(path.join(root, 'guide.pdf'), '%PDF-1.7\n(needlepdfsearchtoken) Tj');
+    await writeFile(
+      path.join(root, 'guide.epub'),
+      storedZip({
+        'META-INF/container.xml': '<container><rootfile full-path="OPS/book.opf"/></container>',
+        'OPS/book.opf':
+          '<package><manifest><item id="chapter" href="chapter.xhtml"/></manifest><spine><itemref idref="chapter"/></spine></package>',
+        'OPS/chapter.xhtml': '<html><body><p>needleepubsearchtoken</p></body></html>',
+      }),
+    );
+    const service = await open(root);
+    expect(await service.search({ text: 'needlepdfsearchtoken' })).toMatchObject([
+      { path: 'guide.pdf', kind: 'attachment' },
+    ]);
+    expect(await service.search({ text: 'needleepubsearchtoken' })).toMatchObject([
+      { path: 'guide.epub', kind: 'attachment' },
+    ]);
   });
 
   it('extracts txt, csv, and HTML without script/style text, and only filenames for unsupported files', async () => {
@@ -108,7 +173,7 @@ describe('persistent vault search', () => {
     const first = await open(root);
     await first.dispose();
     const cache = JSON.parse(await readFile(path.join(root, '.a11ynotebook', 'search-index.json'), 'utf8'));
-    expect(cache.version).toBe(1);
+    expect(cache.version).toBe(3);
     expect(cache.root).toBe(root);
     await writeFile(path.join(root, 'old.md'), '# Fresh text');
     await rm(path.join(root, 'gone.md'));

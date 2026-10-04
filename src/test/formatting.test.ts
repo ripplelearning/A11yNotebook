@@ -43,6 +43,13 @@ describe('Markdown formatting transforms', () => {
     expect(editContent('text\n', formatText('text\n', 5, 5, 'heading3'))).toBe('text\n### ');
   });
 
+  it('formats heading levels four through six', () => {
+    for (const level of [4, 5, 6] as const) {
+      const action = `heading${level}` as const;
+      expect(editContent('Title', formatText('Title', 0, 5, action))).toBe(`${'#'.repeat(level)} Title`);
+    }
+  });
+
   it('chooses a safe fence and separates a code block from adjacent text', () => {
     const source = 'before ```code``` after';
     const edit = formatText(source, 7, 17, 'code');

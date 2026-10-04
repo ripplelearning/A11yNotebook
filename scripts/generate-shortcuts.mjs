@@ -26,8 +26,8 @@ Standard text editing and pane/tab navigation are reserved.
 
 | Context | Keys / behavior |
 | --- | --- |
-| Tree action menu | Shift+F10 / Applications key; Up/Down, Home/End, Enter, Escape |
-| Formatting toolbar | Left/Right, Home/End; Tab leaves toolbar |
+| Global context menu | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape |
+| Rich-text toolbar | One tab stop; Left/Right, Home/End; Tab leaves toolbar |
 | Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder |
 | Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Escape cancel |
 | Flashcards | Tab to Show answer, then Again/Hard/Good/Easy |

@@ -1,9 +1,12 @@
 // Renders notes as sanitized semantic Markdown or a native textarea for editing.
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
-import type { RefObject } from 'react';
+import { useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
 import { imageUrl } from '../../../shared/attachments';
+import RichTextEditor from './RichTextEditor';
+import { htmlToMarkdown, markdownToHtml } from './format-conversion';
+import { sanitizeNoteHtml } from './sanitize-html';
 
 function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
@@ -62,6 +65,7 @@ interface MarkdownDocumentProps {
   onOpenExternal?: (url: string) => void;
   editorRef?: RefObject<HTMLTextAreaElement>;
   notePath?: string;
+  format?: 'markdown' | 'html';
   disabled?: boolean;
 }
 
@@ -75,28 +79,61 @@ export default function MarkdownDocument({
   onOpenExternal,
   editorRef,
   notePath,
+  format = 'markdown',
   disabled,
 }: MarkdownDocumentProps) {
+  const [richText, setRichText] = useState(false);
   if (mode === 'edit') {
     return (
-      <label className="editor-label">
-        Markdown source
-        <textarea
-          ref={editorRef}
-          disabled={disabled}
-          aria-label="Markdown source"
-          className="markdown-editor"
-          value={content}
-          onChange={(event) => onChange(event.target.value)}
-        />
-      </label>
+      <>
+        <div role="group" aria-label="Editing mode">
+          <button type="button" aria-pressed={!richText} onClick={() => setRichText(false)}>
+            Plain source
+          </button>
+          <button type="button" aria-pressed={richText} onClick={() => setRichText(true)}>
+            Rich text
+          </button>
+        </div>
+        {richText ? (
+          <RichTextEditor
+            content={
+              format === 'html'
+                ? sanitizeNoteHtml(content, notePath)
+                : markdownToHtml(content, (source) => createMarkdown(links, notePath).render(source))
+            }
+            notePath={notePath ?? ''}
+            onChange={(value) =>
+              onChange(format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value))
+            }
+          />
+        ) : (
+          <label className="editor-label">
+            {format === 'html' ? 'HTML source' : 'Markdown source'}
+            <textarea
+              ref={editorRef}
+              disabled={disabled}
+              data-context="editor-selection"
+              data-path={notePath}
+              aria-label={format === 'html' ? 'HTML source' : 'Markdown source'}
+              className="markdown-editor"
+              value={content}
+              onChange={(event) =>
+                onChange(format === 'html' ? sanitizeNoteHtml(event.target.value, notePath) : event.target.value)
+              }
+            />
+          </label>
+        )}
+      </>
     );
   }
 
-  const html = DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
-    ADD_URI_SAFE_ATTR: [],
-    ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-  });
+  const html =
+    format === 'html'
+      ? sanitizeNoteHtml(content, notePath)
+      : DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
+          ADD_URI_SAFE_ATTR: [],
+          ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+        });
   return (
     <div
       className="document-body markdown-body"

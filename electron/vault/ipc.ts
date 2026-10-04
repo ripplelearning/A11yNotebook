@@ -250,8 +250,10 @@ async function relocate(relative: string, destination: string) {
   const currentReminders = reminderService;
   const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
-  if (/\.md$/i.test(relative) && !/\.md$/i.test(destination))
-    throw new Error('Markdown notes must keep the .md extension.');
+  const sourceExtension = path.posix.extname(relative).toLowerCase();
+  const destinationExtension = path.posix.extname(destination).toLowerCase();
+  if (['.md', '.html'].includes(sourceExtension) && sourceExtension !== destinationExtension)
+    throw new Error('Use the note format conversion command to change a note extension.');
   const notes: NoteSource[] = [];
   const attachmentPaths: string[] = [];
   async function collect(entries: VaultEntry[]) {

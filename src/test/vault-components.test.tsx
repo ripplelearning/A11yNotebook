@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
@@ -122,6 +122,48 @@ describe('Markdown document', () => {
       />,
     );
     expect(screen.getByRole('textbox', { name: 'Markdown source' })).toHaveValue('# Note');
+  });
+
+  it('renders HTML notes without executable content or remote images', () => {
+    const { container } = render(
+      <MarkdownDocument
+        content={
+          '<h1>Safe</h1><script>alert(1)</script><img src="https://example.com/image.png" alt="remote"><img src="photo.png" alt="local photo">'
+        }
+        mode="read-only"
+        format="html"
+        notePath="Research/Note.html"
+        links={[]}
+        onChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('heading', { name: 'Safe' })).toBeInTheDocument();
+    expect(container.querySelector('script')).toBeNull();
+    expect(container.querySelector('img')).toHaveAttribute('src', 'vault-file://attachment/Research/photo.png');
+  });
+
+  it('provides HTML source and rich-text editing modes with a single-tab-stop toolbar', () => {
+    render(
+      <MarkdownDocument
+        content="<p>Safe</p>"
+        mode="edit"
+        format="html"
+        notePath="Note.html"
+        links={[]}
+        onChange={vi.fn()}
+        onNavigate={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'HTML source' })).toHaveValue('<p>Safe</p>');
+    fireEvent.click(screen.getByRole('button', { name: 'Rich text' }));
+    expect(screen.getByRole('textbox', { name: 'Rich text editor' })).toHaveAttribute('aria-multiline', 'true');
+    const toolbar = screen.getByRole('toolbar', { name: 'Rich text formatting' });
+    expect(
+      within(toolbar)
+        .getAllByRole('button')
+        .filter((button) => button.tabIndex === 0),
+    ).toHaveLength(1);
   });
 
   it('marks unresolved wiki links and routes internal link activation to the host', () => {
