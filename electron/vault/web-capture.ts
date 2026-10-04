@@ -234,7 +234,9 @@ export function htmlToMarkdown(html: string, pageUrl: string, imageReferences: M
               .replace(/<[^>]*>/g, ' ')
               .replace(/\s+/g, ' ')
               .trim(),
-          ).replace(/\|/g, '\\|'),
+          )
+            .replace(/\\/g, '\\\\')
+            .replace(/\|/g, '\\|'),
         );
         return cells.length ? `| ${cells.join(' | ')} |` : '';
       });

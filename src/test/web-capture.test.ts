@@ -59,6 +59,9 @@ describe('web capture conversion and URL validation', () => {
         'https://example.org',
       ),
     ).toContain('| A | B |');
+    expect(htmlToMarkdown('<table><tr><td>a\\b|c</td></tr></table>', 'https://example.org')).toContain(
+      '| a\\\\b\\|c |',
+    );
   });
 
   it('sanitizes capture HTML and keeps a partial-image notice in the saved representation', async () => {

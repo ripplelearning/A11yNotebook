@@ -152,9 +152,9 @@ export function convertNoteContent(
       let textNode = walker.nextNode();
       let prefix = true;
       while (textNode) {
-        const current = textNode.textContent ?? '';
+        let current = textNode.textContent ?? '';
+        if (prefix) current = current.replace(/^\s*\[[ xX]\]\s*/, '');
         textNode.textContent = current
-          .replace(prefix ? /^\s*\[[ xX]\]\s*/ : /$^/, '')
           .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
           .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
           .replace(/remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '');
