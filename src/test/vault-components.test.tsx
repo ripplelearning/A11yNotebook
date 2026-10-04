@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 import VaultTree from '../renderer/features/vault/VaultTree';
+import ItemDialog, { type ItemDialogRequest } from '../renderer/features/vault/ItemDialog';
 import type { VaultEntry, VaultLink } from '../shared/types';
 
 const entries: VaultEntry[] = [
@@ -12,6 +14,30 @@ const entries: VaultEntry[] = [
     children: [{ name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' }],
   },
 ];
+
+function RenameTree({ onRename }: { onRename: (path: string, name: string) => void }) {
+  const [request, setRequest] = useState<ItemDialogRequest | null>(null);
+  return (
+    <>
+      <VaultTree
+        entries={entries}
+        selectedPath={null}
+        onSelect={vi.fn()}
+        onOpen={vi.fn()}
+        onRename={(path) => setRequest({ action: 'rename', path, name: path })}
+        onDelete={vi.fn()}
+      />
+      {request ? (
+        <ItemDialog
+          request={request}
+          notebooks={[]}
+          onSubmit={async (name) => onRename(request.path!, name)}
+          onClose={() => setRequest(null)}
+        />
+      ) : null}
+    </>
+  );
+}
 
 describe('accessible vault tree', () => {
   it('expands, moves focus with arrows, and opens a note with Enter', () => {
@@ -34,46 +60,28 @@ describe('accessible vault tree', () => {
     expect(onOpen).toHaveBeenCalledWith(entries[0].children?.[0]);
   });
 
-  it('renames an item through a focused dialog and restores focus after submission', () => {
+  it('renames an item through a focused dialog and restores focus after submission', async () => {
     const onRename = vi.fn();
-    render(
-      <VaultTree
-        entries={entries}
-        selectedPath={null}
-        onSelect={vi.fn()}
-        onOpen={vi.fn()}
-        onRename={onRename}
-        onDelete={vi.fn()}
-      />,
-    );
+    render(<RenameTree onRename={onRename} />);
     const item = screen.getByRole('treeitem', { name: /Research/ });
     item.focus();
     fireEvent.keyDown(item, { key: 'F2' });
 
     const dialog = screen.getByRole('dialog', { name: 'Rename item' });
-    const input = screen.getByRole('textbox', { name: 'New name' });
+    const input = screen.getByRole('textbox', { name: 'Name' });
     expect(input).toHaveFocus();
     fireEvent.change(input, { target: { value: '  Archive  ' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Rename' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Rename item' }));
 
     expect(onRename).toHaveBeenCalledWith('Research', 'Archive');
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(item).toHaveFocus();
     expect(dialog).not.toBeInTheDocument();
   });
 
   it('cancels renaming without changing the item and restores focus', () => {
     const onRename = vi.fn();
-    render(
-      <VaultTree
-        entries={entries}
-        selectedPath={null}
-        onSelect={vi.fn()}
-        onOpen={vi.fn()}
-        onRename={onRename}
-        onDelete={vi.fn()}
-      />,
-    );
+    render(<RenameTree onRename={onRename} />);
     const item = screen.getByRole('treeitem', { name: /Research/ });
     item.focus();
     fireEvent.keyDown(item, { key: 'F2' });

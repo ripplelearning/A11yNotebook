@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { COMMANDS, type CommandId } from '../../shared/command-registry';
 import Modal from './Modal';
+import type { NotebookSettings } from '../../shared/settings';
 
 type CommandPaletteProps = {
   onRun: (commandId: CommandId) => void;
   onClose: () => void;
+  shortcuts?: NotebookSettings['shortcuts'];
 };
 
-export default function CommandPalette({ onRun, onClose }: CommandPaletteProps) {
+export default function CommandPalette({ onRun, onClose, shortcuts = {} }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
 
   const filteredCommands = useMemo(() => {
@@ -53,7 +55,9 @@ export default function CommandPalette({ onRun, onClose }: CommandPaletteProps) 
             </button>
             <small id={`command-${command.id}-description`}>
               {command.description}
-              {command.shortcut ? ` Shortcut: ${command.shortcut}.` : ''}
+              {(shortcuts[command.id] ?? command.shortcut)
+                ? ` Shortcut: ${shortcuts[command.id] ?? command.shortcut}.`
+                : ''}
             </small>
           </li>
         ))}

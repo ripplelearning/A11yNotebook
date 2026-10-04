@@ -58,8 +58,14 @@ export function buildVaultLinkIndex(
         } else {
           candidatePath = '';
         }
+        const wikiPath = target.split('#')[0].replace(/\.md$/i, '').toLocaleLowerCase();
+        const wikiCandidates = notesByTitle.get(wikiPath) ?? [];
         const resolved = isWiki
-          ? (notesByTitle.get(target.toLocaleLowerCase()) ?? [])[0]
+          ? wikiPath.includes('/')
+            ? byPath.get(`${wikiPath}.md`)
+            : wikiCandidates.length === 1
+              ? wikiCandidates[0]
+              : undefined
           : byPath.get(candidatePath.toLocaleLowerCase());
         return {
           sourcePath,

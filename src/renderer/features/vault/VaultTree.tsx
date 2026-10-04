@@ -1,15 +1,16 @@
 // Accessible filesystem tree for vault notebooks, Markdown notes, and attachments.
 import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { VaultEntry } from '../../../shared/types';
-import Modal from '../../components/Modal';
+import TreeContextMenu, { type TreeAction } from './TreeContextMenu';
 
 interface VaultTreeProps {
   entries: VaultEntry[];
   selectedPath: string | null;
   onSelect: (entry: VaultEntry) => void;
   onOpen: (entry: VaultEntry) => void;
-  onRename: (path: string, name: string) => void;
+  onRename: (path: string, name?: string) => void;
   onDelete: (path: string) => void;
+  onAction?: (entry: VaultEntry, action: TreeAction) => void;
 }
 
 interface VisibleEntry {
@@ -28,11 +29,18 @@ function visibleEntries(entries: VaultEntry[], expanded: Set<string>, level = 1,
 }
 
 /** Provides treeview focus, expansion, selection, and the core APG keyboard model. */
-export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onRename, onDelete }: VaultTreeProps) {
+export default function VaultTree({
+  entries,
+  selectedPath,
+  onSelect,
+  onOpen,
+  onRename,
+  onDelete,
+  onAction,
+}: VaultTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
-  const [renameTarget, setRenameTarget] = useState<VaultEntry | null>(null);
-  const [renameName, setRenameName] = useState('');
+  const [contextEntry, setContextEntry] = useState<VaultEntry | null>(null);
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
   const visible = visibleEntries(entries, expanded);
   const activePath = visible.some(({ entry }) => entry.path === focusedPath)
@@ -49,6 +57,12 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>, entry: VaultEntry) => {
+    if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
+      event.preventDefault();
+      event.stopPropagation();
+      setContextEntry(entry);
+      return;
+    }
     const index = visible.findIndex(({ entry: item }) => item.path === entry.path);
     const isExpanded = expanded.has(entry.path);
     const parentIndex = entry.path.includes('/')
@@ -90,8 +104,7 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
         onOpen(entry);
         break;
       case 'F2': {
-        setRenameTarget(entry);
-        setRenameName(entry.name);
+        onRename(entry.path);
         break;
       }
       case 'Delete':
@@ -159,6 +172,10 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
               } else onOpen(entry);
             }}
             onKeyDown={(event) => onKeyDown(event, entry)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              setContextEntry(entry);
+            }}
           >
             {entry.children?.length ? (isExpanded ? '▾ ' : '▸ ') : '　'}
             {entry.name}
@@ -175,35 +192,12 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
         {render(entries)}
         {!entries.length ? <p>No files yet. Create a notebook or note to get started.</p> : null}
       </div>
-      {renameTarget ? (
-        <Modal titleId="rename-item-title" title="Rename item" onClose={() => setRenameTarget(null)}>
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              const name = renameName.trim();
-              if (!name) return;
-              onRename(renameTarget.path, name);
-              setRenameTarget(null);
-            }}
-          >
-            <label className="editor-label" htmlFor="rename-item-input">
-              New name
-              <input
-                id="rename-item-input"
-                data-autofocus
-                required
-                value={renameName}
-                onChange={(event) => setRenameName(event.target.value)}
-              />
-            </label>
-            <div className="modal-actions">
-              <button type="button" onClick={() => setRenameTarget(null)}>
-                Cancel
-              </button>
-              <button type="submit">Rename</button>
-            </div>
-          </form>
-        </Modal>
+      {contextEntry ? (
+        <TreeContextMenu
+          entry={contextEntry}
+          onClose={() => setContextEntry(null)}
+          onAction={(action) => onAction?.(contextEntry, action)}
+        />
       ) : null}
     </>
   );

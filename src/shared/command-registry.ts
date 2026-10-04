@@ -17,7 +17,25 @@ export type CommandId =
   | 'refresh-links'
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
-  | 'show-about';
+  | 'show-about'
+  | 'show-settings'
+  | 'new-from-template'
+  | 'annotate-selection'
+  | 'show-reminders'
+  | 'show-assets'
+  | 'format-bold'
+  | 'format-italic'
+  | 'format-heading1'
+  | 'format-heading2'
+  | 'format-heading3'
+  | 'format-bullet'
+  | 'format-numbered'
+  | 'format-checkbox'
+  | 'format-quote'
+  | 'format-code'
+  | 'insert-link'
+  | 'insert-table'
+  | 'insert-attachment';
 
 export type CommandActionContext = {
   mode: AppMode;
@@ -50,6 +68,57 @@ export type KeyboardShortcutDefinition = {
 };
 
 export const COMMANDS: CommandDefinition[] = [
+  {
+    id: 'insert-attachment',
+    label: 'Insert image or attachment',
+    description: 'Insert a labelled reference to a vault attachment.',
+  },
+  {
+    id: 'show-settings',
+    label: 'Settings',
+    description: 'Customize autosave, appearance, and keyboard shortcuts.',
+    shortcut: 'Ctrl+Alt+S',
+  },
+  {
+    id: 'new-from-template',
+    label: 'New note from template',
+    description: 'Choose a built-in or vault template.',
+    shortcut: 'Ctrl+Shift+N',
+  },
+  {
+    id: 'annotate-selection',
+    label: 'Annotate selection',
+    description: 'Highlight selected reading text with a label and comment.',
+    shortcut: 'Ctrl+Shift+A',
+  },
+  {
+    id: 'show-reminders',
+    label: 'Open Reminders',
+    description: 'Show reminders and the grouped agenda.',
+    shortcut: 'Ctrl+Shift+R',
+  },
+  {
+    id: 'show-assets',
+    label: 'Cognitive tools',
+    description: 'Edit outlines, mind maps, tables, and review flashcards.',
+  },
+  { id: 'format-bold', label: 'Bold', description: 'Format the editor selection as bold.', shortcut: 'Ctrl+B' },
+  { id: 'format-italic', label: 'Italic', description: 'Format the editor selection as italic.', shortcut: 'Ctrl+I' },
+  { id: 'format-heading1', label: 'Heading 1', description: 'Format selected lines as level-one headings.' },
+  { id: 'format-heading2', label: 'Heading 2', description: 'Format selected lines as level-two headings.' },
+  { id: 'format-heading3', label: 'Heading 3', description: 'Format selected lines as level-three headings.' },
+  { id: 'format-bullet', label: 'Bulleted list', description: 'Format selected lines as a bullet list.' },
+  { id: 'format-numbered', label: 'Numbered list', description: 'Format selected lines as a numbered list.' },
+  { id: 'format-checkbox', label: 'Checkbox list', description: 'Format selected lines as checkbox tasks.' },
+  { id: 'format-quote', label: 'Quote', description: 'Format selected lines as a quote.' },
+  { id: 'format-code', label: 'Code block', description: 'Wrap selected text in a fenced code block.' },
+  {
+    id: 'insert-link',
+    label: 'Insert link',
+    description: 'Insert a web or wiki link with a labelled dialog.',
+    shortcut: 'Ctrl+Shift+L',
+  },
+  { id: 'insert-table', label: 'Insert table', description: 'Choose Markdown table rows and columns.' },
   {
     id: 'open-vault',
     label: 'Open vault',
@@ -182,7 +251,7 @@ export function cycleFocusRegions(
   return current;
 }
 
-type ShortcutKeyEvent = Pick<KeyboardEvent, 'key' | 'ctrlKey' | 'altKey' | 'shiftKey' | 'metaKey'>;
+type ShortcutKeyEvent = { key: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean };
 
 /** Check whether a keyboard event matches a shortcut string such as "Ctrl+K" or "F9". */
 export function matchesShortcut(event: ShortcutKeyEvent, shortcut: string): boolean {
