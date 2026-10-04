@@ -34,6 +34,7 @@ function setup(customBold = false) {
       delete: vi.fn(async () => vault),
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),
+      openUrl: vi.fn(async () => undefined),
       importFile: vi.fn(async () => null),
       getTasks: vi.fn(async () => []),
       toggleTask: vi.fn(async () => []),

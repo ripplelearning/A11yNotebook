@@ -1678,6 +1678,7 @@ export default function App() {
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
                     onNavigate={(href) => void openLinkTarget(href)}
+                    onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                   />
                 </div>
               </>

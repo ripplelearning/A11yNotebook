@@ -20,6 +20,7 @@ const vault: VaultInfo = {
 
 afterEach(() => {
   delete window.a11yNotebook;
+  vi.restoreAllMocks();
 });
 
 describe('local vault workflow', () => {
@@ -43,6 +44,7 @@ describe('local vault workflow', () => {
         rename: vi.fn(async () => vault),
         reveal: vi.fn(async () => undefined),
         openExternal: vi.fn(async () => undefined),
+        openUrl: vi.fn(async () => undefined),
         importFile: vi.fn(async () => vault),
         delete: vi.fn(async () => vault),
         getTasks: vi.fn(async () => [
@@ -112,5 +114,25 @@ describe('local vault workflow', () => {
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
     await waitFor(() => expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task marked complete.');
+
+    fireEvent.click(within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), {
+      target: { value: '# Week 1\n\nUnsaved changes.' },
+    });
+    const openVault = screen.getByRole('button', { name: 'Open vault' });
+    fireEvent.click(openVault);
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+      'Save or resolve unsaved changes before opening another vault.',
+    );
+    expect(bridge.vault.open).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(screen.getByRole('textbox', { name: 'Markdown source' }), { key: 's', ctrlKey: true });
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }),
+      ).toHaveAttribute('aria-selected', 'true'),
+    );
+    fireEvent.click(openVault);
+    await waitFor(() => expect(bridge.vault.open).toHaveBeenCalledTimes(1));
   });
 });

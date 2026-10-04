@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import { vaultExtensions } from './vault-extensions';
@@ -33,6 +33,7 @@ function installBridge() {
       rename: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),
+      openUrl: vi.fn(async () => undefined),
       importFile: vi.fn(async () => null),
       delete: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       getTasks: vi.fn(async () => []),
@@ -92,6 +93,41 @@ describe('Help menu', () => {
     expect(within(dialog).getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
+  });
+
+  it('uses the accessible notebook-name dialog from both notebook entry points', async () => {
+    const { bridge } = installBridge();
+    vi.mocked(bridge.vault.get).mockResolvedValue({ name: 'Vault', path: '/vault', entries: [] });
+    render(<App />);
+
+    await screen.findByRole('heading', { name: 'Vault' });
+    const navigationAction = within(screen.getByRole('complementary', { name: 'Navigation pane' })).getByRole(
+      'button',
+      { name: 'New notebook' },
+    );
+    navigationAction.focus();
+    fireEvent.click(navigationAction);
+    let dialog = screen.getByRole('dialog', { name: 'New notebook' });
+    const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
+    expect(nameInput).toHaveFocus();
+    fireEvent.change(nameInput, { target: { value: 'Research' } });
+    await act(async () => {
+      fireEvent.click(within(dialog).getByRole('button', { name: 'New notebook' }));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    expect(bridge.vault.createNotebook).toHaveBeenCalledWith('Research');
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notebook created.'));
+    expect(navigationAction).toHaveFocus();
+
+    const menuAction = within(screen.getByRole('group', { name: 'Vault' })).getByRole('button', {
+      name: 'New notebook',
+    });
+    menuAction.focus();
+    fireEvent.click(menuAction);
+    dialog = screen.getByRole('dialog', { name: 'New notebook' });
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(menuAction).toHaveFocus();
   });
 });
 
