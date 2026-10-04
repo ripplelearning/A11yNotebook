@@ -15,7 +15,7 @@ const CONTENT_SECURITY_POLICY = [
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-src 'self'",
+  "frame-src 'self' vault-file:",
 ].join('; ');
 
 function contentSecurityPolicy(): Plugin {

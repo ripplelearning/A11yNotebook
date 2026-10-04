@@ -1,12 +1,15 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService } from './service';
 import { createAnnotationStore } from './annotations';
 import { createMetadataStore } from './metadata';
-import { IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
+import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
+import { readDocumentAttachment } from './document-preview';
+import { captureWebPage } from './web-capture';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import type { VaultChangedEvent } from '../../src/shared/search';
@@ -15,6 +18,19 @@ import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { createAssetStore } from './assets';
+import {
+  createVaultSecurityConfig,
+  decryptPasswordEncryptedNote,
+  decryptRecord,
+  encryptRecord,
+  isEncryptedRecord,
+  isPasswordEncryptedNote,
+  encryptNoteWithPassword,
+  reencryptPasswordNote,
+  unlockPasswordEncryptedNote,
+  unlockVault,
+  type VaultSecurityConfig,
+} from './security';
 
 type TrustedSender = (event: IpcMainInvokeEvent) => boolean;
 type VaultService = ReturnType<typeof createVaultService>;
@@ -26,6 +42,12 @@ let annotations: ReturnType<typeof createAnnotationStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
+let securityConfig: VaultSecurityConfig | null = null;
+let masterKey: Buffer | null = null;
+const noteKeys = new Map<string, Buffer>();
+let idleLockTimer: NodeJS.Timeout | undefined;
+let idleLockMinutes = 15;
+let sendSecurityLocked: () => void = () => undefined;
 let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
 const notifications = new Set<Notification>();
 const notificationTargets = new Map<Notification, { path: string }>();
@@ -37,8 +59,40 @@ function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
   return result;
 }
 
-function assertTrusted(event: IpcMainInvokeEvent, isTrustedSender: TrustedSender) {
+function assertTrusted(event: IpcMainInvokeEvent, isTrustedSender: TrustedSender, allowLocked = false) {
   if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender.');
+  if (!allowLocked && securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+  if (!allowLocked) resetIdleLock();
+}
+
+function lockVault() {
+  if (idleLockTimer) clearTimeout(idleLockTimer);
+  idleLockTimer = undefined;
+  const wasUnlocked = masterKey !== null;
+  masterKey?.fill(0);
+  masterKey = null;
+  for (const key of noteKeys.values()) key.fill(0);
+  noteKeys.clear();
+  if (wasUnlocked) {
+    reminderService?.stop();
+    reminderService = null;
+    for (const notification of notifications) notification.close();
+    notifications.clear();
+    notificationTargets.clear();
+    sendSecurityLocked();
+  }
+}
+
+function resetIdleLock() {
+  if (idleLockTimer) clearTimeout(idleLockTimer);
+  if (!masterKey) return;
+  if (idleLockMinutes === 0) return;
+  idleLockTimer = setTimeout(lockVault, idleLockMinutes * 60 * 1000);
+  idleLockTimer.unref();
+}
+
+function presentVault(vault: VaultInfo): VaultInfo {
+  return securityConfig && !masterKey ? { ...vault, entries: [] } : vault;
 }
 
 function requireService() {
@@ -55,11 +109,38 @@ function openVault(vaultPath: string) {
   return serializeVaultOperation(() => openVaultNow(vaultPath));
 }
 
+async function startReminders(vaultService: VaultService, vault: VaultInfo) {
+  const nextReminders = makeReminders(vaultService, vault);
+  reminderService = nextReminders;
+  await nextReminders.initialize().catch(() =>
+    sendReminder({
+      type: 'error',
+      vaultPath: vault.path,
+      message: 'Could not initialize reminders. Check vault metadata.',
+    }),
+  );
+}
+
 async function openVaultNow(vaultPath: string) {
   const nextService = createVaultService(vaultPath);
   let vault: VaultInfo;
+  let nextSecurity: VaultSecurityConfig | null = null;
   try {
     vault = await nextService.initialize();
+    const savedSecurity = await createMetadataStore(nextService).read('security.json');
+    const savedSettings = await createMetadataStore(nextService).read('settings.json');
+    if (savedSettings) {
+      try {
+        idleLockMinutes = validateSettings(savedSettings).vaultLockMinutes ?? 15;
+      } catch {
+        idleLockMinutes = 15;
+      }
+    } else {
+      idleLockMinutes = 15;
+    }
+    if (savedSecurity && typeof savedSecurity === 'object' && !Array.isArray(savedSecurity)) {
+      nextSecurity = savedSecurity as VaultSecurityConfig;
+    }
     await rememberVault(vault.path);
   } catch (error) {
     await nextService.dispose().catch(() => undefined);
@@ -69,8 +150,10 @@ async function openVaultNow(vaultPath: string) {
   for (const notification of notifications) notification.close();
   notifications.clear();
   notificationTargets.clear();
+  lockVault();
   await service?.dispose().catch(() => undefined);
   service = nextService;
+  securityConfig = nextSecurity;
   metadata = createMetadataStore(nextService);
   assets = createAssetStore(nextService, metadata);
   annotations = createAnnotationStore({
@@ -80,15 +163,8 @@ async function openVaultNow(vaultPath: string) {
       await nextService.resolveEntry(relative);
     },
   });
-  const nextReminders = makeReminders(nextService, vault);
-  reminderService = nextReminders;
-  await nextReminders.initialize().catch(() =>
-    sendReminder({
-      type: 'error',
-      vaultPath: vault.path,
-      message: 'Could not initialize reminders. Check vault metadata.',
-    }),
-  );
+  if (masterKey || !securityConfig) await startReminders(nextService, vault);
+  else reminderService = null;
   await nextService
     .startWatcher(
       (event) => {
@@ -111,7 +187,7 @@ async function openVaultNow(vaultPath: string) {
         message: 'External-change watching is unavailable. Use Refresh links to refresh manually.',
       }),
     );
-  return vault;
+  return presentVault(vault);
 }
 
 function makeReminders(nextService: VaultService, vault: VaultInfo) {
@@ -306,9 +382,202 @@ export function setupVaultIpc(
   isTrustedSender: TrustedSender,
   onChanged: (event: VaultChangedEvent) => void,
   onReminder: (event: VaultReminderEvent) => void,
+  onSecurityLocked: () => void = () => undefined,
 ) {
   sendChanged = onChanged;
   sendReminder = onReminder;
+  sendSecurityLocked = onSecurityLocked;
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityStatus, async (event) => {
+    assertTrusted(event, isTrustedSender, true);
+    resetIdleLock();
+    return { enabled: securityConfig !== null, locked: securityConfig !== null && masterKey === null };
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecuritySetup, async (event, password: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (securityConfig) throw new Error('Vault password protection is already configured.');
+    if (typeof password !== 'string') throw new Error('Invalid vault password.');
+    const { config, key } = await createVaultSecurityConfig(password);
+    try {
+      await metadataFor(requireService()).write('security.json', config);
+    } catch (error) {
+      key.fill(0);
+      throw error;
+    }
+    securityConfig = config;
+    masterKey = key;
+    resetIdleLock();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityUnlock, async (event, password: unknown) => {
+    assertTrusted(event, isTrustedSender, true);
+    if (!securityConfig || typeof password !== 'string')
+      throw new Error('Vault password protection is not configured.');
+    const key = await unlockVault(securityConfig, password);
+    masterKey?.fill(0);
+    masterKey = key;
+    resetIdleLock();
+    const vault = await requireService().getVault();
+    await startReminders(requireService(), vault);
+    return vault;
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityLock, async (event) => {
+    assertTrusted(event, isTrustedSender, true);
+    if (!securityConfig) throw new Error('Vault password protection is not configured.');
+    lockVault();
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultNoteEncrypt,
+    async (event, relative: unknown, expected: unknown, password: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || typeof expected !== 'string' || typeof password !== 'string' || !masterKey)
+        throw new Error('Invalid note encryption request.');
+      const vault = requireService();
+      const existing = await vault.readNote(relative);
+      if (existing !== expected) throw new Error('Note changed on disk. Resolve the conflict before encrypting.');
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(existing);
+      } catch {
+        parsed = null;
+      }
+      if (isEncryptedRecord(parsed) || isPasswordEncryptedNote(parsed))
+        throw new Error('This note is already encrypted.');
+      const encrypted = await encryptNoteWithPassword(password, existing, randomUUID());
+      try {
+        await vault.saveNote(relative, JSON.stringify(encrypted.record), existing);
+        noteKeys.get(encrypted.record.id)?.fill(0);
+        noteKeys.set(encrypted.record.id, encrypted.key);
+      } catch (error) {
+        encrypted.key.fill(0);
+        throw error;
+      }
+      resetIdleLock();
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultNoteEncryptionStatus, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string') throw new Error('Invalid note path.');
+    const content = await requireService().readNote(relative);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      return false;
+    }
+    return isEncryptedRecord(parsed) || isPasswordEncryptedNote(parsed);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultCredentialsRead, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    if (!masterKey) throw new Error('Unlock the vault first.');
+    const saved = await metadataFor(requireService()).read('credentials.json');
+    if (!saved) return [];
+    const content = decryptRecord(masterKey, 'credentials', saved);
+    const parsed: unknown = JSON.parse(content);
+    if (!Array.isArray(parsed)) throw new Error('Credential store is damaged.');
+    return parsed.map((item) => {
+      if (
+        !item ||
+        typeof item !== 'object' ||
+        typeof item.id !== 'string' ||
+        typeof item.username !== 'string' ||
+        typeof item.password !== 'string'
+      )
+        throw new Error('Credential store is damaged.');
+      return { id: item.id, username: item.username, password: item.password };
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultCredentialsSave,
+    async (event, id: unknown, username: unknown, password: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        !masterKey ||
+        typeof id !== 'string' ||
+        !id.trim() ||
+        id.length > 120 ||
+        typeof username !== 'string' ||
+        username.length > 500 ||
+        typeof password !== 'string' ||
+        password.length > 4096
+      )
+        throw new Error('Invalid credential.');
+      const saved = await metadataFor(requireService()).read('credentials.json');
+      const credentials = saved
+        ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as {
+            id: string;
+            username: string;
+            password: string;
+          }[])
+        : [];
+      const normalizedId = id.trim();
+      const next = credentials.filter((item) => item.id !== normalizedId);
+      next.push({ id: normalizedId, username, password });
+      await metadataFor(requireService()).write(
+        'credentials.json',
+        encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next)),
+      );
+      resetIdleLock();
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultCredentialsDelete, async (event, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!masterKey || typeof id !== 'string' || id.length > 120) throw new Error('Invalid credential.');
+    const saved = await metadataFor(requireService()).read('credentials.json');
+    if (!saved) return;
+    const credentials = JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string }[];
+    await metadataFor(requireService()).write(
+      'credentials.json',
+      encryptRecord(
+        masterKey,
+        'credentials',
+        'credentials-store',
+        JSON.stringify(credentials.filter((item) => item.id !== id)),
+      ),
+    );
+    resetIdleLock();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof url !== 'string' || typeof notebookPath !== 'string' || notebookPath.length > 2048) {
+      throw new Error('Invalid web capture request.');
+    }
+    const vault = requireService();
+    const root = (await vault.getVault()).path;
+    const notebook = notebookPath ? await vault.resolveEntry(notebookPath) : root;
+    if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder for the capture.');
+    const captureId = randomUUID();
+    const captureFolder = path.posix.join(notebookPath, 'Attachments', `Capture-${captureId}`);
+    const noteDirectory = notebookPath ? `${notebookPath}/` : '';
+    let attachmentFolder: string | undefined;
+    let noteCreated = false;
+    try {
+      const capture = await captureWebPage(url, `Attachments/Capture-${captureId}/`);
+      attachmentFolder = await vault.resolveEntry(captureFolder, true);
+      await mkdir(attachmentFolder, { recursive: true });
+      for (const [index, image] of capture.images.entries()) {
+        const imagePath = path.posix.join(captureFolder, `image-${index + 1}${image.extension}`);
+        await writeFile(await vault.resolveEntry(imagePath, true), image.bytes, { flag: 'wx', mode: 0o600 });
+      }
+      const safeTitle =
+        [...capture.title]
+          .filter(
+            (character) =>
+              character.charCodeAt(0) >= 32 && character.charCodeAt(0) !== 127 && !'<>:"/\\|?*'.includes(character),
+          )
+          .join('')
+          .replace(/[. ]+$/g, '')
+          .trim()
+          .slice(0, 100) || 'Web capture';
+      const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}.md`;
+      const content = `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
+      await vault.createNote(notePath, content);
+      noteCreated = true;
+      return vault.getVault();
+    } catch (error) {
+      if (attachmentFolder && !noteCreated)
+        await rm(attachmentFolder, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+  });
   ipcMain.handle(IPC_CHANNELS.vaultAssetRead, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !assets) throw new Error('Invalid asset request.');
@@ -344,6 +613,7 @@ export function setupVaultIpc(
     },
   );
   app.on('before-quit', () => {
+    lockVault();
     void service?.dispose().catch(() => undefined);
     reminderService?.stop();
   });
@@ -376,12 +646,14 @@ export function setupVaultIpc(
   });
   protocol.handle('vault-file', async (request) => {
     try {
+      if (securityConfig && !masterKey) return new Response('Vault is locked.', { status: 423 });
       const relative = protocolPath(request.url);
-      const mime = IMAGE_TYPES[path.extname(relative).toLowerCase()];
+      const extension = path.extname(relative).toLowerCase();
+      const mime = IMAGE_TYPES[extension] ?? DOCUMENT_TYPES[extension];
       if (!mime) return new Response('Unsupported preview.', { status: 415 });
       const target = await requireService().resolveEntry(relative);
       const stat = await lstat(target);
-      if (!stat.isFile() || stat.size > 20 * 1024 * 1024) return new Response('Image too large.', { status: 413 });
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return new Response('Attachment too large.', { status: 413 });
       const bytes = await readFile(target);
       return new Response(new Uint8Array(bytes), {
         headers: { 'Content-Type': mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' },
@@ -391,13 +663,13 @@ export function setupVaultIpc(
     }
   });
   ipcMain.handle(IPC_CHANNELS.vaultOpen, async (event) => {
-    assertTrusted(event, isTrustedSender);
+    assertTrusted(event, isTrustedSender, true);
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
     return result.canceled || !result.filePaths[0] ? null : openVault(result.filePaths[0]);
   });
   ipcMain.handle(IPC_CHANNELS.vaultGet, async (event) => {
-    assertTrusted(event, isTrustedSender);
-    if (service) return service.getVault();
+    assertTrusted(event, isTrustedSender, true);
+    if (service) return presentVault(await service.getVault());
     try {
       const saved = JSON.parse(await readFile(recentFile(), 'utf8')) as { lastOpened?: unknown };
       if (typeof saved.lastOpened !== 'string') return null;
@@ -406,10 +678,29 @@ export function setupVaultIpc(
       return null;
     }
   });
-  ipcMain.handle(IPC_CHANNELS.vaultReadNote, async (event, relativePath: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultReadNote, async (event, relativePath: unknown, password: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relativePath !== 'string') throw new Error('Note path must be text.');
-    return requireService().readNote(relativePath);
+    if (typeof relativePath !== 'string' || (password !== undefined && typeof password !== 'string'))
+      throw new Error('Note path or password is invalid.');
+    const content = await requireService().readNote(relativePath);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(content);
+    } catch {
+      parsed = null;
+    }
+    if (isPasswordEncryptedNote(parsed)) {
+      const cachedKey = noteKeys.get(parsed.id);
+      if (cachedKey) return decryptPasswordEncryptedNote(cachedKey, parsed);
+      if (typeof password !== 'string') throw new Error('Enter this note’s password to open it.');
+      const unlocked = await unlockPasswordEncryptedNote(password, parsed);
+      noteKeys.set(parsed.id, unlocked.key);
+      resetIdleLock();
+      return unlocked.plaintext;
+    }
+    if (!isEncryptedRecord(parsed)) return content;
+    if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
+    return decryptRecord(masterKey, 'note', parsed);
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultSaveNote,
@@ -418,7 +709,32 @@ export function setupVaultIpc(
       if (typeof relativePath !== 'string' || typeof content !== 'string') throw new Error('Invalid note data.');
       if (expectedContent !== undefined && typeof expectedContent !== 'string')
         throw new Error('Invalid saved note baseline.');
-      await requireService().saveNote(relativePath, content, expectedContent);
+      const vault = requireService();
+      const onDisk = await vault.readNote(relativePath);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(onDisk);
+      } catch {
+        parsed = null;
+      }
+      if (isPasswordEncryptedNote(parsed)) {
+        const key = noteKeys.get(parsed.id);
+        if (!key) throw new Error('Unlock this note with its password before editing.');
+        if (expectedContent !== undefined && decryptPasswordEncryptedNote(key, parsed) !== expectedContent)
+          throw new Error('Note changed on disk. Resolve the conflict before saving.');
+        await vault.saveNote(relativePath, JSON.stringify(reencryptPasswordNote(key, parsed, content)), onDisk);
+      } else if (isEncryptedRecord(parsed)) {
+        if (!masterKey) throw new Error('Unlock the vault before editing this encrypted note.');
+        if (expectedContent !== undefined && decryptRecord(masterKey, 'note', parsed) !== expectedContent)
+          throw new Error('Note changed on disk. Resolve the conflict before saving.');
+        await vault.saveNote(
+          relativePath,
+          JSON.stringify(encryptRecord(masterKey, 'note', parsed.id, content)),
+          onDisk,
+        );
+      } else {
+        await vault.saveNote(relativePath, content, expectedContent);
+      }
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultCreateNotebook, async (event, relativePath: unknown) => {
@@ -478,6 +794,7 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReadAttachment, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid attachment path.');
+    if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative);
     return readTextAttachment(requireService().resolveEntry, relative);
   });
   ipcMain.handle(IPC_CHANNELS.vaultImageAlt, async (event, relative: unknown) => {
@@ -513,10 +830,18 @@ export function setupVaultIpc(
     const vault = service;
     if (vault) {
       const saved = await metadataFor(vault).read('settings.json');
-      if (saved) return validateSettings(saved);
+      if (saved) {
+        const validated = validateSettings(saved);
+        idleLockMinutes = validated.vaultLockMinutes ?? 15;
+        return validated;
+      }
     }
     try {
-      return validateSettings(JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')));
+      const validated = validateSettings(
+        JSON.parse(await readFile(path.join(app.getPath('userData'), 'settings.json'), 'utf8')),
+      );
+      idleLockMinutes = validated.vaultLockMinutes ?? 15;
+      return validated;
     } catch {
       return { ...DEFAULT_SETTINGS, shortcuts: {} };
     }
@@ -524,11 +849,13 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.settingsSave, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
     const settings = validateSettings(value);
+    idleLockMinutes = settings.vaultLockMinutes ?? 15;
     if (service) await metadataFor(service).write('settings.json', settings);
     await mkdir(app.getPath('userData'), { recursive: true });
     await writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify(settings, null, 2), {
       mode: 0o600,
     });
+    resetIdleLock();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReveal, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

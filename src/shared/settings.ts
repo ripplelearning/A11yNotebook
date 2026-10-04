@@ -5,6 +5,8 @@ export interface NotebookSettings {
   theme: 'dark' | 'light' | 'high-contrast';
   fontSize: number;
   shortcuts: Partial<Record<CommandId, string>>;
+  vaultLockMinutes?: number;
+  noteEditLockMinutes?: number;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -12,6 +14,8 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   theme: 'dark',
   fontSize: 16,
   shortcuts: {},
+  vaultLockMinutes: 15,
+  noteEditLockMinutes: 0,
 };
 
 const RESERVED_SHORTCUTS = [
@@ -66,6 +70,8 @@ export function shortcutConflicts(shortcuts: NotebookSettings['shortcuts']): str
 export function validateSettings(value: unknown): NotebookSettings {
   if (!value || typeof value !== 'object') throw new Error('Invalid settings.');
   const settings = value as NotebookSettings;
+  const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
+  const noteEditLockMinutes = settings.noteEditLockMinutes ?? DEFAULT_SETTINGS.noteEditLockMinutes!;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -74,6 +80,12 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(settings.fontSize) ||
     settings.fontSize < 12 ||
     settings.fontSize > 32 ||
+    !Number.isInteger(vaultLockMinutes) ||
+    vaultLockMinutes < 0 ||
+    vaultLockMinutes > 240 ||
+    !Number.isInteger(noteEditLockMinutes) ||
+    noteEditLockMinutes < 0 ||
+    noteEditLockMinutes > 240 ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -88,5 +100,12 @@ export function validateSettings(value: unknown): NotebookSettings {
   }
   const conflicts = shortcutConflicts(shortcuts);
   if (conflicts.length) throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
-  return { autosaveDelay: settings.autosaveDelay, theme: settings.theme, fontSize: settings.fontSize, shortcuts };
+  return {
+    autosaveDelay: settings.autosaveDelay,
+    theme: settings.theme,
+    fontSize: settings.fontSize,
+    shortcuts,
+    vaultLockMinutes,
+    noteEditLockMinutes,
+  };
 }
