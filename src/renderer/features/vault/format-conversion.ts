@@ -2,12 +2,18 @@ import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import { sanitizeNoteHtml } from './sanitize-html';
 
+const MARKDOWN_SPECIAL_CHARACTERS = new Set('\\`*_{}[]()#+.!|>-');
+
 export function markdownToHtml(source: string, render: (source: string) => string) {
   return DOMPurify.sanitize(render(source));
 }
 
 function inlineMarkdown(node: Node): string {
-  if (node.nodeType === Node.TEXT_NODE) return (node.textContent ?? '').replace(/[\\`*_{}[\]()#+.!|>-]/g, '\\$&');
+  if (node.nodeType === Node.TEXT_NODE) {
+    return Array.from(node.textContent ?? '', (character) =>
+      MARKDOWN_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
+    ).join('');
+  }
   if (!(node instanceof HTMLElement)) return '';
   const content = Array.from(node.childNodes, inlineMarkdown).join('');
   switch (node.tagName.toLowerCase()) {

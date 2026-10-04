@@ -31,6 +31,11 @@ describe('note format conversion', () => {
     ).toContain('CSS classes, inline styling');
   });
 
+  it('escapes backslashes in plain HTML text when converting to Markdown', () => {
+    const markdown = convertNoteContent('<p>Folder \\path\\file</p>', 'html', 'markdown', 'Notes/Entry.md');
+    expect(markdown).toBe('Folder \\\\path\\\\file');
+  });
+
   it('warns that conversion keeps a sibling copy and may not preserve unsupported syntax', () => {
     const warning = formatConversionWarning('<custom-widget>data</custom-widget>', 'html', 'markdown');
     expect(warning).toContain('sibling copy');

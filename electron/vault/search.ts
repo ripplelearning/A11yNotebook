@@ -311,10 +311,7 @@ export function createSearchIndex(root: string) {
               extension === '.md'
                 ? content.match(/^#\s+(.+)$/m)?.[1]?.trim()
                 : extension === '.html'
-                  ? content
-                      .match(/<h1\b[^>]*>([\s\S]*?)<\/h1>/i)?.[1]
-                      ?.replace(/<[^>]*>/g, '')
-                      .trim()
+                  ? content.match(/<h1\b[^>]*>([^<]*)<\/h1>/i)?.[1]?.trim()
                   : undefined;
             next.set(relative, {
               path: relative,
