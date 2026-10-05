@@ -46,6 +46,7 @@ export default function SettingsDialog({
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState('');
   const [recoveryKey, setRecoveryKey] = useState('');
   const [recoverySaved, setRecoverySaved] = useState(false);
+  const [recoveryPreparing, setRecoveryPreparing] = useState(false);
   const [recoveryPassword, setRecoveryPassword] = useState('');
   const [revokePassword, setRevokePassword] = useState('');
   const recoveryKeyInput = useRef<HTMLInputElement>(null);
@@ -279,12 +280,15 @@ export default function SettingsDialog({
                   </label>
                   <button
                     type="button"
-                    disabled={recoveryPassword.length < 8}
+                    disabled={recoveryPreparing || recoveryPassword.length < 8}
                     onClick={() => {
+                      setRecoveryPreparing(true);
+                      setRecoverySaved(false);
                       void onPrepareRecovery(recoveryPassword)
                         .then(setRecoveryKey)
                         .then(() => setRecoveryPassword(''))
-                        .catch(() => setError('Could not prepare recovery. Check the current password and try again.'));
+                        .catch(() => setError('Could not prepare recovery. Check the current password and try again.'))
+                        .finally(() => setRecoveryPreparing(false));
                     }}
                   >
                     {recoveryAvailable ? 'Generate replacement recovery key' : 'Enable vault recovery'}

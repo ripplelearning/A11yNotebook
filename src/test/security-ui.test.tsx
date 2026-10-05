@@ -93,6 +93,42 @@ describe('security controls', () => {
     expect(await screen.findByText('Recovery key saved and enabled.')).toHaveAttribute('role', 'status');
   });
 
+  it('prevents overlapping recovery preparation and allows retry after a failure', async () => {
+    let rejectPreparation!: (error: Error) => void;
+    const onPrepareRecovery = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectPreparation = reject;
+        }),
+    );
+    onPrepareRecovery.mockResolvedValue('A'.repeat(43));
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        securityEnabled
+        onPrepareRecovery={onPrepareRecovery}
+        onAcknowledgeRecovery={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Current vault password'), {
+      target: { value: 'correct horse battery' },
+    });
+    const prepare = screen.getByRole('button', { name: 'Enable vault recovery' });
+    fireEvent.click(prepare);
+    expect(prepare).toBeDisabled();
+    fireEvent.click(prepare);
+    expect(onPrepareRecovery).toHaveBeenCalledOnce();
+    rejectPreparation(new Error('Preparation failed'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not prepare recovery');
+    await waitFor(() => expect(prepare).toBeEnabled());
+    fireEvent.click(prepare);
+    await waitFor(() => expect(screen.getByLabelText('One-time vault recovery key')).toHaveValue('A'.repeat(43)));
+    expect(onPrepareRecovery).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Confirm saved recovery key' })).toBeDisabled();
+  });
+
   it('saves configurable idle and unsaved-edit lock delays', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();

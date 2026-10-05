@@ -403,6 +403,20 @@ describe('extended vault IPC integration', () => {
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
   });
+  it('cleans up credentials saved after recovery preparation', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await invoke(IPC_CHANNELS.vaultCredentialsDelete, 'example');
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([]);
+  });
   it('keeps the legacy security record and credentials when atomic recovery migration fails', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     mock.securityWriteCount = 0;
