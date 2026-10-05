@@ -1,6 +1,7 @@
 import type { TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
 import { ViewportTransform } from './viewport-transform';
 import { explicitPdfArtifactType, type PdfArtifactType } from './reading-preferences';
+import type { PdfAnnotationTarget } from '../../shared/pdf-annotation';
 
 export type PdfTextPart = TextItem | (TextMarkedContent & { tag?: string | null });
 export type TextCoordinates = [number, number, number, number];
@@ -32,13 +33,79 @@ export interface MarkedContentRange {
 
 export type QuoteLocation = number | 'ambiguous' | 'not found';
 
+export type PdfAnchorResolution =
+  | {
+      orphaned?: false;
+      offset: number;
+      page: number;
+      length?: number;
+      classification: Exclude<PdfAnnotationTarget['classification'], 'orphan'>;
+      confidence: PdfAnnotationTarget['confidence'];
+      verification: 'verified' | 'unverified';
+      reason: string;
+    }
+  | {
+      orphaned: true;
+      classification: 'orphan';
+      confidence: 'uncertain';
+      verification?: 'verified' | 'unverified';
+      reason: string;
+    };
+
+function validIdentity(identity: unknown): identity is PdfAnnotationTarget['documentIdentity'] {
+  if (!identity || typeof identity !== 'object') return false;
+  return ['fingerprint', 'fileHash', 'vaultPath'].every(
+    (key) =>
+      typeof (identity as Record<string, unknown>)[key] === 'string' &&
+      (identity as Record<string, string>)[key].length > 0,
+  );
+}
+
+export function isValidPdfAnchor(target: unknown): target is PdfAnnotationTarget {
+  if (!target || typeof target !== 'object') return false;
+  const value = target as PdfAnnotationTarget;
+  return (
+    value.kind === 'pdf' &&
+    validIdentity(value.documentIdentity) &&
+    Number.isSafeInteger(value.page) &&
+    value.page > 0 &&
+    Number.isSafeInteger(value.canonicalStart) &&
+    value.canonicalStart >= 0 &&
+    Number.isSafeInteger(value.canonicalLength) &&
+    value.canonicalLength > 0 &&
+    Number.isSafeInteger(value.canonicalStart + value.canonicalLength) &&
+    ['exactQuote', 'normalizedQuote', 'contextBefore', 'contextAfter'].every(
+      (key) => typeof (value as unknown as Record<string, unknown>)[key] === 'string',
+    ) &&
+    value.exactQuote.length > 0 &&
+    value.exactQuote.length === value.canonicalLength &&
+    value.normalizedQuote === normalize(value.exactQuote) &&
+    ['exact', 'context-disambiguated', 'normalized', 'ambiguous', 'orphan'].includes(value.classification) &&
+    ['certain', 'probable', 'uncertain'].includes(value.confidence) &&
+    (value.verification === undefined || ['verified', 'unverified'].includes(value.verification)) &&
+    (value.structPath === undefined || typeof value.structPath === 'string') &&
+    (value.reason === undefined || typeof value.reason === 'string')
+  );
+}
+
+export function malformedStoredAnchorResolution(target: PdfAnnotationTarget): PdfAnchorResolution | undefined {
+  if (
+    target.classification !== 'orphan' ||
+    !/^Stored (?:grouped )?PDF target was malformed\b/u.test(target.reason ?? '')
+  ) {
+    return undefined;
+  }
+  return {
+    orphaned: true,
+    classification: 'orphan',
+    confidence: 'uncertain',
+    verification: 'unverified',
+    reason: target.reason!,
+  };
+}
+
 function normalize(value: string): string {
-  return value
-    .replace(/\u00ad/g, '')
-    .normalize('NFKC')
-    .replace(/\s+/gu, ' ')
-    .trim()
-    .toLocaleLowerCase();
+  return normalizedOffsets(value).text;
 }
 
 function normalizedOffsets(text: string): { text: string; offsets: number[]; ends: number[] } {
@@ -49,21 +116,23 @@ function normalizedOffsets(text: string): { text: string; offsets: number[]; end
 
   for (const { segment, index } of new Intl.Segmenter().segment(text)) {
     const end = index + segment.length;
-    if (segment === '\u00ad') {
-      continue;
-    }
-    if (/^\s+$/u.test(segment)) {
-      if (normalized) pendingSpace = { start: pendingSpace?.start ?? index, end };
-      continue;
-    }
-    if (pendingSpace) {
-      normalized += ' ';
-      offsets.push(pendingSpace.start);
-      ends.push(pendingSpace.end);
-      pendingSpace = undefined;
-    }
-    const folded = segment.normalize('NFKC').toLocaleLowerCase();
-    for (const unit of folded) {
+    const folded = segment
+      .replace(/\u00ad/g, '')
+      .normalize('NFKC')
+      .toLowerCase();
+    // Canonical offsets and string searches use UTF-16 units, including expansions and surrogate pairs.
+    for (let unitIndex = 0; unitIndex < folded.length; unitIndex += 1) {
+      const unit = folded[unitIndex];
+      if (/\s/u.test(unit)) {
+        if (normalized) pendingSpace = { start: pendingSpace?.start ?? index, end };
+        continue;
+      }
+      if (pendingSpace) {
+        normalized += ' ';
+        offsets.push(pendingSpace.start);
+        ends.push(pendingSpace.end);
+        pendingSpace = undefined;
+      }
       normalized += unit;
       offsets.push(index);
       ends.push(end);
@@ -82,15 +151,18 @@ export class TextModel {
   view: [number, number, number, number];
   private readonly sourceOffsets: number[];
   private readonly sourceEnds: number[];
+  private identity?: PdfAnnotationTarget['documentIdentity'];
 
   constructor(
     pdfTextItems: PdfTextPart[],
     markedContentMap: Map<string, MarkedContentRange> = new Map(),
     view: [number, number, number, number] = [0, 0, 612, 792],
     page = 1,
+    identity?: PdfAnnotationTarget['documentIdentity'],
   ) {
     this.view = view;
     this.page = page;
+    if (identity) this.setDocumentIdentity(identity);
     this.markedContentMap = new Map(markedContentMap);
     const activeMarkedContent: string[] = [];
     const activeArtifacts: Array<PdfArtifactType | undefined> = [];
@@ -148,6 +220,137 @@ export class TextModel {
 
   setView(view: [number, number, number, number]): void {
     this.view = view;
+  }
+
+  get documentIdentity(): PdfAnnotationTarget['documentIdentity'] | undefined {
+    return this.identity ? { ...this.identity } : undefined;
+  }
+
+  setDocumentIdentity(identity: PdfAnnotationTarget['documentIdentity']): void {
+    if (!validIdentity(identity)) throw new TypeError('A complete PDF document identity is required.');
+    this.identity = { ...identity };
+  }
+
+  createAnchor(pageNum: number, start: number, length: number): PdfAnnotationTarget {
+    if (!this.identity) throw new Error('PDF document identity is required to create an annotation anchor.');
+    if (
+      pageNum !== this.page ||
+      !Number.isSafeInteger(pageNum) ||
+      pageNum < 1 ||
+      !Number.isSafeInteger(start) ||
+      !Number.isSafeInteger(length) ||
+      start < 0 ||
+      length <= 0 ||
+      start + length > this.fullText.length
+    ) {
+      throw new RangeError('PDF annotation range must be within its canonical page text.');
+    }
+    const target: PdfAnnotationTarget = {
+      kind: 'pdf',
+      documentIdentity: { ...this.identity },
+      page: pageNum,
+      canonicalStart: start,
+      canonicalLength: length,
+      ...this.extractQuote(start, length),
+      classification: 'exact',
+      confidence: 'certain',
+      verification: 'verified',
+    };
+    const resolution = this.resolveAnchor(target);
+    return {
+      ...target,
+      classification: resolution.classification,
+      confidence: resolution.confidence,
+      ...(resolution.classification === 'ambiguous' ? { reason: resolution.reason } : {}),
+    };
+  }
+
+  resolveAnchor(target: PdfAnnotationTarget): PdfAnchorResolution {
+    if (!isValidPdfAnchor(target)) {
+      return {
+        orphaned: true,
+        classification: 'orphan',
+        confidence: 'uncertain',
+        reason: 'Malformed PDF annotation target.',
+      };
+    }
+    const malformedStored = malformedStoredAnchorResolution(target);
+    if (malformedStored) return malformedStored;
+    if (!this.identity) {
+      return {
+        orphaned: true,
+        classification: 'orphan',
+        confidence: 'uncertain',
+        reason: 'PDF document identity is unavailable.',
+      };
+    }
+    if (this.identity.vaultPath !== target.documentIdentity.vaultPath) {
+      return {
+        orphaned: true,
+        classification: 'orphan',
+        confidence: 'uncertain',
+        verification: 'unverified',
+        reason: 'PDF vault path does not match the annotation document identity.',
+      };
+    }
+    const changed = this.identity.fileHash !== target.documentIdentity.fileHash;
+    const verification = changed || target.verification === 'unverified' ? 'unverified' : 'verified';
+    const suffix = changed
+      ? ' File hash changed; manual reconfirmation is required before highlighting.'
+      : verification === 'unverified'
+        ? ' Manual reconfirmation is required before highlighting.'
+        : '';
+    const result = (
+      offset: number,
+      length: number | undefined,
+      classification: Exclude<PdfAnnotationTarget['classification'], 'orphan'>,
+      reason: string,
+    ): PdfAnchorResolution => ({
+      offset,
+      page: this.page,
+      ...(length !== undefined ? { length } : {}),
+      classification,
+      confidence:
+        classification === 'ambiguous'
+          ? 'uncertain'
+          : classification === 'normalized' || verification === 'unverified'
+            ? 'probable'
+            : 'certain',
+      verification,
+      reason: reason + suffix,
+    });
+    const exact: Array<{ startOffset: number; length: number }> = [];
+    let index = 0;
+    while ((index = this.fullText.indexOf(target.exactQuote, index)) !== -1) {
+      exact.push({ startOffset: index, length: target.exactQuote.length });
+      index += 1;
+    }
+    if (exact.length === 1)
+      return result(exact[0].startOffset, exact[0].length, 'exact', 'Unique exact quote on this page.');
+    const matches = exact.length ? exact : this.findText(target.normalizedQuote || target.exactQuote);
+    if (matches.length === 1)
+      return result(matches[0].startOffset, matches[0].length, 'normalized', 'Unique normalized quote on this page.');
+    if (matches.length > 1) {
+      const contextual = matches.filter(({ startOffset, length }) =>
+        this.matchesContext(startOffset, length, target.contextBefore, target.contextAfter),
+      );
+      if (contextual.length === 1) {
+        return result(
+          contextual[0].startOffset,
+          contextual[0].length,
+          exact.length ? 'context-disambiguated' : 'normalized',
+          'Quote uniquely identified by surrounding context.',
+        );
+      }
+      return result(-1, undefined, 'ambiguous', 'Multiple quote matches remain; manual reconfirmation is required.');
+    }
+    return {
+      orphaned: true,
+      classification: 'orphan',
+      confidence: 'uncertain',
+      verification,
+      reason: 'Quote not found on this page.' + suffix,
+    };
   }
 
   offsetToCoordinates(offset: number, zoom = 1, rotation = 0): TextCoordinates | null {
@@ -241,6 +444,7 @@ export class TextModel {
     }
 
     const needle = normalize(exactQuote);
+    if (!needle) return 'not found';
     const contextualBefore = normalize(contextBefore);
     const contextualAfter = normalize(contextAfter);
     const normalized = normalizedOffsets(this.fullText);

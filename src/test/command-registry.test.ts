@@ -63,6 +63,21 @@ describe('command registry', () => {
     expect(new Set(COMMANDS.map((command) => command.label)).size).toBe(COMMANDS.length);
   });
 
+  it('offers PDF annotation actions only in their matching contexts without conflicting default shortcuts', () => {
+    expect(getContextMenuCommands('pdf-selection', true).map(({ id }) => id)).toEqual(['annotate-pdf-selection']);
+    expect(getContextMenuCommands('pdf-selection', false)).toEqual([]);
+    expect(getContextMenuCommands('pdf-semantic').map(({ id }) => id)).toEqual(['annotate-current-semantic-element']);
+    expect(getContextMenuCommands('pdf-semantic', true).map(({ id }) => id)).toEqual([
+      'annotate-pdf-selection',
+      'annotate-current-semantic-element',
+    ]);
+    expect(getContextMenuCommands('editor-selection', true).map(({ id }) => id)).not.toContain(
+      'annotate-pdf-selection',
+    );
+    const shortcuts = getKeyboardShortcuts().map(({ shortcut }) => shortcut);
+    expect(new Set(shortcuts).size).toBe(shortcuts.length);
+  });
+
   it('dispatches check-for-updates to the updater', () => {
     const context = createContext();
     expect(dispatchCommand('check-for-updates', context)).toBeUndefined();

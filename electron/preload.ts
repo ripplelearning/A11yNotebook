@@ -45,6 +45,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultAnnotationAdd: 'vault:annotation-add',
   vaultAnnotationUpdate: 'vault:annotation-update',
   vaultAnnotationDelete: 'vault:annotation-delete',
+  vaultPdfAnnotations: 'vault:pdf-annotations',
+  vaultPdfAnnotationAdd: 'vault:pdf-annotation-add',
+  vaultPdfAnnotationUpdate: 'vault:pdf-annotation-update',
+  vaultPdfAnnotationDelete: 'vault:pdf-annotation-delete',
   vaultReadAttachment: 'vault:read-attachment',
   vaultImageAlt: 'vault:image-alt',
   vaultSaveImageAlt: 'vault:save-image-alt',
@@ -122,6 +126,11 @@ const bridge: NotebookBridge = {
     updateAnnotation: (relativePath, id, update) =>
       ipcRenderer.invoke(CHANNELS.vaultAnnotationUpdate, relativePath, id, update),
     deleteAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultAnnotationDelete, relativePath, id),
+    listPdfAnnotations: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfAnnotations, relativePath),
+    addPdfAnnotation: (annotation) => ipcRenderer.invoke(CHANNELS.vaultPdfAnnotationAdd, annotation),
+    updatePdfAnnotation: (relativePath, id, update) =>
+      ipcRenderer.invoke(CHANNELS.vaultPdfAnnotationUpdate, relativePath, id, update),
+    deletePdfAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultPdfAnnotationDelete, relativePath, id),
     readAttachment: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadAttachment, relativePath),
     getImageAlt: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImageAlt, relativePath),
     saveImageAlt: (relativePath, alt) => ipcRenderer.invoke(CHANNELS.vaultSaveImageAlt, relativePath, alt),

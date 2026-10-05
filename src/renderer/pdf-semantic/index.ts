@@ -6,6 +6,7 @@ export {
   type TextCoordinates,
   type TextItemRange,
   type TextQuote,
+  type PdfAnchorResolution,
 } from './text-model';
 export { StructAdapter, type SemanticNode, type SemanticProperties } from './struct-adapter';
 export { HeuristicClassifier, type InferredPage } from './heuristic-classifier';

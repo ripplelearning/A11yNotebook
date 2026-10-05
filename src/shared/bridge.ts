@@ -3,6 +3,7 @@ import type { UpdaterStatus } from './updater';
 import type { VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
+import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
 import type { AttachmentPreview } from './attachments';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
@@ -27,6 +28,10 @@ export interface VaultBridge {
   addAnnotation(annotation: NewAnnotation): Promise<NoteAnnotation>;
   updateAnnotation(path: string, id: string, update: AnnotationUpdate): Promise<NoteAnnotation>;
   deleteAnnotation(path: string, id: string): Promise<void>;
+  listPdfAnnotations(path: string): Promise<PdfAnnotation[]>;
+  addPdfAnnotation(annotation: NewPdfAnnotation): Promise<PdfAnnotation>;
+  updatePdfAnnotation(path: string, id: string, update: PdfAnnotationUpdate): Promise<PdfAnnotation>;
+  deletePdfAnnotation(path: string, id: string): Promise<void>;
   readAttachment(path: string): Promise<AttachmentPreview>;
   getImageAlt(path: string): Promise<string>;
   saveImageAlt(path: string, alt: string): Promise<void>;
