@@ -143,11 +143,10 @@ export class TextModel {
   offsetToCoordinates(offset: number, zoom = 1, rotation = 0): TextCoordinates | null {
     const item = this.items.find((candidate) => offset >= candidate.startOffset && offset < candidate.endOffset);
     if (!item?.transform) return null;
-    const [, , , , x, y] = item.transform;
     const transform = new ViewportTransform(this.view, zoom, rotation);
-    const point = transform.pdfPoint(x, y);
-    const bounds = transform.pdfRect(x, y, item.width, item.height || item.transform[0] || 12);
-    return [point[0], point[1] - bounds[3], bounds[2], bounds[3]];
+    const textLength = Math.max(1, item.text.length - (item.hasEOL ? 1 : 0));
+    const characterOffset = Math.min(textLength - 1, Math.max(0, offset - item.startOffset));
+    return this.itemCoordinates(item, characterOffset / textLength, (characterOffset + 1) / textLength, transform);
   }
 
   coordinatesToOffset(x: number, y: number, zoom = 1, rotation = 0): number | null {
@@ -156,22 +155,32 @@ export class TextModel {
 
     for (const item of this.items) {
       if (!item.transform || !item.text.length) continue;
-      const [, , , , pdfX, pdfY] = item.transform;
-      const bounds = transform.pdfRect(pdfX, pdfY, item.width, item.height || item.transform[0] || 12);
+      const bounds = this.itemCoordinates(item, 0, 1, transform);
+      const [a, b, , , pdfX, pdfY] = item.transform;
+      const baselineLength = Math.hypot(a, b) || 1;
+      const origin = transform.pdfPoint(pdfX, pdfY);
+      const endpoint = transform.pdfPoint(
+        pdfX + (a / baselineLength) * item.width,
+        pdfY + (b / baselineLength) * item.width,
+      );
+      const baselineX = endpoint[0] - origin[0];
+      const baselineY = endpoint[1] - origin[1];
+      const baselineSquare = baselineX * baselineX + baselineY * baselineY;
+      const fraction =
+        baselineSquare > 0
+          ? Math.max(0, Math.min(1, ((x - origin[0]) * baselineX + (y - origin[1]) * baselineY) / baselineSquare))
+          : 0;
       const left = bounds[0];
-      const top = bounds[1] - bounds[3];
+      const top = bounds[1];
       const right = left + bounds[2];
-      const bottom = bounds[1];
+      const bottom = top + bounds[3];
       const dx = x < left ? left - x : x > right ? x - right : 0;
       const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
       const distance = dx * dx + dy * dy;
       if (!nearest || distance < nearest.distance) {
-        const fraction =
-          item.width && (transform.rotation === 90 || transform.rotation === 270)
-            ? Math.max(0, Math.min(1, (transform.rotation === 90 ? y - top : bottom - y) / bounds[3]))
-            : Math.max(0, Math.min(1, (transform.rotation === 180 ? right - x : x - left) / Math.max(bounds[2], 1)));
+        const textLength = Math.max(1, item.text.length - (item.hasEOL ? 1 : 0));
         nearest = {
-          offset: Math.min(item.endOffset - 1, item.startOffset + Math.round(fraction * item.text.length)),
+          offset: Math.min(item.endOffset - 1, item.startOffset + Math.floor(fraction * textLength)),
           distance,
         };
       }
@@ -246,5 +255,35 @@ export class TextModel {
     const beforeMatches = !before || normalize(this.fullText.slice(0, start)).endsWith(normalize(before));
     const afterMatches = !after || normalize(this.fullText.slice(quoteEnd)).startsWith(normalize(after));
     return beforeMatches && afterMatches;
+  }
+
+  private itemCoordinates(
+    item: TextItemRange,
+    startFraction: number,
+    endFraction: number,
+    viewport: ViewportTransform,
+  ): TextCoordinates {
+    const [a, b, c, d, x, y] = item.transform!;
+    const baselineLength = Math.hypot(a, b) || 1;
+    const verticalLength = Math.hypot(c, d) || 1;
+    const baselineX = a / baselineLength;
+    const baselineY = b / baselineLength;
+    const verticalX = (c / verticalLength) * (item.height || verticalLength);
+    const verticalY = (d / verticalLength) * (item.height || verticalLength);
+    const startX = x + baselineX * item.width * startFraction;
+    const startY = y + baselineY * item.width * startFraction;
+    const endX = x + baselineX * item.width * endFraction;
+    const endY = y + baselineY * item.width * endFraction;
+    const corners = [
+      viewport.pdfPoint(startX, startY),
+      viewport.pdfPoint(endX, endY),
+      viewport.pdfPoint(startX + verticalX, startY + verticalY),
+      viewport.pdfPoint(endX + verticalX, endY + verticalY),
+    ];
+    const xs = corners.map(([pointX]) => pointX);
+    const ys = corners.map(([, pointY]) => pointY);
+    const left = Math.min(...xs);
+    const top = Math.min(...ys);
+    return [left, top, Math.max(...xs) - left, Math.max(...ys) - top];
   }
 }

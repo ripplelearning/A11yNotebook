@@ -53,8 +53,13 @@ describe('canonical PDF text model', () => {
     const rotated = model.offsetToCoordinates(0, 1, 90);
     expect(original).not.toBeNull();
     expect(zoomed?.[0]).toBe(original![0] * 2);
+    expect(zoomed?.[2]).toBe(original![2] * 2);
     expect(rotated).not.toEqual(original);
     expect(model.coordinatesToOffset(original![0] + 1, original![1] + 1, 1, 0)).toBeGreaterThanOrEqual(0);
+    const fifthCharacter = model.offsetToCoordinates(5, 1, 0)!;
+    expect(fifthCharacter[0]).toBeGreaterThan(original![0]);
+    expect(fifthCharacter[2]).toBeLessThan(model.items[0].width);
+    expect(model.coordinatesToOffset(fifthCharacter[0] + fifthCharacter[2] / 2, fifthCharacter[1] + 1, 1, 0)).toBe(5);
     expect(model.findText('text')[0].page).toBe(4);
   });
 
