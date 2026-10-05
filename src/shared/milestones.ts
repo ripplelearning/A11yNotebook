@@ -25,6 +25,13 @@ export interface Milestone {
   progress: MilestoneProgress;
 }
 
+export type MilestoneRecord = Omit<Milestone, 'progress'>;
+
+export interface MilestoneStore {
+  version: 1;
+  milestones: MilestoneRecord[];
+}
+
 export interface NewMilestone {
   title: string;
   dueDate: string;

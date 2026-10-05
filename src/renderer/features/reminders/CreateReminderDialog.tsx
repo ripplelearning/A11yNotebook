@@ -107,7 +107,9 @@ export default function CreateReminderDialog({
         <select
           id={`${id}-snooze`}
           value={snooze}
-          onChange={(event) => setSnooze(event.target.value === 'tomorrow' ? 'tomorrow' : (Number(event.target.value) as 5 | 15 | 60))}
+          onChange={(event) =>
+            setSnooze(event.target.value === 'tomorrow' ? 'tomorrow' : (Number(event.target.value) as 5 | 15 | 60))
+          }
         >
           <option value="5">5 minutes</option>
           <option value="15">15 minutes</option>
@@ -115,7 +117,11 @@ export default function CreateReminderDialog({
           <option value="tomorrow">Tomorrow</option>
         </select>
         <label htmlFor={`${id}-privacy`}>Notification privacy</label>
-        <select id={`${id}-privacy`} value={privacy} onChange={(event) => setPrivacy(event.target.value as typeof privacy)}>
+        <select
+          id={`${id}-privacy`}
+          value={privacy}
+          onChange={(event) => setPrivacy(event.target.value as typeof privacy)}
+        >
           <option value="show-title">Show reminder title</option>
           <option value="hide-title">Hide reminder title</option>
         </select>

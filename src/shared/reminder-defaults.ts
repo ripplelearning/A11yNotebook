@@ -32,6 +32,8 @@ export function validateReminderDefaults(value: unknown): ReminderDefaults {
     ![5, 15, 60, 'tomorrow'].includes(defaults.snooze as SnoozeDuration) ||
     !['show-title', 'hide-title'].includes(defaults.privacy ?? '') ||
     !defaults.notification ||
+    typeof defaults.notification !== 'object' ||
+    Array.isArray(defaults.notification) ||
     typeof defaults.notification.reminders !== 'boolean' ||
     typeof defaults.notification.flashcards !== 'boolean'
   ) {

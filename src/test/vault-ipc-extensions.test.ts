@@ -5,6 +5,8 @@ import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { encryptRecord, unlockVault } from '../../electron/vault/security';
+import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
+import type { Milestone } from '../shared/milestones';
 
 const mock = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
@@ -184,6 +186,123 @@ afterEach(async () => {
 });
 
 describe('extended vault IPC integration', () => {
+  it('persists reminder defaults and applies creation preferences without rewriting existing reminders', async () => {
+    const request = { title: 'Meeting', path: 'Topic.md', scheduledAt: '2099-10-05 12:30' };
+    const original = await invoke(IPC_CHANNELS.vaultReminderCreate, request);
+    const defaults = {
+      ...DEFAULT_REMINDER_DEFAULTS,
+      time: '12:30',
+      privacy: 'hide-title',
+      notification: { reminders: false, flashcards: true },
+    };
+    await invoke(IPC_CHANNELS.vaultReminderDefaultsSet, defaults);
+    expect(await invoke(IPC_CHANNELS.vaultReminders)).toEqual(original);
+    expect(await invoke(IPC_CHANNELS.vaultReminderCreate, { ...request, title: 'Private' })).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          title: 'Private',
+          privacy: 'hide-title',
+          notification: false,
+        }),
+      ]),
+    );
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.vaultReminderDefaultsGet)).toEqual(defaults);
+    await expect(invoke(IPC_CHANNELS.vaultReminderDefaultsSet, { ...defaults, time: '25:00' })).rejects.toThrow();
+    expect(await invoke(IPC_CHANNELS.vaultReminderDefaultsGet)).toEqual(defaults);
+  });
+
+  it('supports milestone CRUD over IPC and preserves associations on folder moves', async () => {
+    await writeFile(path.join(mock.root, 'Folder/Tasks.md'), '- [ ] Work');
+    const milestone = (await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
+      title: 'Project',
+      dueDate: '2026-10-10',
+      status: 'active',
+      notePaths: ['Folder/Tasks.md'],
+      tasks: [{ path: 'Folder/Tasks.md', taskId: 'Folder/Tasks.md:1' }],
+    })) as Milestone;
+    await invoke(IPC_CHANNELS.vaultMove, 'Folder', 'Archive');
+    const [moved] = (await invoke(IPC_CHANNELS.vaultMilestonesGet)) as Milestone[];
+    expect(moved).toMatchObject({ id: milestone.id, notePaths: ['Archive/Tasks.md'] });
+    expect(moved.tasks).toEqual([{ path: 'Archive/Tasks.md', taskId: milestone.tasks[0].taskId }]);
+    expect(await invoke(IPC_CHANNELS.vaultMilestoneUpdate, moved.id, { title: 'Renamed' })).toMatchObject({
+      id: milestone.id,
+      title: 'Renamed',
+    });
+    await invoke(IPC_CHANNELS.vaultMilestoneDelete, moved.id);
+    expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([]);
+  });
+
+  it('rejects defaults and milestone requests from untrusted senders and locked vaults', async () => {
+    const channels = [
+      IPC_CHANNELS.vaultReminderDefaultsGet,
+      IPC_CHANNELS.vaultReminderDefaultsSet,
+      IPC_CHANNELS.vaultMilestonesGet,
+      IPC_CHANNELS.vaultMilestoneCreate,
+      IPC_CHANNELS.vaultMilestoneUpdate,
+      IPC_CHANNELS.vaultMilestoneDelete,
+    ];
+    for (const channel of channels) await expect(mock.handlers.get(channel)!({})).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
+      title: 'Cached',
+      dueDate: '2026-10-10',
+      status: 'planned',
+    });
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    for (const channel of channels) await expect(invoke(channel)).rejects.toThrow('Unlock the vault');
+  });
+
+  it('enforces privacy and notification preferences for task reminders', async () => {
+    mock.disableWatcher = true;
+    try {
+      await invoke(IPC_CHANNELS.vaultOpen);
+      await invoke(IPC_CHANNELS.vaultReminderDefaultsSet, {
+        ...DEFAULT_REMINDER_DEFAULTS,
+        privacy: 'hide-title',
+      });
+
+      await writeFile(path.join(mock.root, 'Topic.md'), '- [ ] Private task remind:2020-01-01 09:00');
+      await invoke(IPC_CHANNELS.vaultReminders);
+      expect(mock.reminderEvents).toContainEqual(
+        expect.objectContaining({
+          type: 'fired',
+          reminder: expect.objectContaining({ title: 'Reminder' }),
+        }),
+      );
+      mock.reminderEvents = [];
+      await invoke(IPC_CHANNELS.vaultReminderDefaultsSet, {
+        ...DEFAULT_REMINDER_DEFAULTS,
+        notification: { reminders: false, flashcards: false },
+      });
+      await writeFile(path.join(mock.root, 'Topic.md'), '- [ ] Silent task remind:2020-01-02 09:00');
+      await invoke(IPC_CHANNELS.vaultReminders);
+      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toEqual([]);
+    } finally {
+      mock.disableWatcher = false;
+    }
+  });
+
+  it('does not redeliver a fired task reminder when a milestone assigns its stable identity', async () => {
+    mock.disableWatcher = true;
+    try {
+      await invoke(IPC_CHANNELS.vaultOpen);
+      await writeFile(path.join(mock.root, 'Topic.md'), '- [ ] Read remind:2020-01-01 09:00');
+      await invoke(IPC_CHANNELS.vaultReminders);
+      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toHaveLength(1);
+      await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
+        title: 'Reading',
+        dueDate: '2026-10-10',
+        status: 'active',
+        tasks: [{ path: 'Topic.md', taskId: 'Topic.md:1' }],
+      });
+      await invoke(IPC_CHANNELS.vaultReminders);
+      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toHaveLength(1);
+    } finally {
+      mock.disableWatcher = false;
+    }
+  });
+
   it('preserves the original repaired note if a replacement write fails partially', async () => {
     mock.partialRepairWrite = true;
     await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('disk full');

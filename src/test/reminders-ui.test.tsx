@@ -6,6 +6,8 @@ import TaskProgressSummaries from '../renderer/features/reminders/TaskProgressSu
 import { groupReminders, type Reminder } from '../shared/reminders';
 import { useReminders } from '../renderer/hooks/useReminders';
 import type { NotebookBridge } from '../shared/bridge';
+import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
+import type { VaultReminderEvent } from '../shared/reminders';
 
 const now = new Date(2026, 9, 5, 10);
 function reminder(id: string, when: Date, status: Reminder['status'] = 'pending'): Reminder {
@@ -28,6 +30,80 @@ const reminders = [
 ];
 
 describe('accessible reminders UI', () => {
+  it('uses persisted creation choices and saves defaults only when requested', async () => {
+    const onCreate = vi.fn();
+    const onSaveDefaults = vi.fn();
+    const defaults = {
+      ...DEFAULT_REMINDER_DEFAULTS,
+      time: '14:30',
+      snooze: 60 as const,
+      privacy: 'hide-title' as const,
+      notification: { reminders: false, flashcards: true },
+    };
+    const { unmount } = render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        defaults={defaults}
+        onSaveDefaults={onSaveDefaults}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Time')).toHaveValue('14:30');
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Private meeting' } });
+    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        title: 'Private meeting',
+        path: 'Study.md',
+        scheduledAt: '2026-10-05 14:30',
+        privacy: 'hide-title',
+        notification: false,
+      }),
+    );
+    expect(onSaveDefaults).not.toHaveBeenCalled();
+    unmount();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        defaults={defaults}
+        onSaveDefaults={onSaveDefaults}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
+    fireEvent.click(screen.getByLabelText('Use these choices as future defaults'));
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() => expect(onSaveDefaults).toHaveBeenCalledWith(defaults));
+  });
+
+  it('announces due flashcard events only for the active vault', async () => {
+    let listener: (event: VaultReminderEvent) => void = () => undefined;
+    const announce = vi.fn();
+    window.a11yNotebook = {
+      vault: {
+        getReminders: async () => [],
+        onReminder: (callback: typeof listener) => {
+          listener = callback;
+          return vi.fn();
+        },
+      },
+    } as unknown as NotebookBridge;
+    try {
+      const { unmount } = renderHook(() => useReminders('/vault', vi.fn(), announce));
+      await act(async () => {
+        listener({ type: 'flashcard-due', vaultPath: '/other' });
+        listener({ type: 'flashcard-due', vaultPath: '/vault' });
+      });
+      expect(announce).toHaveBeenCalledExactlyOnceWith('A flashcard is due for review.');
+      unmount();
+    } finally {
+      delete window.a11yNotebook;
+    }
+  });
+
   it('discards an in-flight reminder load when vault access is removed', async () => {
     let finish: (items: Reminder[]) => void = () => undefined;
     const unsubscribe = vi.fn();
