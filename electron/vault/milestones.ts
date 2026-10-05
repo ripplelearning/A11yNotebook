@@ -1,7 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type {
-  Milestone,
   MilestoneProgress,
+  MilestoneRecord,
+  MilestoneStore,
   MilestoneStatus,
   MilestoneTaskAssociation,
   MilestoneUpdate,
@@ -9,12 +10,7 @@ import type {
 } from '../../src/shared/milestones';
 import type { VaultTask } from '../../src/shared/types';
 import { isReminderPath } from '../../src/shared/reminders';
-
-interface MilestoneRecord extends Omit<Milestone, 'progress'> {}
-interface MilestoneStore {
-  version: 1;
-  milestones: MilestoneRecord[];
-}
+import { parseMarkdownTasks } from './tasks';
 
 interface MilestoneServiceOptions {
   readStore: () => Promise<unknown>;
@@ -47,10 +43,7 @@ function validPath(value: unknown): value is string {
 
 function validTaskAssociation(value: unknown): value is MilestoneTaskAssociation {
   return (
-    object(value) &&
-    validPath(value.path) &&
-    typeof value.taskId === 'string' &&
-    /^[\w-]{8,80}$/.test(value.taskId)
+    object(value) && validPath(value.path) && typeof value.taskId === 'string' && /^[\w-]{8,80}$/.test(value.taskId)
   );
 }
 
@@ -101,18 +94,13 @@ export function validateMilestoneStore(value: unknown): MilestoneStore {
   return { version: 1, milestones };
 }
 
-function milestoneProgress(
-  associations: MilestoneTaskAssociation[],
-  currentTasks: VaultTask[],
-): MilestoneProgress {
-  const completed = associations.filter((association) =>
-    currentTasks.some(
-      (task) => task.path === association.path && task.taskId === association.taskId && task.complete,
-    ),
-  ).length;
-  const found = associations.filter((association) =>
-    currentTasks.some((task) => task.path === association.path && task.taskId === association.taskId),
-  ).length;
+function milestoneProgress(associations: MilestoneTaskAssociation[], currentTasks: VaultTask[]): MilestoneProgress {
+  const resolved = associations.map((association) => {
+    const matches = currentTasks.filter((task) => task.path === association.path && task.taskId === association.taskId);
+    return matches.length === 1 ? matches[0] : undefined;
+  });
+  const completed = resolved.filter((task) => task?.complete).length;
+  const found = resolved.filter((task) => task !== undefined).length;
   const total = associations.length;
   const missing = total - found;
   const percentage = total ? Math.round((completed / total) * 100) : 0;
@@ -120,7 +108,13 @@ function milestoneProgress(
 }
 
 function pathMapper(from: string, to: string) {
-  if (!validPath(from) || !validPath(to)) throw new Error('Invalid milestone migration path.');
+  const validEntryPath = (value: string) =>
+    typeof value === 'string' &&
+    !!value &&
+    !/^[\\/]|^[a-z]:|[\0\r\n\\]/i.test(value) &&
+    value.split('/').every((part) => part !== '' && part !== '.' && part !== '..') &&
+    value.split('/')[0].toLowerCase() !== '.a11ynotebook';
+  if (!validEntryPath(from) || !validEntryPath(to)) throw new Error('Invalid milestone migration path.');
   return (value: string) =>
     value === from || value.startsWith(`${from}/`) ? `${to}${value.slice(from.length)}` : value;
 }
@@ -145,23 +139,31 @@ export function createMilestoneStore(options: MilestoneServiceOptions) {
     tasks: unknown,
     existing: MilestoneTaskAssociation[] = [],
   ): Promise<MilestoneTaskAssociation[]> {
-    if (!Array.isArray(tasks) || tasks.length > 1000 || !tasks.every(validTaskAssociation)) {
+    if (
+      !Array.isArray(tasks) ||
+      tasks.length > 1000 ||
+      !tasks.every(
+        (task) => object(task) && validPath(task.path) && typeof task.taskId === 'string' && task.taskId.length <= 8192,
+      )
+    ) {
       throw new Error('Invalid milestone task associations.');
     }
     const seen = new Set<string>();
     const currentTasks = await options.getTasks();
-    const written: Array<{ path: string; before: string }> = [];
+    const written: Array<{ path: string; before: string; after: string }> = [];
     try {
       const normalized: MilestoneTaskAssociation[] = [];
       for (const reference of tasks) {
         const key = `${reference.path}\0${reference.taskId}`;
         if (seen.has(key)) throw new Error('A task can only be associated once.');
         seen.add(key);
-        let task = currentTasks.find(
+        const matches = currentTasks.filter(
           (candidate) =>
             candidate.path === reference.path &&
             (candidate.id === reference.taskId || candidate.taskId === reference.taskId),
         );
+        if (matches.length > 1) throw new Error('The milestone task identity is ambiguous.');
+        const task = matches[0];
         if (!task) {
           if (existing.some((item) => item.path === reference.path && item.taskId === reference.taskId)) {
             normalized.push({ ...reference });
@@ -170,11 +172,18 @@ export function createMilestoneStore(options: MilestoneServiceOptions) {
           throw new Error('The milestone task no longer exists.');
         }
         if (task.taskId) {
+          const stableKey = `${task.path}\0${task.taskId}`;
+          if (stableKey !== key && seen.has(stableKey)) throw new Error('A task can only be associated once.');
+          seen.add(stableKey);
           normalized.push({ path: task.path, taskId: task.taskId });
           continue;
         }
         if (task.htmlTask || !task.line) throw new Error('The task does not have a stable identity.');
         const before = await options.readNote(task.path);
+        const current = parseMarkdownTasks(before, task.path).find((item) => item.id === task.id);
+        if (!current || current.text !== task.text || current.complete !== task.complete) {
+          throw new Error('The task changed before its identity could be saved.');
+        }
         const lines = before.split(/\r?\n/);
         const line = lines[task.line - 1];
         if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {
@@ -182,22 +191,25 @@ export function createMilestoneStore(options: MilestoneServiceOptions) {
         }
         const id = randomUUID();
         lines[task.line - 1] = `${line.replace(/\s+$/, '')} <!-- a11y-task-id:${id} -->`;
-        await options.saveNote(task.path, lines.join('\n'), before);
-        written.push({ path: task.path, before });
+        const after = lines.join(before.includes('\r\n') ? '\r\n' : '\n');
+        await options.saveNote(task.path, after, before);
+        written.push({ path: task.path, before, after });
         normalized.push({ path: task.path, taskId: id });
-        task = { ...task, taskId: id };
       }
       return normalized;
     } catch (error) {
       for (const item of written.reverse()) {
-        await options.readNote(item.path)
-          .then((current) => options.saveNote(item.path, item.before, current))
-          .catch(() => undefined);
+        await options.saveNote(item.path, item.before, item.after).catch(() => undefined);
       }
       throw error;
     }
   }
-  function inputRecord(value: unknown, id: string, createdAt: string, updatedAt: string): Omit<MilestoneRecord, 'tasks'> & {
+  function inputRecord(
+    value: unknown,
+    id: string,
+    createdAt: string,
+    updatedAt: string,
+  ): Omit<MilestoneRecord, 'tasks'> & {
     tasks?: unknown;
   } {
     if (!object(value)) throw new Error('Invalid milestone.');
@@ -252,8 +264,7 @@ export function createMilestoneStore(options: MilestoneServiceOptions) {
         const record = inputRecord(value, randomUUID(), nowIso, nowIso);
         for (const note of record.notePaths) await options.validateNote(note);
         const tasks = await normalizeTasks(record.tasks);
-        const { tasks: _inputTasks, ...base } = record;
-        await persist(validateMilestoneStore({ version: 1, milestones: [...store.milestones, { ...base, tasks }] }));
+        await persist(validateMilestoneStore({ version: 1, milestones: [...store.milestones, { ...record, tasks }] }));
         return (await present()).find((item) => item.id === record.id)!;
       }),
     updateMilestone: (id: string, update: MilestoneUpdate) =>
@@ -269,11 +280,10 @@ export function createMilestoneStore(options: MilestoneServiceOptions) {
           if (!existing.notePaths.includes(note)) await options.validateNote(note);
         }
         const tasks = await normalizeTasks(record.tasks, existing.tasks);
-        const { tasks: _inputTasks, ...base } = record;
         await persist(
           validateMilestoneStore({
             version: 1,
-            milestones: store.milestones.map((item) => (item.id === id ? { ...base, tasks } : item)),
+            milestones: store.milestones.map((item) => (item.id === id ? { ...record, tasks } : item)),
           }),
         );
         return (await present()).find((item) => item.id === id)!;

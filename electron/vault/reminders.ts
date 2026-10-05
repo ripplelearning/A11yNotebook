@@ -60,9 +60,7 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
     const scheduledAt = date.toISOString();
     return [
       {
-        id: stableId
-          ? `task:${path}:md:${stableId}:${scheduledAt}`
-          : `task:${path}:${index + 1}:${scheduledAt}`,
+        id: stableId ? `task:${path}:md:${stableId}:${scheduledAt}` : `task:${path}:${index + 1}:${scheduledAt}`,
         source: 'task' as const,
         title:
           task[2]
@@ -177,10 +175,7 @@ export function validateReminderStore(value: unknown): ReminderStore {
   if (
     !object(reviewStates) ||
     Object.entries(reviewStates).some(
-      ([id, date]) =>
-        !/^flashcard:.+#[\da-f]{64}$/i.test(id) ||
-        typeof date !== 'string' ||
-        !parseReminderDate(date),
+      ([id, date]) => !/^flashcard:.+#[\da-f]{64}$/i.test(id) || typeof date !== 'string' || !parseReminderDate(date),
     )
   ) {
     throw new Error('Invalid flashcard scheduler state.');
@@ -291,10 +286,17 @@ export function createReminderService(options: ReminderServiceOptions) {
         report(error);
       }
     }
-    for (const review of reviews.filter(
+    reviews = (await options.getFlashcardReviews?.()) ?? [];
+    reviews = reviews.filter(
       (item) =>
-        Date.parse(item.scheduledAt) <= now().getTime() &&
-        store.reviewStates?.[item.id] !== item.scheduledAt,
+        typeof item.id === 'string' &&
+        /^flashcard:.+#[\da-f]{64}$/i.test(item.id) &&
+        isReminderPath(item.path) &&
+        !!parseReminderDate(item.scheduledAt),
+    );
+    reviews = [...new Map(reviews.map((review) => [review.id, review])).values()];
+    for (const review of reviews.filter(
+      (item) => Date.parse(item.scheduledAt) <= now().getTime() && store.reviewStates?.[item.id] !== item.scheduledAt,
     )) {
       if (stopped) return;
       await save({
@@ -309,10 +311,6 @@ export function createReminderService(options: ReminderServiceOptions) {
       }
     }
     reminders = [...tasks, ...standalone].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
-    reviews = (await options.getFlashcardReviews?.()) ?? [];
-    reviews = reviews.filter(
-      (item) => typeof item.id === 'string' && typeof item.path === 'string' && !!parseReminderDate(item.scheduledAt),
-    );
   }
   async function save(next: ReminderStore) {
     await options.writeStore(next);
@@ -464,6 +462,35 @@ export function createReminderService(options: ReminderServiceOptions) {
         }),
       ),
     migratePaths: (from: string, to: string) => serial(() => migratePaths(from, to)),
+    withTaskIdentity: <T>(path: string, before: string, after: string, operation: () => Promise<T>): Promise<T> =>
+      serial(async () => {
+        requireActive();
+        const previous = parseTaskReminders(before, path);
+        const next = parseTaskReminders(after, path);
+        const states = { ...store.states };
+        for (const task of previous) {
+          const replacement = next.find(
+            (item) =>
+              item.line === task.line &&
+              item.title === task.title &&
+              item.originalScheduledAt === task.originalScheduledAt,
+          );
+          if (replacement && replacement.id !== task.id && states[task.id]) {
+            states[replacement.id] = states[task.id];
+            delete states[task.id];
+          }
+        }
+        const result = await operation();
+        try {
+          if (JSON.stringify(states) !== JSON.stringify(store.states)) await save({ ...store, states });
+          await tick();
+        } catch (error) {
+          stopped = true;
+          cancelTimer();
+          throw error;
+        }
+        return result;
+      }),
     /** Serializes relocation with timer work. The callback must not await this service's queued methods.
      * If migration persistence fails after relocation, the scheduler stops; filesystem rollback belongs to the caller.
      */

@@ -173,7 +173,7 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
   const losses =
     from === 'html'
       ? [
-        /<(?:script|style|form|iframe|object|embed|video|audio|svg|math)\b/i.test(source)
+          /<(?:script|style|form|iframe|object|embed|video|audio|svg|math)\b/i.test(source)
             ? 'active or embedded HTML content is not retained'
             : '',
           /\b(?:style|class|colspan|rowspan|data-[\w-]+)\s*=/i.test(source)
@@ -183,6 +183,9 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
         ]
       : [/<[a-z][^>]*>/i.test(source) ? 'raw HTML is not rendered in the converted note' : ''];
   const details = losses.filter(Boolean);
+  if (/data-a11y-task-id\s*=|<!--\s*a11y-task-id:/i.test(source)) {
+    details.push('task identities are copied, but milestone associations remain with the original note');
+  }
   return `Create a ${to.toUpperCase()} sibling copy and keep the original? ${
     details.length
       ? `Possible losses: ${details.join('; ')}.`

@@ -75,7 +75,10 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Markdown and semantic HTML checkbox tasks with optional due dates/priorities, filters, sortable table, and safe source-file toggles.
 - ✅ Task markers and standalone reminders, persisted main-process scheduler, native notification events, snooze/dismiss, startup missed reminders.
 - ✅ Accessible reminder table, grouped Overdue/Today/This week agenda, and notebook completion/progress summaries.
-- ⏳ Notification delivery while the app is closed, named milestones, and reminder-default settings.
+- ✅ Persisted, validated reminder defaults and creation-dialog preferences without rewriting existing reminders.
+- ✅ Named milestone service/typed IPC with stable task associations, move preservation, and live progress.
+- ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and vault switch/lock cancellation.
+- ⏳ Exited-process notification delivery and milestone planning UI.
 - ⛔ Manual Windows notification and screen-reader verification.
 
 ## Phase 6 — Cognitive assets and templates
@@ -133,7 +136,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 ## Other requested roadmap items
 
 - ⏳ Tag and metadata suggestions, general YAML editing, and calendar-like organization are not implemented.
-- 🚧 Notebook task-completion summaries exist; named milestone planning and milestone summaries do not.
+- 🚧 Notebook task-completion summaries and milestone service/progress exist; milestone planning UI remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
 - ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
 - ⏳ Recent-vault selection is not available; the app restores the last opened vault automatically.

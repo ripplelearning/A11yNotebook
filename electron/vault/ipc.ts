@@ -19,7 +19,7 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
-import { createReminderDefaultsStore } from './reminder-defaults';
+import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
 import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import {
@@ -243,7 +243,12 @@ async function openVaultNow(vaultPath: string) {
     writeStore: (value) => metadataFor(nextService).write('milestones.json', value),
     getTasks: () => nextService.getTasks(),
     readNote: (relative) => nextService.readNote(relative),
-    saveNote: (relative, content, expected) => nextService.saveNote(relative, content, expected),
+    saveNote: (relative, content, expected) => {
+      const save = () => nextService.saveNote(relative, content, expected);
+      return service === nextService && reminderService
+        ? reminderService.withTaskIdentity(relative, expected, content, save)
+        : save();
+    },
     validateNote: async (relative) => {
       await nextService.readNote(relative);
     },
@@ -316,10 +321,13 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
         scheduledAt: new Date(`${review.due}T${defaults.time}:00`).toISOString(),
       }));
     },
-    notify: (reminder) => {
-      if (service !== nextService) return;
-      if (reminder.notification === false) return;
-      const visible = reminder.privacy === 'hide-title' ? { ...reminder, title: 'Reminder' } : reminder;
+    notify: async (reminder) => {
+      const preferences =
+        reminder.source === 'task' ? await createReminderDefaultsStore(metadataFor(nextService)).get() : null;
+      if (service !== nextService || (securityConfig && !masterKey)) return;
+      if ((reminder.notification ?? preferences?.notification.reminders) === false) return;
+      const visible =
+        (reminder.privacy ?? preferences?.privacy) === 'hide-title' ? { ...reminder, title: 'Reminder' } : reminder;
       sendReminder({ type: 'fired', vaultPath: vault.path, reminder: visible });
       if (Notification.isSupported()) {
         const notification = new Notification({ title: 'A11y Notebook reminder', body: visible.title });
@@ -338,7 +346,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       }
     },
     notifyFlashcard: () => {
-      if (service !== nextService) return;
+      if (service !== nextService || (securityConfig && !masterKey)) return;
       sendReminder({ type: 'flashcard-due', vaultPath: vault.path });
       if (Notification.isSupported()) {
         const notification = new Notification({
@@ -1020,11 +1028,7 @@ export function setupVaultIpc(
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid reminder.');
     const defaults = await createReminderDefaultsStore(metadataFor(requireService())).get();
     const request = input as CreateReminderInput;
-    await reminderService.createReminder({
-      ...request,
-      privacy: request.privacy ?? defaults.privacy,
-      notification: request.notification ?? defaults.notification.reminders,
-    });
+    await reminderService.createReminder(applyReminderDefaults(request, defaults));
     return reminderService.getReminders();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDismiss, async (event, id: unknown) => {
@@ -1055,23 +1059,47 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestonesGet, async (event) => {
     assertTrusted(event, isTrustedSender);
+    const vault = requireService();
     if (!milestones) throw new Error('Open a vault first.');
-    return milestones.getMilestones();
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.getMilestones();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
+    const vault = requireService();
     if (!milestones) throw new Error('Open a vault first.');
-    return milestones.createMilestone(input as import('../../src/shared/milestones').NewMilestone);
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.createMilestone(input as import('../../src/shared/milestones').NewMilestone);
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneUpdate, async (event, id: unknown, update: unknown) => {
     assertTrusted(event, isTrustedSender);
+    const vault = requireService();
     if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone update.');
-    return milestones.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate);
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate);
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneDelete, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);
+    const vault = requireService();
     if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone.');
-    return milestones.deleteMilestone(id);
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.deleteMilestone(id);
+    });
   });
   protocol.handle('vault-file', async (request) => {
     try {

@@ -42,6 +42,7 @@ export function useReminders(
       if (cancelled || event.vaultPath !== vaultPath) return;
       if (event.type === 'changed' && event.reminders) setReminders(event.reminders);
       if (event.type === 'fired' && event.reminder) announce(`Reminder: ${event.reminder.title}`);
+      if (event.type === 'flashcard-due') announce('A flashcard is due for review.');
       if (event.type === 'open' && event.reminder) openRef.current(event.reminder.path);
       if (event.type === 'error') announce(event.message ?? 'Could not update reminders.');
     });
