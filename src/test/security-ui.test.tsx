@@ -82,6 +82,9 @@ describe('security controls', () => {
     const keyInput = await screen.findByLabelText('One-time vault recovery key');
     await waitFor(() => expect(keyInput).toHaveValue('A'.repeat(43)));
     await waitFor(() => expect(keyInput).toHaveFocus());
+    expect(screen.getByRole('group', { name: 'PDF Reading' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Hide running headers/footers from assistive technology')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hide printed page numbers from assistive technology')).toBeInTheDocument();
     const confirm = screen.getByRole('button', { name: 'Confirm saved recovery key' });
     expect(confirm).toBeDisabled();
     fireEvent.click(screen.getByLabelText('I have saved this recovery key somewhere secure'));
