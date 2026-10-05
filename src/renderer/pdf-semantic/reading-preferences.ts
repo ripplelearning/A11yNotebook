@@ -18,13 +18,20 @@ export function applyPdfReadingPreferences(root: HTMLElement, preferences: PdfRe
   if (root.hasAttribute('data-pdf-artifact-type')) artifacts.unshift(root);
   for (const element of artifacts) {
     const type = element.dataset.pdfArtifactType;
+    const active = element.ownerDocument.activeElement;
+    const focusedRegion =
+      active &&
+      (element.contains(active) ||
+        (active !== element.ownerDocument.body &&
+          active !== element.ownerDocument.documentElement &&
+          active.contains(element)));
     const shouldHide =
       (type === 'page-number'
         ? preferences.hidePageNumbers
         : (type === 'header' || type === 'footer') && preferences.hideHeadersFooters) &&
       !element.closest(protectedSelector) &&
       !element.querySelector(protectedSelector) &&
-      !(element.ownerDocument.activeElement && element.contains(element.ownerDocument.activeElement));
+      !focusedRegion;
     const previous = exposure.get(element);
     if (shouldHide) {
       if (!previous) exposure.set(element, { ariaHidden: element.getAttribute('aria-hidden') });

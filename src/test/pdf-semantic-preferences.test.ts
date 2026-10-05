@@ -197,6 +197,25 @@ describe('PDF semantic reading preferences', () => {
     root.remove();
   });
 
+  it('protects focused ancestors even after their focusable attribute is removed', () => {
+    const root = document.createElement('div');
+    root.tabIndex = -1;
+    root.innerHTML = '<span data-pdf-artifact-type="header">Focused region</span>';
+    document.body.append(root);
+    root.focus();
+    root.removeAttribute('tabindex');
+    applyPdfReadingPreferences(root, headersOnly);
+    expect(root.firstElementChild).not.toHaveAttribute('aria-hidden');
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    applyPdfReadingPreferences(root, headersOnly);
+    expect(root.firstElementChild).toHaveAttribute('aria-hidden', 'true');
+    expect(root.firstElementChild).not.toHaveAttribute('hidden');
+    root.remove();
+    outside.remove();
+  });
+
   it('protects native semantic link regions within explicit artifact roles', () => {
     const model = new TextModel(marked('Header', 'link', 'Important link'));
     const structure = {
