@@ -26,25 +26,50 @@ Multi-file move/link-repair rollback is best effort, not crash-atomic.
 
 ## Password locks and encrypted records
 
-Vault password protection uses scrypt (`N=32768`, `r=8`, `p=1`, 16-byte random salt) to derive a 256-bit key in
-the main process. `security.json` stores only the salt and an AES-GCM-encrypted verifier. The main process caches
-the key until manual lock, configured idle timeout, vault switch, or application exit; locks clear the Buffer and
+Legacy vault password protection uses scrypt (`N=32768`, `r=8`, `p=1`, 16-byte random salt) to derive a 256-bit key in
+the main process. Version-1 `security.json` stores only the salt and an AES-GCM-encrypted verifier. The main process
+caches the key until manual lock, configured idle timeout, vault switch, or application exit; locks clear the Buffer and
 the renderer clears open notes, search results, credentials, and other content state. JavaScript cannot guarantee
 that every copy in memory is erased.
 
 Notes are encrypted only after the user selects **Encrypt note** and supplies a separate note password. Their `.md`
 or `.html` file then contains a versioned AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random salt and stable
 record ID, and authenticated format, domain, and record ID. The note key is derived with scrypt and cached only in
-main-process memory until vault lock, switch, or exit. `credentials.json` stores the encrypted credential list with a
-separate HKDF key domain. Wrong passwords, malformed envelopes, and authentication failures are rejected without
-returning plaintext. Renaming/moving an encrypted note preserves its record ID. The renderer never receives a derived
-key.
+main-process memory until vault lock, switch, or exit. Legacy `credentials.json` stores its encrypted list with a
+separate HKDF key domain; recovery-enabled version-2 vaults keep the authenticated credential envelope in
+`security.json` so credentials and wrapped keys share one atomic migration boundary. Wrong passwords, malformed
+envelopes, and authentication failures are rejected without returning plaintext. Renaming/moving an encrypted note
+preserves its record ID. The renderer never receives a derived key.
+
+### Opt-in vault recovery
+
+Recovery is optional and is not silently enabled when opening a legacy vault. An unlocked user must confirm the current
+vault password, generate a recovery key, save it independently, and explicitly acknowledge that it was saved. The
+one-time key is displayed in an accessible read-only field; it is not written to metadata, logged, or copied to the
+clipboard automatically. The renderer handles the recovery secret only for explicit saving or user-initiated recovery;
+derived keys and the random vault data key remain in the main process.
+
+Recovery migration writes a version-2 `security.json` containing a fresh random 256-bit data key wrapped separately by
+the scrypt-derived password key and the high-entropy random recovery key. AES-256-GCM uses fresh nonces, authenticated
+version/domain/record identifiers, and independent HKDF domains. The configuration authenticates its credential
+envelope and a wrapped copy of the prior vault key, preserving credentials and legacy vault-key-encrypted notes. The
+credential envelope and key wrappers share one atomically replaced JSON file as the migration commit boundary; legacy
+credential ciphertext is removed only after that commit. If the initial write fails, the version-1 security record and
+credentials remain unchanged. If cleanup is interrupted after commit, the vault is locked and reopening retries removal
+before exposing the vault. No plaintext export is part of migration.
+
+Recovery unlock requires the recovery key and a new vault password. The new password wrapper is atomically committed
+before the vault unlocks; the previous password is rejected afterward. The same authenticated flow supports recovery-key
+rotation and revocation after current-password confirmation. Keep recovery keys private and separate from the vault.
+Recovery resets only the vault password: notes encrypted with their own independent passwords remain unrecoverable
+without those note passwords. Recovery is not whole-vault encryption, and it does not protect ordinary files or
+plaintext metadata from direct filesystem access.
 
 Vault idle lock defaults to 15 minutes and can be disabled or set from 1–240 minutes. The optional unsaved-edit
 timeout changes the editor to read-only and requires saving before editing again. This edit timeout is an interface
 guard, not a substitute for OS-level access control.
 
-The encryption dialog can generate a cryptographically random note password. Copying a generated password starts a
+The note-encryption dialog can generate a cryptographically random note password. Copying a generated password starts a
 30-second clipboard timer; the app clears the clipboard only if it still contains that same password, so it does not
 erase unrelated clipboard content.
 
@@ -55,9 +80,9 @@ annotations, settings, reminders, and other metadata remain plaintext. Search in
 its persisted index may contain plaintext; it is not a secure store. Encrypted note content is not searchable and
 does not contribute tasks or link data. HTML task indexing does not decrypt or inspect encrypted note envelopes.
 Credentials are encrypted at rest, but are decrypted into renderer memory
-when the credential manager is open. Password recovery is not implemented. Losing either password makes its encrypted
-records unrecoverable. Recovery keys, encrypted indexes, and whole-vault encryption are not implemented. Protect
-the vault with OS account controls and disk encryption.
+when the credential manager is open. A vault recovery key does not recover independently password-encrypted notes.
+Encrypted indexes, sensitive-action audit logging, and whole-vault encryption are not implemented. Protect the vault
+with OS account controls and disk encryption.
 
 PDF annotation paths are validated inside the current vault, including symlink
 checks. Quotes, context, labels, and comments are stored in plaintext metadata

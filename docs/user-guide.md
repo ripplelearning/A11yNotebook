@@ -194,10 +194,14 @@ settings are not implemented.
 
 Security settings can enable the vault password gate and configure idle locking. Selected notes can use distinct
 passwords through **Encrypt note**; the dialog can generate a password and clear it from the clipboard after 30
-seconds if it has not been replaced. Losing a note password is currently unrecoverable. Vault protection gates app
-access but does not encrypt unmarked files, filenames, search indexes, or most metadata. Recovery keys, whole-vault
-encryption, and sensitive-action audit history are not implemented; see [Security](security.md) before storing
-sensitive information.
+seconds if it has not been replaced. To opt in to vault recovery, open Settings → Vault security while the vault is
+unlocked, confirm the current vault password, then save the displayed one-time recovery key separately and check the
+acknowledgment before committing it. The app never copies the recovery key automatically. Recovery can reset the vault
+password and preserves migrated credentials and vault-key-encrypted notes; it cannot recover notes with independent
+passwords. You can rotate the recovery key after saving its replacement or revoke recovery after confirming the current
+password. Losing a note password is unrecoverable. Vault protection gates app access but does not encrypt unmarked
+files, filenames, search indexes, or most metadata. Encrypted indexes, whole-vault encryption, and sensitive-action
+audit history are not implemented; see [Security](security.md) before storing sensitive information.
 
 ## Keyboard shortcuts
 

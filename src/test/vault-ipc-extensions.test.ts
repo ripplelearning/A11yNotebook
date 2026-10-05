@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
+import { encryptRecord, unlockVault } from '../../electron/vault/security';
 
 const mock = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
@@ -17,6 +18,8 @@ const mock = vi.hoisted(() => ({
   failReminderWrite: false,
   partialRepairWrite: false,
   failRecentWrite: false,
+  failSecurityWriteAt: 0,
+  securityWriteCount: 0,
   savePath: '',
   saveCanceled: false,
   saveOptions: undefined as unknown,
@@ -119,6 +122,9 @@ vi.mock('../../electron/vault/metadata', async (importOriginal) => {
       return {
         ...store,
         write: async (name: string, value: unknown) => {
+          if (name === 'security.json' && ++mock.securityWriteCount === mock.failSecurityWriteAt) {
+            throw new Error('Security metadata write failed.');
+          }
           if (name === 'reminders.json' && mock.failReminderWrite) {
             mock.failReminderWrite = false;
             throw new Error('Reminder migration failed.');
@@ -144,6 +150,8 @@ beforeEach(async () => {
   mock.failReminderWrite = false;
   mock.partialRepairWrite = false;
   mock.failRecentWrite = false;
+  mock.failSecurityWriteAt = 0;
+  mock.securityWriteCount = 0;
   mock.saveCanceled = false;
   mock.saveOptions = undefined;
   mock.notificationsSupported = false;
@@ -261,7 +269,11 @@ describe('extended vault IPC integration', () => {
   it('locks a password-protected vault and encrypts notes with note-specific passwords and credentials', async () => {
     const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
-    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: false });
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({
+      enabled: true,
+      locked: false,
+      recoveryAvailable: false,
+    });
     await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password');
     const encryptedOnDisk = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     expect(encryptedOnDisk).not.toContain('alpha');
@@ -275,7 +287,11 @@ describe('extended vault IPC integration', () => {
     ]);
 
     await invoke(IPC_CHANNELS.vaultSecurityLock);
-    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({
+      enabled: true,
+      locked: true,
+      recoveryAvailable: false,
+    });
     expect(((await invoke(IPC_CHANNELS.vaultGet)) as { entries: unknown[] }).entries).toEqual([]);
     await writeFile(path.join(mock.root, 'Private.png'), new Uint8Array([1, 2, 3]));
     expect((await mock.protocol!({ url: 'vault-file://attachment/Private.png' })).status).toBe(423);
@@ -293,6 +309,140 @@ describe('extended vault IPC integration', () => {
     await invoke(IPC_CHANNELS.vaultSaveNote, 'Topic.md', '# Updated\n', original);
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
+  });
+  it('atomically migrates credentials to a recovery envelope and resets the password without losing legacy notes', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    mock.securityWriteCount = 0;
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    const originalConfig = JSON.parse(
+      await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'),
+    ) as Parameters<typeof unlockVault>[0];
+    const legacyKey = await unlockVault(originalConfig, 'correct horse battery');
+    const encryptedNote = encryptRecord(legacyKey, 'note', 'legacy-note-1', '# Preserved legacy note');
+    legacyKey.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.md'), JSON.stringify(encryptedNote));
+
+    await expect(invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'wrong password')).rejects.toThrow(
+      /Incorrect vault password/,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
+    expect(JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).version).toBe(1);
+    const recoveryKey = (await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery')) as string;
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+
+    const recoverableConfig = JSON.parse(
+      await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'),
+    ) as { version: number };
+    expect(recoverableConfig.version).toBe(2);
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
+    expect(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).not.toContain('secret');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'secondary', 'bob', 'another secret');
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toHaveLength(2);
+    await invoke(IPC_CHANNELS.vaultCredentialsDelete, 'secondary');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).resolves.toBe('# Preserved legacy note');
+
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, 'malformed', 'new vault password')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery')).rejects.toThrow(
+      /Incorrect vault password/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await invoke(IPC_CHANNELS.vaultSaveNote, 'Legacy.md', '# Updated legacy note', '# Preserved legacy note');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).toBe('# Updated legacy note');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({
+      enabled: true,
+      locked: false,
+      recoveryAvailable: true,
+    });
+    const replacementRecoveryKey = (await invoke(
+      IPC_CHANNELS.vaultSecurityPrepareRecovery,
+      'new vault password',
+    )) as string;
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'another password')).rejects.toThrow(
+      /Recovery key/,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, 'new vault password');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ recoveryAvailable: false });
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, replacementRecoveryKey, 'another password')).rejects.toThrow(
+      /not configured/,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    const protectedRoot = mock.root;
+    mock.root = path.join(temporary, 'unprotected-vault');
+    await mkdir(mock.root);
+    await writeFile(path.join(mock.root, 'Other.md'), 'Other vault');
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({
+      enabled: false,
+      locked: false,
+      recoveryAvailable: false,
+    });
+    mock.root = protectedRoot;
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({
+      enabled: true,
+      locked: true,
+      recoveryAvailable: false,
+    });
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+  });
+  it('keeps the legacy security record and credentials when atomic recovery migration fails', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    mock.securityWriteCount = 0;
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+    mock.failSecurityWriteAt = 1;
+    await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true)).rejects.toThrow(
+      /Security metadata write failed/,
+    );
+    const config = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
+    expect(config.version).toBe(1);
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+  });
+  it('retries credential-copy cleanup after an interrupted post-commit recovery migration', async () => {
+    const oldPassword = 'correct horse battery';
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, oldPassword);
+    mock.securityWriteCount = 0;
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, oldPassword);
+    mock.failSecurityWriteAt = 2;
+    await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true)).rejects.toThrow(/Recovery was committed/);
+    const committed = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
+    expect(committed.version).toBe(2);
+    expect(committed.legacyCredentialsCleanupRequired).toBe(true);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ locked: true, recoveryAvailable: true });
+
+    await invoke(IPC_CHANNELS.vaultOpen);
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
   });
   it('requires explicit consent for protected exports and uses the native save dialog', async () => {
     const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');

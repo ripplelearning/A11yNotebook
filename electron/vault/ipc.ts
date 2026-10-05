@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -22,13 +22,21 @@ import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '..
 import { createAssetStore } from './assets';
 import {
   createVaultSecurityConfig,
+  completeRecoverableCredentialMigration,
   decryptPasswordEncryptedNote,
   decryptRecord,
   encryptRecord,
   isEncryptedRecord,
   isPasswordEncryptedNote,
   encryptNoteWithPassword,
+  generateVaultRecoveryKey,
+  prepareVaultRecovery,
   reencryptPasswordNote,
+  resetVaultPasswordWithRecovery,
+  rotateVaultRecoveryKey,
+  updateRecoverableCredentials,
+  updateRecoverableCredentialText,
+  unwrapLegacyVaultKey,
   unlockPasswordEncryptedNote,
   unlockVault,
   type VaultSecurityConfig,
@@ -47,6 +55,7 @@ let assets: ReturnType<typeof createAssetStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
 const noteKeys = new Map<string, Buffer>();
+let pendingRecovery: { config: VaultSecurityConfig; key: Buffer | null; vault: VaultService } | null = null;
 let idleLockTimer: NodeJS.Timeout | undefined;
 let idleLockMinutes = 15;
 let sendSecurityLocked: () => void = () => undefined;
@@ -121,6 +130,8 @@ function lockVault() {
   masterKey = null;
   for (const key of noteKeys.values()) key.fill(0);
   noteKeys.clear();
+  pendingRecovery?.key?.fill(0);
+  pendingRecovery = null;
   if (wasUnlocked) {
     reminderService?.stop();
     reminderService = null;
@@ -153,6 +164,25 @@ async function rememberVault(vaultPath: string) {
   await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath }), 'utf8');
 }
 
+async function removeLegacyCredentialCopy(vault: VaultService) {
+  const credentialPath = await vault.resolveMetadata('credentials.json', true);
+  await unlink(credentialPath).catch((error: NodeJS.ErrnoException) => {
+    if (error.code !== 'ENOENT') throw error;
+  });
+}
+
+async function readVaultSecurityMetadata(vault: VaultService): Promise<unknown> {
+  const filename = await vault.resolveMetadata('security.json', true);
+  const stat = await lstat(filename).catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!stat) return null;
+  if (!stat.isFile() || stat.size > 2 * 1024 * 1024 + 16 * 1024)
+    throw new Error('Vault security metadata exceeds the allowed size.');
+  return JSON.parse(await readFile(filename, 'utf8')) as unknown;
+}
+
 function openVault(vaultPath: string) {
   return serializeVaultOperation(() => openVaultNow(vaultPath));
 }
@@ -175,7 +205,7 @@ async function openVaultNow(vaultPath: string) {
   let nextSecurity: VaultSecurityConfig | null = null;
   try {
     vault = await nextService.initialize();
-    const savedSecurity = await createMetadataStore(nextService).read('security.json');
+    const savedSecurity = await readVaultSecurityMetadata(nextService);
     const savedSettings = await createMetadataStore(nextService).read('settings.json');
     if (savedSettings) {
       try {
@@ -189,6 +219,8 @@ async function openVaultNow(vaultPath: string) {
     if (savedSecurity && typeof savedSecurity === 'object' && !Array.isArray(savedSecurity)) {
       nextSecurity = savedSecurity as VaultSecurityConfig;
     }
+    if (nextSecurity?.version === 2 && nextSecurity.legacyCredentialsCleanupRequired)
+      await removeLegacyCredentialCopy(nextService);
     await rememberVault(vault.path);
   } catch (error) {
     await nextService.dispose().catch(() => undefined);
@@ -295,6 +327,22 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
 function metadataFor(vault: VaultService) {
   if (vault !== service || !metadata) throw new Error('The open vault has changed. Retry the operation.');
   return metadata;
+}
+
+function readVaultEncryptedNote(record: ReturnType<typeof encryptRecord>) {
+  if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
+  try {
+    return decryptRecord(masterKey, 'note', record);
+  } catch (error) {
+    if (securityConfig?.version !== 2) throw error;
+    const legacyKey = unwrapLegacyVaultKey(securityConfig, masterKey);
+    if (!legacyKey) throw error;
+    try {
+      return decryptRecord(legacyKey, 'note', record);
+    } finally {
+      legacyKey.fill(0);
+    }
+  }
 }
 
 async function relocate(relative: string, destination: string) {
@@ -447,39 +495,163 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultSecurityStatus, async (event) => {
     assertTrusted(event, isTrustedSender, true);
     resetIdleLock();
-    return { enabled: securityConfig !== null, locked: securityConfig !== null && masterKey === null };
+    return {
+      enabled: securityConfig !== null,
+      locked: securityConfig !== null && masterKey === null,
+      recoveryAvailable: securityConfig?.version === 2 && securityConfig.recoveryWrappedDataKey !== null,
+    };
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecuritySetup, async (event, password: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (securityConfig) throw new Error('Vault password protection is already configured.');
-    if (typeof password !== 'string') throw new Error('Invalid vault password.');
-    const { config, key } = await createVaultSecurityConfig(password);
-    try {
-      await metadataFor(requireService()).write('security.json', config);
-    } catch (error) {
-      key.fill(0);
-      throw error;
-    }
-    securityConfig = config;
-    masterKey = key;
-    resetIdleLock();
+    return serializeVaultOperation(async () => {
+      if (securityConfig) throw new Error('Vault password protection is already configured.');
+      if (typeof password !== 'string') throw new Error('Invalid vault password.');
+      const { config, key } = await createVaultSecurityConfig(password);
+      try {
+        await metadataFor(requireService()).write('security.json', config);
+      } catch (error) {
+        key.fill(0);
+        throw error;
+      }
+      securityConfig = config;
+      masterKey = key;
+      resetIdleLock();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecurityUnlock, async (event, password: unknown) => {
     assertTrusted(event, isTrustedSender, true);
-    if (!securityConfig || typeof password !== 'string')
-      throw new Error('Vault password protection is not configured.');
-    const key = await unlockVault(securityConfig, password);
-    masterKey?.fill(0);
-    masterKey = key;
-    resetIdleLock();
-    const vault = await requireService().getVault();
-    await startReminders(requireService(), vault);
-    return vault;
+    return serializeVaultOperation(async () => {
+      if (!securityConfig || typeof password !== 'string')
+        throw new Error('Vault password protection is not configured.');
+      const key = await unlockVault(securityConfig, password);
+      masterKey?.fill(0);
+      masterKey = key;
+      resetIdleLock();
+      const vault = await requireService().getVault();
+      await startReminders(requireService(), vault);
+      return vault;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecurityLock, async (event) => {
     assertTrusted(event, isTrustedSender, true);
-    if (!securityConfig) throw new Error('Vault password protection is not configured.');
-    lockVault();
+    return serializeVaultOperation(async () => {
+      if (!securityConfig) throw new Error('Vault password protection is not configured.');
+      lockVault();
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityPrepareRecovery, async (event, password: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      if (!securityConfig || !masterKey || typeof password !== 'string')
+        throw new Error('Unlock the vault and confirm its password before changing recovery.');
+      pendingRecovery?.key?.fill(0);
+      pendingRecovery = null;
+      const recoveryKey = generateVaultRecoveryKey();
+      if (securityConfig.version === 1) {
+        const savedCredentials = await metadataFor(requireService()).read('credentials.json');
+        const credentials = savedCredentials ? decryptRecord(masterKey, 'credentials', savedCredentials) : null;
+        const prepared = await prepareVaultRecovery(securityConfig, password, recoveryKey, credentials);
+        pendingRecovery = { config: prepared.config, key: prepared.key, vault: requireService() };
+      } else {
+        const authenticatedKey = await unlockVault(securityConfig, password);
+        try {
+          if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect vault password.');
+        } finally {
+          authenticatedKey.fill(0);
+        }
+        pendingRecovery = {
+          config: rotateVaultRecoveryKey(securityConfig, masterKey, recoveryKey),
+          key: null,
+          vault: requireService(),
+        };
+      }
+      return recoveryKey;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, async (event, acknowledged: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      const pending = pendingRecovery;
+      if (acknowledged === false) {
+        if (pending?.vault === service) {
+          pending.key?.fill(0);
+          pendingRecovery = null;
+        }
+        return;
+      }
+      if (acknowledged !== true || !pending || pending.vault !== requireService() || !masterKey)
+        throw new Error('Save the recovery key before confirming recovery setup.');
+      const storedCredentials =
+        securityConfig?.version === 2
+          ? securityConfig.credentials
+          : await metadataFor(pending.vault).read('credentials.json');
+      const credentialsText = storedCredentials ? decryptRecord(masterKey, 'credentials', storedCredentials) : null;
+      const dataKey = pending.key ?? masterKey;
+      const committedConfig = updateRecoverableCredentialText(pending.config, dataKey, credentialsText);
+      await metadataFor(pending.vault).write('security.json', committedConfig);
+      const previousKey = masterKey;
+      securityConfig = committedConfig;
+      if (pending.key) masterKey = pending.key;
+      if (pending.key && previousKey !== pending.key) previousKey.fill(0);
+      pendingRecovery = null;
+      if (committedConfig.legacyCredentialsCleanupRequired) {
+        try {
+          await removeLegacyCredentialCopy(pending.vault);
+          const completed = completeRecoverableCredentialMigration(committedConfig, masterKey);
+          await metadataFor(pending.vault).write('security.json', completed);
+          securityConfig = completed;
+        } catch {
+          lockVault();
+          throw new Error(
+            'Recovery was committed, but old credential cleanup is incomplete. Reopen the vault to retry.',
+          );
+        }
+      }
+      resetIdleLock();
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityRecover, async (event, recoveryKey: unknown, newPassword: unknown) => {
+    assertTrusted(event, isTrustedSender, true);
+    return serializeVaultOperation(async () => {
+      if (
+        !securityConfig ||
+        securityConfig.version !== 2 ||
+        masterKey ||
+        typeof recoveryKey !== 'string' ||
+        typeof newPassword !== 'string'
+      )
+        throw new Error('Vault recovery is unavailable or the recovery request is invalid.');
+      const recovered = await resetVaultPasswordWithRecovery(securityConfig, recoveryKey, newPassword);
+      try {
+        await metadataFor(requireService()).write('security.json', recovered.config);
+      } catch (error) {
+        recovered.key.fill(0);
+        throw error;
+      }
+      securityConfig = recovered.config;
+      masterKey = recovered.key;
+      resetIdleLock();
+      const vault = await requireService().getVault();
+      await startReminders(requireService(), vault);
+      return vault;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSecurityRevokeRecovery, async (event, password: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      if (!securityConfig || securityConfig.version !== 2 || !masterKey || typeof password !== 'string')
+        throw new Error('Vault recovery is not configured.');
+      const authenticatedKey = await unlockVault(securityConfig, password);
+      try {
+        if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect vault password.');
+      } finally {
+        authenticatedKey.fill(0);
+      }
+      const revoked = rotateVaultRecoveryKey(securityConfig, masterKey, null);
+      await metadataFor(requireService()).write('security.json', revoked);
+      securityConfig = revoked;
+      resetIdleLock();
+    });
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultNoteEncrypt,
@@ -525,7 +697,10 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultCredentialsRead, async (event) => {
     assertTrusted(event, isTrustedSender);
     if (!masterKey) throw new Error('Unlock the vault first.');
-    const saved = await metadataFor(requireService()).read('credentials.json');
+    const saved =
+      securityConfig?.version === 2
+        ? securityConfig.credentials
+        : await metadataFor(requireService()).read('credentials.json');
     if (!saved) return [];
     const content = decryptRecord(masterKey, 'credentials', saved);
     const parsed: unknown = JSON.parse(content);
@@ -546,51 +721,73 @@ export function setupVaultIpc(
     IPC_CHANNELS.vaultCredentialsSave,
     async (event, id: unknown, username: unknown, password: unknown) => {
       assertTrusted(event, isTrustedSender);
-      if (
-        !masterKey ||
-        typeof id !== 'string' ||
-        !id.trim() ||
-        id.length > 120 ||
-        typeof username !== 'string' ||
-        username.length > 500 ||
-        typeof password !== 'string' ||
-        password.length > 4096
-      )
-        throw new Error('Invalid credential.');
-      const saved = await metadataFor(requireService()).read('credentials.json');
-      const credentials = saved
-        ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as {
-            id: string;
-            username: string;
-            password: string;
-          }[])
-        : [];
-      const normalizedId = id.trim();
-      const next = credentials.filter((item) => item.id !== normalizedId);
-      next.push({ id: normalizedId, username, password });
-      await metadataFor(requireService()).write(
-        'credentials.json',
-        encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next)),
-      );
-      resetIdleLock();
+      return serializeVaultOperation(async () => {
+        if (
+          !masterKey ||
+          typeof id !== 'string' ||
+          !id.trim() ||
+          id.length > 120 ||
+          typeof username !== 'string' ||
+          username.length > 500 ||
+          typeof password !== 'string' ||
+          password.length > 4096
+        )
+          throw new Error('Invalid credential.');
+        const saved =
+          securityConfig?.version === 2
+            ? securityConfig.credentials
+            : await metadataFor(requireService()).read('credentials.json');
+        const credentials = saved
+          ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as {
+              id: string;
+              username: string;
+              password: string;
+            }[])
+          : [];
+        const normalizedId = id.trim();
+        const next = credentials.filter((item) => item.id !== normalizedId);
+        next.push({ id: normalizedId, username, password });
+        const encrypted = encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next));
+        if (securityConfig?.version === 2) {
+          const updated = updateRecoverableCredentials(securityConfig, masterKey, next);
+          await metadataFor(requireService()).write('security.json', updated);
+          securityConfig = updated;
+        } else {
+          await metadataFor(requireService()).write('credentials.json', encrypted);
+        }
+        resetIdleLock();
+      });
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultCredentialsDelete, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (!masterKey || typeof id !== 'string' || id.length > 120) throw new Error('Invalid credential.');
-    const saved = await metadataFor(requireService()).read('credentials.json');
-    if (!saved) return;
-    const credentials = JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string }[];
-    await metadataFor(requireService()).write(
-      'credentials.json',
-      encryptRecord(
+    return serializeVaultOperation(async () => {
+      if (!masterKey || typeof id !== 'string' || id.length > 120) throw new Error('Invalid credential.');
+      const saved =
+        securityConfig?.version === 2
+          ? securityConfig.credentials
+          : await metadataFor(requireService()).read('credentials.json');
+      if (!saved) return;
+      const credentials = JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string }[];
+      const encrypted = encryptRecord(
         masterKey,
         'credentials',
         'credentials-store',
         JSON.stringify(credentials.filter((item) => item.id !== id)),
-      ),
-    );
-    resetIdleLock();
+      );
+      if (securityConfig?.version === 2) {
+        const updated = updateRecoverableCredentials(
+          securityConfig,
+          masterKey,
+          credentials.filter((item) => item.id !== id),
+        );
+        await metadataFor(requireService()).write('security.json', updated);
+        securityConfig = updated;
+      } else {
+        await metadataFor(requireService()).write('credentials.json', encrypted);
+      }
+      resetIdleLock();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown, format: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -832,7 +1029,7 @@ export function setupVaultIpc(
     }
     if (!isEncryptedRecord(parsed)) return content;
     if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
-    return decryptRecord(masterKey, 'note', parsed);
+    return readVaultEncryptedNote(parsed);
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultSaveNote,
@@ -857,7 +1054,7 @@ export function setupVaultIpc(
         await vault.saveNote(relativePath, JSON.stringify(reencryptPasswordNote(key, parsed, content)), onDisk);
       } else if (isEncryptedRecord(parsed)) {
         if (!masterKey) throw new Error('Unlock the vault before editing this encrypted note.');
-        if (expectedContent !== undefined && decryptRecord(masterKey, 'note', parsed) !== expectedContent)
+        if (expectedContent !== undefined && readVaultEncryptedNote(parsed) !== expectedContent)
           throw new Error('Note changed on disk. Resolve the conflict before saving.');
         await vault.saveNote(
           relativePath,
