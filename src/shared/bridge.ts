@@ -47,10 +47,14 @@ export interface VaultBridge {
   createAsset(path: string, content: string): Promise<VaultInfo>;
   getFlashcardSchedules(path: string): Promise<Record<string, CardSchedule>>;
   saveFlashcardSchedule(path: string, id: string, schedule: CardSchedule, expectedContent: string): Promise<void>;
-  getSecurityStatus?(): Promise<{ enabled: boolean; locked: boolean }>;
+  getSecurityStatus?(): Promise<{ enabled: boolean; locked: boolean; recoveryAvailable: boolean }>;
   setupVaultPassword?(password: string): Promise<void>;
   unlockVault?(password: string): Promise<VaultInfo>;
   lockVault?(): Promise<void>;
+  prepareVaultRecovery?(password: string): Promise<string>;
+  acknowledgeVaultRecovery?(acknowledged: boolean): Promise<void>;
+  recoverVault?(recoveryKey: string, newPassword: string): Promise<VaultInfo>;
+  revokeVaultRecovery?(password: string): Promise<void>;
   encryptNote?(path: string, expectedContent: string, password: string): Promise<void>;
   isNoteEncrypted?(path: string): Promise<boolean>;
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;

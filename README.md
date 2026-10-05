@@ -24,7 +24,7 @@ and a sandboxed reader.
 - Built-in and user-editable note templates; outline, mind-map, flashcard, CSV, and Markdown-table tools.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
-- PDF.js-rendered PDF pages with accessible text and search; epub.js text-first section navigation and search. PDF zoom/selectable text layers and ePub visual reflow/TOC remain open.
+- PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub currently has flattened section text navigation/search, with reflow/TOC/annotations still open.
 - Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
@@ -165,14 +165,14 @@ the latest changes.
 
 ## Roadmap summary
 
-This remains an unfinished development build. Vault password gating and selected-note encryption exist, but
-whole-vault encryption, recovery keys, and sensitive-action audit logging do not. PDF.js currently draws a bounded
-canvas page and exposes separately flattened page text; there is no selectable/zoomable text layer. epub.js exposes
-flattened spine-section text, not styled reflow or a navigation TOC. PDF/ePub annotations remain open. Markdown and
-HTML notes support text annotations, with HTML anchored in the sanitized rendered note. HTML tasks, two-format
-templates, sanitized export and HTML capture are implemented with documented metadata and asset limits. Several other
-roadmap items still need implementation, and Windows UI Automation and manual screen-reader validation have not been run.
-See [`docs/roadmap.md`](docs/roadmap.md), [`docs/security.md`](docs/security.md), and the manual accessibility matrix.
+This remains an unfinished development build. Optional recovery keys can reset the vault password while preserving
+credentials and legacy encrypted notes; recovery does not encrypt ordinary vault files or recover independently
+password-encrypted notes. Whole-vault encryption, encrypted indexes, and sensitive-action audit logging remain open.
+PDF reading includes a selectable text layer, zoom/rotation, semantic navigation, search, and persisted annotations;
+sidebar/export/lifecycle refinements remain open. epub.js exposes flattened spine-section text, not styled reflow or a
+navigation TOC, and ePub annotations remain open. Markdown and HTML notes support text annotations, with HTML anchored
+in the sanitized rendered note. Windows UI Automation and manual screen-reader validation have not been run. See the
+[roadmap](docs/roadmap.md), [security notes](docs/security.md), and [dependency-ordered continuation plan](docs/continuation-plan.md).
 No app version was changed and no release was published by this feature work.
 
 ## Documentation
@@ -180,6 +180,7 @@ No app version was changed and no release was published by this feature work.
 - [User guide](docs/user-guide.md)
 - [Architecture](docs/architecture.md)
 - [Security and remaining protection work](docs/security.md)
+- [Dependency-ordered implementation continuation](docs/continuation-plan.md)
 - [Keyboard shortcuts](docs/keyboard-shortcuts.md) (`npm run docs:shortcuts` regenerates this file)
 - [Accessibility testing strategy](docs/accessibility/testing-strategy.md)
 

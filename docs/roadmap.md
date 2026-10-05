@@ -87,15 +87,15 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Extensible shared asset-type registry; no executable plugin loading.
 - ⏳ Rich mind-map layout, background flashcard review notifications, general Markdown-to-outline conversion, crash recovery for unsaved asset edits.
 
-## Phase 7 — Security and local protection
+## Phase 7 — Security and local protection 🚧
 
 - ✅ Optional vault password gate, configurable idle lock, and unsaved-edit timeout.
-- Secure local storage model
-- Audit logging for sensitive changes
+- ✅ Opt-in versioned vault recovery with a separate random recovery key, authenticated password wrapper, credential-preserving atomic migration, password reset, rotation and revocation
+- ⏳ Sensitive-action audit logging with bounded retention and explicit storage-failure handling
 - ✅ AES-256-GCM encrypted credential storage using the main-process vault key.
 - ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing for passwords generated in the note-encryption dialog.
-- ⏳ Vault recovery key, audit logging, encrypted indexes/metadata, and whole-vault encryption.
+- ⏳ Encrypted indexes/metadata and whole-vault encryption.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
@@ -104,7 +104,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
-- ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits and Phase 3 annotation follow-up.
+- ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits. Remaining PDF sidebar/export/lifecycle work is listed below.
 - 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
 
 ### Document reader and annotation follow-up plan
@@ -138,3 +138,11 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 - ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
 - ⏳ Recent-vault selection is not available; the app restores the last opened vault automatically.
 - ⛔ Windows signing, UI Automation execution, native notification delivery verification, and real JAWS/NVDA/Narrator speech checks need owner-provisioned credentials or Windows/manual test infrastructure.
+
+## Dependency-ordered continuation
+
+`docs/continuation-plan.md` distinguishes this increment's shipped recovery foundation from open or externally blocked
+work. It includes acceptance criteria for security follow-ups, Phase 5/6, and common accessible reading/navigation/
+annotation across Markdown, sanitized HTML, ePub, DOCX, and (if no safe local parser is feasible) legacy DOC. It also
+includes the required Windows assistive-technology and UI Automation validation matrix. None of those remaining
+features are complete merely because this continuation plan exists.

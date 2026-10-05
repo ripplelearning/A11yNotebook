@@ -132,8 +132,15 @@ bounded main-process extractors are retained for input validation; ePub's XML pa
 `@xmldom/xmldom` 0.8.15. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.
 
-`electron/vault/security.ts` derives vault and per-note keys with scrypt and encrypts selected notes and the credentials
-store with AES-256-GCM. Unlocked keys remain only in main-process memory and are cleared on vault lock or switch.
+`electron/vault/security.ts` preserves version-1 scrypt vaults and supports an opt-in version-2 random data key wrapped
+independently by a password-derived key and a random recovery key. Recovery preparation retains the new key/config only
+in main-process memory until the renderer confirms that the one-time recovery secret was saved. The renderer handles
+recovery secrets for explicit saving or user-initiated recovery, never derived or data keys. The atomic
+`security.json` replacement carries the new key wrappers and re-encrypted credential envelope together; a wrapped
+legacy key keeps older vault-key-encrypted note envelopes readable without requiring a multi-file note migration.
+Credential-copy cleanup is retryable and runs before a pending migrated vault is exposed after restart. Password reset,
+recovery rotation, and revocation replace authenticated config atomically. Derived keys, data keys, and legacy-note
+keys never cross the typed IPC boundary. Individually password-encrypted note keys remain independent.
 Typed IPC gates vault operations when password protection is enabled and the vault is locked. Idle lock and
 unsaved-edit lock delays are validated settings.
 Password protection is an access lock, not whole-vault encryption: unmarked notes, the search index, other metadata,
