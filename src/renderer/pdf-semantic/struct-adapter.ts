@@ -2,6 +2,7 @@ import type { StructTreeNode } from 'pdfjs-dist/types/src/display/api';
 import type { MarkedContentRange, TextModel } from './text-model';
 
 export interface SemanticProperties {
+  structId?: string;
   scope?: 'row' | 'col' | 'rowgroup' | 'colgroup';
   headers?: string[];
   colSpan?: number;
@@ -29,6 +30,7 @@ type TreeNode = StructTreeNode & {
 };
 
 const roleAliases: Record<string, string> = {
+  Root: 'Document',
   Document: 'Document',
   Div: 'Div',
   P: 'P',
@@ -73,20 +75,21 @@ function rangesText(model: TextModel, ranges: MarkedContentRange[]): string {
     .join('');
 }
 
-function semanticProperties(node: TreeNode): SemanticProperties {
+function semanticProperties(node: TreeNode, inheritedLanguage?: string): SemanticProperties {
   const properties: SemanticProperties = {};
   if (node.scope) {
     const scope = node.scope.toLowerCase();
-    if (scope === 'row' || scope === 'column' || scope === 'both') {
-      properties.scope = scope === 'column' ? 'col' : scope === 'both' ? 'colgroup' : 'row';
+    if (scope === 'row' || scope === 'column') {
+      properties.scope = scope === 'column' ? 'col' : 'row';
     }
   }
   if (node.headers?.length) properties.headers = node.headers;
   if (Number.isSafeInteger(node.colSpan) && (node.colSpan ?? 0) > 1) properties.colSpan = node.colSpan;
   if (Number.isSafeInteger(node.rowSpan) && (node.rowSpan ?? 0) > 1) properties.rowSpan = node.rowSpan;
-  if (node.lang) properties.language = node.lang;
+  if (node.lang || inheritedLanguage) properties.language = node.lang || inheritedLanguage;
   if (node.alt) properties.alt = node.alt;
   if (node.summary) properties.summary = node.summary;
+  if (node.structId) properties.structId = node.structId;
   return properties;
 }
 
@@ -107,7 +110,7 @@ export class StructAdapter {
     const ownedRanges = new Set<string>();
     this.appendNode(document, root, semanticTree, ownedRanges);
     const unowned = this.textModel.items.filter(
-      (item) => item.text && (!item.markedContentId || !this.textModel.markedContentMap.has(item.markedContentId)),
+      (item) => item.text && (!item.markedContentId || !ownedRanges.has(item.markedContentId)),
     );
     if (unowned.length) {
       const unownedText = document.createElement('div');
@@ -118,7 +121,7 @@ export class StructAdapter {
     return root;
   }
 
-  private adaptNode(node: TreeNode): SemanticNode {
+  private adaptNode(node: TreeNode, inheritedLanguage?: string): SemanticNode {
     const children: SemanticNode[] = [];
     const textRanges: MarkedContentRange[] = [];
     let markedContentId: string | null = null;
@@ -138,7 +141,7 @@ export class StructAdapter {
           });
         }
       } else {
-        children.push(this.adaptNode(child));
+        children.push(this.adaptNode(child, node.lang || inheritedLanguage));
       }
     }
 
@@ -146,21 +149,20 @@ export class StructAdapter {
       role: roleAliases[node.role] ?? 'Div',
       text: rangesText(this.textModel, textRanges),
       children,
-      properties: semanticProperties(node),
+      properties: semanticProperties(node, inheritedLanguage),
       markedContentId,
     };
   }
 
-  private appendNode(
-    document: Document,
-    parent: HTMLElement,
-    node: SemanticNode,
-    ownedRanges: Set<string>,
-  ): void {
+  private appendNode(document: Document, parent: HTMLElement, node: SemanticNode, ownedRanges: Set<string>): void {
     const tag = this.htmlTag(node.role);
     const element = document.createElement(tag);
     const properties = node.properties;
     if (properties.language) element.lang = properties.language;
+    if (properties.structId && (tag === 'th' || tag === 'td')) {
+      element.id = `pdf-header-${properties.structId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
+    }
+    if (properties.summary && tag === 'table') element.setAttribute('aria-label', properties.summary);
     if (properties.alt) element.setAttribute('aria-label', properties.alt);
     if (properties.scope && (tag === 'th' || tag === 'td')) {
       element.setAttribute('scope', properties.scope);
@@ -172,7 +174,9 @@ export class StructAdapter {
     if (properties.colSpan) (element as HTMLTableCellElement).colSpan = properties.colSpan;
     if (properties.rowSpan) (element as HTMLTableCellElement).rowSpan = properties.rowSpan;
     if (node.markedContentId) ownedRanges.add(node.markedContentId);
-    if (node.text) element.append(document.createTextNode(node.text));
+    if (node.text && !node.children.some((child) => child.markedContentId)) {
+      element.append(document.createTextNode(node.text));
+    }
     for (const child of node.children) this.appendNode(document, element, child, ownedRanges);
     parent.append(element);
   }

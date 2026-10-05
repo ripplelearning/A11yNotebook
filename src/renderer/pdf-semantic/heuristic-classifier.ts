@@ -7,23 +7,25 @@ export interface InferredPage {
   pageNumbers: string[];
 }
 
-type Line = { text: string; startOffset: number; y?: number };
+type Line = { text: string; y?: number; x?: number };
 
 function linesFromModel(model: TextModel): Line[] {
   const lines: Line[] = [];
-  let startOffset = 0;
+  let text = '';
+  let y: number | undefined;
   for (const item of model.items) {
-    const lineText = item.text.replace(/\n$/, '');
-    if (lineText.trim()) {
-      lines.push({
-        text: lineText,
-        startOffset: item.startOffset,
-        y: item.transform?.[5],
-      });
+    if (item.text && y === undefined) {
+      y = item.transform?.[5];
     }
-    if (item.hasEOL) startOffset = item.endOffset;
+    text += item.text;
+    if (item.hasEOL) {
+      lines.push({ text, y, x: item.transform?.[4] });
+      text = '';
+      y = undefined;
+    }
   }
-  if (!lines.length && model.fullText.trim()) lines.push({ text: model.fullText.trim(), startOffset: 0 });
+  if (text) lines.push({ text, y });
+  if (!lines.length && model.fullText) lines.push({ text: model.fullText });
   return lines;
 }
 
@@ -37,15 +39,63 @@ export class HeuristicClassifier {
     const marginLines: string[] = [];
     const pageNumbers: string[] = [];
     const nodes: SemanticNode[] = [];
+    const listItems: Line[] = [];
+    const isOrderedListItem = (line: Line) => /^\s*\d+[.)]\s+/u.test(line.text);
+    const flushList = () => {
+      if (!listItems.length) return;
+      const ordered = isOrderedListItem(listItems[0]);
+      nodes.push({
+        role: 'List',
+        text: '',
+        children: listItems.map((item) => ({
+          ...inferredNode(item.text, 'ListItem'),
+          properties: { summary: 'Possible list item; inferred.' },
+        })),
+        properties: { summary: `Possible ${ordered ? 'ordered ' : ''}list; inferred.` },
+        markedContentId: null,
+        classification: 'inferred',
+      });
+      listItems.length = 0;
+    };
+    const pageBounds = model.view;
+    const middleLines = lines.filter((line) => {
+      const y = line.y ?? 0;
+      return (
+        y <= pageBounds[3] - (pageBounds[3] - pageBounds[1]) * 0.08 &&
+        y >= pageBounds[1] + (pageBounds[3] - pageBounds[1]) * 0.08
+      );
+    });
+    const leftMargin = Math.min(...middleLines.map((line) => line.x ?? 0));
+
     for (const line of lines) {
       if (/^\s*(?:page\s+\d+(?:\s+of\s+\d+)?|[-—–]\s*\d+\s*[-—–])\s*$/iu.test(line.text)) {
-        pageNumbers.push(line.text);
-        nodes.push(inferredNode(line.text));
+        flushList();
+        pageNumbers.push(line.text.trim());
+        nodes.push({
+          ...inferredNode(line.text),
+          properties: { summary: 'Possible printed page number; inferred.' },
+        });
+      } else if (/^\s*(?:[•▪◦‣]|[-*]|\d+[.)])\s+/u.test(line.text)) {
+        if (listItems.length && isOrderedListItem(listItems[0]) !== isOrderedListItem(line)) flushList();
+        listItems.push(line);
       } else {
-        if (line.y !== undefined && line.y > model.items[0]?.transform?.[5]! + 1) marginLines.push(line.text);
-        nodes.push(inferredNode(line.text));
+        flushList();
+        const [, bottom, , top] = model.view;
+        const height = top - bottom;
+        if (line.y !== undefined && (line.y > bottom + height * 0.92 || line.y < bottom + height * 0.08)) {
+          marginLines.push(line.text.trim());
+        }
+        if (line.x !== undefined && line.x > leftMargin + 24 && /^\s*[“"'‘]/u.test(line.text)) {
+          nodes.push({
+            ...inferredNode(line.text, 'Quote'),
+            properties: { summary: 'Possible indented quotation; inferred.' },
+          });
+        } else {
+          nodes.push(inferredNode(line.text));
+        }
       }
     }
+    flushList();
     return { nodes, marginLines, pageNumbers };
   }
 
@@ -58,7 +108,7 @@ export class HeuristicClassifier {
     for (const page of pages) {
       const repeated = new Set([...counts].filter(([, count]) => count >= 3).map(([text]) => text));
       page.nodes = page.nodes.map((node) =>
-        repeated.has(node.text)
+        repeated.has(node.text.trim())
           ? { ...node, properties: { ...node.properties, summary: 'Possible repeated margin text; inferred.' } }
           : node,
       );

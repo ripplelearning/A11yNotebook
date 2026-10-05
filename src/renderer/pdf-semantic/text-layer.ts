@@ -1,29 +1,32 @@
 import type { TextModel } from './text-model';
+import { ViewportTransform } from './viewport-transform';
 
-export function createTextLayer(
-  model: TextModel,
-  document: Document,
-  zoom = 1,
-  rotation = 0,
-): HTMLDivElement {
+export function createTextLayer(model: TextModel, document: Document, zoom = 1, rotation = 0): HTMLDivElement {
   const layer = document.createElement('div');
   layer.className = 'pdf-text-layer';
   layer.setAttribute('aria-label', 'Selectable PDF text');
   layer.dataset.zoom = String(zoom);
   layer.dataset.rotation = String(rotation);
+  const transform = new ViewportTransform(model.view, zoom, rotation);
   for (const item of model.items) {
     if (!item.text) continue;
-    const coordinates = model.offsetToCoordinates(item.startOffset, zoom, rotation);
-    if (!coordinates) continue;
+    if (!item.transform) continue;
+    const [, , , , x, y] = item.transform;
+    const [left, baseline] = transform.pdfPoint(x, y);
+    const height = (item.height || Math.abs(item.transform[0]) || 12) * zoom;
+    const [advanceX, advanceY] = transform.pdfPoint(x + item.transform[0], y + item.transform[1]);
+    const angle = (Math.atan2(advanceY - baseline, advanceX - left) * 180) / Math.PI;
     const span = document.createElement('span');
     span.dataset.startOffset = String(item.startOffset);
     span.dataset.endOffset = String(item.endOffset);
     span.textContent = item.text;
-    span.style.left = `${coordinates[0]}px`;
-    span.style.top = `${coordinates[1]}px`;
-    span.style.width = `${coordinates[2]}px`;
-    span.style.height = `${coordinates[3]}px`;
-    span.style.fontSize = `${Math.max(1, coordinates[3])}px`;
+    span.style.left = `${left}px`;
+    span.style.top = `${baseline - height}px`;
+    span.style.width = `${item.width * zoom}px`;
+    span.style.height = `${height}px`;
+    span.style.fontSize = `${Math.max(1, height)}px`;
+    span.style.transform = `rotate(${angle}deg)`;
+    span.style.transformOrigin = `left ${height}px`;
     layer.append(span);
   }
   return layer;
@@ -31,26 +34,23 @@ export function createTextLayer(
 
 export function getSelectionOffsets(layer: HTMLElement): { startOffset: number; length: number } | null {
   const selection = layer.ownerDocument.getSelection();
-  if (!selection || selection.isCollapsed || !selection.anchorNode || !selection.focusNode) return null;
-  const spans = [...layer.querySelectorAll<HTMLElement>('[data-start-offset]')];
-  const startSpan = selection.anchorNode instanceof Element
-    ? selection.anchorNode.closest<HTMLElement>('[data-start-offset]')
-    : selection.anchorNode.parentElement?.closest<HTMLElement>('[data-start-offset]');
-  const endSpan = selection.focusNode instanceof Element
-    ? selection.focusNode.closest<HTMLElement>('[data-start-offset]')
-    : selection.focusNode.parentElement?.closest<HTMLElement>('[data-start-offset]');
-  if (!startSpan || !endSpan || !layer.contains(startSpan) || !layer.contains(endSpan)) return null;
-  const anchorIndex = spans.indexOf(startSpan);
-  const focusIndex = spans.indexOf(endSpan);
-  const first = spans[Math.min(anchorIndex, focusIndex)];
-  const last = spans[Math.max(anchorIndex, focusIndex)];
-  if (!first || !last) return null;
-  const startOffset = Number(first.dataset.startOffset);
-  const endOffset = Number(last.dataset.endOffset);
+  if (!selection || selection.isCollapsed || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  const spanFor = (node: Node): HTMLElement | null => {
+    const element = node instanceof Element ? node : node.parentElement;
+    const span = element?.closest<HTMLElement>('[data-start-offset]');
+    return span && layer.contains(span) ? span : null;
+  };
+  const startSpan = spanFor(range.startContainer);
+  const endSpan = spanFor(range.endContainer);
+  if (!startSpan || !endSpan) return null;
+  const startOffset = Number(startSpan.dataset.startOffset) + range.startOffset;
+  const endOffset = Number(endSpan.dataset.startOffset) + range.endOffset;
   return { startOffset, length: Math.max(0, endOffset - startOffset) };
 }
 
 export function selectTextRange(layer: HTMLElement, startOffset: number, length: number): boolean {
+  if (length <= 0) return false;
   const spans = [...layer.querySelectorAll<HTMLElement>('[data-start-offset]')];
   const first = spans.find(
     (span) => startOffset >= Number(span.dataset.startOffset) && startOffset < Number(span.dataset.endOffset),

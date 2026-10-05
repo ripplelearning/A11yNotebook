@@ -120,13 +120,14 @@ app userData defaults. Metadata operations reject symlink directories/files and 
 
 The `vault-file://attachment/` protocol serves bounded, validated raster images and local PDF/ePub bytes with
 no-store/nosniff. HTML attachment previews are sanitized and put into a sandboxed srcdoc frame. PDF.js runs with a
-bundled local worker, renders one page on a bounded canvas at a fixed maximum scale, extracts page text separately,
-and provides page navigation and text search. It has no selectable text layer or coordinate mapping for zoom/highlights.
-The epub.js reader parses the local archive and presents flattened spine-section text without executing book markup or
-loading its remote resources; it does not render book styles/resources or the navigation TOC. Both readers reject files
-over 40 MB and bound text extraction. PDF/ePub zoomable/selectable layers, styled reflow/TOC navigation, stable document
-anchors, and annotation UI are open implementation work; none is blocked on external tooling. The follow-up plan is in
-`docs/roadmap.md`. Manual Windows screen-reader/UI Automation validation is separate and still required. The earlier
+bundled local worker and a shared semantic model that tracks page labels, metadata, fingerprints, canonical text offsets,
+marked-content IDs, structure-tree roles, and inferred untagged paragraphs. It renders a bounded canvas with a selectable
+text layer and supports zoom/rotation while keeping quote and offset anchors independent of pixels. See
+`docs/pdf-semantic-phase1.md` for the verified spike findings and architecture. The epub.js reader parses the local
+archive and presents flattened spine-section text without executing book markup or loading its remote resources; it does
+not render book styles/resources or the navigation TOC. Both readers reject files over 40 MB and bound text extraction.
+Persistent document anchors, highlights/annotation UI, ePub zoomable/reflow presentation, TOC navigation, and manual
+Windows screen-reader/UI Automation validation remain open work. The follow-up plan is in `docs/roadmap.md`. The earlier
 bounded main-process extractors are retained for input validation; ePub's XML parser is overridden to patched
 `@xmldom/xmldom` 0.8.15. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.

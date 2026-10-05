@@ -17,9 +17,31 @@ vi.mock('epubjs/src/index.js', () => ({ default: ePub }));
 function mockPdf() {
   return {
     numPages: 2,
+    fingerprints: ['fixture-fingerprint', null],
+    getPageLabels: async () => null,
+    getMetadata: async () => ({ info: { Title: 'Test PDF' }, metadata: null }),
     getPage: vi.fn(async (pageNumber: number) => ({
-      getTextContent: async () => ({ items: [{ str: `Page ${pageNumber} searchable text` }] }),
-      getViewport: () => ({ width: 100, height: 100 }),
+      view: [0, 0, 100, 100],
+      rotate: 0,
+      getTextContent: async () => ({
+        items: [
+          {
+            str: `Page ${pageNumber} searchable text`,
+            dir: 'ltr',
+            transform: [12, 0, 0, 12, 10, 90],
+            width: 90,
+            height: 12,
+            fontName: 'test',
+            hasEOL: false,
+          },
+        ],
+      }),
+      getStructTree: async () => null,
+      getAnnotations: async () => [],
+      getViewport: ({ scale = 1, rotation = 0 } = {}) => ({
+        width: (rotation % 180 ? 100 : 100) * scale,
+        height: 100 * scale,
+      }),
       render: () => ({ promise: Promise.resolve(), cancel: vi.fn() }),
     })),
   };
@@ -36,6 +58,7 @@ describe('local accessible document reader', () => {
         arrayBuffer: async () => Uint8Array.from([1, 2, 3]).buffer,
       }),
     );
+    vi.stubGlobal('crypto', { subtle: { digest: vi.fn(async () => new ArrayBuffer(32)) } });
   });
 
   afterEach(() => {
@@ -49,6 +72,7 @@ describe('local accessible document reader', () => {
     render(<DocumentReader path="Docs/Guide.pdf" kind=".pdf" />);
 
     expect(await screen.findByText('Page 1 searchable text')).toBeInTheDocument();
+    await waitFor(() => expect(document.querySelector('.pdf-text-layer')).toBeInTheDocument());
     expect(getDocument).toHaveBeenCalledWith(
       expect.objectContaining({ disableAutoFetch: true, disableRange: true, disableStream: true, enableXfa: false }),
     );
@@ -57,6 +81,11 @@ describe('local accessible document reader', () => {
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in PDF' }), { target: { value: 'searchable' } });
     expect(await screen.findByRole('button', { name: 'Next search result (1 of 2)' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
+    expect(await screen.findByLabelText('PDF zoom')).toHaveTextContent('125%');
+    fireEvent.click(screen.getByRole('button', { name: 'Rotate page' }));
+    await waitFor(() => expect(document.querySelector('.pdf-text-layer')).toHaveAttribute('data-rotation', '90'));
   });
 
   it('uses epub.js for section navigation and search', async () => {

@@ -41,11 +41,6 @@ export class ViewportTransform {
     ];
     const xs = corners.map(([pointX]) => pointX);
     const ys = corners.map(([, pointY]) => pointY);
-    return [
-      Math.min(...xs),
-      Math.max(...ys),
-      Math.max(...xs) - Math.min(...xs),
-      Math.max(...ys) - Math.min(...ys),
-    ];
+    return [Math.min(...xs), Math.max(...ys), Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)];
   }
 }

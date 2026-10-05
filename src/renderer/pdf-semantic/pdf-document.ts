@@ -1,16 +1,13 @@
-import type {
-  PDFDocumentProxy,
-  PDFPageProxy,
-  TextItem,
-  TextMarkedContent,
-} from 'pdfjs-dist/types/src/display/api';
+import type { PDFDocumentProxy, PDFPageProxy, TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
 import type { PDFDocumentLoadingTask } from 'pdfjs-dist/types/src/display/api';
 import type { MarkedContentRange, PdfTextPart, TextCoordinates, TextModel } from './text-model';
 import { TextModel as CanonicalTextModel } from './text-model';
 import { createReflowView } from './reflow-view';
 import { StructAdapter, type SemanticNode } from './struct-adapter';
+import { HeuristicClassifier, type InferredPage } from './heuristic-classifier';
 import { createTextLayer, getSelectionOffsets, selectTextRange } from './text-layer';
 import { ViewportTransform } from './viewport-transform';
+import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 
 export type PdfAnnotation = {
   subtype?: string;
@@ -33,30 +30,46 @@ export class PdfDocument {
   metadata: PdfMetadata = {};
   pageLabels: string[] = [];
   numPages = 0;
-  private readonly loadingTask: PDFDocumentLoadingTask;
+  private readonly loadingTask: Promise<PDFDocumentLoadingTask>;
   private readonly pdfPromise: Promise<PDFDocumentProxy>;
   private readonly pages = new Map<number, Promise<PdfPage>>();
 
   constructor(pdfBytes: Uint8Array, fileHash: string, vaultPath: string) {
     this.fileHash = fileHash;
     this.vaultPath = vaultPath;
-    const bytes = pdfBytes.slice();
-    this.loadingTask = this.load(bytes);
-    this.pdfPromise = this.loadingTask.promise.then(async (pdf) => {
-      const fingerprints = pdf.fingerprints ?? [];
-      this.fingerprints = [fingerprints[0] ?? fileHash, fingerprints[1] ?? undefined];
-      this.numPages = pdf.numPages;
-      this.pageLabels = (await pdf.getPageLabels()) ?? [];
-      const { info, metadata } = await pdf.getMetadata();
-      this.metadata = {
-        title: typeof info.Title === 'string' && info.Title ? info.Title : undefined,
-        language:
-          (typeof info.Language === 'string' && info.Language) ||
-          (typeof metadata?.get === 'function' ? metadata.get('dc:language') : undefined),
-        producer: typeof info.Producer === 'string' && info.Producer ? info.Producer : undefined,
-      };
-      return pdf;
+    this.loadingTask = import('pdfjs-dist/legacy/build/pdf.mjs').then(({ GlobalWorkerOptions, getDocument }) => {
+      if (typeof window !== 'undefined') GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      return getDocument({
+        data: pdfBytes.slice(),
+        disableAutoFetch: true,
+        disableRange: true,
+        disableStream: true,
+        useSystemFonts: false,
+        enableXfa: false,
+      });
     });
+    this.pdfPromise = this.loadingTask
+      .then((task) => task.promise)
+      .then(async (pdf) => {
+        const fingerprints = pdf.fingerprints ?? [];
+        this.fingerprints = [fingerprints[0] ?? fileHash, fingerprints[1] ?? undefined];
+        this.numPages = pdf.numPages;
+        this.pageLabels = (await pdf.getPageLabels()) ?? [];
+        const { info, metadata } = await pdf.getMetadata();
+        const infoValues = info as Record<string, unknown>;
+        this.metadata = {
+          title: typeof infoValues.Title === 'string' && infoValues.Title ? infoValues.Title : undefined,
+          language:
+            (typeof infoValues.Language === 'string' && infoValues.Language) ||
+            (typeof metadata?.get === 'function' ? metadata.get('dc:language') : undefined),
+          producer: typeof infoValues.Producer === 'string' && infoValues.Producer ? infoValues.Producer : undefined,
+        };
+        return pdf;
+      });
+  }
+
+  get ready(): Promise<void> {
+    return this.pdfPromise.then(() => undefined);
   }
 
   async getPage(pageNum: number): Promise<PdfPage> {
@@ -71,56 +84,17 @@ export class PdfDocument {
     return created;
   }
 
+  async classifyUntaggedPages(pageNumbers: number[]): Promise<void> {
+    const pages = await Promise.all(pageNumbers.map((pageNumber) => this.getPage(pageNumber)));
+    const untaggedPages = pages.filter((page) => page.semanticTree === null);
+    const classified = new HeuristicClassifier().classifyPages(untaggedPages.map((page) => page.textModel));
+    untaggedPages.forEach((page, index) => page.setInferredPage(classified[index]));
+  }
+
   async destroy(): Promise<void> {
     this.pages.clear();
-    await this.loadingTask.destroy();
-  }
-
-  private load(bytes: Uint8Array): PDFDocumentLoadingTask {
-    const getDocument = (globalThis as typeof globalThis & {
-      __pdfjsGetDocument?: (params: Record<string, unknown>) => PDFDocumentLoadingTask;
-    }).__pdfjsGetDocument;
-    if (getDocument) return getDocument({ data: bytes });
-    throw new Error('Use PdfDocument.open() to load PDF.js before constructing a document.');
-  }
-
-  static async open(
-    pdfBytes: Uint8Array,
-    fileHash: string,
-    vaultPath: string,
-    pdfjs: { getDocument: (params: Record<string, unknown>) => PDFDocumentLoadingTask },
-  ): Promise<PdfDocument> {
-    const document = Object.create(PdfDocument.prototype) as PdfDocument;
-    Object.defineProperties(document, {
-      fileHash: { value: fileHash, enumerable: true },
-      vaultPath: { value: vaultPath, enumerable: true },
-      fingerprints: { value: ['', undefined], writable: true, enumerable: true },
-      metadata: { value: {}, writable: true, enumerable: true },
-      pageLabels: { value: [], writable: true, enumerable: true },
-      numPages: { value: 0, writable: true, enumerable: true },
-      pages: { value: new Map() },
-      loadingTask: { value: pdfjs.getDocument({ data: pdfBytes.slice() }) },
-    });
-    const instance = document as PdfDocument;
-    Object.defineProperty(instance, 'pdfPromise', {
-      value: instance.loadingTask.promise.then(async (pdf) => {
-        const fingerprints = pdf.fingerprints ?? [];
-        instance.fingerprints = [fingerprints[0] ?? fileHash, fingerprints[1] ?? undefined];
-        instance.numPages = pdf.numPages;
-        instance.pageLabels = (await pdf.getPageLabels()) ?? [];
-        const { info, metadata } = await pdf.getMetadata();
-        instance.metadata = {
-          title: typeof info.Title === 'string' && info.Title ? info.Title : undefined,
-          language:
-            (typeof info.Language === 'string' && info.Language) ||
-            (typeof metadata?.get === 'function' ? metadata.get('dc:language') : undefined),
-          producer: typeof info.Producer === 'string' && info.Producer ? info.Producer : undefined,
-        };
-        return pdf;
-      }),
-    });
-    await instance.pdfPromise;
-    return instance;
+    const task = await this.loadingTask;
+    await task.destroy();
   }
 }
 
@@ -134,6 +108,8 @@ export class PdfPage {
   readonly view: [number, number, number, number];
   private readonly page: PDFPageProxy;
   private readonly structure: Awaited<ReturnType<PDFPageProxy['getStructTree']>>;
+  private textLayer: HTMLDivElement | null = null;
+  private inferredPage: InferredPage | undefined;
 
   private constructor(
     page: PDFPageProxy,
@@ -163,20 +139,43 @@ export class PdfPage {
     ]);
     const markedContentMap = new Map<string, MarkedContentRange>();
     const parts = content.items as Array<TextItem | TextMarkedContent>;
-    const model = new CanonicalTextModel(parts as PdfTextPart[], markedContentMap, page.view as [number, number, number, number]);
-    return new PdfPage(
-      page,
+    const model = new CanonicalTextModel(
+      parts as PdfTextPart[],
+      markedContentMap,
+      page.view as [number, number, number, number],
       pageNum,
-      label || `Page ${pageNum}`,
-      model,
-      structure,
-      annotations.filter((annotation) => annotation.subtype === 'Link') as PdfAnnotation[],
     );
+    const links = annotations.flatMap((annotation) => {
+      if (annotation.subtype !== 'Link') return [];
+      const safeUrl =
+        typeof annotation.url === 'string' && /^https?:\/\//i.test(annotation.url) ? annotation.url : undefined;
+      return [
+        {
+          subtype: 'Link',
+          ...(safeUrl ? { url: safeUrl } : {}),
+          ...(annotation.dest !== undefined ? { dest: annotation.dest } : {}),
+          ...(Array.isArray(annotation.rect) && annotation.rect.every(Number.isFinite)
+            ? { rect: annotation.rect }
+            : {}),
+          ...(typeof annotation.title === 'string' ? { title: annotation.title } : {}),
+        },
+      ];
+    });
+    return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links);
   }
 
   async renderCanvas(zoom = 1, rotation = 0): Promise<HTMLCanvasElement> {
     const canvas = document.createElement('canvas');
-    const viewport = this.page.getViewport({ scale: zoom, rotation: (this.page.rotate + rotation) % 360 });
+    const pageRotation = (this.page.rotate + rotation) % 360;
+    const unscaled = this.page.getViewport({ scale: 1, rotation: pageRotation });
+    const scale = Math.min(
+      Math.max(0.1, zoom),
+      2,
+      2000 / unscaled.width,
+      2600 / unscaled.height,
+      Math.sqrt(4_000_000 / (unscaled.width * unscaled.height)),
+    );
+    const viewport = this.page.getViewport({ scale, rotation: pageRotation });
     const context = canvas.getContext('2d');
     if (!context) throw new Error('Canvas is unavailable.');
     canvas.width = viewport.width;
@@ -186,40 +185,50 @@ export class PdfPage {
   }
 
   getTextSelection(layer?: HTMLElement): { startOffset: number; length: number } | null {
-    return layer ? getSelectionOffsets(layer) : null;
+    return getSelectionOffsets(layer ?? this.textLayer ?? document.createElement('div'));
   }
 
   highlightAtAnchor(offset: number, length: number, zoom = 1, rotation = 0): TextCoordinates | null {
-    const start = this.textModel.offsetToCoordinates(offset, zoom, rotation);
+    const effectiveRotation = (this.canRotate + rotation) % 360;
+    const start = this.textModel.offsetToCoordinates(offset, zoom, effectiveRotation);
     if (!start || length <= 0) return start;
-    const end = this.textModel.offsetToCoordinates(offset + length - 1, zoom, rotation);
+    const end = this.textModel.offsetToCoordinates(offset + length - 1, zoom, effectiveRotation);
     if (!end) return start;
-    return [start[0], Math.min(start[1], end[1]), Math.max(0, end[0] + end[2] - start[0]), Math.max(start[3], end[3])];
+    const left = Math.min(start[0], end[0]);
+    const top = Math.min(start[1], end[1]);
+    const right = Math.max(start[0] + start[2], end[0] + end[2]);
+    const bottom = Math.max(start[1] + start[3], end[1] + end[3]);
+    return [left, top, right - left, bottom - top];
   }
 
   selectTextRange(startOffset: number, length: number, layer?: HTMLElement): boolean {
-    return layer ? selectTextRange(layer, startOffset, length) : false;
+    return selectTextRange(layer ?? this.textLayer ?? document.createElement('div'), startOffset, length);
   }
 
   getSemanticDOM(zoom = 1, rotation = 0): HTMLElement {
     const root = this.structure
       ? new StructAdapter(this.structure, this.textModel).toDOM(document)
-      : createReflowView(document, this.textModel, null);
+      : createReflowView(document, this.textModel, null, this.inferredPage);
     root.dataset.pageNumber = String(this.pageNum);
     root.dataset.zoom = String(zoom);
-    root.dataset.rotation = String(rotation);
+    root.dataset.rotation = String((this.canRotate + rotation) % 360);
     return root;
   }
 
+  setInferredPage(page: InferredPage): void {
+    this.inferredPage = page;
+  }
+
   getTextLayer(zoom = 1, rotation = 0): HTMLDivElement {
-    return createTextLayer(this.textModel, document, zoom, rotation);
+    this.textLayer = createTextLayer(this.textModel, document, zoom, (this.canRotate + rotation) % 360);
+    return this.textLayer;
   }
 
   coordinatesToOffset(x: number, y: number, zoom = 1, rotation = 0): number | null {
-    return this.textModel.coordinatesToOffset(x, y, zoom, rotation);
+    return this.textModel.coordinatesToOffset(x, y, zoom, (this.canRotate + rotation) % 360);
   }
 
   viewportTransform(zoom = 1, rotation = 0): ViewportTransform {
-    return new ViewportTransform(this.view, zoom, rotation);
+    return new ViewportTransform(this.view, zoom, (this.canRotate + rotation) % 360);
   }
 }

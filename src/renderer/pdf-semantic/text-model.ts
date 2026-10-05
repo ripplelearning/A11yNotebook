@@ -5,6 +5,7 @@ export type PdfTextPart = TextItem | (TextMarkedContent & { tag?: string | null 
 export type TextCoordinates = [number, number, number, number];
 
 export interface TextItemRange {
+  extractionIndex: number;
   text: string;
   startOffset: number;
   endOffset: number;
@@ -44,16 +45,13 @@ function normalizedOffsets(text: string): { text: string; offsets: number[]; end
   const ends: number[] = [];
   let pendingSpace: { start: number; end: number } | undefined;
 
-  for (let offset = 0; offset < text.length; ) {
-    const character = String.fromCodePoint(text.codePointAt(offset)!);
-    const end = offset + character.length;
-    if (character === '\u00ad') {
-      offset = end;
+  for (const { segment, index } of new Intl.Segmenter().segment(text)) {
+    const end = index + segment.length;
+    if (segment === '\u00ad') {
       continue;
     }
-    if (/\s/u.test(character)) {
-      if (normalized) pendingSpace = { start: pendingSpace?.start ?? offset, end };
-      offset = end;
+    if (/^\s+$/u.test(segment)) {
+      if (normalized) pendingSpace = { start: pendingSpace?.start ?? index, end };
       continue;
     }
     if (pendingSpace) {
@@ -62,13 +60,12 @@ function normalizedOffsets(text: string): { text: string; offsets: number[]; end
       ends.push(pendingSpace.end);
       pendingSpace = undefined;
     }
-    const folded = character.normalize('NFKC').toLocaleLowerCase();
+    const folded = segment.normalize('NFKC').toLocaleLowerCase();
     for (const unit of folded) {
       normalized += unit;
-      offsets.push(offset);
+      offsets.push(index);
       ends.push(end);
     }
-    offset = end;
   }
 
   return { text: normalized, offsets, ends };
@@ -79,26 +76,29 @@ export class TextModel {
   readonly normalizedText: string;
   readonly items: TextItemRange[];
   readonly markedContentMap: Map<string, MarkedContentRange>;
+  readonly page: number;
+  view: [number, number, number, number];
   private readonly sourceOffsets: number[];
   private readonly sourceEnds: number[];
-  private view: [number, number, number, number];
 
   constructor(
     pdfTextItems: PdfTextPart[],
     markedContentMap: Map<string, MarkedContentRange> = new Map(),
     view: [number, number, number, number] = [0, 0, 612, 792],
+    page = 1,
   ) {
     this.view = view;
+    this.page = page;
     this.markedContentMap = new Map(markedContentMap);
     const activeMarkedContent: string[] = [];
     const items: TextItemRange[] = [];
     let fullText = '';
 
-    for (const part of pdfTextItems) {
+    for (const [extractionIndex, part] of pdfTextItems.entries()) {
       if (!('str' in part)) {
         if (part.type === 'endMarkedContent') activeMarkedContent.pop();
-        else if (part.type === 'beginMarkedContentProps' && typeof part.id === 'string') {
-          activeMarkedContent.push(part.id);
+        else if (part.type === 'beginMarkedContentProps') {
+          activeMarkedContent.push(typeof part.id === 'string' ? part.id : '');
         } else if (part.type === 'beginMarkedContent') activeMarkedContent.push('');
         continue;
       }
@@ -107,6 +107,7 @@ export class TextModel {
       const itemText = part.str + (part.hasEOL ? '\n' : '');
       fullText += itemText;
       items.push({
+        extractionIndex,
         text: itemText,
         startOffset,
         endOffset: fullText.length,
@@ -165,7 +166,10 @@ export class TextModel {
       const dy = y < top ? top - y : y > bottom ? y - bottom : 0;
       const distance = dx * dx + dy * dy;
       if (!nearest || distance < nearest.distance) {
-        const fraction = item.width ? Math.max(0, Math.min(1, (x - left) / bounds[2])) : 0;
+        const fraction =
+          item.width && (transform.rotation === 90 || transform.rotation === 270)
+            ? Math.max(0, Math.min(1, (transform.rotation === 90 ? y - top : bottom - y) / bounds[3]))
+            : Math.max(0, Math.min(1, (transform.rotation === 180 ? right - x : x - left) / Math.max(bounds[2], 1)));
         nearest = {
           offset: Math.min(item.endOffset - 1, item.startOffset + Math.round(fraction * item.text.length)),
           distance,
@@ -195,7 +199,7 @@ export class TextModel {
     while ((index = this.normalizedText.indexOf(needle, index)) !== -1) {
       const startOffset = this.sourceOffsets[index];
       const endOffset = this.sourceEnds[index + needle.length - 1];
-      found.push({ startOffset, length: endOffset - startOffset, page: 1 });
+      found.push({ startOffset, length: endOffset - startOffset, page: this.page });
       index += Math.max(needle.length, 1);
     }
     return found;
@@ -211,7 +215,9 @@ export class TextModel {
     }
     if (exactMatches.length === 1) return exactMatches[0];
     if (exactMatches.length > 1) {
-      const contextual = exactMatches.filter((start) => this.matchesContext(start, exactQuote.length, contextBefore, contextAfter));
+      const contextual = exactMatches.filter((start) =>
+        this.matchesContext(start, exactQuote.length, contextBefore, contextAfter),
+      );
       return contextual.length === 1 ? contextual[0] : 'ambiguous';
     }
 
@@ -237,8 +243,8 @@ export class TextModel {
 
   private matchesContext(start: number, length: number, before: string, after: string): boolean {
     const quoteEnd = start + length;
-    const beforeMatches = !before || normalize(this.fullText.slice(Math.max(0, start - before.length), start)).endsWith(normalize(before));
-    const afterMatches = !after || normalize(this.fullText.slice(quoteEnd, quoteEnd + after.length)).startsWith(normalize(after));
+    const beforeMatches = !before || normalize(this.fullText.slice(0, start)).endsWith(normalize(before));
+    const afterMatches = !after || normalize(this.fullText.slice(quoteEnd)).startsWith(normalize(after));
     return beforeMatches && afterMatches;
   }
 }

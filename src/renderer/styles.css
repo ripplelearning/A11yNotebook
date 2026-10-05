@@ -208,6 +208,43 @@ a:focus-visible,
   margin-block: 1rem;
 }
 
+.document-page-visual {
+  position: relative;
+  width: 100%;
+  overflow: auto;
+}
+
+.document-page-visual .document-page-canvas {
+  max-width: none;
+  margin: 0;
+}
+
+.pdf-text-layer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: hidden;
+  user-select: text;
+}
+
+.pdf-text-layer > span {
+  position: absolute;
+  overflow: hidden;
+  color: transparent;
+  white-space: pre;
+  transform-origin: top left;
+  user-select: text;
+}
+
+.pdf-text-layer span::selection {
+  color: transparent;
+  background: rgba(59, 130, 246, 0.35);
+}
+
+.pdf-inferred-list {
+  list-style: none;
+}
+
 .side-panel h2 {
   margin-top: 0;
 }
