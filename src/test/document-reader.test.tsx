@@ -1,6 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import DocumentReader from '../renderer/features/previews/DocumentReader';
+import SettingsDialog from '../renderer/features/settings/SettingsDialog';
+import { DEFAULT_SETTINGS } from '../shared/settings';
+import type { NotebookBridge } from '../shared/bridge';
+import { getSelectionOffsets, selectTextRange } from '../renderer/pdf-semantic/text-layer';
 
 const { getDocument, ePub } = vi.hoisted(() => ({
   getDocument: vi.fn(),
@@ -62,8 +66,79 @@ describe('local accessible document reader', () => {
   });
 
   afterEach(() => {
+    delete window.a11yNotebook;
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
+  });
+
+  it('applies saved PDF preferences live to every reader without rebuilding selection layers', async () => {
+    let stored = { hideHeadersFooters: false, hidePageNumbers: false };
+    const getPreferences = vi.fn(async () => stored);
+    const savePreferences = vi.fn(async (value: typeof stored) => (stored = value));
+    window.a11yNotebook = {
+      vault: {},
+      getPdfReadingPreferences: getPreferences,
+      setPdfReadingPreferences: savePreferences,
+    } as unknown as NotebookBridge;
+    const pdf = mockPdf();
+    pdf.numPages = 3;
+    const originalGetPage = pdf.getPage;
+    pdf.getPage = vi.fn(async (pageNumber: number) => ({
+      ...(await originalGetPage(pageNumber)),
+      getTextContent: async () => ({
+        items: [
+          { str: 'Running title', transform: [10, 0, 0, 10, 10, 96], hasEOL: true },
+          { str: 'Body text remains searchable', transform: [10, 0, 0, 10, 10, 50], hasEOL: true },
+          { str: `${pageNumber}`, transform: [10, 0, 0, 10, 10, 3], hasEOL: false },
+        ].map((item) => ({ ...item, dir: 'ltr', width: 80, height: 10, fontName: 'test' })),
+      }),
+    }));
+    getDocument.mockImplementation(() => ({
+      promise: Promise.resolve(pdf),
+      destroy: vi.fn().mockResolvedValue(undefined),
+    }));
+    const readers = render(
+      <>
+        <DocumentReader path="Docs/One.pdf" kind=".pdf" />
+        <DocumentReader path="Docs/Two.pdf" kind=".pdf" />
+      </>,
+    );
+    await waitFor(() => expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(2));
+    const layers = [...document.querySelectorAll<HTMLElement>('.pdf-text-layer')];
+    const canvases = [...document.querySelectorAll('canvas')];
+    const headers = [...document.querySelectorAll('[data-pdf-artifact-type="header"]')];
+    const numbers = [...document.querySelectorAll('[data-pdf-artifact-type="page-number"]')];
+    expect(headers.length).toBeGreaterThanOrEqual(4);
+    expect(numbers.length).toBeGreaterThanOrEqual(4);
+    expect(headers.every((node) => !node.hasAttribute('aria-hidden'))).toBe(true);
+    const pageLoads = pdf.getPage.mock.calls.length;
+    const settings = render(<SettingsDialog settings={DEFAULT_SETTINGS} onSave={vi.fn()} onClose={vi.fn()} />);
+    const toggle = screen.getByRole('checkbox', { name: 'Hide running headers/footers from assistive technology' });
+    await waitFor(() => expect(toggle).toBeEnabled());
+    expect(selectTextRange(layers[0], 0, 'Running title'.length)).toBe(true);
+    const selection = getSelectionOffsets(layers[0]);
+    fireEvent.click(toggle);
+    await waitFor(() => expect(headers.every((node) => node.getAttribute('aria-hidden') === 'true')).toBe(true));
+    expect(headers.every((node) => !node.hasAttribute('hidden'))).toBe(true);
+    expect(numbers.every((node) => !node.hasAttribute('aria-hidden'))).toBe(true);
+    expect(getSelectionOffsets(layers[0])).toEqual(selection);
+    expect(document.getSelection()?.toString()).toBe('Running title');
+    expect([...document.querySelectorAll('.pdf-text-layer')]).toEqual(layers);
+    expect([...document.querySelectorAll('canvas')]).toEqual(canvases);
+    expect(pdf.getPage.mock.calls).toHaveLength(pageLoads);
+    expect(getDocument).toHaveBeenCalledTimes(2);
+    settings.unmount();
+
+    fireEvent.change(screen.getAllByRole('textbox', { name: 'Find in PDF' })[0], {
+      target: { value: 'Running title' },
+    });
+    expect(await screen.findByRole('button', { name: 'Next search result (1 of 3)' })).toBeInTheDocument();
+    expect(readers.container.textContent).toContain('Running title');
+    stored = { hideHeadersFooters: false, hidePageNumbers: true };
+    fireEvent(window, new Event('focus'));
+    await waitFor(() => expect(numbers.every((node) => node.getAttribute('aria-hidden') === 'true')).toBe(true));
+    expect(headers.every((node) => !node.hasAttribute('aria-hidden'))).toBe(true);
+    expect([...document.querySelectorAll('.pdf-text-layer')]).toEqual(layers);
   });
 
   it('uses pdf.js for page text, navigation, and in-document search', async () => {

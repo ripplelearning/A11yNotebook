@@ -1,4 +1,4 @@
-import { app, BrowserWindow, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
@@ -7,6 +7,8 @@ import type { UpdaterStatus } from '../src/shared/updater';
 import { buildApplicationMenu } from './menu';
 import { setupUpdater } from './updater';
 import { setupVaultIpc } from './vault/ipc';
+import { getPdfReadingPreferences, setPdfReadingPreferences } from './store';
+import { validatePdfReadingPreferences, type PdfReadingPreferences } from '../src/shared/pdf-reading-preferences';
 
 const isDevelopment = !app.isPackaged;
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
@@ -44,6 +46,22 @@ function sendToRenderer(channel: string, payload: UpdaterStatus | MenuCommand) {
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+export function setupPdfReadingPreferencesIpc(
+  isTrusted: (event: IpcMainInvokeEvent) => boolean,
+  send: (preferences: PdfReadingPreferences) => void,
+) {
+  ipcMain.handle(IPC_CHANNELS.getPdfReadingPreferences, async (event) => {
+    if (!isTrusted(event)) throw new Error('Untrusted PDF reading preferences request.');
+    return getPdfReadingPreferences();
+  });
+  ipcMain.handle(IPC_CHANNELS.setPdfReadingPreferences, async (event, value: unknown) => {
+    if (!isTrusted(event)) throw new Error('Untrusted PDF reading preferences request.');
+    const preferences = setPdfReadingPreferences(validatePdfReadingPreferences(value));
+    send(preferences);
+    return preferences;
+  });
 }
 
 function createWindow() {
@@ -107,6 +125,13 @@ if (!app.requestSingleInstanceLock()) {
     if (process.platform === 'win32') app.setAppUserModelId('com.ripplelearning.a11ynotebook');
     // Renderer permissions stay blocked; native reminders are created in the main process.
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+    setupPdfReadingPreferencesIpc(isTrustedSender, (preferences) => {
+      for (const window of BrowserWindow.getAllWindows()) {
+        if (!window.isDestroyed() && isAppUrl(window.webContents.getURL())) {
+          window.webContents.send(IPC_CHANNELS.pdfReadingPreferencesChanged, preferences);
+        }
+      }
+    });
 
     setupUpdater({
       send: (status) => sendToRenderer(IPC_CHANNELS.updaterStatus, status),

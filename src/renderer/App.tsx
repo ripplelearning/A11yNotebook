@@ -64,6 +64,7 @@ import SecurityGate from './features/security/SecurityGate';
 import NotePasswordDialog from './features/security/NotePasswordDialog';
 import WebCaptureDialog from './features/previews/WebCaptureDialog';
 import ExportNoteDialog from './features/vault/ExportNoteDialog';
+import { usePdfReadingPreferences } from './hooks/usePdfReadingPreferences';
 
 type DialogId =
   'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'web-capture';
@@ -152,6 +153,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
 ];
 
 export default function App() {
+  usePdfReadingPreferences();
   const [activeRegion, setActiveRegion] = useState<FocusRegion>('navigation');
   const [mode, setMode] = useState<AppMode>('read-only');
   const [rightPaneOpen, setRightPaneOpen] = useState(true);

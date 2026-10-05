@@ -1,7 +1,8 @@
 import type ePubFactory from 'epubjs/src/index.js';
 import { useEffect, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
-import { PdfDocument, type PdfPage } from '../../pdf-semantic';
+import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
+import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
@@ -55,6 +56,15 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [renderError, setRenderError] = useState('');
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const preferences = usePdfReadingPreferences();
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+
+  useEffect(() => {
+    document?.setReadingPreferences(preferences);
+    if (visualRef.current) applyPdfReadingPreferences(visualRef.current, preferences);
+    if (semanticRef.current) applyPdfReadingPreferences(semanticRef.current, preferences);
+  }, [document, preferences]);
 
   useEffect(() => {
     let cancelled = false;
@@ -65,7 +75,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       .then((hash) => Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join(''))
       .then(async (fileHash) => {
         if (cancelled) return;
-        pdf = new PdfDocument(bytes, fileHash, path);
+        pdf = new PdfDocument(bytes, fileHash, path, preferencesRef.current);
         await pdf.ready;
         if (cancelled) return;
         const sections: Array<{ label: string; text: string }> = [];
@@ -127,6 +137,8 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           layer.style.height = `${(transform.rotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]) * renderScale}px`;
           visual.append(layer);
           semantic.replaceChildren(page.getSemanticDOM(zoom, rotation));
+          applyPdfReadingPreferences(visual, preferencesRef.current);
+          applyPdfReadingPreferences(semantic, preferencesRef.current);
         });
       })
       .catch(() => {

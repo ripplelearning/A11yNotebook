@@ -103,6 +103,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
 - 🚧 PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, and stable text-offset/quote mappings. Persistent annotations and PDF anchor storage remain open.
+- ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits and Phase 3 annotation follow-up.
 - 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
 
 ### Document reader and annotation follow-up plan

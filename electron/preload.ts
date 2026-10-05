@@ -6,6 +6,7 @@ import type { IPC_CHANNELS as SharedChannels, MenuCommand } from '../src/shared/
 import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultChangedEvent } from '../src/shared/search';
 import type { VaultReminderEvent } from '../src/shared/reminders';
+import type { PdfReadingPreferences } from '../src/shared/pdf-reading-preferences';
 
 // Must match src/shared/ipc.ts exactly; the type annotation enforces that at compile time.
 const CHANNELS: typeof SharedChannels = {
@@ -15,6 +16,9 @@ const CHANNELS: typeof SharedChannels = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  getPdfReadingPreferences: 'get-pdf-reading-preferences',
+  setPdfReadingPreferences: 'set-pdf-reading-preferences',
+  pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
   vaultOpen: 'vault:open',
   vaultGet: 'vault:get',
   vaultReadNote: 'vault:read-note',
@@ -74,6 +78,7 @@ function subscribe<T>(
   channel:
     | typeof CHANNELS.updaterStatus
     | typeof CHANNELS.menuCommand
+    | typeof CHANNELS.pdfReadingPreferencesChanged
     | typeof CHANNELS.vaultChanged
     | typeof CHANNELS.vaultReminderEvent
     | typeof CHANNELS.vaultSecurityLocked,
@@ -88,6 +93,10 @@ function subscribe<T>(
 }
 
 const bridge: NotebookBridge = {
+  getPdfReadingPreferences: () => ipcRenderer.invoke(CHANNELS.getPdfReadingPreferences),
+  setPdfReadingPreferences: (preferences) => ipcRenderer.invoke(CHANNELS.setPdfReadingPreferences, preferences),
+  onPdfReadingPreferencesChanged: (callback) =>
+    subscribe<PdfReadingPreferences>(CHANNELS.pdfReadingPreferencesChanged, callback),
   updater: {
     check: () => ipcRenderer.invoke(CHANNELS.updaterCheck),
     download: () => ipcRenderer.invoke(CHANNELS.updaterDownload),

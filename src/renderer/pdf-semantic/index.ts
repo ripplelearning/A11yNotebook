@@ -12,3 +12,4 @@ export { HeuristicClassifier, type InferredPage } from './heuristic-classifier';
 export { createTextLayer, getSelectionOffsets, selectTextRange } from './text-layer';
 export { ViewportTransform } from './viewport-transform';
 export { createReflowView } from './reflow-view';
+export { applyPdfReadingPreferences, type PdfArtifactType } from './reading-preferences';

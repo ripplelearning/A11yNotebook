@@ -2,6 +2,12 @@ import { useEffect, useState } from 'react';
 import { COMMANDS } from '../../../shared/command-registry';
 import { DEFAULT_SETTINGS, validateSettings, type NotebookSettings } from '../../../shared/settings';
 import Modal from '../../components/Modal';
+import {
+  refreshPdfReadingPreferences,
+  savePdfReadingPreferences,
+  usePdfReadingPreferences,
+} from '../../hooks/usePdfReadingPreferences';
+import type { PdfReadingPreferences } from '../../../shared/pdf-reading-preferences';
 
 interface Props {
   settings: NotebookSettings;
@@ -33,6 +39,36 @@ export default function SettingsDialog({
   const [credentialId, setCredentialId] = useState('');
   const [credentialUsername, setCredentialUsername] = useState('');
   const [credentialPassword, setCredentialPassword] = useState('');
+  const pdfPreferences = usePdfReadingPreferences();
+  const [pdfLoading, setPdfLoading] = useState(true);
+  const [pdfSaving, setPdfSaving] = useState(false);
+  const [pdfConfirmation, setPdfConfirmation] = useState('');
+  useEffect(() => {
+    let cancelled = false;
+    void refreshPdfReadingPreferences()
+      .catch(() => {
+        if (!cancelled) setError('Could not load PDF reading preferences.');
+      })
+      .finally(() => {
+        if (!cancelled) setPdfLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (!pdfConfirmation) return;
+    const timer = window.setTimeout(() => setPdfConfirmation(''), 3000);
+    return () => window.clearTimeout(timer);
+  }, [pdfConfirmation]);
+  function updatePdfPreference(key: keyof PdfReadingPreferences, checked: boolean) {
+    setPdfSaving(true);
+    setPdfConfirmation('');
+    void savePdfReadingPreferences({ ...pdfPreferences, [key]: checked })
+      .then(() => setPdfConfirmation('PDF reading preferences saved.'))
+      .catch(() => setError('Could not save PDF reading preferences.'))
+      .finally(() => setPdfSaving(false));
+  }
   useEffect(() => {
     const readCredentials = window.a11yNotebook?.vault.readCredentials;
     if (!securityEnabled || !readCredentials) return;
@@ -109,6 +145,30 @@ export default function SettingsDialog({
             onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
           />
         </label>
+        <fieldset aria-describedby="pdf-reading-help" disabled={pdfLoading || pdfSaving}>
+          <legend>PDF Reading</legend>
+          <p id="pdf-reading-help">
+            Content remains visible, selectable, and searchable in all views. This only affects screen reader
+            announcements.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={pdfPreferences.hideHeadersFooters}
+              onChange={(event) => updatePdfPreference('hideHeadersFooters', event.target.checked)}
+            />
+            Hide running headers/footers from assistive technology
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={pdfPreferences.hidePageNumbers}
+              onChange={(event) => updatePdfPreference('hidePageNumbers', event.target.checked)}
+            />
+            Hide printed page numbers from assistive technology
+          </label>
+        </fieldset>
+        <p role="status">{pdfConfirmation}</p>
         <fieldset>
           <legend>Keyboard shortcuts</legend>
           <p>Leave a shortcut empty to disable it. Pane and tab navigation keys are reserved.</p>
