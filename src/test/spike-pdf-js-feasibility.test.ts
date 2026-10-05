@@ -69,10 +69,8 @@ describe('PDF.js accessible-reading feasibility spike', () => {
     }
 
     console.log(
-      `PDFJS_SPIKE_RAW_OUTPUT_BEGIN\n${JSON.stringify(
-        output,
-        (_key, value: unknown) =>
-          value instanceof Error ? { name: value.name, message: value.message } : value,
+      `PDFJS_SPIKE_RAW_OUTPUT_BEGIN\n${JSON.stringify(output, (_key, value: unknown) =>
+        value instanceof Error ? { name: value.name, message: value.message } : value,
       )}\nPDFJS_SPIKE_RAW_OUTPUT_END`,
     );
     expect(Object.keys(output)).toHaveLength(fixtures.length + 1);
