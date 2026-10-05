@@ -46,8 +46,8 @@ the page number and text offsets remain independent of zoom and rotation.
 Tagged structure is rendered with native heading, paragraph, list, table, and
 cell elements. Struct-provided table headers, scope, spans, language, figure
 alternative text, and table summaries are retained. Text not referenced by the
-structure tree is appended rather than discarded. No extracted content is
-hidden.
+structure tree is appended rather than discarded. By default, all extracted
+content is exposed to assistive technology.
 
 Untagged pages use inferred paragraph grouping. Repeated text in page margins
 and printed page-number patterns are identified as guesses, never removed.
@@ -57,6 +57,35 @@ parser and its navigation behavior remain unchanged.
 ## Current boundary
 
 This is a read-only semantic layer. It does not store annotations, persist
-anchors, hide content, or provide preference controls. Browser screen-reader
-verification and detailed alignment checks for unusual PDF fonts/layouts still
-require manual testing.
+anchors, or modify clipboard behavior. Browser screen-reader verification and
+detailed alignment checks for unusual PDF fonts/layouts still require manual testing.
+
+## Phase 2 — PDF Reading preferences
+
+Settings now includes two independent, opt-in PDF Reading controls for running
+headers/footers and printed page numbers. Both default to exposed (`false`).
+Content remains visible, selectable, and searchable in visual and reflow views;
+only classified artifacts receive `aria-hidden="true"`.
+
+`pdfReadingPreferences` is persisted in the existing main-process
+`a11y-notebook-store.json` store. Typed get/set IPC validates both boolean keys,
+rejects unexpected keys, and broadcasts changes. Missing stored preferences
+default silently; malformed values are logged and defaulted. The renderer
+caches preferences, loads them at startup and when Settings opens, and refreshes
+on app focus. Open PDFs update existing DOM attributes without reloading PDF
+bytes, canvases, or selection layers.
+
+Artifact nodes carry `data-pdf-artifact-type="header"`, `"footer"`, or
+`"page-number"`. Explicit Header/Footer/PageNum markers are used when available;
+generic Artifact tags alone are insufficient. PDF.js currently omits artifact
+subtypes, so conservative margin/page-number and repeated-margin heuristics
+remain necessary. Unmatched text stays exposed, including repeated body text.
+Interactive/focused regions and user annotation regions are not hidden.
+
+Manual Windows JAWS/NVDA/Narrator checks remain necessary to verify actual speech:
+toggle each preference while a PDF is open, check both reading views, then
+confirm that searching, selecting text, navigating pages, and restarting the app
+retain their expected behavior.
+
+Phase 3 will add PDF annotation/anchor persistence and selection workflows;
+this phase adds no annotation/bookmark UI or clipboard changes.

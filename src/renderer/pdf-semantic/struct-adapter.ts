@@ -1,5 +1,9 @@
 import type { StructTreeNode } from 'pdfjs-dist/types/src/display/api';
 import type { MarkedContentRange, TextModel } from './text-model';
+import type { PdfReadingPreferences } from '../../shared/pdf-reading-preferences';
+import { DEFAULT_PDF_READING_PREFERENCES } from '../../shared/pdf-reading-preferences';
+import { applyPdfReadingPreferences, explicitPdfArtifactType, type PdfArtifactType } from './reading-preferences';
+import { HeuristicClassifier, type InferredPage } from './heuristic-classifier';
 
 export interface SemanticProperties {
   structId?: string;
@@ -19,6 +23,10 @@ export interface SemanticNode {
   properties: SemanticProperties;
   markedContentId: string | null;
   classification?: 'inferred';
+  artifactType?: PdfArtifactType;
+  startOffset?: number;
+  endOffset?: number;
+  marginPosition?: 'header' | 'footer';
 }
 
 type TreeContent = { type: string; id: string };
@@ -62,6 +70,9 @@ const roleAliases: Record<string, string> = {
   Quote: 'Quote',
   Note: 'Note',
   Artifact: 'Artifact',
+  Header: 'Header',
+  Footer: 'Footer',
+  PageNum: 'PageNum',
 };
 
 function markedRange(model: TextModel, id: string): MarkedContentRange | undefined {
@@ -94,16 +105,26 @@ function semanticProperties(node: TreeNode, inheritedLanguage?: string): Semanti
 }
 
 export class StructAdapter {
+  private inferredArtifacts?: InferredPage['artifacts'];
+  private readonly explicitArtifacts: InferredPage['artifacts'];
+
   constructor(
     private readonly tree: StructTreeNode,
     private readonly textModel: TextModel,
-  ) {}
+    private readonly inferredPage?: InferredPage,
+  ) {
+    this.explicitArtifacts = textModel.items.flatMap((item) =>
+      item.artifactType
+        ? [{ startOffset: item.startOffset, endOffset: item.endOffset, artifactType: item.artifactType }]
+        : [],
+    );
+  }
 
   adapt(): SemanticNode {
     return this.adaptNode(this.tree as TreeNode);
   }
 
-  toDOM(document: Document): HTMLElement {
+  toDOM(document: Document, preferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES): HTMLElement {
     const root = document.createElement('article');
     root.setAttribute('aria-label', 'PDF semantic page');
     const semanticTree = this.adapt();
@@ -115,9 +136,10 @@ export class StructAdapter {
     if (unowned.length) {
       const unownedText = document.createElement('div');
       unownedText.setAttribute('data-pdf-untagged', 'true');
-      unownedText.append(document.createTextNode(unowned.map((item) => item.text).join('')));
+      for (const item of unowned) this.appendRange(document, unownedText, item, true);
       root.append(unownedText);
     }
+    applyPdfReadingPreferences(root, preferences);
     return root;
   }
 
@@ -138,6 +160,8 @@ export class StructAdapter {
             children: [],
             properties: {},
             markedContentId: child.id,
+            startOffset: range.startOffset,
+            endOffset: range.endOffset,
           });
         }
       } else {
@@ -151,13 +175,22 @@ export class StructAdapter {
       children,
       properties: semanticProperties(node, inheritedLanguage),
       markedContentId,
+      artifactType: explicitPdfArtifactType(node.role),
     };
   }
 
-  private appendNode(document: Document, parent: HTMLElement, node: SemanticNode, ownedRanges: Set<string>): void {
+  private appendNode(
+    document: Document,
+    parent: HTMLElement,
+    node: SemanticNode,
+    ownedRanges: Set<string>,
+    genericArtifact = false,
+  ): void {
     const tag = this.htmlTag(node.role);
     const element = document.createElement(tag);
     const properties = node.properties;
+    if (node.role === 'Link') element.dataset.pdfAnnotation = 'link';
+    if (node.artifactType) element.dataset.pdfArtifactType = node.artifactType;
     if (properties.language) element.lang = properties.language;
     if (properties.structId && (tag === 'th' || tag === 'td')) {
       element.id = `pdf-header-${properties.structId.replace(/[^a-zA-Z0-9_-]/g, '-')}`;
@@ -175,10 +208,47 @@ export class StructAdapter {
     if (properties.rowSpan) (element as HTMLTableCellElement).rowSpan = properties.rowSpan;
     if (node.markedContentId) ownedRanges.add(node.markedContentId);
     if (node.text && !node.children.some((child) => child.markedContentId)) {
-      element.append(document.createTextNode(node.text));
+      if (node.startOffset !== undefined && node.endOffset !== undefined) {
+        this.appendRange(
+          document,
+          element,
+          { startOffset: node.startOffset, endOffset: node.endOffset },
+          genericArtifact,
+        );
+      } else element.append(document.createTextNode(node.text));
     }
-    for (const child of node.children) this.appendNode(document, element, child, ownedRanges);
+    for (const child of node.children) {
+      this.appendNode(document, element, child, ownedRanges, genericArtifact || node.role === 'Artifact');
+    }
     parent.append(element);
+  }
+
+  private appendRange(document: Document, parent: HTMLElement, range: MarkedContentRange, infer: boolean): void {
+    const inferred = infer
+      ? (this.inferredArtifacts ??= (this.inferredPage ?? new HeuristicClassifier().classify(this.textModel)).artifacts)
+      : [];
+    const artifacts = [...this.explicitArtifacts, ...inferred];
+    const boundaries = new Set([range.startOffset, range.endOffset]);
+    for (const artifact of artifacts) {
+      if (artifact.startOffset < range.endOffset && artifact.endOffset > range.startOffset) {
+        boundaries.add(Math.max(range.startOffset, artifact.startOffset));
+        boundaries.add(Math.min(range.endOffset, artifact.endOffset));
+      }
+    }
+    const offsets = [...boundaries].sort((a, b) => a - b);
+    for (let index = 0; index < offsets.length - 1; index++) {
+      const startOffset = offsets[index];
+      const endOffset = offsets[index + 1];
+      const span = document.createElement('span');
+      span.dataset.startOffset = String(startOffset);
+      span.dataset.endOffset = String(endOffset);
+      const artifact = artifacts.find(
+        (candidate) => candidate.startOffset <= startOffset && candidate.endOffset >= endOffset,
+      );
+      if (artifact) span.dataset.pdfArtifactType = artifact.artifactType;
+      span.textContent = this.textModel.fullText.slice(startOffset, endOffset);
+      parent.append(span);
+    }
   }
 
   private htmlTag(role: string): string {

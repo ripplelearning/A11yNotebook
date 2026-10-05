@@ -1,5 +1,6 @@
 import type { TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
 import { ViewportTransform } from './viewport-transform';
+import { explicitPdfArtifactType, type PdfArtifactType } from './reading-preferences';
 
 export type PdfTextPart = TextItem | (TextMarkedContent & { tag?: string | null });
 export type TextCoordinates = [number, number, number, number];
@@ -10,6 +11,7 @@ export interface TextItemRange {
   startOffset: number;
   endOffset: number;
   markedContentId: string | null;
+  artifactType?: PdfArtifactType;
   hasEOL: boolean;
   transform?: number[];
   width: number;
@@ -91,15 +93,22 @@ export class TextModel {
     this.page = page;
     this.markedContentMap = new Map(markedContentMap);
     const activeMarkedContent: string[] = [];
+    const activeArtifacts: Array<PdfArtifactType | undefined> = [];
     const items: TextItemRange[] = [];
     let fullText = '';
 
     for (const [extractionIndex, part] of pdfTextItems.entries()) {
       if (!('str' in part)) {
-        if (part.type === 'endMarkedContent') activeMarkedContent.pop();
-        else if (part.type === 'beginMarkedContentProps') {
+        if (part.type === 'endMarkedContent') {
+          activeMarkedContent.pop();
+          activeArtifacts.pop();
+        } else if (part.type === 'beginMarkedContentProps') {
           activeMarkedContent.push(typeof part.id === 'string' ? part.id : '');
-        } else if (part.type === 'beginMarkedContent') activeMarkedContent.push('');
+          activeArtifacts.push(explicitPdfArtifactType(part.tag) ?? activeArtifacts.at(-1));
+        } else if (part.type === 'beginMarkedContent') {
+          activeMarkedContent.push('');
+          activeArtifacts.push(explicitPdfArtifactType(part.tag) ?? activeArtifacts.at(-1));
+        }
         continue;
       }
 
@@ -112,6 +121,7 @@ export class TextModel {
         startOffset,
         endOffset: fullText.length,
         markedContentId: activeMarkedContent.at(-1) || null,
+        artifactType: activeArtifacts.at(-1),
         hasEOL: part.hasEOL,
         transform: part.transform,
         width: part.width,

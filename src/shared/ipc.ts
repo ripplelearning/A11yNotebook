@@ -10,6 +10,9 @@ export const IPC_CHANNELS = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  getPdfReadingPreferences: 'get-pdf-reading-preferences',
+  setPdfReadingPreferences: 'set-pdf-reading-preferences',
+  pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
   vaultOpen: 'vault:open',
   vaultGet: 'vault:get',
   vaultReadNote: 'vault:read-note',
@@ -71,6 +74,8 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.updaterDownload,
   IPC_CHANNELS.updaterInstallNow,
   IPC_CHANNELS.updaterInstallOnExit,
+  IPC_CHANNELS.getPdfReadingPreferences,
+  IPC_CHANNELS.setPdfReadingPreferences,
   IPC_CHANNELS.vaultOpen,
   IPC_CHANNELS.vaultGet,
   IPC_CHANNELS.vaultReadNote,
@@ -123,7 +128,7 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.vaultExportNote,
 ] as const;
 
-export const EVENT_CHANNELS = [IPC_CHANNELS.vaultSecurityLocked] as const;
+export const EVENT_CHANNELS = [IPC_CHANNELS.vaultSecurityLocked, IPC_CHANNELS.pdfReadingPreferencesChanged] as const;
 
 export type InvokeChannel = (typeof INVOKE_CHANNELS)[number];
 

@@ -8,6 +8,11 @@ import { HeuristicClassifier, type InferredPage } from './heuristic-classifier';
 import { createTextLayer, getSelectionOffsets, selectTextRange } from './text-layer';
 import { ViewportTransform } from './viewport-transform';
 import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
+import type { PdfReadingPreferences } from '../../shared/pdf-reading-preferences';
+import { DEFAULT_PDF_READING_PREFERENCES } from '../../shared/pdf-reading-preferences';
+import { applyPdfReadingPreferences } from './reading-preferences';
+
+let pdfModule: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | undefined;
 
 export type PdfAnnotation = {
   subtype?: string;
@@ -34,20 +39,27 @@ export class PdfDocument {
   private readonly pdfPromise: Promise<PDFDocumentProxy>;
   private readonly pages = new Map<number, Promise<PdfPage>>();
 
-  constructor(pdfBytes: Uint8Array, fileHash: string, vaultPath: string) {
+  constructor(
+    pdfBytes: Uint8Array,
+    fileHash: string,
+    vaultPath: string,
+    private readingPreferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
+  ) {
     this.fileHash = fileHash;
     this.vaultPath = vaultPath;
-    this.loadingTask = import('pdfjs-dist/legacy/build/pdf.mjs').then(({ GlobalWorkerOptions, getDocument }) => {
-      if (typeof window !== 'undefined') GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-      return getDocument({
-        data: pdfBytes.slice(),
-        disableAutoFetch: true,
-        disableRange: true,
-        disableStream: true,
-        useSystemFonts: false,
-        enableXfa: false,
-      });
-    });
+    this.loadingTask = (pdfModule ??= import('pdfjs-dist/legacy/build/pdf.mjs')).then(
+      ({ GlobalWorkerOptions, getDocument }) => {
+        if (typeof window !== 'undefined') GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+        return getDocument({
+          data: pdfBytes.slice(),
+          disableAutoFetch: true,
+          disableRange: true,
+          disableStream: true,
+          useSystemFonts: false,
+          enableXfa: false,
+        });
+      },
+    );
     this.pdfPromise = this.loadingTask
       .then((task) => task.promise)
       .then(async (pdf) => {
@@ -72,13 +84,23 @@ export class PdfDocument {
     return this.pdfPromise.then(() => undefined);
   }
 
+  setReadingPreferences(preferences: PdfReadingPreferences): void {
+    this.readingPreferences = { ...preferences };
+    for (const page of this.pages.values()) {
+      void page.then(
+        (loaded) => loaded.setReadingPreferences(this.readingPreferences),
+        () => undefined,
+      );
+    }
+  }
+
   async getPage(pageNum: number): Promise<PdfPage> {
     if (!Number.isInteger(pageNum) || pageNum < 1) throw new RangeError('PDF page number must be a positive integer.');
     const cached = this.pages.get(pageNum);
     if (cached) return cached;
     const created = this.pdfPromise.then(async (pdf) => {
       if (pageNum > pdf.numPages) throw new RangeError('PDF page number is out of range.');
-      return PdfPage.create(await pdf.getPage(pageNum), pageNum, this.pageLabels[pageNum - 1]);
+      return PdfPage.create(await pdf.getPage(pageNum), pageNum, this.pageLabels[pageNum - 1], this.readingPreferences);
     });
     this.pages.set(pageNum, created);
     return created;
@@ -86,9 +108,8 @@ export class PdfDocument {
 
   async classifyUntaggedPages(pageNumbers: number[]): Promise<void> {
     const pages = await Promise.all(pageNumbers.map((pageNumber) => this.getPage(pageNumber)));
-    const untaggedPages = pages.filter((page) => page.semanticTree === null);
-    const classified = new HeuristicClassifier().classifyPages(untaggedPages.map((page) => page.textModel));
-    untaggedPages.forEach((page, index) => page.setInferredPage(classified[index]));
+    const classified = new HeuristicClassifier().classifyPages(pages.map((page) => page.textModel));
+    pages.forEach((page, index) => page.setInferredPage(classified[index]));
   }
 
   async destroy(): Promise<void> {
@@ -118,6 +139,7 @@ export class PdfPage {
     textModel: TextModel,
     structure: Awaited<ReturnType<PDFPageProxy['getStructTree']>>,
     nativeAnnotations: PdfAnnotation[],
+    private readingPreferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
   ) {
     this.page = page;
     this.pageNum = pageNum;
@@ -131,7 +153,12 @@ export class PdfPage {
     this.textModel.setView(this.view);
   }
 
-  static async create(page: PDFPageProxy, pageNum: number, label?: string): Promise<PdfPage> {
+  static async create(
+    page: PDFPageProxy,
+    pageNum: number,
+    label?: string,
+    preferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
+  ): Promise<PdfPage> {
     const [content, structure, annotations] = await Promise.all([
       page.getTextContent({ includeMarkedContent: true }),
       page.getStructTree(),
@@ -161,7 +188,7 @@ export class PdfPage {
         },
       ];
     });
-    return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links);
+    return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links, preferences);
   }
 
   async renderCanvas(zoom = 1, rotation = 0): Promise<HTMLCanvasElement> {
@@ -205,10 +232,19 @@ export class PdfPage {
     return selectTextRange(layer ?? this.textLayer ?? document.createElement('div'), startOffset, length);
   }
 
-  getSemanticDOM(zoom = 1, rotation = 0): HTMLElement {
+  getSemanticDOM(preferences?: PdfReadingPreferences): HTMLElement;
+  getSemanticDOM(zoom?: number, rotation?: number, preferences?: PdfReadingPreferences): HTMLElement;
+  getSemanticDOM(
+    zoomOrPreferences: number | PdfReadingPreferences = 1,
+    rotation = 0,
+    preferences?: PdfReadingPreferences,
+  ): HTMLElement {
+    const zoom = typeof zoomOrPreferences === 'number' ? zoomOrPreferences : 1;
+    const updatedPreferences = typeof zoomOrPreferences === 'number' ? preferences : zoomOrPreferences;
+    if (updatedPreferences) this.readingPreferences = { ...updatedPreferences };
     const root = this.structure
-      ? new StructAdapter(this.structure, this.textModel).toDOM(document)
-      : createReflowView(document, this.textModel, null, this.inferredPage);
+      ? new StructAdapter(this.structure, this.textModel, this.inferredPage).toDOM(document, this.readingPreferences)
+      : createReflowView(document, this.textModel, null, this.inferredPage, this.readingPreferences);
     root.dataset.pageNumber = String(this.pageNum);
     root.dataset.zoom = String(zoom);
     root.dataset.rotation = String((this.canRotate + rotation) % 360);
@@ -219,8 +255,29 @@ export class PdfPage {
     this.inferredPage = page;
   }
 
+  setReadingPreferences(preferences: PdfReadingPreferences): void {
+    this.readingPreferences = { ...preferences };
+  }
+
   getTextLayer(zoom = 1, rotation = 0): HTMLDivElement {
     this.textLayer = createTextLayer(this.textModel, document, zoom, (this.canRotate + rotation) % 360);
+    const semantic = this.getSemanticDOM();
+    const ranges = [...semantic.querySelectorAll<HTMLElement>('[data-start-offset]')].map((span) => ({
+      startOffset: Number(span.dataset.startOffset),
+      endOffset: Number(span.dataset.endOffset),
+      artifactType: span.closest<HTMLElement>('[data-pdf-artifact-type]')?.dataset.pdfArtifactType,
+      annotation: Boolean(span.closest('[data-pdf-annotation]')),
+    }));
+    for (const span of this.textLayer.querySelectorAll<HTMLElement>('[data-start-offset]')) {
+      const startOffset = Number(span.dataset.startOffset);
+      const endOffset = Number(span.dataset.endOffset);
+      const range = ranges.find(
+        (candidate) => candidate.startOffset <= startOffset && candidate.endOffset >= endOffset,
+      );
+      if (range?.annotation) span.dataset.pdfAnnotation = 'link';
+      else if (range?.artifactType) span.dataset.pdfArtifactType = range.artifactType;
+    }
+    applyPdfReadingPreferences(this.textLayer, this.readingPreferences);
     return this.textLayer;
   }
 

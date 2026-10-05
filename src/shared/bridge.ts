@@ -8,6 +8,7 @@ import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
 import type { VaultAsset } from './asset-bridge';
 import type { CardSchedule } from './assets';
+import type { PdfReadingPreferences } from './pdf-reading-preferences';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
@@ -92,6 +93,9 @@ export interface UpdaterBridge {
 export interface NotebookBridge {
   updater: UpdaterBridge;
   vault: VaultBridge;
+  getPdfReadingPreferences?(): Promise<PdfReadingPreferences>;
+  setPdfReadingPreferences?(preferences: PdfReadingPreferences): Promise<PdfReadingPreferences>;
+  onPdfReadingPreferencesChanged?(callback: (preferences: PdfReadingPreferences) => void): () => void;
   /** Subscribe to commands chosen from the native application menu. Returns an unsubscribe function. */
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
 }
