@@ -283,6 +283,22 @@ describe('extended vault IPC integration', () => {
     }
   });
 
+  it('rejects milestone requests queued behind locking before reading or changing cached data', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
+    const input = { title: 'Private project', dueDate: '2026-10-10', status: 'active' };
+    const milestone = (await invoke(IPC_CHANNELS.vaultMilestoneCreate, input)) as Milestone;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    const queued = [
+      invoke(IPC_CHANNELS.vaultMilestonesGet),
+      invoke(IPC_CHANNELS.vaultMilestoneCreate, input),
+      invoke(IPC_CHANNELS.vaultMilestoneUpdate, milestone.id, { title: 'Not permitted' }),
+      invoke(IPC_CHANNELS.vaultMilestoneDelete, milestone.id),
+    ];
+    await Promise.all([locking, ...queued.map((request) => expect(request).rejects.toThrow('Unlock the vault'))]);
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'phase-five-test-password');
+    expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([milestone]);
+  });
+
   it('does not redeliver a fired task reminder when a milestone assigns its stable identity', async () => {
     mock.disableWatcher = true;
     try {

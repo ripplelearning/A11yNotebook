@@ -1059,35 +1059,47 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestonesGet, async (event) => {
     assertTrusted(event, isTrustedSender);
-    requireService();
+    const vault = requireService();
     if (!milestones) throw new Error('Open a vault first.');
     const current = milestones;
-    return serializeVaultOperation(() => current.getMilestones());
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.getMilestones();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
-    requireService();
+    const vault = requireService();
     if (!milestones) throw new Error('Open a vault first.');
     const current = milestones;
-    return serializeVaultOperation(() =>
-      current.createMilestone(input as import('../../src/shared/milestones').NewMilestone),
-    );
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.createMilestone(input as import('../../src/shared/milestones').NewMilestone);
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneUpdate, async (event, id: unknown, update: unknown) => {
     assertTrusted(event, isTrustedSender);
-    requireService();
+    const vault = requireService();
     if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone update.');
     const current = milestones;
-    return serializeVaultOperation(() =>
-      current.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate),
-    );
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate);
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneDelete, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);
-    requireService();
+    const vault = requireService();
     if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone.');
     const current = milestones;
-    return serializeVaultOperation(() => current.deleteMilestone(id));
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.deleteMilestone(id);
+    });
   });
   protocol.handle('vault-file', async (request) => {
     try {
