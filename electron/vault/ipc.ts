@@ -19,6 +19,8 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
+import { createReminderDefaultsStore } from './reminder-defaults';
+import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import {
   createVaultSecurityConfig,
@@ -53,6 +55,7 @@ let annotations: ReturnType<typeof createAnnotationStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
+let milestones: ReturnType<typeof createMilestoneStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
 const noteKeys = new Map<string, Buffer>();
@@ -235,6 +238,16 @@ async function openVaultNow(vaultPath: string) {
   securityConfig = nextSecurity;
   metadata = createMetadataStore(nextService);
   assets = createAssetStore(nextService, metadata);
+  milestones = createMilestoneStore({
+    readStore: () => metadataFor(nextService).read('milestones.json'),
+    writeStore: (value) => metadataFor(nextService).write('milestones.json', value),
+    getTasks: () => nextService.getTasks(),
+    readNote: (relative) => nextService.readNote(relative),
+    saveNote: (relative, content, expected) => nextService.saveNote(relative, content, expected),
+    validateNote: async (relative) => {
+      await nextService.readNote(relative);
+    },
+  });
   annotations = createAnnotationStore({
     read: () => {
       if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
@@ -294,22 +307,46 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       await collect((await nextService.getVault()).entries);
       return notes;
     },
+    getFlashcardReviews: async () => {
+      const defaults = await createReminderDefaultsStore(metadataFor(nextService)).get();
+      if (!defaults.notification.flashcards || !assets || service !== nextService) return [];
+      return (await assets.getScheduledFlashcards()).map((review) => ({
+        id: review.id,
+        path: review.path,
+        scheduledAt: new Date(`${review.due}T${defaults.time}:00`).toISOString(),
+      }));
+    },
     notify: (reminder) => {
       if (service !== nextService) return;
-      sendReminder({ type: 'fired', vaultPath: vault.path, reminder });
+      if (reminder.notification === false) return;
+      const visible = reminder.privacy === 'hide-title' ? { ...reminder, title: 'Reminder' } : reminder;
+      sendReminder({ type: 'fired', vaultPath: vault.path, reminder: visible });
       if (Notification.isSupported()) {
-        const notification = new Notification({ title: 'A11y Notebook reminder', body: reminder.title });
+        const notification = new Notification({ title: 'A11y Notebook reminder', body: visible.title });
         const target = { path: reminder.path };
         notificationTargets.set(notification, target);
         notifications.add(notification);
         notification.on('click', () => {
           if (service === nextService)
-            sendReminder({ type: 'open', vaultPath: vault.path, reminder: { ...reminder, path: target.path } });
+            sendReminder({ type: 'open', vaultPath: vault.path, reminder: { ...visible, path: target.path } });
         });
         notification.on('close', () => {
           notifications.delete(notification);
           notificationTargets.delete(notification);
         });
+        notification.show();
+      }
+    },
+    notifyFlashcard: () => {
+      if (service !== nextService) return;
+      sendReminder({ type: 'flashcard-due', vaultPath: vault.path });
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+          title: 'A11y Notebook',
+          body: 'A flashcard is due for review.',
+        });
+        notifications.add(notification);
+        notification.on('close', () => notifications.delete(notification));
         notification.show();
       }
     },
@@ -363,6 +400,7 @@ async function relocate(relative: string, destination: string) {
   const vault = requireService();
   const currentAnnotations = annotations;
   const currentReminders = reminderService;
+  const currentMilestones = milestones;
   const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
   const sourceExtension = path.posix.extname(relative).toLowerCase();
@@ -404,6 +442,7 @@ async function relocate(relative: string, destination: string) {
   const imageAlts = await store.read('image-alts.json');
   const bookmarksSnapshot = await store.read('bookmarks.json');
   let reminderSnapshot: unknown = null;
+  let milestoneSnapshot: unknown = null;
   const written: typeof repairs = [];
   let moved = false;
   let rolledBack = false;
@@ -417,12 +456,15 @@ async function relocate(relative: string, destination: string) {
     await store.write('flashcards.json', flashcards).catch(() => undefined);
     await store.write('image-alts.json', imageAlts).catch(() => undefined);
     await store.write('reminders.json', reminderSnapshot).catch(() => undefined);
+    await store.write('milestones.json', milestoneSnapshot).catch(() => undefined);
+    await currentMilestones?.migratePaths(destination, relative).catch(() => undefined);
     await store.write('bookmarks.json', bookmarksSnapshot).catch(() => undefined);
   };
   const operation = async () => {
     try {
       metadataFor(vault);
       reminderSnapshot = await store.read('reminders.json');
+      milestoneSnapshot = await store.read('milestones.json');
       try {
         await vault.moveEntry(relative, destination);
         moved = true;
@@ -445,6 +487,7 @@ async function relocate(relative: string, destination: string) {
         await vault.saveNote(item.nextPath, item.after, item.before);
       }
       await currentAnnotations?.migratePaths(relative, destination);
+      await currentMilestones?.migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
         ['image-alts.json', imageAlts],
@@ -958,6 +1001,7 @@ export function setupVaultIpc(
       if (typeof relative !== 'string' || typeof id !== 'string' || typeof expected !== 'string' || !assets)
         throw new Error('Invalid deck rating.');
       await assets.saveSchedule(relative, id, schedule, expected);
+      await reminderService?.refresh();
     },
   );
   app.on('before-quit', () => {
@@ -973,7 +1017,14 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReminderCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!reminderService) throw new Error('Open a vault first.');
-    await reminderService.createReminder(input as CreateReminderInput);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid reminder.');
+    const defaults = await createReminderDefaultsStore(metadataFor(requireService())).get();
+    const request = input as CreateReminderInput;
+    await reminderService.createReminder({
+      ...request,
+      privacy: request.privacy ?? defaults.privacy,
+      notification: request.notification ?? defaults.notification.reminders,
+    });
     return reminderService.getReminders();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDismiss, async (event, id: unknown) => {
@@ -991,6 +1042,36 @@ export function setupVaultIpc(
     )
       throw new Error('Invalid snooze request.');
     return reminderService.snoozeReminder(id, duration as SnoozeDuration);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsGet, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return createReminderDefaultsStore(metadataFor(requireService())).get();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsSet, async (event, defaults: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const updated = await createReminderDefaultsStore(metadataFor(requireService())).set(defaults);
+    await reminderService?.refresh();
+    return updated;
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestonesGet, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    if (!milestones) throw new Error('Open a vault first.');
+    return milestones.getMilestones();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneCreate, async (event, input: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!milestones) throw new Error('Open a vault first.');
+    return milestones.createMilestone(input as import('../../src/shared/milestones').NewMilestone);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneUpdate, async (event, id: unknown, update: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone update.');
+    return milestones.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneDelete, async (event, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone.');
+    return milestones.deleteMilestone(id);
   });
   protocol.handle('vault-file', async (request) => {
     try {

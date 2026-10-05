@@ -6,6 +6,7 @@ import {
   type SnoozeDuration,
 } from '../../../shared/reminders';
 import CreateReminderDialog from './CreateReminderDialog';
+import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../shared/reminder-defaults';
 
 export interface RemindersViewProps {
   reminders: Reminder[];
@@ -14,6 +15,8 @@ export interface RemindersViewProps {
   onDismiss: (id: string) => void | Promise<unknown>;
   onSnooze: (id: string, duration: SnoozeDuration) => void | Promise<unknown>;
   onOpenNote: (path: string, line?: number) => void | Promise<unknown>;
+  defaults?: ReminderDefaults;
+  onSaveDefaults?: (defaults: ReminderDefaults) => void | Promise<unknown>;
   now?: Date;
 }
 
@@ -24,6 +27,8 @@ export default function RemindersView({
   onDismiss,
   onSnooze,
   onOpenNote,
+  defaults = DEFAULT_REMINDER_DEFAULTS,
+  onSaveDefaults,
   now = new Date(),
 }: RemindersViewProps) {
   const id = useId();
@@ -76,10 +81,10 @@ export default function RemindersView({
         }}
       >
         <option value="">Snooze…</option>
-        <option value="5">5 minutes</option>
-        <option value="15">15 minutes</option>
-        <option value="60">60 minutes</option>
-        <option value="tomorrow">Tomorrow</option>
+        <option value="5">5 minutes{defaults.snooze === 5 ? ' (default)' : ''}</option>
+        <option value="15">15 minutes{defaults.snooze === 15 ? ' (default)' : ''}</option>
+        <option value="60">60 minutes{defaults.snooze === 60 ? ' (default)' : ''}</option>
+        <option value="tomorrow">Tomorrow{defaults.snooze === 'tomorrow' ? ' (default)' : ''}</option>
       </select>
       <button
         type="button"
@@ -164,7 +169,13 @@ export default function RemindersView({
         </>
       )}
       {creating && (
-        <CreateReminderDialog notePaths={notePaths} onCreate={onCreate} onClose={() => setCreating(false)} />
+        <CreateReminderDialog
+          notePaths={notePaths}
+          defaults={defaults}
+          onSaveDefaults={onSaveDefaults}
+          onCreate={onCreate}
+          onClose={() => setCreating(false)}
+        />
       )}
     </section>
   );

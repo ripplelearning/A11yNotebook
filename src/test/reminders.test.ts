@@ -91,7 +91,7 @@ describe('reminder parsing and validation', () => {
     expect(parseReminderDate('2028-02-29 10:00')).toBeInstanceOf(Date);
     expect(parseReminderDate('2026-10-03T10:00:00.000Z')?.toISOString()).toBe('2026-10-03T10:00:00.000Z');
     expect(() => validateReminderStore({ version: 1, standalone: [], states: { bad: {} } })).toThrow();
-    expect(validateReminderStore(null)).toEqual({ version: 1, standalone: [], states: {} });
+    expect(validateReminderStore(null)).toEqual({ version: 1, standalone: [], states: {}, reviewStates: {} });
   });
 });
 

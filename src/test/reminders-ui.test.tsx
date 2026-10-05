@@ -134,7 +134,13 @@ describe('accessible reminders UI', () => {
     fireEvent.change(screen.getByLabelText('Time'), { target: { value: '12:30' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
-      expect(onCreate).toHaveBeenCalledWith({ title: 'Meeting', path: 'Study.md', scheduledAt: '2026-10-05 12:30' }),
+      expect(onCreate).toHaveBeenCalledWith({
+        title: 'Meeting',
+        path: 'Study.md',
+        scheduledAt: '2026-10-05 12:30',
+        privacy: 'show-title',
+        notification: true,
+      }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
     expect(opener).toHaveFocus();
