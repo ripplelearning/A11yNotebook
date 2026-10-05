@@ -1,7 +1,7 @@
 import {
   createCipheriv,
   createDecipheriv,
-  createHash,
+  createHmac,
   hkdfSync,
   randomBytes,
   scrypt as scryptCallback,
@@ -279,9 +279,12 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
   if (config.recoveryWrappedDataKey !== null) decodeBase64(config.recoveryWrappedDataKey, KEY_BYTES);
 }
 
-function integrityPayload(config: Omit<RecoverableVaultSecurityConfig, 'integrity'> | RecoverableVaultSecurityConfig) {
+function integrityPayload(
+  config: Omit<RecoverableVaultSecurityConfig, 'integrity'> | RecoverableVaultSecurityConfig,
+  key: Buffer,
+) {
   const digest = (value: unknown) =>
-    createHash('sha256')
+    createHmac('sha256', key)
       .update(JSON.stringify(value) ?? 'null')
       .digest('base64');
   return {
@@ -306,13 +309,18 @@ function sealRecoverableConfig(
   const base = { ...config } as Omit<RecoverableVaultSecurityConfig, 'integrity'>;
   return {
     ...base,
-    integrity: encryptRecord(key, 'vault-config-integrity', 'vault-config', JSON.stringify(integrityPayload(base))),
+    integrity: encryptRecord(
+      key,
+      'vault-config-integrity',
+      'vault-config',
+      JSON.stringify(integrityPayload(base, key)),
+    ),
   };
 }
 
 function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Buffer) {
   const actual = decryptRecord(key, 'vault-config-integrity', config.integrity);
-  if (actual !== JSON.stringify(integrityPayload(config))) throw new Error('Vault security metadata is invalid.');
+  if (actual !== JSON.stringify(integrityPayload(config, key))) throw new Error('Vault security metadata is invalid.');
 }
 
 function passwordWrap(dataKey: Buffer, password: string, salt = randomBytes(SALT_BYTES)) {
