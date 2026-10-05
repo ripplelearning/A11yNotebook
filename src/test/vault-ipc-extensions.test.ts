@@ -327,14 +327,14 @@ describe('extended vault IPC integration', () => {
     );
     await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
     await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
-    expect(JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).version).toBe(1);
+    expect(JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).version).toBe(2);
     const recoveryKey = (await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery')) as string;
     await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
 
     const recoverableConfig = JSON.parse(
       await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'),
     ) as { version: number };
-    expect(recoverableConfig.version).toBe(2);
+    expect(recoverableConfig.version).toBe(3);
     await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
     expect(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).not.toContain('secret');
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
@@ -413,7 +413,7 @@ describe('extended vault IPC integration', () => {
       /Security metadata write failed/,
     );
     const config = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
-    expect(config.version).toBe(1);
+    expect(config.version).toBe(2);
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
@@ -424,7 +424,7 @@ describe('extended vault IPC integration', () => {
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
   });
-  it('retries credential-copy cleanup after an interrupted post-commit recovery migration', async () => {
+  it('defers credential-copy cleanup until recovery unlock after an interrupted migration', async () => {
     const oldPassword = 'correct horse battery';
     await invoke(IPC_CHANNELS.vaultSecuritySetup, oldPassword);
     mock.securityWriteCount = 0;
@@ -433,13 +433,14 @@ describe('extended vault IPC integration', () => {
     mock.failSecurityWriteAt = 2;
     await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true)).rejects.toThrow(/Recovery was committed/);
     const committed = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
-    expect(committed.version).toBe(2);
+    expect(committed.version).toBe(3);
     expect(committed.legacyCredentialsCleanupRequired).toBe(true);
     expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ locked: true, recoveryAvailable: true });
 
     await invoke(IPC_CHANNELS.vaultOpen);
     await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
     await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);

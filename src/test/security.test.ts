@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createVaultSecurityConfig,
+  createVaultRecoveryKey,
   decryptPasswordEncryptedNote,
   decryptRecord,
   encryptRecord,
@@ -14,6 +15,7 @@ import {
   rotateVaultRecoveryKey,
   unlockVaultWithRecovery,
   unwrapLegacyVaultKey,
+  revokeVaultRecoveryKey,
   reencryptPasswordNote,
   unlockPasswordEncryptedNote,
   unlockVault,
@@ -27,6 +29,57 @@ describe('vault security primitives', () => {
     key.fill(0);
     unlocked.fill(0);
     await expect(unlockVault(config, 'incorrect password')).rejects.toThrow(/Incorrect vault password/);
+  });
+
+  it('supports legacy vault metadata and independently wrapped random vault keys', async () => {
+    const legacyConfig = {
+      version: 1 as const,
+      salt: 'AAECAwQFBgcICQoLDA0ODw==',
+      nonce: 'AAECAwQFBgcICQoL',
+      tag: 'AZqDLrZBHtnJqzb2r2Rt8g==',
+      verifier: 'oytFLSZmGPZ3WSfoca4Ew6RWd0d9gpcOIGCu9XI6',
+    };
+    const legacyKey = await unlockVault(legacyConfig, 'legacy vault password');
+    const { config, key } = await createVaultSecurityConfig('correct horse battery');
+    expect(config.version).toBe(2);
+    expect(config.version === 2 && config.wrappedKey).toBeDefined();
+    expect(key.equals(legacyKey)).toBe(false);
+    const reopened = await unlockVault(config, 'correct horse battery');
+    expect(reopened.equals(key)).toBe(true);
+    legacyKey.fill(0);
+    key.fill(0);
+    reopened.fill(0);
+  });
+
+  it('authenticates, rotates, revokes, and resets access with recovery material', async () => {
+    const { config: passwordConfig, key } = await createVaultSecurityConfig('old vault password');
+    const first = createVaultRecoveryKey(passwordConfig, key);
+    const recovered = unlockVaultWithRecovery(first.config, first.recoveryKey);
+    expect(recovered.equals(key)).toBe(true);
+    const rotated = createVaultRecoveryKey(first.config, key);
+    expect(rotated.recoveryKey).not.toBe(first.recoveryKey);
+    expect(() => unlockVaultWithRecovery(rotated.config, first.recoveryKey)).toThrow(/incorrect|damaged/i);
+    const reset = await resetVaultPasswordWithRecovery(rotated.config, rotated.recoveryKey, 'new vault password');
+    expect(reset.key.equals(key)).toBe(true);
+    expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
+    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect vault password/);
+    const revoked = revokeVaultRecoveryKey(reset.config);
+    expect(() => unlockVaultWithRecovery(revoked, rotated.recoveryKey)).toThrow(/not configured/);
+    for (const item of [key, recovered, reset.key]) item.fill(0);
+  });
+
+  it('rejects malformed and tampered recovery envelopes', async () => {
+    const { config, key } = await createVaultSecurityConfig('correct horse battery');
+    const { config: configured, recoveryKey } = createVaultRecoveryKey(config, key);
+    expect(() => unlockVaultWithRecovery(configured, 'not-a-recovery-key')).toThrow(/invalid/i);
+    expect(() => unlockVaultWithRecovery(configured, recoveryKey.slice(0, -1))).toThrow(/invalid/i);
+    expect(() =>
+      unlockVaultWithRecovery(
+        { ...configured, recovery: { ...configured.recovery!, ciphertext: `${configured.recovery!.ciphertext}A` } },
+        recoveryKey,
+      ),
+    ).toThrow(/incorrect|damaged/i);
+    key.fill(0);
   });
 
   it('uses authenticated, domain-separated encrypted records', async () => {
@@ -52,7 +105,7 @@ describe('vault security primitives', () => {
     const recoveryKey = generateVaultRecoveryKey();
     const credentials = JSON.stringify([{ id: 'service', username: 'user', password: 'credential secret' }]);
     const migrated = await prepareVaultRecovery(legacy.config, 'correct horse battery', recoveryKey, credentials);
-    expect(migrated.config.version).toBe(2);
+    expect(migrated.config.version).toBe(3);
     expect(migrated.config.credentials).not.toBeNull();
     expect(decryptRecord(migrated.key, 'credentials', migrated.config.credentials)).toBe(credentials);
     expect(unwrapLegacyVaultKey(migrated.config, migrated.key)?.equals(legacy.key)).toBe(true);
@@ -72,16 +125,16 @@ describe('vault security primitives', () => {
         'correct horse battery',
       ),
     ).rejects.toThrow(/security metadata is invalid/);
-    await expect(
+    expect(() =>
       unlockVaultWithRecovery(
         { ...migrated.config, recoveryWrappedDataKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' },
         recoveryKey,
       ),
-    ).rejects.toThrow(/recovery data is damaged/);
+    ).toThrow(/recovery data is damaged/i);
     const recovered = await unlockVaultWithRecovery(migrated.config, recoveryKey);
     expect(recovered.equals(migrated.key)).toBe(true);
-    await expect(unlockVaultWithRecovery(migrated.config, generateVaultRecoveryKey())).rejects.toThrow(/Recovery key/);
-    await expect(unlockVaultWithRecovery(migrated.config, 'malformed')).rejects.toThrow(/Recovery key/);
+    expect(() => unlockVaultWithRecovery(migrated.config, generateVaultRecoveryKey())).toThrow(/Recovery key/);
+    expect(() => unlockVaultWithRecovery(migrated.config, 'malformed')).toThrow(/Recovery key/);
     recovered.fill(0);
     migrated.key.fill(0);
     legacy.key.fill(0);
@@ -96,10 +149,10 @@ describe('vault security primitives', () => {
     expect((await unlockVault(reset.config, 'new vault password')).equals(reset.key)).toBe(true);
     const newRecoveryKey = generateVaultRecoveryKey();
     const rotated = rotateVaultRecoveryKey(reset.config, reset.key, newRecoveryKey);
-    await expect(unlockVaultWithRecovery(rotated, oldRecoveryKey)).rejects.toThrow(/Recovery key/);
+    expect(() => unlockVaultWithRecovery(rotated, oldRecoveryKey)).toThrow(/Recovery key/);
     expect((await unlockVaultWithRecovery(rotated, newRecoveryKey)).equals(reset.key)).toBe(true);
     const revoked = rotateVaultRecoveryKey(rotated, reset.key, null);
-    await expect(unlockVaultWithRecovery(revoked, newRecoveryKey)).rejects.toThrow(/not configured/);
+    expect(() => unlockVaultWithRecovery(revoked, newRecoveryKey)).toThrow(/not configured/);
     reset.key.fill(0);
     migrated.key.fill(0);
     legacy.key.fill(0);
