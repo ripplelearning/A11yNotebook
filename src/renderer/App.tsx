@@ -2394,12 +2394,14 @@ export default function App() {
             if (!prepare) throw new Error('Vault recovery is unavailable.');
             return prepare(password);
           }}
-          onAcknowledgeRecovery={async () => {
+          onAcknowledgeRecovery={async (acknowledged) => {
             const acknowledge = window.a11yNotebook?.vault.acknowledgeVaultRecovery;
             if (!acknowledge) throw new Error('Vault recovery is unavailable.');
-            await acknowledge(true);
-            setRecoveryAvailable(true);
-            setStatusMessage('Vault recovery enabled.');
+            await acknowledge(acknowledged);
+            if (acknowledged) {
+              setRecoveryAvailable(true);
+              setStatusMessage('Vault recovery enabled.');
+            }
           }}
           onRevokeRecovery={async (password) => {
             const revoke = window.a11yNotebook?.vault.revokeVaultRecovery;

@@ -17,7 +17,7 @@ interface Props {
   recoveryAvailable?: boolean;
   onSetVaultPassword?: (password: string) => Promise<void>;
   onPrepareRecovery?: (password: string) => Promise<string>;
-  onAcknowledgeRecovery?: () => Promise<void>;
+  onAcknowledgeRecovery?: (acknowledged: boolean) => Promise<void>;
   onRevokeRecovery?: (password: string) => Promise<void>;
   onLockVault?: () => Promise<void>;
   onSaveCredential?: (id: string, username: string, password: string) => Promise<void>;
@@ -40,6 +40,7 @@ export default function SettingsDialog({
 }: Props) {
   const [draft, setDraft] = useState(settings);
   const [error, setError] = useState('');
+  const [securityNotice, setSecurityNotice] = useState('');
   const [saving, setSaving] = useState(false);
   const [vaultPassword, setVaultPassword] = useState('');
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState('');
@@ -297,13 +298,7 @@ export default function SettingsDialog({
                   </p>
                   <label>
                     One-time vault recovery key
-                    <input
-                      ref={recoveryKeyInput}
-                      readOnly
-                      value={recoveryKey}
-                      spellCheck={false}
-                      autoComplete="off"
-                    />
+                    <input ref={recoveryKeyInput} readOnly value={recoveryKey} spellCheck={false} autoComplete="off" />
                   </label>
                   <label>
                     <input
@@ -317,11 +312,11 @@ export default function SettingsDialog({
                     type="button"
                     disabled={!recoverySaved}
                     onClick={() => {
-                      void onAcknowledgeRecovery()
+                      void onAcknowledgeRecovery(true)
                         .then(() => {
                           setRecoveryKey('');
                           setRecoverySaved(false);
-                          setError('Recovery key saved and enabled.');
+                          setSecurityNotice('Recovery key saved and enabled.');
                         })
                         .catch(() => setError('Could not enable the recovery key. Keep your saved copy and retry.'));
                     }}
@@ -331,15 +326,19 @@ export default function SettingsDialog({
                   <button
                     type="button"
                     onClick={() => {
-                      setRecoveryKey('');
-                      setRecoverySaved(false);
+                      void onAcknowledgeRecovery(false)
+                        .then(() => {
+                          setRecoveryKey('');
+                          setRecoverySaved(false);
+                        })
+                        .catch(() => setError('Could not discard the pending recovery key.'));
                     }}
                   >
                     Discard and generate another key
                   </button>
                 </>
               )}
-              {recoveryAvailable && onRevokeRecovery ? (
+              {recoveryAvailable && onRevokeRecovery && !recoveryKey ? (
                 <>
                   <label>
                     Current vault password to revoke recovery
@@ -358,7 +357,7 @@ export default function SettingsDialog({
                       void onRevokeRecovery(revokePassword)
                         .then(() => {
                           setRevokePassword('');
-                          setError('Vault recovery key revoked.');
+                          setSecurityNotice('Vault recovery key revoked.');
                         })
                         .catch(() => setError('Could not revoke recovery. Check the current password and try again.'));
                     }}
@@ -434,6 +433,7 @@ export default function SettingsDialog({
           ) : null}
         </fieldset>
         {error ? <p role="alert">{error}</p> : null}
+        {securityNotice ? <p role="status">{securityNotice}</p> : null}
         <button type="submit" disabled={saving}>
           Save settings
         </button>

@@ -325,12 +325,10 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'wrong password')).rejects.toThrow(
       /Incorrect vault password/,
     );
-    const recoveryKey = (await invoke(
-      IPC_CHANNELS.vaultSecurityPrepareRecovery,
-      'correct horse battery',
-    )) as string;
-    await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false)).rejects.toThrow(/Save the recovery key/);
+    await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
     expect(JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).version).toBe(1);
+    const recoveryKey = (await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery')) as string;
     await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
 
     const recoverableConfig = JSON.parse(
@@ -339,6 +337,12 @@ describe('extended vault IPC integration', () => {
     expect(recoverableConfig.version).toBe(2);
     await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
     expect(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).not.toContain('secret');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'secondary', 'bob', 'another secret');
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toHaveLength(2);
+    await invoke(IPC_CHANNELS.vaultCredentialsDelete, 'secondary');
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
@@ -360,6 +364,44 @@ describe('extended vault IPC integration', () => {
       locked: false,
       recoveryAvailable: true,
     });
+    const replacementRecoveryKey = (await invoke(
+      IPC_CHANNELS.vaultSecurityPrepareRecovery,
+      'new vault password',
+    )) as string;
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'another password')).rejects.toThrow(
+      /Recovery key/,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, 'new vault password');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ recoveryAvailable: false });
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, replacementRecoveryKey, 'another password')).rejects.toThrow(
+      /not configured/,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    const protectedRoot = mock.root;
+    mock.root = path.join(temporary, 'unprotected-vault');
+    await mkdir(mock.root);
+    await writeFile(path.join(mock.root, 'Other.md'), 'Other vault');
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({
+      enabled: false,
+      locked: false,
+      recoveryAvailable: false,
+    });
+    mock.root = protectedRoot;
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({
+      enabled: true,
+      locked: true,
+      recoveryAvailable: false,
+    });
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
   });
   it('keeps the legacy security record and credentials when atomic recovery migration fails', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
@@ -389,13 +431,11 @@ describe('extended vault IPC integration', () => {
     await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
     const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, oldPassword);
     mock.failSecurityWriteAt = 2;
-    await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true)).rejects.toThrow(
-      /Recovery was committed/,
-    );
+    await expect(invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true)).rejects.toThrow(/Recovery was committed/);
     const committed = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
     expect(committed.version).toBe(2);
     expect(committed.legacyCredentialsCleanupRequired).toBe(true);
-    expect((await invoke(IPC_CHANNELS.vaultSecurityStatus))).toMatchObject({ locked: true, recoveryAvailable: true });
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ locked: true, recoveryAvailable: true });
 
     await invoke(IPC_CHANNELS.vaultOpen);
     await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();

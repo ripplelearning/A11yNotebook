@@ -87,7 +87,7 @@ describe('security controls', () => {
     fireEvent.click(screen.getByLabelText('I have saved this recovery key somewhere secure'));
     fireEvent.click(confirm);
     await waitFor(() => expect(onAcknowledgeRecovery).toHaveBeenCalledOnce());
-    expect(await screen.findByRole('alert')).toHaveTextContent('Recovery key saved and enabled.');
+    expect(await screen.findByText('Recovery key saved and enabled.')).toHaveAttribute('role', 'status');
   });
 
   it('saves configurable idle and unsaved-edit lock delays', async () => {

@@ -1,4 +1,11 @@
-import { createCipheriv, createDecipheriv, createHash, hkdfSync, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import {
+  createCipheriv,
+  createDecipheriv,
+  createHash,
+  hkdfSync,
+  randomBytes,
+  scrypt as scryptCallback,
+} from 'node:crypto';
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
@@ -206,8 +213,7 @@ function decodeBase64(value: string, expectedBytes?: number): Buffer {
 }
 
 function decodeRecoveryKey(value: unknown): Buffer {
-  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value))
-    throw new Error('Recovery key is invalid.');
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{43}$/.test(value)) throw new Error('Recovery key is invalid.');
   const bytes = Buffer.from(value, 'base64url');
   if (bytes.length !== KEY_BYTES || bytes.toString('base64url') !== value) throw new Error('Recovery key is invalid.');
   return bytes;
@@ -218,6 +224,7 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
     if (
       !record ||
       typeof record !== 'object' ||
+      Object.keys(record).some((key) => !['format', 'id', 'nonce', 'tag', 'ciphertext'].includes(key)) ||
       (record as EncryptedRecord).format !== FORMAT ||
       typeof (record as EncryptedRecord).id !== 'string' ||
       typeof (record as EncryptedRecord).nonce !== 'string' ||
@@ -229,14 +236,26 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
     decodeBase64((record as EncryptedRecord).tag, TAG_BYTES);
     decodeBase64((record as EncryptedRecord).ciphertext);
   };
-  const fields = [
-    config.passwordSalt,
-    config.passwordNonce,
-    config.passwordTag,
-    config.wrappedDataKey,
-  ];
+  const fields = [config.passwordSalt, config.passwordNonce, config.passwordTag, config.wrappedDataKey];
   if (
     config.version !== 2 ||
+    Object.keys(config).some(
+      (key) =>
+        ![
+          'version',
+          'passwordSalt',
+          'passwordNonce',
+          'passwordTag',
+          'wrappedDataKey',
+          'recoveryNonce',
+          'recoveryTag',
+          'recoveryWrappedDataKey',
+          'legacyKey',
+          'credentials',
+          'legacyCredentialsCleanupRequired',
+          'integrity',
+        ].includes(key),
+    ) ||
     typeof config.legacyCredentialsCleanupRequired !== 'boolean' ||
     fields.some((value) => typeof value !== 'string') ||
     typeof config.legacyKey !== 'object' ||
@@ -262,7 +281,9 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
 
 function integrityPayload(config: Omit<RecoverableVaultSecurityConfig, 'integrity'> | RecoverableVaultSecurityConfig) {
   const digest = (value: unknown) =>
-    createHash('sha256').update(JSON.stringify(value) ?? 'null').digest('base64');
+    createHash('sha256')
+      .update(JSON.stringify(value) ?? 'null')
+      .digest('base64');
   return {
     version: config.version,
     passwordSalt: config.passwordSalt,
@@ -291,8 +312,7 @@ function sealRecoverableConfig(
 
 function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Buffer) {
   const actual = decryptRecord(key, 'vault-config-integrity', config.integrity);
-  if (actual !== JSON.stringify(integrityPayload(config)))
-    throw new Error('Vault security metadata is invalid.');
+  if (actual !== JSON.stringify(integrityPayload(config))) throw new Error('Vault security metadata is invalid.');
 }
 
 function passwordWrap(dataKey: Buffer, password: string, salt = randomBytes(SALT_BYTES)) {
@@ -328,18 +348,27 @@ export async function prepareVaultRecovery(
     try {
       const passwordFields = await passwordWrap(dataKey, password);
       const recoveryWrap = encryptBytes(recoveryBytes, 'vault-key-recovery', 'vault-data-key', dataKey);
-      const config = sealRecoverableConfig({
+      const config = sealRecoverableConfig(
+        {
           version: 2,
           ...passwordFields,
           recoveryNonce: recoveryWrap.nonce,
           recoveryTag: recoveryWrap.tag,
           recoveryWrappedDataKey: recoveryWrap.ciphertext.toString('base64'),
-          legacyKey: encryptRecord(dataKey, 'legacy-vault-key', 'legacy-vault-key', authenticatedKey.toString('base64')),
-          credentials: legacyCredentials === null
-            ? null
-            : encryptRecord(dataKey, 'credentials', 'credentials-store', legacyCredentials),
+          legacyKey: encryptRecord(
+            dataKey,
+            'legacy-vault-key',
+            'legacy-vault-key',
+            authenticatedKey.toString('base64'),
+          ),
+          credentials:
+            legacyCredentials === null
+              ? null
+              : encryptRecord(dataKey, 'credentials', 'credentials-store', legacyCredentials),
           legacyCredentialsCleanupRequired: legacyCredentials !== null,
-        }, dataKey);
+        },
+        dataKey,
+      );
       validateRecoverableConfig(config);
       return {
         config,
@@ -423,12 +452,15 @@ export function rotateVaultRecoveryKey(
   const key = decodeRecoveryKey(recoveryKey);
   try {
     const wrapped = encryptBytes(key, 'vault-key-recovery', 'vault-data-key', dataKey);
-    return sealRecoverableConfig({
-      ...config,
-      recoveryNonce: wrapped.nonce,
-      recoveryTag: wrapped.tag,
-      recoveryWrappedDataKey: wrapped.ciphertext.toString('base64'),
-    }, dataKey);
+    return sealRecoverableConfig(
+      {
+        ...config,
+        recoveryNonce: wrapped.nonce,
+        recoveryTag: wrapped.tag,
+        recoveryWrappedDataKey: wrapped.ciphertext.toString('base64'),
+      },
+      dataKey,
+    );
   } finally {
     key.fill(0);
   }
@@ -440,11 +472,20 @@ export function updateRecoverableCredentials(
   credentials: unknown[] | null,
 ): RecoverableVaultSecurityConfig {
   if (config.version !== 2 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
+  return updateRecoverableCredentialText(config, dataKey, credentials === null ? null : JSON.stringify(credentials));
+}
+
+export function updateRecoverableCredentialText(
+  config: VaultSecurityConfig,
+  dataKey: Buffer,
+  credentials: string | null,
+): RecoverableVaultSecurityConfig {
+  if (config.version !== 2 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
   const envelope =
-    credentials === null
-      ? null
-      : encryptRecord(dataKey, 'credentials', 'credentials-store', JSON.stringify(credentials));
-  return sealRecoverableConfig({ ...config, credentials: envelope }, dataKey);
+    credentials === null ? null : encryptRecord(dataKey, 'credentials', 'credentials-store', credentials);
+  const updated = sealRecoverableConfig({ ...config, credentials: envelope }, dataKey);
+  validateRecoverableConfig(updated);
+  return updated;
 }
 
 export function completeRecoverableCredentialMigration(

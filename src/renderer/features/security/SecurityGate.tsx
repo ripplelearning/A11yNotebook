@@ -85,7 +85,10 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
                 onChange={(event) => setConfirmPassword(event.target.value)}
               />
             </label>
-            <button type="submit" disabled={busy || recoveryKey.length !== 43 || newPassword.length < 8 || newPassword !== confirmPassword}>
+            <button
+              type="submit"
+              disabled={busy || recoveryKey.length !== 43 || newPassword.length < 8 || newPassword !== confirmPassword}
+            >
               Reset password and unlock
             </button>
             <button type="button" disabled={busy} onClick={() => setRecovering(false)}>
