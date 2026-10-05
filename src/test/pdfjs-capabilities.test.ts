@@ -2,12 +2,13 @@
 /**
  * Phase 0 spike evidence: pins what the installed pdfjs-dist actually exposes so the
  * structure/artifact design fails loudly if a PDF.js upgrade changes behaviour.
- * See docs/pdf-artifact-spike.md.
+ * See docs/spike-pdf-js-findings.md.
  */
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
+import { PdfDocument } from '../renderer/pdf-semantic/pdf-document';
 import {
   ligatureAndHyphenation,
   linkedDocument,
@@ -25,6 +26,54 @@ async function open(data: Uint8Array) {
 type MarkedItem = TextMarkedContent & { tag?: string | null };
 
 describe('pinned pdf.js capabilities (Phase 0 spike evidence)', () => {
+  it('opens the phase-1 shared document model with file identity, labels, semantic content, and rotated coordinates', async () => {
+    const document = new PdfDocument(taggedReport(), 'sha256-fixture', 'Reports/tagged.pdf');
+    try {
+      await document.ready;
+      expect(document.fileHash).toBe('sha256-fixture');
+      expect(document.vaultPath).toBe('Reports/tagged.pdf');
+      expect(document.fingerprints[0]).toMatch(/^[\da-f]+$/);
+      expect(document.metadata).toMatchObject({
+        title: 'Quarterly Accessibility Report',
+        language: 'en-GB',
+        producer: 'A11y Notebook fixtures',
+      });
+      expect(document.pageLabels).toEqual(['i', 'ii', '1']);
+      const page = await document.getPage(1);
+      expect(page.pageNum).toBe(1);
+      expect(page.textModel.fullText).toContain('Accessible Reading');
+      expect(page.semanticTree?.role).toBe('Document');
+      expect(page.textModel.markedContentMap.size).toBeGreaterThan(0);
+      expect((await document.getPage(2)).nativeAnnotations).toHaveLength(1);
+    } finally {
+      await document.destroy();
+    }
+
+    const links = new PdfDocument(linkedDocument(), 'links-hash', 'Reports/links.pdf');
+    try {
+      await links.ready;
+      const annotations = (await links.getPage(1)).nativeAnnotations;
+      expect(annotations.find((annotation) => annotation.url)?.url).toBe('https://example.org/docs');
+      expect(JSON.stringify(annotations)).not.toContain('file:///etc/passwd');
+      expect(JSON.stringify(annotations)).not.toContain('JavaScript');
+    } finally {
+      await links.destroy();
+    }
+
+    const rotated = new PdfDocument(rotatedPage(), 'rotated-hash', 'Reports/rotated.pdf');
+    try {
+      await rotated.ready;
+      const page = await rotated.getPage(1);
+      const coordinates = page.highlightAtAnchor(0, 7, 1, 0);
+      expect(page.canRotate).toBe(90);
+      expect(coordinates).not.toBeNull();
+      expect(page.viewportTransform(1).rotation).toBe(90);
+      expect(page.coordinatesToOffset(coordinates![0] + 1, coordinates![1] + 1)).toBeGreaterThanOrEqual(0);
+    } finally {
+      await rotated.destroy();
+    }
+  });
+
   it('is the audited version', async () => {
     const { task, version } = await open(rotatedPage());
     expect(version).toBe('6.4.299');

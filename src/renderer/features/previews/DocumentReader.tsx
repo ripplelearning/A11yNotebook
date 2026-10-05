@@ -1,8 +1,8 @@
-import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
-import type { PDFDocumentProxy, PDFPageProxy } from 'pdfjs-dist/legacy/build/pdf.mjs';
 import type ePubFactory from 'epubjs/src/index.js';
 import { useEffect, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
+import { PdfDocument, type PdfPage } from '../../pdf-semantic';
+import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
@@ -13,17 +13,7 @@ interface Props {
   kind: '.pdf' | '.epub';
 }
 
-type SectionText = { title: string; text: string };
-
-function pageText(page: Awaited<ReturnType<PDFDocumentProxy['getPage']>>) {
-  return page.getTextContent().then((content) =>
-    content.items
-      .flatMap((item) => ('str' in item ? [item.str] : []))
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim(),
-  );
-}
+const emptyDocument: DocumentReaderModel = createDocumentReaderModel([]);
 
 function useDocumentBytes(path: string, kind: Props['kind']) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
@@ -51,50 +41,49 @@ function useDocumentBytes(path: string, kind: Props['kind']) {
   return { bytes, error };
 }
 
-function PdfReader({ bytes }: { bytes: Uint8Array }) {
-  const [document, setDocument] = useState<PDFDocumentProxy | null>(null);
+function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
+  const [document, setDocument] = useState<PdfDocument | null>(null);
   const [pageCount, setPageCount] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
-  const [pages, setPages] = useState<string[]>([]);
+  const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
+  const [activePage, setActivePage] = useState<PdfPage | null>(null);
   const [loadingText, setLoadingText] = useState(true);
   const [search, setSearch] = useState('');
   const [searchIndex, setSearchIndex] = useState(0);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const visualRef = useRef<HTMLDivElement>(null);
+  const semanticRef = useRef<HTMLDivElement>(null);
   const [renderError, setRenderError] = useState('');
+  const [zoom, setZoom] = useState(1);
+  const [rotation, setRotation] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
-    let loading: { promise: Promise<PDFDocumentProxy>; destroy: () => Promise<void> } | undefined;
-    void import('pdfjs-dist/legacy/build/pdf.mjs')
-      .then(({ GlobalWorkerOptions, getDocument }) => {
-        if (cancelled) return undefined;
-        GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-        loading = getDocument({
-          data: bytes,
-          disableAutoFetch: true,
-          disableRange: true,
-          disableStream: true,
-          useSystemFonts: false,
-          enableXfa: false,
-        });
-        return loading.promise;
-      })
-      .then(async (pdf) => {
-        if (!pdf || cancelled) return;
-        setDocument(pdf);
-        setPageCount(pdf.numPages);
-        const text: string[] = [];
+    let pdf: PdfDocument | undefined;
+    const hashBytes = bytes.slice().buffer as ArrayBuffer;
+    void crypto.subtle
+      .digest('SHA-256', hashBytes)
+      .then((hash) => Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join(''))
+      .then(async (fileHash) => {
+        if (cancelled) return;
+        pdf = new PdfDocument(bytes, fileHash, path);
+        await pdf.ready;
+        if (cancelled) return;
+        const sections: Array<{ label: string; text: string }> = [];
         let size = 0;
-        for (let index = 1; index <= Math.min(pdf.numPages, MAX_SEARCHABLE_PAGES); index += 1) {
-          const page = await pdf.getPage(index);
-          const content = await pageText(page);
-          size += content.length;
+        for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, MAX_SEARCHABLE_PAGES); pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          const text = page.textModel.fullText;
+          size += text.length;
           if (size > MAX_SEARCHABLE_TEXT) break;
-          text.push(content);
+          sections.push({ label: page.label, text });
           if (cancelled) break;
         }
         if (!cancelled) {
-          setPages(text);
+          await pdf.classifyUntaggedPages(sections.map((_, index) => index + 1));
+          if (cancelled) return;
+          setDocument(pdf);
+          setPageCount(pdf.numPages);
+          setReaderModel(createDocumentReaderModel(sections));
           setLoadingText(false);
         }
       })
@@ -106,54 +95,55 @@ function PdfReader({ bytes }: { bytes: Uint8Array }) {
       });
     return () => {
       cancelled = true;
-      void loading?.destroy().catch(() => undefined);
+      void pdf?.destroy().catch(() => undefined);
     };
-  }, [bytes]);
+  }, [bytes, path]);
 
   useEffect(() => {
     let cancelled = false;
-    let rendering: ReturnType<PDFPageProxy['render']> | undefined;
-    const canvas = canvasRef.current;
-    if (!document || !canvas) return;
+    const visual = visualRef.current;
+    const semantic = semanticRef.current;
+    if (!document || !visual || !semantic) return;
     void document
       .getPage(pageNumber)
       .then((page) => {
         if (cancelled) return;
-        const unscaled = page.getViewport({ scale: 1 });
-        const scale = Math.min(
-          1.25,
-          2000 / unscaled.width,
-          2600 / unscaled.height,
-          Math.sqrt(4_000_000 / (unscaled.width * unscaled.height)),
+        setActivePage(page);
+        const effectiveRotation = (page.canRotate + rotation) % 360;
+        const renderScale = Math.min(
+          zoom,
+          2000 / (effectiveRotation % 180 ? page.view[3] - page.view[1] : page.view[2] - page.view[0]),
+          2600 / (effectiveRotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]),
+          Math.sqrt(4_000_000 / ((page.view[2] - page.view[0]) * (page.view[3] - page.view[1]))),
         );
-        const viewport = page.getViewport({ scale });
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('Canvas is unavailable.');
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        rendering = page.render({ canvas, canvasContext: context, viewport });
-        return rendering.promise;
+        const transform = page.viewportTransform(renderScale, rotation);
+        const canvas = page.renderCanvas(renderScale, rotation);
+        return canvas.then((renderedCanvas) => {
+          if (cancelled) return;
+          visual.replaceChildren(renderedCanvas);
+          renderedCanvas.className = 'document-page-canvas';
+          const layer = page.getTextLayer(renderScale, rotation);
+          layer.style.width = `${(transform.rotation % 180 ? page.view[3] - page.view[1] : page.view[2] - page.view[0]) * renderScale}px`;
+          layer.style.height = `${(transform.rotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]) * renderScale}px`;
+          visual.append(layer);
+          semantic.replaceChildren(page.getSemanticDOM(zoom, rotation));
+        });
       })
       .catch(() => {
         if (!cancelled) setRenderError('This PDF page could not be rendered. The extracted text remains available.');
       });
     return () => {
       cancelled = true;
-      rendering?.cancel();
     };
-  }, [document, pageNumber]);
+  }, [document, pageNumber, rotation, zoom]);
 
-  const matchingPages = search.trim()
-    ? pages.flatMap((text, index) =>
-        text.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? [index] : [],
-      )
-    : [];
+  const matchingPages = readerModel.findSections(search);
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
 
   return (
     <section aria-label="PDF document reader">
       <h3>
-        Page {pageNumber} of {pageCount || '…'}
+        {activePage?.label ?? `Page ${pageNumber}`} of {pageCount || '…'}
       </h3>
       <div role="group" aria-label="PDF page navigation">
         <button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((page) => Math.max(1, page - 1))}>
@@ -165,6 +155,18 @@ function PdfReader({ bytes }: { bytes: Uint8Array }) {
           onClick={() => setPageNumber((page) => Math.min(pageCount, page + 1))}
         >
           Next page
+        </button>
+      </div>
+      <div role="group" aria-label="PDF view controls">
+        <button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))} disabled={zoom <= 0.5}>
+          Zoom out
+        </button>
+        <output aria-label="PDF zoom">{Math.round(zoom * 100)}%</output>
+        <button type="button" onClick={() => setZoom((value) => Math.min(2, value + 0.25))} disabled={zoom >= 2}>
+          Zoom in
+        </button>
+        <button type="button" onClick={() => setRotation((value) => (value + 90) % 360)}>
+          Rotate page
         </button>
       </div>
       <label>
@@ -179,7 +181,9 @@ function PdfReader({ bytes }: { bytes: Uint8Array }) {
       </label>
       <p role="status">
         {loadingText ? 'Extracting accessible text.' : search ? `${matchingPages.length} matching pages.` : ''}
-        {pages.length < pageCount && !loadingText ? ` Search covers the first ${pages.length} pages only.` : ''}
+        {readerModel.sections.length < pageCount && !loadingText
+          ? ` Search covers the first ${readerModel.sections.length} pages only.`
+          : ''}
       </p>
       {matchingPages.length ? (
         <button
@@ -192,20 +196,21 @@ function PdfReader({ bytes }: { bytes: Uint8Array }) {
           Next search result ({searchIndex + 1} of {matchingPages.length})
         </button>
       ) : null}
-      <canvas ref={canvasRef} className="document-page-canvas" aria-hidden="true" />
+      <div ref={visualRef} className="document-page-visual" />
       {renderError ? <p role="alert">{renderError}</p> : null}
       <section aria-label={`Accessible text for PDF page ${pageNumber}`} aria-live="polite">
         <h4>Page text</h4>
-        <p>
-          {pages[pageNumber - 1] || (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
-        </p>
+        <div ref={semanticRef}>
+          {readerModel.sections[pageNumber - 1]?.text ||
+            (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
+        </div>
       </section>
     </section>
   );
 }
 
 function EpubReader({ bytes }: { bytes: Uint8Array }) {
-  const [sections, setSections] = useState<SectionText[]>([]);
+  const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -224,17 +229,17 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
         }
         book = opened;
         const items = opened.spine.spineItems.slice(0, MAX_SEARCHABLE_PAGES);
-        const loaded: SectionText[] = [];
+        const loaded: Array<{ label: string; text: string }> = [];
         let size = 0;
         for (const section of items) {
           const content = await section.load();
           const text = content.textContent?.replace(/\s+/g, ' ').trim() ?? '';
           size += text.length;
           if (size > MAX_SEARCHABLE_TEXT) break;
-          loaded.push({ title: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
+          loaded.push({ label: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
           if (cancelled) break;
         }
-        if (!cancelled) setSections(loaded);
+        if (!cancelled) setReaderModel(createDocumentReaderModel(loaded));
       })
       .catch(() => {
         if (!cancelled) setError('This ePub could not be opened. Use Open in external app to continue.');
@@ -245,17 +250,13 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
     };
   }, [bytes]);
 
-  const matchingSections = search.trim()
-    ? sections.flatMap((section, index) =>
-        section.text.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase()) ? [index] : [],
-      )
-    : [];
-  const activeSection = sections[sectionIndex];
+  const matchingSections = readerModel.findSections(search);
+  const activeSection = readerModel.sections[sectionIndex];
 
   return (
     <section aria-label="ePub document reader">
       <h3>
-        Section {sectionIndex + 1} of {sections.length || '…'}
+        Section {sectionIndex + 1} of {readerModel.sections.length || '…'}
       </h3>
       <div role="group" aria-label="ePub section navigation">
         <button
@@ -267,8 +268,8 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
         </button>
         <button
           type="button"
-          disabled={sectionIndex >= sections.length - 1}
-          onClick={() => setSectionIndex((index) => Math.min(sections.length - 1, index + 1))}
+          disabled={sectionIndex >= readerModel.sections.length - 1}
+          onClick={() => setSectionIndex((index) => Math.min(readerModel.sections.length - 1, index + 1))}
         >
           Next section
         </button>
@@ -280,14 +281,14 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
       <p role="status">{search ? `${matchingSections.length} matching sections.` : ''}</p>
       {matchingSections.map((index) => (
         <button key={index} type="button" onClick={() => setSectionIndex(index)}>
-          Go to {sections[index].title}
+          Go to {readerModel.sections[index].label}
         </button>
       ))}
       {error ? (
         <p role="alert">{error}</p>
       ) : activeSection ? (
-        <article aria-label={activeSection.title}>
-          <h4>{activeSection.title}</h4>
+        <article aria-label={activeSection.label}>
+          <h4>{activeSection.label}</h4>
           <p>{activeSection.text || 'No extractable text was found in this section.'}</p>
         </article>
       ) : (
@@ -304,7 +305,7 @@ export default function DocumentReader({ path, kind }: Props) {
   ) : !bytes ? (
     <p role="status">Loading {kind.slice(1)} document…</p>
   ) : kind === '.pdf' ? (
-    <PdfReader bytes={bytes} />
+    <PdfReader bytes={bytes} path={path} />
   ) : (
     <EpubReader bytes={bytes} />
   );

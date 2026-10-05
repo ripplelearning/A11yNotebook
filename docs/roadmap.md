@@ -102,14 +102,14 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
-- 🚧 PDF reading draws a single bounded-scale canvas page (maximum scale 1.25) and exposes separately flattened extracted page text; there is no selectable/zoomable PDF text layer or PDF annotation mapping.
+- 🚧 PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, and stable text-offset/quote mappings. Persistent annotations and PDF anchor storage remain open.
 - 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
 
 ### Document reader and annotation follow-up plan
 
 These are open implementation/design tasks, not externally blocked work:
 
-1. Add a PDF.js text layer aligned to the rendered viewport at each zoom level and map browser selections to stable page/quote/position anchors. Provide bounded zoom controls, selection and search-result navigation.
+1. ✅ Add a bounded selectable PDF.js text layer, zoom/rotation transforms, canonical page text offsets, marked-content mappings, and quote/context resolution. Persistent anchors, selection highlights, and annotation UI remain open.
 2. Add a safe ePub rendition with accessible reflow, navigation-document TOC entries, and archive-relative image/font/style resource resolution. Keep scripts disabled, reject unsafe archive paths/resources, and revoke/release renderer resources on book changes.
 3. Version the annotation anchor model for PDF page and ePub spine/CFI locations, plus quote/context fallback. Migrate and validate metadata, then add selection capture, persisted highlight rendering, jump, edit, and delete UI with stale/ambiguous-anchor reporting.
 4. Test anchors and renderer lifecycle with PDF/ePub fixtures, unsafe archives, changed documents, and keyboard-only interaction. Manual Windows JAWS/NVDA/Narrator and UI Automation checks remain a separate validation step; passing them does not replace the missing implementation.
