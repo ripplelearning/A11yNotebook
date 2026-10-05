@@ -8,6 +8,12 @@ import {
   encryptNoteWithPassword,
   isEncryptedRecord,
   isPasswordEncryptedNote,
+  generateVaultRecoveryKey,
+  prepareVaultRecovery,
+  resetVaultPasswordWithRecovery,
+  rotateVaultRecoveryKey,
+  unlockVaultWithRecovery,
+  unwrapLegacyVaultKey,
   reencryptPasswordNote,
   unlockPasswordEncryptedNote,
   unlockVault,
@@ -39,6 +45,42 @@ describe('vault security primitives', () => {
     await expect(
       unlockVault({ version: 1, salt: 'bad', nonce: '', tag: '', verifier: '' }, 'long enough password'),
     ).rejects.toThrow(/metadata is invalid/);
+  });
+
+  it('migrates a legacy vault key and credentials atomically into a recoverable key envelope', async () => {
+    const legacy = await createVaultSecurityConfig('correct horse battery');
+    const recoveryKey = generateVaultRecoveryKey();
+    const credentials = JSON.stringify([{ id: 'service', username: 'user', password: 'credential secret' }]);
+    const migrated = await prepareVaultRecovery(legacy.config, 'correct horse battery', recoveryKey, credentials);
+    expect(migrated.config.version).toBe(2);
+    expect(migrated.config.credentials).not.toBeNull();
+    expect(decryptRecord(migrated.key, 'credentials', migrated.config.credentials)).toBe(credentials);
+    expect(unwrapLegacyVaultKey(migrated.config, migrated.key)?.equals(legacy.key)).toBe(true);
+    const recovered = await unlockVaultWithRecovery(migrated.config, recoveryKey);
+    expect(recovered.equals(migrated.key)).toBe(true);
+    await expect(unlockVaultWithRecovery(migrated.config, generateVaultRecoveryKey())).rejects.toThrow(/Recovery key/);
+    await expect(unlockVaultWithRecovery(migrated.config, 'malformed')).rejects.toThrow(/Recovery key/);
+    recovered.fill(0);
+    migrated.key.fill(0);
+    legacy.key.fill(0);
+  });
+
+  it('resets the password and supports recovery-key rotation and revocation', async () => {
+    const legacy = await createVaultSecurityConfig('correct horse battery');
+    const oldRecoveryKey = generateVaultRecoveryKey();
+    const migrated = await prepareVaultRecovery(legacy.config, 'correct horse battery', oldRecoveryKey, null);
+    const reset = await resetVaultPasswordWithRecovery(migrated.config, oldRecoveryKey, 'new vault password');
+    await expect(unlockVault(reset.config, 'correct horse battery')).rejects.toThrow(/Incorrect vault password/);
+    expect((await unlockVault(reset.config, 'new vault password')).equals(reset.key)).toBe(true);
+    const newRecoveryKey = generateVaultRecoveryKey();
+    const rotated = rotateVaultRecoveryKey(reset.config, reset.key, newRecoveryKey);
+    await expect(unlockVaultWithRecovery(rotated, oldRecoveryKey)).rejects.toThrow(/Recovery key/);
+    expect((await unlockVaultWithRecovery(rotated, newRecoveryKey)).equals(reset.key)).toBe(true);
+    const revoked = rotateVaultRecoveryKey(rotated, reset.key, null);
+    await expect(unlockVaultWithRecovery(revoked, newRecoveryKey)).rejects.toThrow(/not configured/);
+    reset.key.fill(0);
+    migrated.key.fill(0);
+    legacy.key.fill(0);
   });
 
   it('encrypts notes with independent passwords and authenticates subsequent edits', async () => {
