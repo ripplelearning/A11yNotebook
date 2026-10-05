@@ -198,6 +198,7 @@ export default function App() {
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
   const [securityEnabled, setSecurityEnabled] = useState(false);
+  const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
   const [lockedEditPath, setLockedEditPath] = useState<string | null>(null);
   const [encryptedNotePath, setEncryptedNotePath] = useState<string | null>(null);
@@ -377,6 +378,7 @@ export default function App() {
           if (!cancelled) {
             setSecurityEnabled(status.enabled);
             setSecurityLocked(status.locked);
+            setRecoveryAvailable(status.recoveryAvailable);
           }
         })
         .catch(() => setStatusMessage('Could not read vault security status.'));
@@ -2370,6 +2372,7 @@ export default function App() {
         <SettingsDialog
           settings={settings}
           securityEnabled={securityEnabled}
+          recoveryAvailable={recoveryAvailable}
           onClose={closeDialog}
           onSave={async (value) => {
             await window.a11yNotebook!.vault.saveSettings(value);
@@ -2383,7 +2386,27 @@ export default function App() {
             await setupPassword(password);
             setSecurityEnabled(true);
             setSecurityLocked(false);
+            setRecoveryAvailable(false);
             setStatusMessage('Vault password protection enabled.');
+          }}
+          onPrepareRecovery={async (password) => {
+            const prepare = window.a11yNotebook?.vault.prepareVaultRecovery;
+            if (!prepare) throw new Error('Vault recovery is unavailable.');
+            return prepare(password);
+          }}
+          onAcknowledgeRecovery={async () => {
+            const acknowledge = window.a11yNotebook?.vault.acknowledgeVaultRecovery;
+            if (!acknowledge) throw new Error('Vault recovery is unavailable.');
+            await acknowledge(true);
+            setRecoveryAvailable(true);
+            setStatusMessage('Vault recovery enabled.');
+          }}
+          onRevokeRecovery={async (password) => {
+            const revoke = window.a11yNotebook?.vault.revokeVaultRecovery;
+            if (!revoke) throw new Error('Vault recovery is unavailable.');
+            await revoke(password);
+            setRecoveryAvailable(false);
+            setStatusMessage('Vault recovery revoked.');
           }}
           onLockVault={async () => {
             await window.a11yNotebook?.vault.lockVault?.();
@@ -2429,6 +2452,7 @@ export default function App() {
       ) : null}
       {securityLocked ? (
         <SecurityGate
+          recoveryAvailable={recoveryAvailable}
           onUnlock={async (password) => {
             const unlock = window.a11yNotebook?.vault.unlockVault;
             if (!unlock) throw new Error('Vault security is unavailable.');
@@ -2437,6 +2461,16 @@ export default function App() {
             setSecurityLocked(false);
             setSecurityEnabled(true);
             setStatusMessage('Vault unlocked.');
+          }}
+          onRecover={async (recoveryKey, newPassword) => {
+            const recover = window.a11yNotebook?.vault.recoverVault;
+            if (!recover) throw new Error('Vault recovery is unavailable.');
+            const opened = await recover(recoveryKey, newPassword);
+            setVault(opened);
+            setSecurityLocked(false);
+            setSecurityEnabled(true);
+            setRecoveryAvailable(true);
+            setStatusMessage('Vault password reset and vault unlocked.');
           }}
         />
       ) : null}

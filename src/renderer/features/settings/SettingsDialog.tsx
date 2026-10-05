@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { COMMANDS } from '../../../shared/command-registry';
 import { DEFAULT_SETTINGS, validateSettings, type NotebookSettings } from '../../../shared/settings';
 import Modal from '../../components/Modal';
@@ -14,7 +14,11 @@ interface Props {
   onSave: (settings: NotebookSettings) => Promise<void>;
   onClose: () => void;
   securityEnabled?: boolean;
+  recoveryAvailable?: boolean;
   onSetVaultPassword?: (password: string) => Promise<void>;
+  onPrepareRecovery?: (password: string) => Promise<string>;
+  onAcknowledgeRecovery?: () => Promise<void>;
+  onRevokeRecovery?: (password: string) => Promise<void>;
   onLockVault?: () => Promise<void>;
   onSaveCredential?: (id: string, username: string, password: string) => Promise<void>;
   onDeleteCredential?: (id: string) => Promise<void>;
@@ -25,7 +29,11 @@ export default function SettingsDialog({
   onSave,
   onClose,
   securityEnabled = false,
+  recoveryAvailable = false,
   onSetVaultPassword,
+  onPrepareRecovery,
+  onAcknowledgeRecovery,
+  onRevokeRecovery,
   onLockVault,
   onSaveCredential,
   onDeleteCredential,
@@ -35,6 +43,11 @@ export default function SettingsDialog({
   const [saving, setSaving] = useState(false);
   const [vaultPassword, setVaultPassword] = useState('');
   const [vaultPasswordConfirm, setVaultPasswordConfirm] = useState('');
+  const [recoveryKey, setRecoveryKey] = useState('');
+  const [recoverySaved, setRecoverySaved] = useState(false);
+  const [recoveryPassword, setRecoveryPassword] = useState('');
+  const [revokePassword, setRevokePassword] = useState('');
+  const recoveryKeyInput = useRef<HTMLInputElement>(null);
   const [credentials, setCredentials] = useState<{ id: string; username: string; password: string }[]>([]);
   const [credentialId, setCredentialId] = useState('');
   const [credentialUsername, setCredentialUsername] = useState('');
@@ -61,6 +74,9 @@ export default function SettingsDialog({
     const timer = window.setTimeout(() => setPdfConfirmation(''), 3000);
     return () => window.clearTimeout(timer);
   }, [pdfConfirmation]);
+  useEffect(() => {
+    if (recoveryKey) recoveryKeyInput.current?.focus();
+  }, [recoveryKey]);
   function updatePdfPreference(key: keyof PdfReadingPreferences, checked: boolean) {
     setPdfSaving(true);
     setPdfConfirmation('');
@@ -191,7 +207,9 @@ export default function SettingsDialog({
           <legend>Vault security</legend>
           <p>
             {securityEnabled
-              ? 'This vault is password protected. The password cannot be recovered if it is lost.'
+              ? recoveryAvailable
+                ? 'This vault is password protected and has an optional recovery key. The key can reset this password, but cannot unlock notes protected by separate passwords.'
+                : 'This vault is password protected. The password cannot be recovered unless you enable recovery.'
               : 'Set a password to require authentication when opening this vault. This does not encrypt unmarked notes.'}
           </p>
           {!securityEnabled && onSetVaultPassword ? (
@@ -237,6 +255,119 @@ export default function SettingsDialog({
             <button type="button" onClick={() => void onLockVault().catch(() => setError('Could not lock vault.'))}>
               Lock vault now
             </button>
+          ) : null}
+          {securityEnabled && onPrepareRecovery && onAcknowledgeRecovery ? (
+            <div>
+              <h3>Vault recovery</h3>
+              {!recoveryKey ? (
+                <>
+                  <p>
+                    {recoveryAvailable
+                      ? 'Generate a replacement recovery key. The previous key stops working after you confirm the new key is saved.'
+                      : 'Recovery is opt-in. Confirm the current vault password to generate a one-time recovery key.'}
+                  </p>
+                  <label>
+                    Current vault password
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      maxLength={1024}
+                      value={recoveryPassword}
+                      onChange={(event) => setRecoveryPassword(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={recoveryPassword.length < 8}
+                    onClick={() => {
+                      void onPrepareRecovery(recoveryPassword)
+                        .then(setRecoveryKey)
+                        .then(() => setRecoveryPassword(''))
+                        .catch(() => setError('Could not prepare recovery. Check the current password and try again.'));
+                    }}
+                  >
+                    {recoveryAvailable ? 'Generate replacement recovery key' : 'Enable vault recovery'}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <p>
+                    Save this recovery key somewhere separate and secure. It is shown only now, is not copied
+                    automatically, and cannot recover notes protected by separate passwords.
+                  </p>
+                  <label>
+                    One-time vault recovery key
+                    <input
+                      ref={recoveryKeyInput}
+                      readOnly
+                      value={recoveryKey}
+                      spellCheck={false}
+                      autoComplete="off"
+                    />
+                  </label>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={recoverySaved}
+                      onChange={(event) => setRecoverySaved(event.target.checked)}
+                    />
+                    I have saved this recovery key somewhere secure
+                  </label>
+                  <button
+                    type="button"
+                    disabled={!recoverySaved}
+                    onClick={() => {
+                      void onAcknowledgeRecovery()
+                        .then(() => {
+                          setRecoveryKey('');
+                          setRecoverySaved(false);
+                          setError('Recovery key saved and enabled.');
+                        })
+                        .catch(() => setError('Could not enable the recovery key. Keep your saved copy and retry.'));
+                    }}
+                  >
+                    Confirm saved recovery key
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRecoveryKey('');
+                      setRecoverySaved(false);
+                    }}
+                  >
+                    Discard and generate another key
+                  </button>
+                </>
+              )}
+              {recoveryAvailable && onRevokeRecovery ? (
+                <>
+                  <label>
+                    Current vault password to revoke recovery
+                    <input
+                      type="password"
+                      autoComplete="current-password"
+                      maxLength={1024}
+                      value={revokePassword}
+                      onChange={(event) => setRevokePassword(event.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={revokePassword.length < 8}
+                    onClick={() => {
+                      void onRevokeRecovery(revokePassword)
+                        .then(() => {
+                          setRevokePassword('');
+                          setError('Vault recovery key revoked.');
+                        })
+                        .catch(() => setError('Could not revoke recovery. Check the current password and try again.'));
+                    }}
+                  >
+                    Revoke recovery key
+                  </button>
+                </>
+              ) : null}
+            </div>
           ) : null}
           {securityEnabled && onSaveCredential && onDeleteCredential ? (
             <>

@@ -56,6 +56,12 @@ describe('vault security primitives', () => {
     expect(migrated.config.credentials).not.toBeNull();
     expect(decryptRecord(migrated.key, 'credentials', migrated.config.credentials)).toBe(credentials);
     expect(unwrapLegacyVaultKey(migrated.config, migrated.key)?.equals(legacy.key)).toBe(true);
+    await expect(
+      unlockVault({ ...migrated.config, credentials: null }, 'correct horse battery'),
+    ).rejects.toThrow(/damaged security metadata/);
+    await expect(
+      unlockVaultWithRecovery({ ...migrated.config, recoveryWrappedDataKey: 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }, recoveryKey),
+    ).rejects.toThrow(/recovery data is damaged/);
     const recovered = await unlockVaultWithRecovery(migrated.config, recoveryKey);
     expect(recovered.equals(migrated.key)).toBe(true);
     await expect(unlockVaultWithRecovery(migrated.config, generateVaultRecoveryKey())).rejects.toThrow(/Recovery key/);

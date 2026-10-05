@@ -68,6 +68,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultSecuritySetup: 'vault:security-setup',
   vaultSecurityUnlock: 'vault:security-unlock',
   vaultSecurityLock: 'vault:security-lock',
+  vaultSecurityPrepareRecovery: 'vault:security-prepare-recovery',
+  vaultSecurityAcknowledgeRecovery: 'vault:security-acknowledge-recovery',
+  vaultSecurityRecover: 'vault:security-recover',
+  vaultSecurityRevokeRecovery: 'vault:security-revoke-recovery',
   vaultNoteEncrypt: 'vault:note-encrypt',
   vaultNoteEncryptionStatus: 'vault:note-encryption-status',
   vaultCredentialsRead: 'vault:credentials-read',
@@ -152,6 +156,12 @@ const bridge: NotebookBridge = {
     setupVaultPassword: (password) => ipcRenderer.invoke(CHANNELS.vaultSecuritySetup, password),
     unlockVault: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityUnlock, password),
     lockVault: () => ipcRenderer.invoke(CHANNELS.vaultSecurityLock),
+    prepareVaultRecovery: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityPrepareRecovery, password),
+    acknowledgeVaultRecovery: (acknowledged) =>
+      ipcRenderer.invoke(CHANNELS.vaultSecurityAcknowledgeRecovery, acknowledged),
+    recoverVault: (recoveryKey, newPassword) =>
+      ipcRenderer.invoke(CHANNELS.vaultSecurityRecover, recoveryKey, newPassword),
+    revokeVaultRecovery: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityRevokeRecovery, password),
     encryptNote: (relative, expected, password) =>
       ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected, password),
     isNoteEncrypted: (relative) => ipcRenderer.invoke(CHANNELS.vaultNoteEncryptionStatus, relative),

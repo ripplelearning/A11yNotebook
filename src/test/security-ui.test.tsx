@@ -45,6 +45,51 @@ describe('security controls', () => {
     expect(onUnlock).toHaveBeenCalledWith('wrong password');
   });
 
+  it('provides a keyboard-focused recovery reset path when a recovery key exists', async () => {
+    const onRecover = vi.fn().mockResolvedValue(undefined);
+    render(<SecurityGate onUnlock={vi.fn()} recoveryAvailable onRecover={onRecover} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Use recovery key' }));
+    const keyInput = screen.getByLabelText('Vault recovery key');
+    await waitFor(() => expect(keyInput).toHaveFocus());
+    fireEvent.change(keyInput, { target: { value: 'A'.repeat(43) } });
+    fireEvent.change(screen.getByLabelText('New vault password (at least 8 characters)'), {
+      target: { value: 'new vault password' },
+    });
+    fireEvent.change(screen.getByLabelText('Confirm new vault password'), {
+      target: { value: 'new vault password' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password and unlock' }));
+    await waitFor(() => expect(onRecover).toHaveBeenCalledWith('A'.repeat(43), 'new vault password'));
+  });
+
+  it('requires explicit acknowledgment before committing a displayed recovery key', async () => {
+    const onPrepareRecovery = vi.fn().mockResolvedValue('A'.repeat(43));
+    const onAcknowledgeRecovery = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        securityEnabled
+        onPrepareRecovery={onPrepareRecovery}
+        onAcknowledgeRecovery={onAcknowledgeRecovery}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Current vault password'), {
+      target: { value: 'correct horse battery' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Enable vault recovery' }));
+    const keyInput = await screen.findByLabelText('One-time vault recovery key');
+    await waitFor(() => expect(keyInput).toHaveValue('A'.repeat(43)));
+    await waitFor(() => expect(keyInput).toHaveFocus());
+    const confirm = screen.getByRole('button', { name: 'Confirm saved recovery key' });
+    expect(confirm).toBeDisabled();
+    fireEvent.click(screen.getByLabelText('I have saved this recovery key somewhere secure'));
+    fireEvent.click(confirm);
+    await waitFor(() => expect(onAcknowledgeRecovery).toHaveBeenCalledOnce());
+    expect(await screen.findByRole('alert')).toHaveTextContent('Recovery key saved and enabled.');
+  });
+
   it('saves configurable idle and unsaved-edit lock delays', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
