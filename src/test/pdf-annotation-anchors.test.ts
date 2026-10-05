@@ -2,6 +2,7 @@
 import type { PDFPageProxy, TextItem } from 'pdfjs-dist/types/src/display/api';
 import { describe, expect, it, vi } from 'vitest';
 import type { PdfAnnotationTarget, PdfDocumentIdentity } from '../shared/pdf-annotation';
+import { PDF_MALFORMED_GROUPED_TARGET_REASON, PDF_MALFORMED_TARGET_REASON } from '../shared/pdf-annotation';
 import { PdfDocument, PdfPage } from '../renderer/pdf-semantic/pdf-document';
 import { TextModel } from '../renderer/pdf-semantic/text-model';
 import { rotatedPage, taggedReport } from './fixtures/pdf-fixtures';
@@ -127,6 +128,57 @@ describe('stable PDF annotation anchors', () => {
     });
   });
 
+  it('retains an explicitly confirmed repeated occurrence only in its unchanged document and page', () => {
+    const repeatedBlock = `${'x'.repeat(80)}quote${'y'.repeat(80)}`;
+    const repeatedText = `${repeatedBlock} separator ${repeatedBlock}`;
+    const text = model(repeatedText);
+    const selectedOffset = repeatedText.lastIndexOf('quote');
+    const captured = text.createAnchor(1, selectedOffset, 5);
+    expect(captured).toMatchObject({ classification: 'ambiguous', confidence: 'uncertain' });
+    expect(captured).not.toHaveProperty('manuallyConfirmed');
+    const confirmed: PdfAnnotationTarget = { ...captured, manuallyConfirmed: true };
+    expect(text.resolveAnchor(confirmed)).toMatchObject({
+      offset: selectedOffset,
+      length: 5,
+      page: 1,
+      classification: 'exact',
+      confidence: 'certain',
+      verification: 'verified',
+      reason: 'Explicitly confirmed occurrence in unchanged PDF',
+    });
+    expect(model(repeatedText, 1, { ...identity, fileHash: 'changed-hash' }).resolveAnchor(confirmed)).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+      confidence: 'uncertain',
+      verification: 'unverified',
+    });
+    expect(text.resolveAnchor({ ...confirmed, verification: 'unverified' })).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+      confidence: 'uncertain',
+      verification: 'unverified',
+    });
+    expect(text.resolveAnchor({ ...confirmed, verification: undefined })).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+    });
+    expect(model(repeatedText, 1, { ...identity, vaultPath: 'Other.pdf' }).resolveAnchor(confirmed)).toMatchObject({
+      orphaned: true,
+      verification: 'unverified',
+    });
+    expect(model(repeatedText, 2).resolveAnchor(confirmed)).toMatchObject({ offset: -1, classification: 'ambiguous' });
+    expect(text.resolveAnchor({ ...confirmed, canonicalStart: selectedOffset + 1 })).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+    });
+    expect(
+      text.resolveAnchor({ ...confirmed, manuallyConfirmed: 'yes' } as unknown as PdfAnnotationTarget),
+    ).toMatchObject({
+      orphaned: true,
+      reason: expect.stringContaining('Malformed'),
+    });
+  });
+
   it('prioritizes exact duplicate context over normalized variants', () => {
     const anchor = model('before FILE after').createAnchor(1, 7, 4);
     const text = model('wrong FILE ending before FILE after. before file after');
@@ -171,6 +223,26 @@ describe('stable PDF annotation anchors', () => {
       offset: -1,
       classification: 'ambiguous',
       confidence: 'uncertain',
+    });
+  });
+
+  it('counts overlapping normalized occurrences without double-counting the same expanded canonical range', () => {
+    const target = model('aa').createAnchor(1, 0, 2);
+    const overlapping = model('AAa');
+    expect(overlapping.resolveAnchor(target)).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+      confidence: 'uncertain',
+    });
+    expect(overlapping.findText('aa', true)).toEqual([
+      { startOffset: 0, length: 2, page: 1 },
+      { startOffset: 1, length: 2, page: 1 },
+    ]);
+    expect(model('ﬀ').resolveAnchor(model('f').createAnchor(1, 0, 1))).toMatchObject({
+      offset: 0,
+      length: 1,
+      classification: 'normalized',
+      confidence: 'probable',
     });
   });
 
@@ -226,8 +298,9 @@ describe('stable PDF annotation anchors', () => {
     const text = model('quote');
     const captured = text.createAnchor(1, 0, 5);
     for (const reason of [
-      'Stored PDF target was malformed; select text again to re-anchor.',
-      'Stored grouped PDF target was malformed; select text again to re-anchor.',
+      PDF_MALFORMED_TARGET_REASON,
+      PDF_MALFORMED_GROUPED_TARGET_REASON,
+      'Stored PDF target was malformed: legacy record.',
     ]) {
       const corrupted: PdfAnnotationTarget = {
         ...captured,
@@ -235,6 +308,7 @@ describe('stable PDF annotation anchors', () => {
         confidence: 'uncertain',
         verification: 'unverified',
         reason,
+        manuallyConfirmed: true,
       };
       expect(text.resolveAnchor(corrupted)).toEqual({
         orphaned: true,
@@ -276,6 +350,51 @@ describe('stable PDF annotation anchors', () => {
       length: 5,
       classification: 'exact',
     });
+  });
+
+  it('supports four-argument range coordinates while preserving legacy per-character calls', () => {
+    const text = model('before quote after');
+    const character = text.offsetToCoordinates(7);
+    expect(text.offsetToCoordinates(7, 1, 0)).toEqual(character);
+    const range = text.offsetToCoordinates(7, 5, 1, 0)!;
+    expect(range[0]).toBe(character![0]);
+    expect(range[2]).toBeCloseTo(character![2] * 5);
+    expect(text.offsetToCoordinates(7, 1, 2, 90)).toEqual(text.offsetToCoordinates(7, 2, 90));
+    expect(text.offsetToCoordinates(7, 0, 1, 0)).toBeNull();
+    expect(text.offsetToCoordinates(-1, 5, 1, 0)).toBeNull();
+    expect(text.offsetToCoordinates(7, 100, 1, 0)).toBeNull();
+  });
+
+  it('includes intermediate text items in range unions at every zoom and rotation', async () => {
+    const parts = [
+      { ...item('ab'), transform: [12, 0, 0, 12, 10, 200] },
+      { ...item('middle'), width: 180, transform: [12, 0, 0, 12, 100, 160] },
+      { ...item('cd'), transform: [12, 0, 0, 12, 10, 120] },
+    ];
+    const text = new TextModel(parts, new Map(), [0, 0, 300, 400], 1, identity);
+    const source = {
+      rotate: 90,
+      view: [0, 0, 300, 400],
+      getTextContent: async () => ({ items: parts }),
+      getStructTree: async () => null,
+      getAnnotations: async () => [],
+    } as unknown as PDFPageProxy;
+    const page = await PdfPage.create(source, 1, undefined, undefined, identity);
+    const anchor = text.createAnchor(1, 0, text.fullText.length);
+    for (const zoom of [1, 2]) {
+      for (const rotation of [0, 90, 180, 270]) {
+        const bounds = text.offsetToCoordinates(0, text.fullText.length, zoom, rotation)!;
+        const middle = text.offsetToCoordinates(2, 6, zoom, rotation)!;
+        expect(bounds[0]).toBeLessThanOrEqual(middle[0]);
+        expect(bounds[1]).toBeLessThanOrEqual(middle[1]);
+        expect(bounds[0] + bounds[2]).toBeGreaterThanOrEqual(middle[0] + middle[2]);
+        expect(bounds[1] + bounds[3]).toBeGreaterThanOrEqual(middle[1] + middle[3]);
+        expect(page.highlightAtAnchor(0, text.fullText.length, zoom, rotation)).toEqual(
+          text.offsetToCoordinates(0, text.fullText.length, zoom, (90 + rotation) % 360),
+        );
+        expect(text.createAnchor(1, 0, text.fullText.length)).toEqual(anchor);
+      }
+    }
   });
 
   it('resolves the original page first and does not search nearby when it is ambiguous', async () => {

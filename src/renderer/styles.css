@@ -279,6 +279,10 @@ a:focus-visible,
   max-width: 65ch;
 }
 
+.pdf-note-comment {
+  white-space: pre-wrap;
+}
+
 .pdf-note-warning {
   border-inline-start: 3px solid currentColor;
   padding-inline-start: 0.75rem;

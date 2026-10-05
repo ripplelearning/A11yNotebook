@@ -10,7 +10,6 @@ import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDa
 import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
-import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 
 function isNotePath(value: string) {
   return ['.md', '.html'].includes(path.extname(value).toLowerCase());
@@ -128,7 +127,8 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return checkedVaultPath(root, relativePath, allowMissing);
   }
 
-  async function validateAnnotationDocument(relativePath: string) {
+  async function validatePdfAnnotationDocument(relativePath: string) {
+    if (!/\.pdf$/i.test(relativePath)) throw new Error('PDF annotations require a PDF document.');
     const absolute = await resolveEntry(relativePath);
     const stat = await lstat(absolute);
     if (!stat.isFile()) throw new Error('Annotations require a document file.');
@@ -164,16 +164,6 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         }
         return;
       }
-      if (!isNotePath(relativePath)) throw new Error('Unsupported annotation document.');
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(await file.readFile('utf8'));
-      } catch (error) {
-        if (error instanceof SyntaxError) return;
-        throw error;
-      }
-      if (isEncryptedRecord(parsed) || isPasswordEncryptedNote(parsed))
-        throw new Error('Annotations are unavailable for protected content.');
     } finally {
       await file.close();
     }
@@ -479,7 +469,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     getBookmarks,
     toggleBookmark,
     resolveEntry,
-    validateAnnotationDocument,
+    validatePdfAnnotationDocument,
     resolveMetadata,
     search,
     getTags,

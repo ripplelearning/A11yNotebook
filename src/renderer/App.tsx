@@ -1387,7 +1387,8 @@ export default function App() {
         setStatusMessage('Open a PDF before adding a PDF note.');
         return;
       }
-      window.setTimeout(() => window.dispatchEvent(new CustomEvent(commandId)), 0);
+      const path = attachment.path;
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent(commandId, { detail: { path } })), 0);
       return;
     }
     if (commandId.startsWith('format-')) {

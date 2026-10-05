@@ -101,6 +101,9 @@ Nearby pages are searched within a bounded range when the original page no
 longer matches. A changed hash is unverified, not automatic permission to move
 a highlight. Original quotes/context survive failed resolution. Manual
 reconfirmation requires choosing current text; deletion is explicit.
+An explicitly reconfirmed occurrence retains its canonical range only while
+the file hash and exact text still match, so even identical repeated
+quotations can be confirmed without trusting ambiguous automatic matches.
 
 The PDF reader supports selected-text notes, an **Annotate a quote** dialog
 with explicit match choices, and focused paragraph/heading/cell notes in the

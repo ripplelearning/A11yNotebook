@@ -305,15 +305,9 @@ export class PdfPage {
 
   highlightAtAnchor(offset: number, length: number, zoom = 1, rotation = 0): TextCoordinates | null {
     const effectiveRotation = (this.canRotate + rotation) % 360;
-    const start = this.textModel.offsetToCoordinates(offset, zoom, effectiveRotation);
-    if (!start || length <= 0) return start;
-    const end = this.textModel.offsetToCoordinates(offset + length - 1, zoom, effectiveRotation);
-    if (!end) return start;
-    const left = Math.min(start[0], end[0]);
-    const top = Math.min(start[1], end[1]);
-    const right = Math.max(start[0] + start[2], end[0] + end[2]);
-    const bottom = Math.max(start[1] + start[3], end[1] + end[3]);
-    return [left, top, right - left, bottom - top];
+    return length > 0
+      ? this.textModel.offsetToCoordinates(offset, length, zoom, effectiveRotation)
+      : this.textModel.offsetToCoordinates(offset, zoom, effectiveRotation);
   }
 
   selectTextRange(startOffset: number, length: number, layer?: HTMLElement): boolean {

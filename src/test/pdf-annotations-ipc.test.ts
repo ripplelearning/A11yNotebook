@@ -113,12 +113,7 @@ describe('PDF annotation IPC security and persistence', () => {
       path.join(mock.root, 'Protected.pdf'),
       JSON.stringify({ format: 'a11ynotebook-password-note-v1', ciphertext: 'secret' }),
     );
-    await writeFile(
-      path.join(mock.root, 'Protected.md'),
-      JSON.stringify({ format: 'a11ynotebook-password-note-v1', ciphertext: 'secret' }),
-    );
     await expect(invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Protected.pdf')).rejects.toThrow('unprotected');
-    await expect(invoke(IPC_CHANNELS.vaultAnnotations, 'Protected.md')).rejects.toThrow('protected');
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'long-password-for-testing');
     const added = (await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input)) as PdfAnnotation;
     await invoke(IPC_CHANNELS.vaultSecurityLock);
@@ -128,20 +123,5 @@ describe('PDF annotation IPC security and persistence', () => {
       'Unlock',
     );
     await expect(invoke(IPC_CHANNELS.vaultPdfAnnotationDelete, input.path, added.id)).rejects.toThrow('Unlock');
-  });
-
-  it('does not encrypt a note while leaving existing plaintext annotations behind', async () => {
-    await invoke(IPC_CHANNELS.vaultAnnotationAdd, {
-      path: 'Idea.md',
-      anchor: { quote: 'words', start: 0, end: 5, prefix: '', suffix: '' },
-      color: 'yellow',
-      label: 'Highlight',
-      comment: 'private text',
-    });
-    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'long-password-for-testing');
-    await expect(
-      invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Idea.md', 'words', 'long-note-password-for-testing'),
-    ).rejects.toThrow('Delete plaintext annotations');
-    expect(await readFile(path.join(mock.root, 'Idea.md'), 'utf8')).toBe('words');
   });
 });

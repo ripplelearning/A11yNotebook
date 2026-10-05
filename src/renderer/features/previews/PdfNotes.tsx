@@ -3,14 +3,24 @@ import type { PdfAnnotation, PdfAnnotationTarget } from '../../../shared/pdf-ann
 import type { PdfDocument, PdfPage } from '../../pdf-semantic';
 import PdfNoteDialog, { type PdfNoteValues } from './PdfNoteDialog';
 import PdfQuoteDialog from './PdfQuoteDialog';
-import { groupedPdfSelection, pdfNoteRectangles, semanticPdfRange, type PdfSelectionRange } from './pdf-note-selection';
+import PdfLocationDialog from './PdfLocationDialog';
+import { createPdfHighlightLayer } from './PdfHighlightLayer';
+import { groupedPdfSelection, semanticPdfRange, type PdfSelectionRange } from './pdf-note-selection';
 
 type Resolution = Awaited<ReturnType<PdfDocument['resolveAnnotationAnchor']>>;
 type ResolvedNote = { note: PdfAnnotation; resolutions: Resolution[] };
 let activePdfReader: HTMLElement | null = null;
 type PdfCommandDetail = { path?: string; range?: Range; element?: HTMLElement };
-function isLocated(resolution: Resolution): resolution is Extract<Resolution, { offset: number }> {
-  return 'offset' in resolution && resolution.offset >= 0 && resolution.classification !== 'ambiguous';
+function isLocated(resolution: Resolution): resolution is Extract<Resolution, { offset: number }> & { length: number } {
+  return (
+    'offset' in resolution &&
+    Number.isSafeInteger(resolution.offset) &&
+    resolution.offset >= 0 &&
+    resolution.classification !== 'ambiguous' &&
+    typeof resolution.length === 'number' &&
+    Number.isSafeInteger(resolution.length) &&
+    resolution.length > 0
+  );
 }
 
 export interface PdfRenderedPage {
@@ -40,6 +50,7 @@ export default function PdfNotes({
 }) {
   const [notes, setNotes] = useState<ResolvedNote[]>([]);
   const [targets, setTargets] = useState<PdfAnnotationTarget[] | null>(null);
+  const [reanchorNote, setReanchorNote] = useState<PdfAnnotation | null>(null);
   const [quoteDialog, setQuoteDialog] = useState(false);
   const [error, setError] = useState('');
   const [message, setMessage] = useState('');
@@ -49,9 +60,18 @@ export default function PdfNotes({
   const controls = useRef(new Map<string, HTMLButtonElement>());
   const createButton = useRef<HTMLButtonElement>(null);
   const generation = useRef(0);
+  const activeDocument = useRef({ pdf, path, disposed: false });
+  activeDocument.current.pdf = pdf;
+  activeDocument.current.path = path;
+  const isCurrentDocument = () =>
+    !activeDocument.current.disposed && activeDocument.current.pdf === pdf && activeDocument.current.path === path;
   const operation = useRef(false);
   const currentSemantic = useRef<Element | null>(null);
   const selectedRange = useRef<Range | null>(null);
+  useEffect(() => {
+    selectedRange.current = null;
+    currentSemantic.current = null;
+  }, [rendered, pdf, path]);
   useEffect(() => {
     const reader = readerRef.current;
     return () => {
@@ -67,10 +87,12 @@ export default function PdfNotes({
 
   useEffect(() => {
     const version = ++generation.current;
+    const documentState = activeDocument.current;
+    documentState.disposed = false;
     setNotes([]);
     setNotesLoaded(false);
     void window.a11yNotebook?.vault
-      .listPdfAnnotations(path)
+      ?.listPdfAnnotations?.(path)
       .then(async (stored) =>
         version !== generation.current
           ? []
@@ -97,6 +119,7 @@ export default function PdfNotes({
       });
     return () => {
       generation.current += 1;
+      documentState.disposed = true;
     };
   }, [pdf, path]);
 
@@ -107,6 +130,7 @@ export default function PdfNotes({
   }, [focusNote, targets, notes]);
 
   const begin = async (ranges: PdfSelectionRange[]) => {
+    if (!isCurrentDocument()) return;
     const version = generation.current;
     setError('');
     try {
@@ -118,11 +142,14 @@ export default function PdfNotes({
         setTargets(anchors);
       }
     } catch {
-      if (version === generation.current) setError('This selection cannot be annotated. Choose a shorter quotation.');
+      if (version === generation.current) {
+        setError('This selection cannot be annotated. Choose a shorter quotation.');
+        setReanchorNote(null);
+      }
     }
   };
   const createSelection = (range?: Range) => {
-    if (!notesLoaded || !rendered || !visualRef.current || !semanticRef.current) return;
+    if (!isCurrentDocument() || !notesLoaded || !rendered || !visualRef.current || !semanticRef.current) return;
     const visualRanges = groupedPdfSelection(range ?? window.getSelection(), [
       { page: rendered.page.pageNum, element: visualRef.current },
     ]);
@@ -168,8 +195,14 @@ export default function PdfNotes({
     };
     const selection = (event: Event) => {
       if (event.defaultPrevented || !ownsEvent(event) || targets || quoteDialog) return;
+      setReanchorNote(null);
       const detail = event instanceof CustomEvent ? (event.detail as PdfCommandDetail | undefined) : undefined;
       const current = window.getSelection();
+      if (detail?.range && current) {
+        current.removeAllRanges();
+        current.addRange(detail.range.cloneRange());
+        rememberSelection();
+      }
       createSelection(
         detail?.range ??
           (current && !current.isCollapsed && current.rangeCount
@@ -189,6 +222,7 @@ export default function PdfNotes({
       )
         return;
       const detail = event instanceof CustomEvent ? (event.detail as PdfCommandDetail | undefined) : undefined;
+      setReanchorNote(null);
       const range = semanticPdfRange(
         detail?.element ??
           (semanticRef.current.contains(window.document.activeElement)
@@ -214,40 +248,45 @@ export default function PdfNotes({
 
   useEffect(() => {
     if (!rendered || !visualRef.current) return;
-    const overlay = window.document.createElement('div');
-    overlay.className = 'pdf-note-overlay';
-    overlay.setAttribute('aria-hidden', 'true');
-    for (const { note, resolutions } of notes) {
-      for (const [index, resolution] of resolutions.entries()) {
-        if (
-          !isLocated(resolution) ||
-          resolution.verification !== 'verified' ||
-          resolution.page !== rendered.page.pageNum
-        )
-          continue;
-        const target = [note.target, ...(note.targets ?? [])][index];
-        for (const [left, top, width, height] of pdfNoteRectangles(
-          rendered.page,
-          resolution.offset,
-          resolution.length ?? target.canonicalLength,
-          rendered.scale,
-          rendered.rotation,
-        )) {
-          const mark = window.document.createElement('div');
-          mark.className = `pdf-note-highlight pdf-note-color-${note.color}`;
-          mark.style.cssText = `left:${left}px;top:${top}px;width:${width}px;height:${height}px`;
-          overlay.append(mark);
-        }
-      }
-    }
+    const highlights = notes.flatMap(({ note, resolutions }) =>
+      resolutions.flatMap((resolution) =>
+        isLocated(resolution) && resolution.verification === 'verified' && resolution.page === rendered.page.pageNum
+          ? [{ offset: resolution.offset, length: resolution.length, color: note.color }]
+          : [],
+      ),
+    );
+    const overlay = createPdfHighlightLayer(rendered.page, rendered.scale, rendered.rotation, highlights);
     visualRef.current.append(overlay);
     return () => {
       overlay.remove();
     };
   }, [notes, rendered, visualRef]);
 
+  const reconfirm = async () => {
+    if (!isCurrentDocument() || !reanchorNote || !targets || operation.current) return;
+    operation.current = true;
+    const version = generation.current;
+    setError('');
+    try {
+      const updated = await window.a11yNotebook!.vault.updatePdfAnnotation(path, reanchorNote.id, {
+        target: targets[0],
+        targets: targets.slice(1),
+      });
+      if (version !== generation.current) return;
+      const resolved = await resolveNote(updated);
+      if (version !== generation.current) return;
+      setNotes((previous) => previous.map((item) => (item.note.id === updated.id ? resolved : item)));
+      setTargets(null);
+      setReanchorNote(null);
+      setMessage('Existing PDF note location reconfirmed.');
+      setFocusNote(updated.id);
+    } finally {
+      operation.current = false;
+    }
+  };
+
   const save = async (values: PdfNoteValues) => {
-    if (!targets || operation.current) return;
+    if (!isCurrentDocument() || !targets || operation.current) return;
     operation.current = true;
     const version = generation.current;
     setError('');
@@ -270,7 +309,7 @@ export default function PdfNotes({
     }
   };
   const remove = async (note: PdfAnnotation) => {
-    if (operation.current) return;
+    if (!isCurrentDocument() || operation.current) return;
     operation.current = true;
     setBusy(true);
     setError('');
@@ -289,25 +328,22 @@ export default function PdfNotes({
     }
   };
   const verify = async ({ note, resolutions }: ResolvedNote) => {
-    if (operation.current || resolutions.some((resolution) => !isLocated(resolution))) return;
+    if (!isCurrentDocument() || operation.current || resolutions.some((resolution) => !isLocated(resolution))) return;
     operation.current = true;
     setBusy(true);
     setError('');
     const version = generation.current;
     try {
       const anchors = await Promise.all(
-        resolutions.map(async (resolution, index) => {
+        resolutions.map(async (resolution) => {
           if (!isLocated(resolution)) throw new Error('Unresolved');
-          const target = [note.target, ...(note.targets ?? [])][index];
           return {
-            ...(await pdf.getPage(resolution.page)).createAnnotationAnchor(
-              resolution.offset,
-              resolution.length ?? target.canonicalLength,
-            ),
+            ...(await pdf.getPage(resolution.page)).createAnnotationAnchor(resolution.offset, resolution.length),
             verification: 'verified' as const,
           };
         }),
       );
+      if (version !== generation.current || !isCurrentDocument()) return;
       const updated = await window.a11yNotebook!.vault.updatePdfAnnotation(path, note.id, {
         target: anchors[0],
         ...(anchors.length > 1 ? { targets: anchors.slice(1) } : {}),
@@ -327,14 +363,33 @@ export default function PdfNotes({
 
   return (
     <section aria-label="PDF notes" className="pdf-notes">
-      <button ref={createButton} type="button" onClick={() => createSelection()} disabled={!rendered || !notesLoaded}>
+      <button
+        ref={createButton}
+        type="button"
+        onClick={() => {
+          setReanchorNote(null);
+          createSelection();
+        }}
+        disabled={!rendered || !notesLoaded}
+      >
         Create PDF note
+      </button>
+      <button
+        type="button"
+        disabled={!notesLoaded || !loadedPages}
+        onClick={() => {
+          setReanchorNote(null);
+          setQuoteDialog(true);
+        }}
+      >
+        Annotate a quote
       </button>
       <button
         type="button"
         disabled={!rendered || !notesLoaded}
         onClick={() => {
           if (!rendered || !semanticRef.current) return;
+          setReanchorNote(null);
           const range = semanticPdfRange(currentSemantic.current, semanticRef.current, rendered.page.pageNum);
           if (range) void begin([range]);
           else setError('Focus a paragraph, heading, or table cell in the accessible page text first.');
@@ -353,9 +408,8 @@ export default function PdfNotes({
           {notes.map((item) => {
             const { note, resolutions } = item;
             const orphaned = resolutions.some((resolution) => !isLocated(resolution));
-            const unverified = resolutions.some(
-              (resolution) => resolution.verification !== 'verified' || resolution.confidence !== 'certain',
-            );
+            const unverified = resolutions.some((resolution) => resolution.verification !== 'verified');
+            const uncertain = resolutions.some((resolution) => resolution.confidence !== 'certain');
             return (
               <li key={note.id}>
                 <button
@@ -368,24 +422,28 @@ export default function PdfNotes({
                     const index = resolutions.findIndex(isLocated);
                     const resolution = resolutions[index];
                     if (resolution && isLocated(resolution))
-                      onNavigate(
-                        resolution.page,
-                        resolution.offset,
-                        resolution.length ?? [note.target, ...(note.targets ?? [])][index].canonicalLength,
-                      );
+                      onNavigate(resolution.page, resolution.offset, resolution.length);
                     else setMessage('This note has no unique location. Review its original quotation below.');
                   }}
                 >
                   {note.label || 'PDF note'} — {note.color === 'none' ? 'outline only' : note.color}, page{' '}
                   {note.target.page}
                 </button>
-                {note.comment ? <p>{note.comment}</p> : null}
-                {orphaned || unverified ? (
+                <p>
+                  Location: {[...new Set(resolutions.map((resolution) => resolution.classification))].join(', ')}.{' '}
+                  Confidence: {[...new Set(resolutions.map((resolution) => resolution.confidence))].join(', ')}.{' '}
+                  Verification:{' '}
+                  {[...new Set(resolutions.map((resolution) => resolution.verification ?? 'unverified'))].join(', ')}.
+                </p>
+                {note.comment ? <p className="pdf-note-comment">{note.comment}</p> : null}
+                {orphaned || unverified || uncertain ? (
                   <div className="pdf-note-warning">
                     <p>
                       {orphaned
                         ? 'Orphaned or ambiguous note: no unique location found.'
-                        : 'Unverified note: review the location before trusting this highlight.'}
+                        : unverified
+                          ? 'Unverified note: reconfirm the location before highlighting.'
+                          : 'Location has probable or uncertain confidence. Review it before relying on the highlight.'}
                     </p>
                     <blockquote>
                       {[note.target, ...(note.targets ?? [])].map((target) => target.exactQuote).join('\n')}
@@ -401,6 +459,16 @@ export default function PdfNotes({
                         Verify location for {note.label || 'PDF note'}
                       </button>
                     ) : null}
+                    <button
+                      type="button"
+                      disabled={busy || !rendered}
+                      onClick={() => {
+                        setReanchorNote(note);
+                        createSelection();
+                      }}
+                    >
+                      Reconfirm location for {note.label || 'PDF note'}
+                    </button>
                   </div>
                 ) : null}
                 <button type="button" disabled={busy} onClick={() => void remove(note)}>
@@ -416,10 +484,25 @@ export default function PdfNotes({
           document={pdf}
           loadedPages={loadedPages}
           onChoose={(range) => void begin([range])}
-          onClose={() => setQuoteDialog(false)}
+          onClose={() => {
+            setQuoteDialog(false);
+            setReanchorNote(null);
+          }}
         />
       ) : null}
-      {targets ? (
+      {targets && reanchorNote ? (
+        <PdfLocationDialog
+          originalQuote={[reanchorNote.target, ...(reanchorNote.targets ?? [])]
+            .map((target) => target.exactQuote)
+            .join('\n')}
+          currentQuote={targets.map((target) => target.exactQuote).join('\n')}
+          onSave={reconfirm}
+          onClose={() => {
+            setTargets(null);
+            setReanchorNote(null);
+          }}
+        />
+      ) : targets ? (
         <PdfNoteDialog
           quote={targets.map((target) => target.exactQuote).join('\n')}
           onSave={save}

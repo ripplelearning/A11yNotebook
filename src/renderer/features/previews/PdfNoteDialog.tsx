@@ -48,6 +48,7 @@ export default function PdfNoteDialog({
             event.key === 'Enter' &&
             !event.nativeEvent.isComposing &&
             !(event.target instanceof HTMLTextAreaElement) &&
+            !(event.target instanceof HTMLSelectElement) &&
             !(event.target instanceof HTMLButtonElement)
           ) {
             event.preventDefault();
@@ -78,21 +79,21 @@ export default function PdfNoteDialog({
             maxLength={10000}
           />
         </label>
-        <fieldset disabled={saving}>
-          <legend>Highlight color</legend>
-          {(['red', 'yellow', 'green', 'blue', 'none'] as const).map((option) => (
-            <label key={option}>
-              <input
-                type="radio"
-                name={`${id}-color`}
-                value={option}
-                checked={color === option}
-                onChange={() => setColor(option)}
-              />
-              {option === 'none' ? 'None (outline only)' : option[0].toUpperCase() + option.slice(1)}
-            </label>
-          ))}
-        </fieldset>
+        <label>
+          Highlight color
+          <select
+            disabled={saving}
+            value={color}
+            onChange={(event) => setColor(event.target.value as PdfAnnotation['color'])}
+          >
+            {(['red', 'yellow', 'green', 'blue', 'none'] as const).map((option) => (
+              <option key={option} value={option}>
+                {option[0].toUpperCase() + option.slice(1)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p>None uses an outline without a color fill.</p>
         {error ? <p role="alert">{error}</p> : null}
         <div className="modal-actions">
           <button type="submit" disabled={saving}>

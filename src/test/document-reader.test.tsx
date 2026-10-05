@@ -76,7 +76,7 @@ describe('local accessible document reader', () => {
     const getPreferences = vi.fn(async () => stored);
     const savePreferences = vi.fn(async (value: typeof stored) => (stored = value));
     window.a11yNotebook = {
-      vault: {},
+      vault: { listPdfAnnotations: vi.fn(async () => []) },
       getPdfReadingPreferences: getPreferences,
       setPdfReadingPreferences: savePreferences,
     } as unknown as NotebookBridge;

@@ -1,4 +1,5 @@
 export const ANNOTATION_COLORS = ['yellow', 'green', 'blue', 'pink'] as const;
+export const NOTE_ANNOTATION_SCHEMA_VERSION = 1 as const;
 export type AnnotationColor = (typeof ANNOTATION_COLORS)[number];
 
 /** Offsets refer to the rendered document's concatenated text nodes, not Markdown source. */

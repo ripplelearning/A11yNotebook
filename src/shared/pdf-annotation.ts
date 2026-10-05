@@ -1,4 +1,8 @@
 export const PDF_ANNOTATION_COLORS = ['red', 'yellow', 'green', 'blue', 'none'] as const;
+export const PDF_ANNOTATION_SCHEMA_VERSION = 1 as const;
+export const PDF_MALFORMED_TARGET_REASON = 'Stored PDF target was malformed; select text again to re-anchor.';
+export const PDF_MALFORMED_GROUPED_TARGET_REASON =
+  'Stored grouped PDF target was malformed; select text again to re-anchor.';
 export type PdfAnnotationColor = (typeof PDF_ANNOTATION_COLORS)[number];
 export type PdfAnnotationClassification = 'exact' | 'context-disambiguated' | 'normalized' | 'ambiguous' | 'orphan';
 export type PdfAnnotationConfidence = 'certain' | 'probable' | 'uncertain';
@@ -24,6 +28,7 @@ export interface PdfAnnotationTarget {
   classification: PdfAnnotationClassification;
   confidence: PdfAnnotationConfidence;
   verification?: 'verified' | 'unverified';
+  manuallyConfirmed?: boolean;
   reason?: string;
 }
 
@@ -38,7 +43,7 @@ export interface PdfAnnotation {
   comment: string;
   createdAt: string;
   modifiedAt: string;
-  schemaVersion: 1;
+  schemaVersion: typeof PDF_ANNOTATION_SCHEMA_VERSION;
 }
 
 export type NewPdfAnnotation = Pick<PdfAnnotation, 'path' | 'target' | 'targets' | 'color' | 'label' | 'comment'>;

@@ -11,6 +11,7 @@ const fake = vi.hoisted(() => ({
   highlight: vi.fn(),
   anchor: vi.fn(),
   preferences: { hideHeadersFooters: false, hidePageNumbers: false },
+  openError: false,
 }));
 
 vi.mock('../renderer/hooks/usePdfReadingPreferences', () => ({
@@ -35,7 +36,7 @@ vi.mock('../renderer/pdf-semantic', () => {
   return {
     applyPdfReadingPreferences: vi.fn(),
     PdfDocument: class {
-      ready = Promise.resolve();
+      ready = fake.openError ? Promise.reject(new Error('Unsupported PDF')) : Promise.resolve();
       numPages = 1;
       getPage = async () => page;
       classifyUntaggedPages = async () => undefined;
@@ -70,6 +71,7 @@ const target: PdfAnnotationTarget = {
 };
 
 beforeEach(() => {
+  fake.openError = false;
   vi.stubGlobal(
     'fetch',
     vi.fn(async () => ({ ok: true, arrayBuffer: async () => new Uint8Array([1, 2]).buffer })),
@@ -104,6 +106,7 @@ beforeEach(() => {
           modifiedAt: '2026-10-05',
         },
       ]),
+      deletePdfAnnotation: vi.fn(async () => undefined),
     },
   } as unknown as NotebookBridge;
 });
@@ -116,6 +119,40 @@ afterEach(() => {
 });
 
 describe('PDF reader annotation rendering', () => {
+  it('retains original stored notes when PDF parsing fails and supports deletion without unsafe highlights', async () => {
+    fake.openError = true;
+    const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
+    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' });
+    await screen.findByRole('button', { name: 'Delete Highlight' });
+    expect(unavailable).toHaveTextContent('Stored notes remain retained.');
+    expect(unavailable.querySelector('blockquote')).toHaveTextContent('Hello');
+    expect(unavailable).toHaveTextContent('Verification: unverified.');
+    expect(screen.queryByRole('button', { name: 'Create PDF note' })).not.toBeInTheDocument();
+    expect(fake.canvas).not.toHaveBeenCalled();
+    expect(view.container.querySelector('.pdf-note-highlight')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Delete Highlight' }));
+    await waitFor(() => expect(window.a11yNotebook!.vault.deletePdfAnnotation).toHaveBeenCalledWith('book.pdf', 'one'));
+    await waitFor(() => expect(screen.queryByRole('button', { name: 'Delete Highlight' })).not.toBeInTheDocument());
+    expect(unavailable).toHaveFocus();
+  });
+
+  it('retains original stored notes when document bytes cannot be fetched', async () => {
+    vi.mocked(fetch).mockResolvedValueOnce({ ok: false } as Response);
+    render(<DocumentReader path="book.pdf" kind=".pdf" />);
+    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' });
+    await screen.findByRole('button', { name: 'Delete Highlight' });
+    expect(unavailable.querySelector('blockquote')).toHaveTextContent('Hello');
+    expect(fake.canvas).not.toHaveBeenCalled();
+  });
+
+  it('renders the PDF safely when an older partial bridge does not expose annotation methods', async () => {
+    window.a11yNotebook = { vault: {} } as unknown as NotebookBridge;
+    const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
+    await waitFor(() => expect(view.container.querySelector('.pdf-text-layer')).not.toBeNull());
+    expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeDisabled();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
   it('does not make running artifacts interactive and defeat reading-preference hiding', async () => {
     fake.semantic.mockImplementationOnce(() => {
       const article = document.createElement('article');
@@ -153,6 +190,10 @@ describe('PDF reader annotation rendering', () => {
       'data-context',
       'pdf-selection',
     );
+    const reader = screen.getByRole('region', { name: 'PDF document reader' });
+    expect(reader).toHaveAttribute('tabindex', '-1');
+    reader.focus();
+    expect(reader).toHaveFocus();
     expect(view.container.querySelector('canvas')).toHaveAttribute('aria-hidden', 'true');
     expect(view.container.querySelector('.pdf-text-layer')).toHaveAttribute('aria-hidden', 'true');
     const paragraph = view.container.querySelector('[aria-label="Accessible text for PDF page 1"] p') as HTMLElement;

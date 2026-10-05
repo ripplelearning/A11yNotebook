@@ -2,6 +2,7 @@ import type { TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/a
 import { ViewportTransform } from './viewport-transform';
 import { explicitPdfArtifactType, type PdfArtifactType } from './reading-preferences';
 import type { PdfAnnotationTarget } from '../../shared/pdf-annotation';
+import { PDF_MALFORMED_GROUPED_TARGET_REASON, PDF_MALFORMED_TARGET_REASON } from '../../shared/pdf-annotation';
 
 export type PdfTextPart = TextItem | (TextMarkedContent & { tag?: string | null });
 export type TextCoordinates = [number, number, number, number];
@@ -83,15 +84,20 @@ export function isValidPdfAnchor(target: unknown): target is PdfAnnotationTarget
     ['exact', 'context-disambiguated', 'normalized', 'ambiguous', 'orphan'].includes(value.classification) &&
     ['certain', 'probable', 'uncertain'].includes(value.confidence) &&
     (value.verification === undefined || ['verified', 'unverified'].includes(value.verification)) &&
+    (value.manuallyConfirmed === undefined || typeof value.manuallyConfirmed === 'boolean') &&
     (value.structPath === undefined || typeof value.structPath === 'string') &&
     (value.reason === undefined || typeof value.reason === 'string')
   );
 }
 
 export function malformedStoredAnchorResolution(target: PdfAnnotationTarget): PdfAnchorResolution | undefined {
+  const reason = target.reason ?? '';
+  const knownReason = [PDF_MALFORMED_TARGET_REASON, PDF_MALFORMED_GROUPED_TARGET_REASON].some((marker) =>
+    reason.startsWith(marker),
+  );
   if (
     target.classification !== 'orphan' ||
-    !/^Stored (?:grouped )?PDF target was malformed\b/u.test(target.reason ?? '')
+    (!knownReason && !/^Stored (?:grouped )?PDF target was malformed\b/u.test(reason))
   ) {
     return undefined;
   }
@@ -100,7 +106,7 @@ export function malformedStoredAnchorResolution(target: PdfAnnotationTarget): Pd
     classification: 'orphan',
     confidence: 'uncertain',
     verification: 'unverified',
-    reason: target.reason!,
+    reason,
   };
 }
 
@@ -294,6 +300,23 @@ export class TextModel {
       };
     }
     const changed = this.identity.fileHash !== target.documentIdentity.fileHash;
+    if (
+      target.manuallyConfirmed === true &&
+      target.verification === 'verified' &&
+      !changed &&
+      target.page === this.page &&
+      this.fullText.slice(target.canonicalStart, target.canonicalStart + target.canonicalLength) === target.exactQuote
+    ) {
+      return {
+        offset: target.canonicalStart,
+        page: this.page,
+        length: target.canonicalLength,
+        classification: 'exact',
+        confidence: 'certain',
+        verification: 'verified',
+        reason: 'Explicitly confirmed occurrence in unchanged PDF',
+      };
+    }
     const verification = changed || target.verification === 'unverified' ? 'unverified' : 'verified';
     const suffix = changed
       ? ' File hash changed; manual reconfirmation is required before highlighting.'
@@ -327,7 +350,7 @@ export class TextModel {
     }
     if (exact.length === 1)
       return result(exact[0].startOffset, exact[0].length, 'exact', 'Unique exact quote on this page.');
-    const matches = exact.length ? exact : this.findText(target.normalizedQuote || target.exactQuote);
+    const matches = exact.length ? exact : this.findText(target.normalizedQuote || target.exactQuote, true);
     if (matches.length === 1)
       return result(matches[0].startOffset, matches[0].length, 'normalized', 'Unique normalized quote on this page.');
     if (matches.length > 1) {
@@ -353,10 +376,46 @@ export class TextModel {
     };
   }
 
-  offsetToCoordinates(offset: number, zoom = 1, rotation = 0): TextCoordinates | null {
+  offsetToCoordinates(offset: number, zoom?: number, rotation?: number): TextCoordinates | null;
+  offsetToCoordinates(offset: number, length: number, zoom: number, rotation: number): TextCoordinates | null;
+  offsetToCoordinates(
+    offset: number,
+    zoomOrLength = 1,
+    rotationOrZoom = 0,
+    rangeRotation?: number,
+  ): TextCoordinates | null {
+    const isRange = rangeRotation !== undefined;
+    const zoom = isRange ? rotationOrZoom : zoomOrLength;
+    const rotation = isRange ? rangeRotation : rotationOrZoom;
+    const transform = new ViewportTransform(this.view, zoom, rotation);
+    if (isRange) {
+      const length = zoomOrLength;
+      if (
+        !Number.isSafeInteger(offset) ||
+        !Number.isSafeInteger(length) ||
+        offset < 0 ||
+        length <= 0 ||
+        offset + length > this.fullText.length
+      )
+        return null;
+      const rectangles = this.items.flatMap((item) => {
+        if (!item.transform || item.endOffset <= offset || item.startOffset >= offset + length) return [];
+        const textLength = Math.max(1, item.text.length - (item.hasEOL ? 1 : 0));
+        const start = Math.min(textLength - 1, Math.max(0, offset - item.startOffset));
+        const end = Math.min(textLength, Math.max(start + 1, offset + length - item.startOffset));
+        return [this.itemCoordinates(item, start / textLength, end / textLength, transform)];
+      });
+      return rectangles.reduce<TextCoordinates | null>((bounds, rectangle) => {
+        if (!bounds) return rectangle;
+        const left = Math.min(bounds[0], rectangle[0]);
+        const top = Math.min(bounds[1], rectangle[1]);
+        const right = Math.max(bounds[0] + bounds[2], rectangle[0] + rectangle[2]);
+        const bottom = Math.max(bounds[1] + bounds[3], rectangle[1] + rectangle[3]);
+        return [left, top, right - left, bottom - top];
+      }, null);
+    }
     const item = this.items.find((candidate) => offset >= candidate.startOffset && offset < candidate.endOffset);
     if (!item?.transform) return null;
-    const transform = new ViewportTransform(this.view, zoom, rotation);
     const textLength = Math.max(1, item.text.length - (item.hasEOL ? 1 : 0));
     const characterOffset = Math.min(textLength - 1, Math.max(0, offset - item.startOffset));
     return this.itemCoordinates(item, characterOffset / textLength, (characterOffset + 1) / textLength, transform);
@@ -413,16 +472,21 @@ export class TextModel {
     };
   }
 
-  findText(query: string): Array<{ startOffset: number; length: number; page: number }> {
+  findText(query: string, includeOverlapping = false): Array<{ startOffset: number; length: number; page: number }> {
     const needle = normalize(query);
     if (!needle) return [];
     const found: Array<{ startOffset: number; length: number; page: number }> = [];
+    const canonicalRanges = new Set<string>();
     let index = 0;
     while ((index = this.normalizedText.indexOf(needle, index)) !== -1) {
       const startOffset = this.sourceOffsets[index];
       const endOffset = this.sourceEnds[index + needle.length - 1];
-      found.push({ startOffset, length: endOffset - startOffset, page: this.page });
-      index += Math.max(needle.length, 1);
+      const key = `${startOffset}:${endOffset}`;
+      if (!includeOverlapping || !canonicalRanges.has(key)) {
+        found.push({ startOffset, length: endOffset - startOffset, page: this.page });
+        canonicalRanges.add(key);
+      }
+      index += includeOverlapping ? 1 : needle.length;
     }
     return found;
   }

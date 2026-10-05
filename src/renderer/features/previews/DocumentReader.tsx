@@ -5,6 +5,7 @@ import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
+import PdfUnavailableNotes from './PdfUnavailableNotes';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
@@ -188,7 +189,13 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
 
   return (
-    <section ref={readerRef} aria-label="PDF document reader" data-context="pdf-selection" data-pdf-path={path}>
+    <section
+      ref={readerRef}
+      tabIndex={-1}
+      aria-label="PDF document reader"
+      data-context="pdf-selection"
+      data-pdf-path={path}
+    >
       <h3>
         {activePage?.label ?? `Page ${pageNumber}`} of {pageCount || '…'}
       </h3>
@@ -274,6 +281,8 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
             } else setPageNumber(page);
           }}
         />
+      ) : renderError ? (
+        <PdfUnavailableNotes path={path} reason={renderError} />
       ) : null}
     </section>
   );
@@ -371,7 +380,10 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
 export default function DocumentReader({ path, kind }: Props) {
   const { bytes, error } = useDocumentBytes(path, kind);
   return error ? (
-    <p role="alert">{error}</p>
+    <>
+      <p role="alert">{error}</p>
+      {kind === '.pdf' ? <PdfUnavailableNotes key={path} path={path} reason={error} /> : null}
+    </>
   ) : !bytes ? (
     <p role="status">Loading {kind.slice(1)} document…</p>
   ) : kind === '.pdf' ? (

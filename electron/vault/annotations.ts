@@ -11,6 +11,9 @@ import type { PdfAnnotationStore } from '../../src/shared/annotation-store';
 import {
   PDF_ANNOTATION_COLORS,
   PDF_ANNOTATION_LIMITS,
+  PDF_ANNOTATION_SCHEMA_VERSION,
+  PDF_MALFORMED_TARGET_REASON,
+  PDF_MALFORMED_GROUPED_TARGET_REASON,
   type PdfAnnotation,
   type PdfAnnotationTarget,
 } from '../../src/shared/pdf-annotation';
@@ -47,7 +50,6 @@ function notePath(value: unknown): string {
     path.includes('\0') ||
     path.startsWith('/') ||
     /^[A-Za-z]:/.test(path) ||
-    path.split('/')[0].toLowerCase() === '.a11ynotebook' ||
     path.split('/').some((part) => !part || part === '.' || part === '..')
   )
     throw new Error('Invalid annotation note path.');
@@ -118,7 +120,8 @@ function pdfTarget(value: unknown, path: string): PdfAnnotationTarget {
     typeof data.confidence !== 'string' ||
     !['certain', 'probable', 'uncertain'].includes(data.confidence) ||
     (data.verification !== undefined &&
-      (typeof data.verification !== 'string' || !['verified', 'unverified'].includes(data.verification)))
+      (typeof data.verification !== 'string' || !['verified', 'unverified'].includes(data.verification))) ||
+    (data.manuallyConfirmed !== undefined && typeof data.manuallyConfirmed !== 'boolean')
   )
     throw new Error('Invalid PDF annotation target.');
   return {
@@ -137,13 +140,36 @@ function pdfTarget(value: unknown, path: string): PdfAnnotationTarget {
     ...(data.verification !== undefined
       ? { verification: data.verification as PdfAnnotationTarget['verification'] }
       : {}),
+    manuallyConfirmed: data.manuallyConfirmed === true,
     ...(data.reason !== undefined ? { reason: text(data.reason, PDF_ANNOTATION_LIMITS.reason) } : {}),
   };
 }
 
 function loadedPdfTarget(value: unknown, path: string): PdfAnnotationTarget {
   try {
-    return pdfTarget(value, path);
+    const data = object(value);
+    if (data.manuallyConfirmed !== undefined && typeof data.manuallyConfirmed !== 'boolean')
+      throw new Error('Invalid PDF annotation confirmation.');
+    const inferred = data.classification === undefined || data.confidence === undefined;
+    return pdfTarget(
+      {
+        ...data,
+        classification: data.classification === undefined ? 'exact' : data.classification,
+        confidence: data.confidence === undefined ? 'probable' : data.confidence,
+        manuallyConfirmed: inferred || data.manuallyConfirmed === undefined ? false : data.manuallyConfirmed,
+        ...(inferred
+          ? {
+              verification: 'unverified',
+              manuallyConfirmed: false,
+              reason:
+                data.reason === undefined
+                  ? 'Stored PDF target classification was inferred; verify against the document.'
+                  : data.reason,
+            }
+          : {}),
+      },
+      path,
+    );
   } catch {
     const data = value && typeof value === 'object' && !Array.isArray(value) ? object(value) : {};
     const identity =
@@ -169,7 +195,12 @@ function loadedPdfTarget(value: unknown, path: string): PdfAnnotationTarget {
       classification: 'orphan',
       confidence: 'uncertain',
       verification: 'unverified',
-      reason: 'Stored PDF target was malformed; select text again to re-anchor.',
+      manuallyConfirmed: false,
+      reason:
+        typeof data.reason === 'string' &&
+        /^(?:Stored PDF target|Stored grouped PDF target) was malformed/.test(data.reason)
+          ? safeText(data.reason, PDF_ANNOTATION_LIMITS.reason)
+          : PDF_MALFORMED_TARGET_REASON,
     };
   }
 }
@@ -183,7 +214,7 @@ function pdfTargets(value: unknown, path: string, loaded = false): PdfAnnotation
         classification: 'orphan',
         confidence: 'uncertain',
         verification: 'unverified',
-        reason: 'Stored grouped PDF target was malformed; select text again to re-anchor.',
+        reason: PDF_MALFORMED_GROUPED_TARGET_REASON,
       },
     ];
   if (!Array.isArray(value) || value.length > PDF_ANNOTATION_LIMITS.targets)
@@ -209,8 +240,9 @@ function pdfRecord(value: unknown): PdfAnnotation {
   const createdAt = text(data.createdAt, 30, true);
   const modifiedAt = text(data.modifiedAt, 30, true);
   if (
-    data.schemaVersion !== 1 ||
+    data.schemaVersion !== PDF_ANNOTATION_SCHEMA_VERSION ||
     !/\.pdf$/i.test(path) ||
+    path.split('/')[0].toLowerCase() === '.a11ynotebook' ||
     !/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(id) ||
     !Number.isFinite(Date.parse(createdAt)) ||
     !Number.isFinite(Date.parse(modifiedAt))
@@ -225,7 +257,7 @@ function pdfRecord(value: unknown): PdfAnnotation {
     ...pdfFields(data),
     createdAt,
     modifiedAt,
-    schemaVersion: 1,
+    schemaVersion: PDF_ANNOTATION_SCHEMA_VERSION,
   };
 }
 
@@ -266,6 +298,7 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
   }
   async function validatePdfPath(path: unknown) {
     const safe = notePath(path);
+    if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid PDF annotation path.');
     if (!/\.pdf$/i.test(safe)) throw new Error('PDF annotations require a PDF document.');
     if (!validatePdf) throw new Error('PDF annotation validation is unavailable.');
     await validatePdf(safe);
@@ -297,7 +330,7 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
           ...validFields,
           createdAt: now,
           modifiedAt: now,
-          schemaVersion: 1,
+          schemaVersion: PDF_ANNOTATION_SCHEMA_VERSION,
         };
         metadata.pdfAnnotations.push(added);
         await write(metadata);

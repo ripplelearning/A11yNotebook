@@ -5,8 +5,13 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createAnnotationStore } from '../../electron/vault/annotations';
 import { createVaultService } from '../../electron/vault/service';
-import type { NewPdfAnnotation, PdfAnnotationTarget } from '../shared/pdf-annotation';
-import type { NewAnnotation } from '../shared/annotations';
+import {
+  PDF_ANNOTATION_SCHEMA_VERSION,
+  type NewPdfAnnotation,
+  type PdfAnnotationTarget,
+} from '../shared/pdf-annotation';
+import { NOTE_ANNOTATION_SCHEMA_VERSION, type NewAnnotation } from '../shared/annotations';
+import { ANNOTATION_SCHEMA_VERSIONS, type AnnotationRecord } from '../shared/annotation-store';
 import { untaggedReport } from './fixtures/pdf-fixtures';
 
 vi.mock('pdfjs-dist/legacy/build/pdf.mjs', { spy: true });
@@ -24,6 +29,7 @@ const target: PdfAnnotationTarget = {
   classification: 'exact',
   confidence: 'certain',
   verification: 'verified',
+  manuallyConfirmed: false,
 };
 const input: NewPdfAnnotation = {
   path: 'Docs/Research.pdf',
@@ -73,6 +79,41 @@ describe('PDF annotation persistence', () => {
     expect(await store.pdf.list(input.path)).toEqual([]);
   });
 
+  it('persists an explicitly chosen duplicated occurrence and its hash without guessing another location', async () => {
+    const { store, options } = fixture();
+    const repeated = {
+      ...target,
+      contextBefore: 'x'.repeat(80),
+      contextAfter: 'y'.repeat(80),
+      canonicalStart: 200,
+      classification: 'ambiguous' as const,
+      confidence: 'uncertain' as const,
+      verification: 'unverified' as const,
+    };
+    const added = await store.pdf.add({ ...input, target: repeated });
+    const confirmed = {
+      ...repeated,
+      canonicalStart: 500,
+      classification: 'exact' as const,
+      confidence: 'certain' as const,
+      verification: 'verified' as const,
+      manuallyConfirmed: true,
+    };
+    await store.pdf.update(input.path, added.id, { target: confirmed });
+    const reloaded = createAnnotationStore(options);
+    expect((await reloaded.pdf.list(input.path))[0].target).toEqual(confirmed);
+    await reloaded.pdf.update(input.path, added.id, { comment: 'Chosen second occurrence' });
+    expect((await store.pdf.list(input.path))[0].target).toEqual(confirmed);
+    const changed = {
+      ...confirmed,
+      documentIdentity: { ...confirmed.documentIdentity, fileHash: 'changed-document-hash' },
+      verification: 'unverified' as const,
+      manuallyConfirmed: false,
+    };
+    await reloaded.pdf.update(input.path, added.id, { target: changed });
+    expect((await store.pdf.list(input.path))[0].target).toEqual(changed);
+  });
+
   it('upgrades v1 envelopes without changing note records and serializes both formats', async () => {
     const original = await fixture().store.add(note);
     const { store, snapshot } = fixture({ version: 1, annotations: [original] });
@@ -81,6 +122,10 @@ describe('PDF annotation persistence', () => {
     expect(await store.pdf.list(input.path)).toHaveLength(2);
     expect(snapshot()).toMatchObject({ version: 2, annotations: [original, expect.anything()] });
     expect(original).not.toHaveProperty('schemaVersion');
+    const records: AnnotationRecord[] = [original, ...(await store.pdf.list(input.path))];
+    expect(records).toHaveLength(3);
+    expect([NOTE_ANNOTATION_SCHEMA_VERSION, PDF_ANNOTATION_SCHEMA_VERSION]).toEqual([1, 1]);
+    expect(ANNOTATION_SCHEMA_VERSIONS).toEqual({ pdf: 1, markdown: 1, html: 1 });
   });
 
   it('rejects unsafe paths, bad PDF extensions, malformed offsets and identities before writing', async () => {
@@ -100,9 +145,12 @@ describe('PDF annotation persistence', () => {
       { ...input, target: { ...target, canonicalStart: Number.MAX_SAFE_INTEGER } },
       { ...input, target: { ...target, exactQuote: '' } },
       { ...input, target: { ...target, confidence: 'maybe' } },
+      { ...input, target: { ...target, classification: undefined } },
+      { ...input, target: { ...target, confidence: undefined } },
       { ...input, target: { ...target, classification: ['exact'] } },
       { ...input, target: { ...target, confidence: ['certain'] } },
       { ...input, target: { ...target, verification: ['verified'] } },
+      { ...input, target: { ...target, manuallyConfirmed: 'true' } },
       { ...input, target: { ...target, documentIdentity: { ...target.documentIdentity, vaultPath: 'Other.pdf' } } },
       { ...input, targets: [{ ...target, documentIdentity: { ...target.documentIdentity, vaultPath: 'Other.pdf' } }] },
       { ...input, comment: 'x'.repeat(10_001) },
@@ -133,7 +181,49 @@ describe('PDF annotation persistence', () => {
     });
     expect(loaded.targets?.[0].classification).toBe('orphan');
     await store.pdf.update(input.path, added.id, { comment: 'Still available for review' });
-    expect((await store.pdf.list(input.path))[0].target.classification).toBe('orphan');
+    const [reloaded] = await store.pdf.list(input.path);
+    expect(reloaded.target.classification).toBe('orphan');
+    expect(reloaded.target.reason).toBe(loaded.target.reason);
+  });
+
+  it('infers absent legacy classification and confidence only for structurally valid targets', async () => {
+    const added = await fixture().store.pdf.add(input);
+    const legacyTarget: Partial<PdfAnnotationTarget> = { ...target };
+    delete legacyTarget.classification;
+    delete legacyTarget.confidence;
+    delete legacyTarget.manuallyConfirmed;
+    const { store } = fixture({
+      version: 2,
+      annotations: [],
+      pdfAnnotations: [{ ...added, target: legacyTarget, targets: [legacyTarget] }],
+    });
+    const [loaded] = await store.pdf.list(input.path);
+    expect(loaded.target).toMatchObject({
+      classification: 'exact',
+      confidence: 'probable',
+      verification: 'unverified',
+      exactQuote: target.exactQuote,
+      canonicalStart: target.canonicalStart,
+      manuallyConfirmed: false,
+    });
+    expect(loaded.targets?.[0]).toMatchObject({ classification: 'exact', verification: 'unverified' });
+    for (const malformed of [
+      { ...legacyTarget, page: 0 },
+      { ...legacyTarget, classification: null },
+      { ...target, manuallyConfirmed: 'true' },
+    ]) {
+      const { store: malformedStore } = fixture({
+        version: 2,
+        annotations: [],
+        pdfAnnotations: [{ ...added, target: malformed }],
+      });
+      expect((await malformedStore.pdf.list(input.path))[0].target).toMatchObject({
+        classification: 'orphan',
+        confidence: 'uncertain',
+        verification: 'unverified',
+        manuallyConfirmed: false,
+      });
+    }
   });
 
   it('rejects corrupt envelopes, duplicate IDs, and edits scoped to a different document', async () => {
@@ -194,8 +284,7 @@ describe('annotation document security validation', () => {
     const service = createVaultService(root);
     services.push(service);
     await service.initialize();
-    await expect(service.validateAnnotationDocument('Research.pdf')).resolves.toBeUndefined();
-    await expect(service.validateAnnotationDocument('Idea.md')).resolves.toBeUndefined();
+    await expect(service.validatePdfAnnotationDocument('Research.pdf')).resolves.toBeUndefined();
     for (const file of [
       'Linked.pdf',
       'LinkedFolder/File.pdf',
@@ -204,9 +293,9 @@ describe('annotation document security validation', () => {
       'Protected.md',
       'Fake.pdf',
     ])
-      await expect(service.validateAnnotationDocument(file)).rejects.toThrow();
+      await expect(service.validatePdfAnnotationDocument(file)).rejects.toThrow();
     const { options, write } = fixture();
-    const store = createAnnotationStore({ ...options, validatePdf: service.validateAnnotationDocument });
+    const store = createAnnotationStore({ ...options, validatePdf: service.validatePdfAnnotationDocument });
     await expect(store.pdf.add({ ...input, path: 'Linked.pdf' })).rejects.toThrow();
     expect(write).not.toHaveBeenCalled();
     const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -217,7 +306,7 @@ describe('annotation document security validation', () => {
         promise: Promise.resolve({ getPermissions: async () => [4] }),
         destroy,
       } as unknown as ReturnType<typeof pdfjs.getDocument>);
-      await expect(service.validateAnnotationDocument('Research.pdf')).rejects.toThrow('protected content');
+      await expect(service.validatePdfAnnotationDocument('Research.pdf')).rejects.toThrow('protected content');
       parser.mockImplementationOnce(
         () =>
           ({
@@ -225,7 +314,7 @@ describe('annotation document security validation', () => {
             destroy,
           }) as unknown as ReturnType<typeof pdfjs.getDocument>,
       );
-      await expect(service.validateAnnotationDocument('Research.pdf')).rejects.toThrow('protected content');
+      await expect(service.validatePdfAnnotationDocument('Research.pdf')).rejects.toThrow('protected content');
       expect(destroy).toHaveBeenCalledTimes(2);
     } finally {
       parser.mockRestore();

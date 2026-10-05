@@ -136,14 +136,23 @@ describe('accessible PDF note dialog', () => {
     render(<PdfNoteDialog quote="Hello" onSave={save} onClose={vi.fn()} />);
     expect(screen.getByRole('dialog', { name: 'Create PDF note' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'Label (optional)' })).toHaveFocus();
-    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getByRole('combobox', { name: 'Highlight color' })).toHaveValue('yellow');
+    expect(screen.getAllByRole('option').map((option) => option.textContent)).toEqual([
+      'Red',
+      'Yellow',
+      'Green',
+      'Blue',
+      'None',
+    ]);
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Enter a label or comment');
     const comment = screen.getByRole('textbox', { name: 'Comment (optional)' });
     fireEvent.change(comment, { target: { value: 'First line\nSecond line' } });
     fireEvent.keyDown(comment, { key: 'Enter' });
     expect(save).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('radio', { name: 'None (outline only)' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Highlight color' }), { target: { value: 'none' } });
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Highlight color' }), { key: 'Enter' });
+    expect(save).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole('textbox', { name: 'Label (optional)' }), { key: 'Enter' });
     await waitFor(() =>
       expect(save).toHaveBeenCalledWith({ label: '', comment: 'First line\nSecond line', color: 'none' }),
@@ -189,6 +198,7 @@ describe('quotation and canonical selection', () => {
     range.setStart(layers[0].querySelector('b')!.firstChild!, 2);
     range.setEnd(layers[1].querySelector('span')!.firstChild!, 3);
     const selection = window.getSelection()!;
+    selection.removeAllRanges();
     selection.addRange(range);
     expect(
       groupedPdfSelection(
@@ -212,6 +222,32 @@ describe('quotation and canonical selection', () => {
 });
 
 describe('PDF notes reader integration', () => {
+  it('offers an explicit Annotate a quote action independent of pointer selection', async () => {
+    const { pdf, page, api } = setup();
+    render(<Harness pdf={pdf} page={page} />);
+    const annotate = screen.getByRole('button', { name: 'Annotate a quote' });
+    await waitFor(() => expect(annotate).toBeEnabled());
+    fireEvent.click(annotate);
+    await screen.findByRole('dialog', { name: 'Choose PDF quotation' });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
+    expect(screen.getByRole('button', { name: 'Use selected quotation' })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole('radio')[0]);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
+    await screen.findByRole('dialog', { name: 'Create PDF note' });
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Label (optional)' }), { target: { value: 'Quote note' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() =>
+      expect(api.addPdfAnnotation).toHaveBeenCalledWith(
+        expect.objectContaining({
+          label: 'Quote note',
+          target: expect.objectContaining({ canonicalStart: 0, canonicalLength: 5 }),
+        }),
+      ),
+    );
+  });
+
   it('scopes semantic commands to the focused reader and focuses the saved note control', async () => {
     const { api, pdf, page } = setup();
     render(
@@ -257,6 +293,7 @@ describe('PDF notes reader integration', () => {
     const range = document.createRange();
     range.setStart(span.firstChild!, 12);
     range.setEnd(span.firstChild!, 17);
+    window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
     act(() => window.dispatchEvent(new CustomEvent('annotate-pdf-selection')));
     await screen.findByRole('dialog');
@@ -342,6 +379,7 @@ describe('PDF notes reader integration', () => {
     const span = first.querySelector('span')!;
     const range = document.createRange();
     range.selectNodeContents(span);
+    window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
     (screen.getByTestId('other.pdf').querySelector('p[tabindex]') as HTMLElement).focus();
     act(() => window.dispatchEvent(new CustomEvent('annotate-pdf-selection')));
@@ -366,6 +404,22 @@ describe('PDF notes reader integration', () => {
     expect(screen.queryByRole('button', { name: /Verify location/ })).not.toBeInTheDocument();
   });
 
+  it('does not trust a resolved offset without a valid canonical length', async () => {
+    const { pdf, page } = setup([note]);
+    vi.mocked(pdf.resolveAnnotationAnchor).mockResolvedValue({
+      offset: 0,
+      page: 1,
+      classification: 'exact',
+      confidence: 'certain',
+      verification: 'verified',
+      reason: 'Resolution has no canonical length.',
+    });
+    const view = render(<Harness pdf={pdf} page={page} />);
+    expect(await screen.findByText('Resolution has no canonical length.')).toBeInTheDocument();
+    expect(view.container.querySelector('.pdf-note-highlight')).toBeNull();
+    expect(screen.queryByRole('button', { name: /Verify location/ })).not.toBeInTheDocument();
+  });
+
   it('uses the cloned context-menu range after the live selection and focus have moved', async () => {
     const { pdf, page } = setup();
     render(
@@ -380,12 +434,21 @@ describe('PDF notes reader integration', () => {
     range.setStart(span.firstChild!, 12);
     range.setEnd(span.firstChild!, 17);
     const clone = range.cloneRange();
+    window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
     window.getSelection()!.removeAllRanges();
+    let restoredQuote = '';
+    const selection = window.getSelection()!;
+    const addRange = selection.addRange.bind(selection);
+    vi.spyOn(selection, 'addRange').mockImplementation((restored) => {
+      restoredQuote = restored.toString();
+      addRange(restored);
+    });
     screen.getByRole('button', { name: 'Global menu' }).focus();
     act(() => window.dispatchEvent(new CustomEvent('annotate-pdf-selection', { detail: { range: clone } })));
     await screen.findByRole('dialog', { name: 'Create PDF note' });
     expect(page.createAnnotationAnchor).toHaveBeenCalledWith(12, 5);
+    expect(restoredQuote).toBe('Hello');
   });
 
   it('uses the original semantic context-menu element without changing global focus', async () => {
@@ -418,6 +481,7 @@ describe('PDF notes reader integration', () => {
     const range = document.createRange();
     range.setStart(span.firstChild!, 1);
     range.setEnd(span.firstChild!, 5);
+    window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
     act(() => document.dispatchEvent(new Event('selectionchange')));
     screen.getByRole('button', { name: 'Palette' }).focus();
@@ -487,6 +551,125 @@ describe('PDF notes reader integration', () => {
     await act(async () => finish({ ...note, label: 'Old PDF' }));
     expect(screen.queryByRole('button', { name: /Old PDF —/ })).not.toBeInTheDocument();
     expect(pdf.resolveAnnotationAnchor).not.toHaveBeenCalled();
+  });
+
+  it('reconfirms an orphan onto an explicitly chosen quotation without replacing its id or metadata', async () => {
+    const { pdf, page, api } = setup([{ ...note, targets: [{ ...target, page: 2 }] }]);
+    vi.mocked(pdf.resolveAnnotationAnchor).mockImplementation(async (anchor) =>
+      anchor.canonicalStart !== 12
+        ? {
+            orphaned: true,
+            classification: 'orphan',
+            confidence: 'uncertain',
+            verification: 'unverified',
+            reason: 'The original text was removed.',
+          }
+        : {
+            offset: 12,
+            length: 5,
+            page: 1,
+            classification: 'exact',
+            confidence: 'certain',
+            verification: 'verified',
+            reason: 'Newly selected canonical quotation.',
+          },
+    );
+    const view = render(<Harness pdf={pdf} page={page} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Reconfirm location for Important' }));
+    expect(screen.getByRole('dialog', { name: 'Choose PDF quotation' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
+    expect(screen.getByRole('button', { name: 'Use selected quotation' })).toBeDisabled();
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
+    await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
+    expect(screen.getByRole('button', { name: 'Save location' })).toHaveFocus();
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+    expect(api.updatePdfAnnotation).toHaveBeenCalledWith('book.pdf', 'note-1', {
+      target: expect.objectContaining({ canonicalStart: 12, canonicalLength: 5, verification: 'verified' }),
+      targets: [],
+    });
+    expect(screen.getByRole('button', { name: 'Important — yellow, page 1' })).toHaveFocus();
+    expect(screen.getByText('Remember')).toHaveClass('pdf-note-comment');
+    expect(screen.getByText(/Location: exact\. Confidence: certain\. Verification: verified\./)).toBeInTheDocument();
+    expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: /Reconfirm location/ })).not.toBeInTheDocument();
+  });
+
+  it('keeps reconfirmation retryable on write failure and cancels without modifying the existing note', async () => {
+    const { pdf, page, api } = setup([note]);
+    vi.mocked(pdf.resolveAnnotationAnchor).mockResolvedValue({
+      orphaned: true,
+      classification: 'orphan',
+      confidence: 'uncertain',
+      reason: 'Original quote is missing.',
+    });
+    api.updatePdfAnnotation.mockRejectedValue(new Error('disk'));
+    const view = render(<Harness pdf={pdf} page={page} />);
+    await screen.findByRole('button', { name: 'Reconfirm location for Important' });
+    const span = view.container.querySelector('span')!;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    fireEvent.click(screen.getByRole('button', { name: 'Reconfirm location for Important' }));
+    await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not save the new PDF note location.');
+    expect(screen.getByRole('button', { name: 'Save location' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Important — yellow, page 1' })).toBeInTheDocument();
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+    expect(view.container.querySelector('.pdf-note-highlight')).toBeNull();
+  });
+
+  it('clears a remembered selection on page rerender before a palette command', async () => {
+    const { pdf, page } = setup();
+    const view = render(
+      <>
+        <Harness pdf={pdf} page={page} />
+        <button type="button">Palette</button>
+      </>,
+    );
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
+    const span = screen.getByTestId('book.pdf').querySelector('span')!;
+    const range = document.createRange();
+    range.selectNodeContents(span);
+    window.getSelection()!.removeAllRanges();
+    window.getSelection()!.addRange(range);
+    act(() => document.dispatchEvent(new Event('selectionchange')));
+    window.getSelection()!.removeAllRanges();
+    screen.getByRole('button', { name: 'Palette' }).focus();
+    view.rerender(
+      <>
+        <Harness pdf={pdf} page={page} scale={0.5} />
+        <button type="button">Palette</button>
+      </>,
+    );
+    act(() => window.dispatchEvent(new CustomEvent('annotate-pdf-selection')));
+    await screen.findByRole('dialog', { name: 'Choose PDF quotation' });
+    expect(page.createAnnotationAnchor).not.toHaveBeenCalled();
+  });
+
+  it('does not dispatch a stale verification update after the PDF reader is disposed', async () => {
+    const { pdf, page, api } = setup([{ ...note, target: { ...target, verification: 'unverified' } }]);
+    let finish: (value: PdfPage) => void = () => undefined;
+    vi.mocked(pdf.getPage).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const view = render(<Harness pdf={pdf} page={page} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Verify location for Important' }));
+    await waitFor(() => expect(pdf.getPage).toHaveBeenCalledOnce());
+    view.unmount();
+    await act(async () => finish(page));
+    expect(api.updatePdfAnnotation).not.toHaveBeenCalled();
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
   });
 
   it('discards an older list response after switching documents', async () => {
