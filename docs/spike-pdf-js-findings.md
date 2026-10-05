@@ -5,6 +5,7 @@
 - The application and lockfile pin `pdfjs-dist` to **6.4.299**. This spike ran on Node 22.23.3.
 - Ran `npm test -- --reporter=verbose src/test/spike-pdf-js-feasibility.test.ts`; all four fixture probes completed in under one second (well below the 30-second limit).
 - The spike reuses the repository's self-contained PDF fixture builder in `src/test/fixtures/pdf-fixtures.ts`; no dependency or fixture asset was added. `untaggedReport.pdf` and `pageNumbers.pdf` are both generated from the same two-page untagged fixture (the page-number case uses the same PDF bytes).
+- The prebuilt tagged and untagged reports do not contain identical text. This is a capability-surface probe, not a controlled same-content tagged-versus-untagged comparison.
 
 ## Findings
 
