@@ -64,4 +64,22 @@ describe('PDF contextual command routing', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Annotate PDF selection' }));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Open a PDF before adding a PDF note.');
   });
+
+  it('routes a virtual-cursor PDF selection when DOM focus remains on the body', async () => {
+    const { container } = render(<App />);
+    await screen.findByRole('heading', { name: 'A11y Notebook' });
+    const reader = document.createElement('div');
+    reader.dataset.context = 'pdf-selection';
+    reader.tabIndex = -1;
+    reader.textContent = 'Virtual cursor quote';
+    container.append(reader);
+    (document.activeElement as HTMLElement).blur();
+    const range = document.createRange();
+    range.selectNodeContents(reader);
+    document.getSelection()!.removeAllRanges();
+    document.getSelection()!.addRange(range);
+    expect(document.body).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: 'F10', shiftKey: true });
+    expect(await screen.findByRole('menuitem', { name: 'Add note' })).toBeInTheDocument();
+  });
 });

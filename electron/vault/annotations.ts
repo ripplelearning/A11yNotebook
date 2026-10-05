@@ -222,15 +222,18 @@ function pdfTargets(value: unknown, path: string, loaded = false): PdfAnnotation
   return value.map((item) => (loaded ? loadedPdfTarget(item, path) : pdfTarget(item, path)));
 }
 
-function pdfFields(value: unknown): Pick<PdfAnnotation, 'color' | 'label' | 'comment'> {
+function pdfFields(value: unknown, requireContent = false): Pick<PdfAnnotation, 'color' | 'label' | 'comment'> {
   const data = object(value);
   if (!PDF_ANNOTATION_COLORS.includes(data.color as PdfAnnotation['color']))
     throw new Error('Invalid PDF annotation color.');
-  return {
+  const valid = {
     color: data.color as PdfAnnotation['color'],
     label: text(data.label, PDF_ANNOTATION_LIMITS.label),
     comment: text(data.comment, PDF_ANNOTATION_LIMITS.comment),
   };
+  if (requireContent && !valid.label.trim() && !valid.comment.trim())
+    throw new Error('PDF annotations require a label or comment.');
+  return valid;
 }
 
 function pdfRecord(value: unknown): PdfAnnotation {
@@ -317,7 +320,7 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
         const path = await validatePdfPath(data.path);
         const target = pdfTarget(data.target, path);
         const targets = pdfTargets(data.targets, path);
-        const validFields = pdfFields(data);
+        const validFields = pdfFields(data, true);
         const metadata = await load();
         if (metadata.pdfAnnotations.length >= PDF_ANNOTATION_LIMITS.records)
           throw new Error('PDF annotation limit reached.');
@@ -349,7 +352,7 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
         const existing = metadata.pdfAnnotations[index];
         const updated: PdfAnnotation = {
           ...existing,
-          ...pdfFields({ ...existing, ...data }),
+          ...pdfFields({ ...existing, ...data }, true),
           ...(Object.hasOwn(data, 'target') ? { target: pdfTarget(data.target, safe) } : {}),
           ...(Object.hasOwn(data, 'targets') ? { targets: pdfTargets(data.targets, safe) } : {}),
           modifiedAt: new Date().toISOString(),

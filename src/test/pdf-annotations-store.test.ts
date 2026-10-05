@@ -114,6 +114,41 @@ describe('PDF annotation persistence', () => {
     expect((await store.pdf.list(input.path))[0].target).toEqual(changed);
   });
 
+  it('rejects blank or whitespace-only new and updated notes while allowing comment-only notes', async () => {
+    const { store, write } = fixture();
+    for (const fields of [
+      { label: '', comment: '' },
+      { label: ' \t ', comment: '\n ' },
+    ])
+      await expect(store.pdf.add({ ...input, ...fields })).rejects.toThrow('label or comment');
+    expect(write).not.toHaveBeenCalled();
+    const added = await store.pdf.add({ ...input, label: '', comment: 'Comment only' });
+    write.mockClear();
+    await expect(store.pdf.update(input.path, added.id, { comment: '' })).rejects.toThrow('label or comment');
+    await expect(store.pdf.update(input.path, added.id, { label: ' \t ', comment: '\n ' })).rejects.toThrow(
+      'label or comment',
+    );
+    expect(write).not.toHaveBeenCalled();
+    expect(await store.pdf.list(input.path)).toEqual([added]);
+    await expect(
+      store.pdf.update(input.path, added.id, { label: '', comment: 'Updated comment only' }),
+    ).resolves.toMatchObject({
+      label: '',
+      comment: 'Updated comment only',
+    });
+    const legacy = fixture({
+      version: 2,
+      annotations: [],
+      pdfAnnotations: [{ ...added, label: '', comment: '' }],
+    });
+    expect((await legacy.store.pdf.list(input.path))[0]).toMatchObject({ label: '', comment: '' });
+    await expect(legacy.store.pdf.update(input.path, added.id, { comment: 'Restored content' })).resolves.toMatchObject(
+      {
+        comment: 'Restored content',
+      },
+    );
+  });
+
   it('upgrades v1 envelopes without changing note records and serializes both formats', async () => {
     const original = await fixture().store.add(note);
     const { store, snapshot } = fixture({ version: 1, annotations: [original] });

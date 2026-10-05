@@ -4,10 +4,15 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { NotebookBridge } from '../shared/bridge';
 import type { PdfAnnotation, PdfAnnotationTarget } from '../shared/pdf-annotation';
 import { PdfDocument, type PdfPage } from '../renderer/pdf-semantic';
+import { TextModel } from '../renderer/pdf-semantic/text-model';
 import PdfNoteDialog from '../renderer/features/previews/PdfNoteDialog';
 import PdfNotes from '../renderer/features/previews/PdfNotes';
 import PdfQuoteDialog from '../renderer/features/previews/PdfQuoteDialog';
-import { groupedPdfSelection, semanticPdfRange } from '../renderer/features/previews/pdf-note-selection';
+import {
+  groupedPdfSelection,
+  pdfSelectionCoordinateRoundtrip,
+  semanticPdfRange,
+} from '../renderer/features/previews/pdf-note-selection';
 
 const target: PdfAnnotationTarget = {
   kind: 'pdf',
@@ -173,6 +178,34 @@ describe('accessible PDF note dialog', () => {
 });
 
 describe('quotation and canonical selection', () => {
+  it('roundtrips coordinates with actual render scale/intrinsic rotation without changing canonical UTF16 offsets', () => {
+    const model = new TextModel(
+      [
+        {
+          str: 'A😀BC',
+          dir: 'ltr',
+          transform: [10, 0, 0, 10, 10, 80],
+          width: 50,
+          height: 10,
+          fontName: 'test',
+          hasEOL: false,
+        },
+      ],
+      new Map(),
+      [0, 0, 100, 100],
+    );
+    const coordinates = vi.spyOn(model, 'coordinatesToOffset');
+    const page = { canRotate: 90, textModel: model } as PdfPage;
+    const range = { start: 1, length: 2 };
+    expect(pdfSelectionCoordinateRoundtrip(page, range.start, range.length, 0.75, 90)).toBe('exact');
+    expect(coordinates).toHaveBeenCalledWith(expect.any(Number), expect.any(Number), 0.75, 180);
+    expect(model.fullText.slice(range.start, range.start + range.length)).toBe('😀');
+    expect(range).toEqual({ start: 1, length: 2 });
+    coordinates.mockReturnValue(0);
+    expect(pdfSelectionCoordinateRoundtrip(page, range.start, range.length, 0.75, 90)).toBe('approximate');
+    expect(range).toEqual({ start: 1, length: 2 });
+  });
+
   it('never picks an ambiguous quotation automatically and presents page/context radios', async () => {
     const { pdf } = setup();
     const choose = vi.fn();
@@ -246,6 +279,7 @@ describe('PDF notes reader integration', () => {
         }),
       ),
     );
+    expect(api.addPdfAnnotation.mock.calls[0][0].target.manuallyConfirmed).toBe(true);
   });
 
   it('scopes semantic commands to the focused reader and focuses the saved note control', async () => {
@@ -331,7 +365,11 @@ describe('PDF notes reader integration', () => {
     fireEvent.click(verify);
     await waitFor(() =>
       expect(api.updatePdfAnnotation).toHaveBeenCalledWith('book.pdf', 'note-1', {
-        target: expect.objectContaining({ verification: 'verified', documentIdentity: target.documentIdentity }),
+        target: expect.objectContaining({
+          verification: 'verified',
+          manuallyConfirmed: true,
+          documentIdentity: target.documentIdentity,
+        }),
       }),
     );
     await waitFor(() => expect(screen.queryByRole('button', { name: /Verify location/ })).not.toBeInTheDocument());
@@ -553,50 +591,67 @@ describe('PDF notes reader integration', () => {
     expect(pdf.resolveAnnotationAnchor).not.toHaveBeenCalled();
   });
 
-  it('reconfirms an orphan onto an explicitly chosen quotation without replacing its id or metadata', async () => {
-    const { pdf, page, api } = setup([{ ...note, targets: [{ ...target, page: 2 }] }]);
-    vi.mocked(pdf.resolveAnnotationAnchor).mockImplementation(async (anchor) =>
-      anchor.canonicalStart !== 12
-        ? {
-            orphaned: true,
-            classification: 'orphan',
-            confidence: 'uncertain',
-            verification: 'unverified',
-            reason: 'The original text was removed.',
-          }
-        : {
-            offset: 12,
-            length: 5,
-            page: 1,
-            classification: 'exact',
-            confidence: 'certain',
-            verification: 'verified',
-            reason: 'Newly selected canonical quotation.',
-          },
-    );
-    const view = render(<Harness pdf={pdf} page={page} />);
-    fireEvent.click(await screen.findByRole('button', { name: 'Reconfirm location for Important' }));
-    expect(screen.getByRole('dialog', { name: 'Choose PDF quotation' })).toBeInTheDocument();
-    fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
-    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
-    expect(screen.getByRole('button', { name: 'Use selected quotation' })).toBeDisabled();
-    fireEvent.click(screen.getAllByRole('radio')[1]);
-    fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
-    await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
-    expect(screen.getByRole('button', { name: 'Save location' })).toHaveFocus();
-    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
-    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
-    expect(api.updatePdfAnnotation).toHaveBeenCalledWith('book.pdf', 'note-1', {
-      target: expect.objectContaining({ canonicalStart: 12, canonicalLength: 5, verification: 'verified' }),
-      targets: [],
-    });
-    expect(screen.getByRole('button', { name: 'Important — yellow, page 1' })).toHaveFocus();
-    expect(screen.getByText('Remember')).toHaveClass('pdf-note-comment');
-    expect(screen.getByText(/Location: exact\. Confidence: certain\. Verification: verified\./)).toBeInTheDocument();
-    expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull();
-    expect(screen.queryByRole('button', { name: /Reconfirm location/ })).not.toBeInTheDocument();
-  });
+  it.each(['orphan', 'ambiguous'] as const)(
+    'reanchors a %s note onto an explicitly chosen quotation without replacing its id or metadata',
+    async (classification) => {
+      const { pdf, page, api } = setup([{ ...note, targets: [{ ...target, page: 2 }] }]);
+      vi.mocked(pdf.resolveAnnotationAnchor).mockImplementation(async (anchor) =>
+        anchor.canonicalStart !== 12
+          ? classification === 'orphan'
+            ? {
+                orphaned: true,
+                classification: 'orphan',
+                confidence: 'uncertain',
+                verification: 'unverified',
+                reason: 'The original text was removed.',
+              }
+            : {
+                offset: -1,
+                page: 1,
+                classification: 'ambiguous',
+                confidence: 'uncertain',
+                verification: 'unverified',
+                reason: 'The original quotation has multiple indistinguishable matches.',
+              }
+          : {
+              offset: 12,
+              length: 5,
+              page: 1,
+              classification: 'exact',
+              confidence: 'certain',
+              verification: 'verified',
+              reason: 'Newly selected canonical quotation.',
+            },
+      );
+      const view = render(<Harness pdf={pdf} page={page} />);
+      fireEvent.click(await screen.findByRole('button', { name: 'Re-anchor Important' }));
+      expect(screen.getByRole('dialog', { name: 'Choose PDF quotation' })).toBeInTheDocument();
+      fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
+      await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
+      expect(screen.getByRole('button', { name: 'Use selected quotation' })).toBeDisabled();
+      fireEvent.click(screen.getAllByRole('radio')[1]);
+      fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
+      await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
+      expect(screen.getByRole('button', { name: 'Save location' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+      expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+      expect(api.updatePdfAnnotation).toHaveBeenCalledWith('book.pdf', 'note-1', {
+        target: expect.objectContaining({
+          canonicalStart: 12,
+          canonicalLength: 5,
+          verification: 'verified',
+          manuallyConfirmed: true,
+        }),
+        targets: [],
+      });
+      expect(screen.getByRole('button', { name: 'Important — yellow, page 1' })).toHaveFocus();
+      expect(screen.getByText('Remember')).toHaveClass('pdf-note-comment');
+      expect(screen.getByText(/Location: exact\. Confidence: certain\. Verification: verified\./)).toBeInTheDocument();
+      expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull();
+      expect(screen.queryByRole('button', { name: /Re-anchor/ })).not.toBeInTheDocument();
+    },
+  );
 
   it('keeps reconfirmation retryable on write failure and cancels without modifying the existing note', async () => {
     const { pdf, page, api } = setup([note]);
@@ -608,13 +663,13 @@ describe('PDF notes reader integration', () => {
     });
     api.updatePdfAnnotation.mockRejectedValue(new Error('disk'));
     const view = render(<Harness pdf={pdf} page={page} />);
-    await screen.findByRole('button', { name: 'Reconfirm location for Important' });
+    await screen.findByRole('button', { name: 'Re-anchor Important' });
     const span = view.container.querySelector('span')!;
     const range = document.createRange();
     range.selectNodeContents(span);
     window.getSelection()!.removeAllRanges();
     window.getSelection()!.addRange(range);
-    fireEvent.click(screen.getByRole('button', { name: 'Reconfirm location for Important' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Re-anchor Important' }));
     await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
     fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not save the new PDF note location.');
@@ -686,5 +741,130 @@ describe('PDF notes reader integration', () => {
     await waitFor(() => expect(api.listPdfAnnotations).toHaveBeenCalledTimes(2));
     await act(async () => finish([note]));
     expect(screen.queryByRole('button', { name: /Important —/ })).not.toBeInTheDocument();
+  });
+
+  it('highlights an explicitly selected repeated occurrence when new-note Save confirms it', async () => {
+    const text = `${'a'.repeat(100)}Hello${'a'.repeat(200)}Hello${'a'.repeat(100)}`;
+    const model = new TextModel(
+      [
+        {
+          str: text,
+          dir: 'ltr',
+          transform: [10, 0, 0, 10, 10, 80],
+          width: 410,
+          height: 10,
+          fontName: 'test',
+          hasEOL: false,
+        },
+      ],
+      new Map(),
+      [0, 0, 500, 100],
+      1,
+      target.documentIdentity,
+    );
+    expect(model.createAnchor(1, 305, 5)).toMatchObject({ classification: 'ambiguous', confidence: 'uncertain' });
+    const { api, pdf, page } = setup();
+    Object.assign(page, {
+      textModel: model,
+      createAnnotationAnchor: (start: number, length: number) => model.createAnchor(1, start, length),
+      canRotate: 0,
+    });
+    vi.mocked(pdf.resolveAnnotationAnchor).mockImplementation(async (anchor) => model.resolveAnchor(anchor));
+    const view = render(<Harness pdf={pdf} page={page} />);
+    const annotate = screen.getByRole('button', { name: 'Annotate a quote' });
+    await waitFor(() => expect(annotate).toBeEnabled());
+    fireEvent.click(annotate);
+    fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
+    await screen.findByRole('dialog', { name: 'Create PDF note' });
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Label (optional)' }), { target: { value: 'Second copy' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const saved = api.addPdfAnnotation.mock.calls[0][0].target as PdfAnnotationTarget;
+    expect(saved).toMatchObject({
+      canonicalStart: 305,
+      canonicalLength: 5,
+      manuallyConfirmed: true,
+      verification: 'verified',
+    });
+    expect(model.resolveAnchor(saved)).toMatchObject({
+      offset: 305,
+      length: 5,
+      confidence: 'certain',
+      verification: 'verified',
+    });
+    expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull();
+    expect(screen.queryByRole('button', { name: 'Re-anchor Second copy' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Second copy — yellow, page 1' })).toHaveFocus();
+  });
+
+  it('retains an explicitly reconfirmed identical-context occurrence after reload but not a changed PDF hash', async () => {
+    const text = `${'a'.repeat(100)}Hello${'a'.repeat(200)}Hello${'a'.repeat(100)}`;
+    const parts = [
+      {
+        str: text,
+        dir: 'ltr',
+        transform: [10, 0, 0, 10, 10, 80],
+        width: 410,
+        height: 10,
+        fontName: 'test',
+        hasEOL: false,
+      },
+    ];
+    const model = new TextModel(parts, new Map(), [0, 0, 500, 100], 1, target.documentIdentity);
+    const original = model.createAnchor(1, 100, 5);
+    const { api, pdf, page } = setup([{ ...note, target: original }]);
+    Object.assign(page, {
+      textModel: model,
+      createAnnotationAnchor: (start: number, length: number) => model.createAnchor(1, start, length),
+      canRotate: 0,
+    });
+    vi.mocked(pdf.resolveAnnotationAnchor).mockImplementation(async (anchor) => model.resolveAnchor(anchor));
+    const view = render(<Harness pdf={pdf} page={page} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Re-anchor Important' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'Quotation text' }), { target: { value: 'Hello' } });
+    await waitFor(() => expect(screen.getAllByRole('radio')).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole('radio')[1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Use selected quotation' }));
+    await screen.findByRole('dialog', { name: 'Reconfirm PDF note location' });
+    fireEvent.click(screen.getByRole('button', { name: 'Save location' }));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    const confirmed = api.updatePdfAnnotation.mock.calls[0][2].target as PdfAnnotationTarget;
+    expect(confirmed).toMatchObject({ canonicalStart: 305, canonicalLength: 5, manuallyConfirmed: true });
+    expect(model.resolveAnchor(confirmed)).toMatchObject({
+      offset: 305,
+      confidence: 'certain',
+      verification: 'verified',
+    });
+    expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull();
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
+    view.unmount();
+
+    api.listPdfAnnotations.mockResolvedValue([{ ...note, target: confirmed }]);
+    const reloaded = render(<Harness pdf={pdf} page={page} />);
+    await waitFor(() => expect(reloaded.container.querySelector('.pdf-note-highlight')).not.toBeNull());
+    expect(screen.queryByRole('button', { name: 'Re-anchor Important' })).not.toBeInTheDocument();
+
+    const changed = new TextModel(parts, new Map(), [0, 0, 500, 100], 1, {
+      ...target.documentIdentity,
+      fileHash: 'changed',
+    });
+    const changedPage = { ...page, textModel: changed } as PdfPage;
+    const changedPdf = {
+      getPage: async () => changedPage,
+      resolveAnnotationAnchor: async (anchor: PdfAnnotationTarget) => changed.resolveAnchor(anchor),
+    } as unknown as PdfDocument;
+    reloaded.rerender(<Harness pdf={changedPdf} page={changedPage} />);
+    await screen.findByRole('button', { name: 'Re-anchor Important' });
+    expect(changed.resolveAnchor(confirmed)).toMatchObject({
+      offset: -1,
+      classification: 'ambiguous',
+      verification: 'unverified',
+    });
+    expect(reloaded.container.querySelector('.pdf-note-highlight')).toBeNull();
+    expect(api.addPdfAnnotation).not.toHaveBeenCalled();
   });
 });

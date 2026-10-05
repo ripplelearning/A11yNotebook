@@ -65,3 +65,40 @@ export function pdfNoteRectangles(page: PdfPage, start: number, length: number, 
     return rectangle ? [rectangle] : [];
   });
 }
+
+/** Coordinate checks are advisory: never replace precise canonical DOM offsets with a nearest glyph. */
+export function pdfSelectionCoordinateRoundtrip(
+  page: PdfPage,
+  start: number,
+  length: number,
+  scale: number,
+  rotation: number,
+): 'exact' | 'approximate' | 'unavailable' {
+  if (
+    !Number.isSafeInteger(start) ||
+    !Number.isSafeInteger(length) ||
+    start < 0 ||
+    length <= 0 ||
+    start + length > page.textModel.fullText.length ||
+    typeof page.textModel.offsetToCoordinates !== 'function' ||
+    typeof page.textModel.coordinatesToOffset !== 'function'
+  )
+    return 'unavailable';
+  const effectiveRotation = (page.canRotate + rotation) % 360;
+  const offsets = [start, start + length - 1];
+  const canonicalQuote = page.textModel.fullText.slice(start, start + length);
+  const mappedOffsets: number[] = [];
+  let approximate = false;
+  for (const offset of offsets) {
+    const rectangle = page.textModel.offsetToCoordinates(offset, scale, effectiveRotation);
+    if (!rectangle) return 'unavailable';
+    const [left, top, width, height] = rectangle;
+    const mapped = page.textModel.coordinatesToOffset(left + width / 2, top + height / 2, scale, effectiveRotation);
+    if (mapped === null) return 'unavailable';
+    if (!Number.isSafeInteger(mapped) || mapped < 0 || mapped >= page.textModel.fullText.length) return 'unavailable';
+    mappedOffsets.push(mapped);
+    if (mapped !== offset) approximate = true;
+  }
+  const mappedQuote = page.textModel.fullText.slice(mappedOffsets[0], mappedOffsets[1] + 1);
+  return !approximate && mappedQuote === canonicalQuote ? 'exact' : 'approximate';
+}

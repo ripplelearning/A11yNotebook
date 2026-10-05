@@ -1539,7 +1539,17 @@ export default function App() {
     }
     if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
       event.preventDefault();
-      if (document.activeElement instanceof HTMLElement) openContextMenu(document.activeElement);
+      if (document.activeElement instanceof HTMLElement) {
+        const selection = document.getSelection();
+        const selectedNode = selection?.anchorNode;
+        const selectedElement = selectedNode instanceof HTMLElement ? selectedNode : selectedNode?.parentElement;
+        const pdfContext = selectedElement?.closest<HTMLElement>('[data-context="pdf-selection"]');
+        openContextMenu(
+          document.activeElement === document.body && selection && !selection.isCollapsed && pdfContext
+            ? pdfContext
+            : document.activeElement,
+        );
+      }
       return;
     }
     if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.metaKey) {

@@ -5,7 +5,12 @@ import PdfNoteDialog, { type PdfNoteValues } from './PdfNoteDialog';
 import PdfQuoteDialog from './PdfQuoteDialog';
 import PdfLocationDialog from './PdfLocationDialog';
 import { createPdfHighlightLayer } from './PdfHighlightLayer';
-import { groupedPdfSelection, semanticPdfRange, type PdfSelectionRange } from './pdf-note-selection';
+import {
+  groupedPdfSelection,
+  pdfSelectionCoordinateRoundtrip,
+  semanticPdfRange,
+  type PdfSelectionRange,
+} from './pdf-note-selection';
 
 type Resolution = Awaited<ReturnType<PdfDocument['resolveAnnotationAnchor']>>;
 type ResolvedNote = { note: PdfAnnotation; resolutions: Resolution[] };
@@ -135,7 +140,18 @@ export default function PdfNotes({
     setError('');
     try {
       const anchors = await Promise.all(
-        ranges.map(async (range) => (await pdf.getPage(range.page)).createAnnotationAnchor(range.start, range.length)),
+        ranges.map(async (range) => {
+          const page = await pdf.getPage(range.page);
+          if (
+            rendered?.page.pageNum === range.page &&
+            pdfSelectionCoordinateRoundtrip(page, range.start, range.length, rendered.scale, rendered.rotation) ===
+              'approximate' &&
+            version === generation.current
+          ) {
+            setMessage('Visual coordinate mapping is approximate. The exact canonical text selection is preserved.');
+          }
+          return page.createAnnotationAnchor(range.start, range.length);
+        }),
       );
       if (version === generation.current) {
         setQuoteDialog(false);
@@ -268,9 +284,10 @@ export default function PdfNotes({
     const version = generation.current;
     setError('');
     try {
+      const confirmedTargets = targets.map((target) => ({ ...target, manuallyConfirmed: true }));
       const updated = await window.a11yNotebook!.vault.updatePdfAnnotation(path, reanchorNote.id, {
-        target: targets[0],
-        targets: targets.slice(1),
+        target: confirmedTargets[0],
+        targets: confirmedTargets.slice(1),
       });
       if (version !== generation.current) return;
       const resolved = await resolveNote(updated);
@@ -291,10 +308,11 @@ export default function PdfNotes({
     const version = generation.current;
     setError('');
     try {
+      const confirmedTargets = targets.map((target) => ({ ...target, manuallyConfirmed: true }));
       const note = await window.a11yNotebook!.vault.addPdfAnnotation({
         path,
-        target: targets[0],
-        ...(targets.length > 1 ? { targets: targets.slice(1) } : {}),
+        target: confirmedTargets[0],
+        ...(confirmedTargets.length > 1 ? { targets: confirmedTargets.slice(1) } : {}),
         ...values,
       });
       if (version !== generation.current) return;
@@ -340,6 +358,7 @@ export default function PdfNotes({
           return {
             ...(await pdf.getPage(resolution.page)).createAnnotationAnchor(resolution.offset, resolution.length),
             verification: 'verified' as const,
+            manuallyConfirmed: true,
           };
         }),
       );
@@ -467,7 +486,7 @@ export default function PdfNotes({
                         createSelection();
                       }}
                     >
-                      Reconfirm location for {note.label || 'PDF note'}
+                      Re-anchor {note.label || 'PDF note'}
                     </button>
                   </div>
                 ) : null}
