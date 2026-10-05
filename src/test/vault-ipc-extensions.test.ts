@@ -13,6 +13,7 @@ const mock = vi.hoisted(() => ({
   confirm: 1,
   failIndexRefreshAt: 0,
   refreshCount: 0,
+  disableWatcher: false,
   failReminderWrite: false,
   partialRepairWrite: false,
   failRecentWrite: false,
@@ -100,6 +101,15 @@ vi.mock('../../electron/vault/search', async (importOriginal) => {
   };
 });
 
+vi.mock('../../electron/vault/watcher', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/watcher')>();
+  return {
+    ...actual,
+    createVaultWatcher: (...args: Parameters<typeof actual.createVaultWatcher>) =>
+      mock.disableWatcher ? Promise.resolve({ dispose: async () => undefined }) : actual.createVaultWatcher(...args),
+  };
+});
+
 vi.mock('../../electron/vault/metadata', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../electron/vault/metadata')>();
   return {
@@ -183,13 +193,38 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultGet)).resolves.toEqual(expect.objectContaining({ path: previous }));
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toContain('alpha');
   });
-  it.each([1, 2])('rolls back committed disk mutations when index update %i fails', async (failure) => {
-    mock.refreshCount = 0;
-    mock.failIndexRefreshAt = failure;
-    await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('Index write failed');
-    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
-    expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe('[[Topic|subject]] [Topic](Topic.md)');
-    await expect(readFile(path.join(mock.root, 'Folder/New.md'), 'utf8')).rejects.toThrow();
+  describe('index failure rollback', () => {
+    beforeEach(async () => {
+      // Background watcher refreshes must not consume the mutation's injected index failure.
+      mock.disableWatcher = true;
+      await invoke(IPC_CHANNELS.vaultOpen);
+      await writeFile(path.join(mock.root, 'Another.md'), '[Topic](Topic.md)');
+    });
+    afterEach(() => {
+      mock.disableWatcher = false;
+    });
+    it.each([1, 2, 3])('rolls back committed disk mutations when index update %i fails', async (failure) => {
+      mock.refreshCount = 0;
+      mock.failIndexRefreshAt = failure;
+      await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('Index write failed');
+      expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
+      expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe('[[Topic|subject]] [Topic](Topic.md)');
+      expect(await readFile(path.join(mock.root, 'Another.md'), 'utf8')).toBe('[Topic](Topic.md)');
+      await expect(readFile(path.join(mock.root, 'Folder/New.md'), 'utf8')).rejects.toThrow();
+      await expect(invoke(IPC_CHANNELS.vaultSearch, { text: 'alpha' })).resolves.toEqual([
+        expect.objectContaining({ path: 'Topic.md' }),
+      ]);
+      await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).resolves.toEqual(
+        expect.objectContaining({ path: mock.root }),
+      );
+      expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe(
+        '[[Folder/New|subject]] [Topic](Folder/New.md)',
+      );
+      expect(await readFile(path.join(mock.root, 'Another.md'), 'utf8')).toBe('[Topic](Folder/New.md)');
+      await expect(invoke(IPC_CHANNELS.vaultSearch, { text: 'alpha' })).resolves.toEqual([
+        expect.objectContaining({ path: 'Folder/New.md' }),
+      ]);
+    });
   });
   it('restarts scheduling after migration fails and rollback restores paths', async () => {
     await invoke(IPC_CHANNELS.vaultReminderCreate, {
