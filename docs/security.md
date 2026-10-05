@@ -59,10 +59,17 @@ when the credential manager is open. Password recovery is not implemented. Losin
 records unrecoverable. Recovery keys, encrypted indexes, and whole-vault encryption are not implemented. Protect
 the vault with OS account controls and disk encryption.
 
-PDF.js renders one bounded-scale canvas page and separately exposes extracted page text; it has no selectable PDF text
-layer or stable page-position selection mapping. ePub.js provides bounded flattened spine-section text navigation/search,
-not styled reflow or TOC rendering. Document annotation anchors and UI are not implemented. These are open design and
-implementation tasks, not blocked on external tooling. The reader's text extraction is capped at 500 pages and 20 MB.
+PDF annotation paths are validated inside the current vault, including symlink
+checks. Quotes, context, labels, and comments are stored in plaintext metadata
+for ordinary PDFs; a vault password gate is **not** metadata encryption.
+Protected-content checks reject annotation access that would expose protected
+plaintext. Whole-vault and annotation-metadata encryption remain unimplemented.
+
+PDF.js renders one bounded-scale canvas page with selectable text and stable
+canonical-range annotation mapping. Changed file hashes require explicit
+reconfirmation; unresolved notes keep their original quotes rather than being
+silently moved or discarded. ePub.js provides bounded flattened spine-section text navigation/search,
+not styled reflow, TOC rendering, or annotation UI. The reader's text extraction is capped at 500 pages and 20 MB.
 Complex PDFs/fonts/encryption and some ePub packaging/content remain unsupported. Web capture preserves common semantic
 HTML and downloads only supported raster images. HTML task IDs and scheduling metadata are ordinary note content and
 are not a security boundary. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles

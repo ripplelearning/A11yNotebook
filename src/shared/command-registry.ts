@@ -21,6 +21,8 @@ export type CommandId =
   | 'show-settings'
   | 'new-from-template'
   | 'annotate-selection'
+  | 'annotate-pdf-selection'
+  | 'annotate-current-semantic-element'
   | 'show-reminders'
   | 'show-assets'
   | 'format-bold'
@@ -73,7 +75,9 @@ export type MenuContext =
   | 'annotation'
   | 'reminder'
   | 'attachment'
-  | 'document-preview';
+  | 'document-preview'
+  | 'pdf-selection'
+  | 'pdf-semantic';
 
 export type CommandActionContext = {
   mode: AppMode;
@@ -243,6 +247,19 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Annotate selection',
     description: 'Highlight selected reading text with a label and comment.',
     shortcut: 'Ctrl+Shift+A',
+  },
+  {
+    id: 'annotate-pdf-selection',
+    label: 'Annotate PDF selection',
+    description: 'Add a note to selected PDF text.',
+    contexts: ['pdf-selection', 'pdf-semantic'],
+    requiresSelection: true,
+  },
+  {
+    id: 'annotate-current-semantic-element',
+    label: 'Annotate this paragraph/heading/cell',
+    description: 'Add a note to the focused semantic element in PDF accessible text.',
+    contexts: ['pdf-semantic'],
   },
   {
     id: 'show-reminders',

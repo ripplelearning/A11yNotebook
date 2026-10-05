@@ -11,7 +11,7 @@ export function explicitPdfArtifactType(tag?: string | null): PdfArtifactType | 
 
 const exposure = new WeakMap<HTMLElement, { ariaHidden: string | null }>();
 const protectedSelector =
-  'a[href], area[href], button, input, select, textarea, iframe, object, embed, audio[controls], video[controls], summary, [tabindex], [contenteditable]:not([contenteditable="false"]), [data-annotation-id], [data-annotation-description], [data-pdf-annotation]';
+  'a[href], area[href], button, input, select, textarea, iframe, object, embed, audio[controls], video[controls], summary, [tabindex]:not([data-context="pdf-selection"]), [contenteditable]:not([contenteditable="false"]), [data-annotation-id], [data-annotation-description], [data-pdf-annotation]';
 
 export function applyPdfReadingPreferences(root: HTMLElement, preferences: PdfReadingPreferences): void {
   const artifacts = [...root.querySelectorAll<HTMLElement>('[data-pdf-artifact-type]')];

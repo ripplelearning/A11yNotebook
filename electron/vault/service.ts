@@ -1,6 +1,7 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
-import { lstat, mkdir, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
@@ -124,6 +125,48 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       throw new Error('The requested path is not valid inside this vault.');
     }
     return checkedVaultPath(root, relativePath, allowMissing);
+  }
+
+  async function validatePdfAnnotationDocument(relativePath: string) {
+    if (!/\.pdf$/i.test(relativePath)) throw new Error('PDF annotations require a PDF document.');
+    const absolute = await resolveEntry(relativePath);
+    const stat = await lstat(absolute);
+    if (!stat.isFile()) throw new Error('Annotations require a document file.');
+    const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const openedStat = await file.stat();
+      if (!openedStat.isFile()) throw new Error('Annotations require a document file.');
+      if (/\.pdf$/i.test(relativePath)) {
+        const header = Buffer.alloc(1024);
+        const { bytesRead } = await file.read(header, 0, header.length, 0);
+        if (!header.subarray(0, bytesRead).includes(Buffer.from('%PDF-')))
+          throw new Error('Annotations require an unprotected PDF document.');
+        if (openedStat.size > 40 * 1024 * 1024) throw new Error('This PDF is too large to annotate.');
+        const bytes = await file.readFile();
+        if (bytes.length > 40 * 1024 * 1024) throw new Error('This PDF is too large to annotate.');
+        const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
+        const loadingTask = getDocument({
+          data: new Uint8Array(bytes),
+          useSystemFonts: false,
+          enableXfa: false,
+          verbosity: 0,
+        });
+        try {
+          const document = await loadingTask.promise;
+          if ((await document.getPermissions()) !== null)
+            throw new Error('Annotations are unavailable for protected content.');
+        } catch (error) {
+          if (error instanceof Error && error.name === 'PasswordException')
+            throw new Error('Annotations are unavailable for protected content.');
+          throw error;
+        } finally {
+          await loadingTask.destroy();
+        }
+        return;
+      }
+    } finally {
+      await file.close();
+    }
   }
 
   async function scanDirectory(absolutePath: string, relativePath: string): Promise<VaultEntry[]> {
@@ -426,6 +469,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     getBookmarks,
     toggleBookmark,
     resolveEntry,
+    validatePdfAnnotationDocument,
     resolveMetadata,
     search,
     getTags,

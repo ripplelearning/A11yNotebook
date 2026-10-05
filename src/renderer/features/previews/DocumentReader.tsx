@@ -4,6 +4,8 @@ import { imageUrl } from '../../../shared/attachments';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
+import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
+import PdfUnavailableNotes from './PdfUnavailableNotes';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
@@ -18,6 +20,7 @@ const emptyDocument: DocumentReaderModel = createDocumentReaderModel([]);
 
 function useDocumentBytes(path: string, kind: Props['kind']) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
+  const [loadedPath, setLoadedPath] = useState('');
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -29,7 +32,10 @@ function useDocumentBytes(path: string, kind: Props['kind']) {
         if (!response.ok) throw new Error(`The ${kind.slice(1)} file could not be read.`);
         const buffer = await response.arrayBuffer();
         if (buffer.byteLength > MAX_DOCUMENT_BYTES) throw new Error('This document is too large to preview.');
-        if (!cancelled) setBytes(new Uint8Array(buffer));
+        if (!cancelled) {
+          setLoadedPath(path);
+          setBytes(new Uint8Array(buffer));
+        }
       })
       .catch((reason: unknown) => {
         if (!cancelled) setError(reason instanceof Error ? reason.message : 'The document could not be opened.');
@@ -39,7 +45,7 @@ function useDocumentBytes(path: string, kind: Props['kind']) {
     };
   }, [kind, path]);
 
-  return { bytes, error };
+  return { bytes: loadedPath === path ? bytes : null, error };
 }
 
 function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
@@ -56,6 +62,9 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [renderError, setRenderError] = useState('');
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
+  const readerRef = useRef<HTMLElement>(null);
+  const [rendered, setRendered] = useState<PdfRenderedPage | null>(null);
+  const pendingNote = useRef<{ page: number; offset: number; length: number } | null>(null);
   const preferences = usePdfReadingPreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
@@ -114,6 +123,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     const visual = visualRef.current;
     const semantic = semanticRef.current;
     if (!document || !visual || !semantic) return;
+    setRendered(null);
     void document
       .getPage(pageNumber)
       .then((page) => {
@@ -132,13 +142,39 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           if (cancelled) return;
           visual.replaceChildren(renderedCanvas);
           renderedCanvas.className = 'document-page-canvas';
+          renderedCanvas.setAttribute('aria-hidden', 'true');
           const layer = page.getTextLayer(renderScale, rotation);
           layer.style.width = `${(transform.rotation % 180 ? page.view[3] - page.view[1] : page.view[2] - page.view[0]) * renderScale}px`;
           layer.style.height = `${(transform.rotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]) * renderScale}px`;
           visual.append(layer);
+          layer.setAttribute('aria-hidden', 'true');
           semantic.replaceChildren(page.getSemanticDOM(zoom, rotation));
+          for (const block of semantic.querySelectorAll<HTMLElement>(
+            'p,h1,h2,h3,h4,h5,h6,td,th,li,blockquote,[role="heading"],[role="cell"]',
+          )) {
+            if (
+              block.querySelector('[data-start-offset]') &&
+              !block.closest('[data-pdf-artifact-type]') &&
+              !block.querySelector('[data-pdf-artifact-type]')
+            ) {
+              block.tabIndex = 0;
+              block.dataset.context = 'pdf-semantic';
+            }
+          }
           applyPdfReadingPreferences(visual, preferencesRef.current);
           applyPdfReadingPreferences(semantic, preferencesRef.current);
+          setRendered({ page, scale: renderScale, rotation });
+          const note = pendingNote.current;
+          if (note?.page === page.pageNum) {
+            page.selectTextRange(note.offset, note.length, semantic);
+            const span = Array.from(semantic.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
+              (candidate) =>
+                Number(candidate.dataset.startOffset) <= note.offset &&
+                Number(candidate.dataset.endOffset) > note.offset,
+            );
+            span?.closest<HTMLElement>('[tabindex]')?.focus();
+            pendingNote.current = null;
+          }
         });
       })
       .catch(() => {
@@ -153,7 +189,13 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
 
   return (
-    <section aria-label="PDF document reader">
+    <section
+      ref={readerRef}
+      tabIndex={-1}
+      aria-label="PDF document reader"
+      data-context="pdf-selection"
+      data-pdf-path={path}
+    >
       <h3>
         {activePage?.label ?? `Page ${pageNumber}`} of {pageCount || '…'}
       </h3>
@@ -217,6 +259,31 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
             (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
         </div>
       </section>
+      {document ? (
+        <PdfNotes
+          document={document}
+          path={path}
+          loadedPages={readerModel.sections.length}
+          readerRef={readerRef}
+          visualRef={visualRef}
+          semanticRef={semanticRef}
+          rendered={rendered}
+          onNavigate={(page, offset, length) => {
+            pendingNote.current = { page, offset, length };
+            if (page === pageNumber && activePage && semanticRef.current) {
+              activePage.selectTextRange(offset, length, semanticRef.current);
+              const span = Array.from(semanticRef.current.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
+                (candidate) =>
+                  Number(candidate.dataset.startOffset) <= offset && Number(candidate.dataset.endOffset) > offset,
+              );
+              span?.closest<HTMLElement>('[tabindex]')?.focus();
+              pendingNote.current = null;
+            } else setPageNumber(page);
+          }}
+        />
+      ) : renderError ? (
+        <PdfUnavailableNotes path={path} reason={renderError} />
+      ) : null}
     </section>
   );
 }
@@ -313,11 +380,14 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
 export default function DocumentReader({ path, kind }: Props) {
   const { bytes, error } = useDocumentBytes(path, kind);
   return error ? (
-    <p role="alert">{error}</p>
+    <>
+      <p role="alert">{error}</p>
+      {kind === '.pdf' ? <PdfUnavailableNotes key={path} path={path} reason={error} /> : null}
+    </>
   ) : !bytes ? (
     <p role="status">Loading {kind.slice(1)} document…</p>
   ) : kind === '.pdf' ? (
-    <PdfReader bytes={bytes} path={path} />
+    <PdfReader key={path} bytes={bytes} path={path} />
   ) : (
     <EpubReader bytes={bytes} />
   );

@@ -46,7 +46,8 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Labelled Markdown annotations with robust anchors, accessible marks, jump/edit/delete.
 - ✅ Heading levels 4–6 formatting tools.
 - ⏳ Heading/position bookmarks and guaranteed fallback undo.
-- ⏳ PDF/ePub annotations are not implemented; Markdown and sanitized HTML note-text annotations are implemented.
+- ✅ PDF stable quote/page anchors, persisted notes, accessible note creation, and zoom/rotation-aware highlights (reader PHASE 3–4).
+- ⏳ PDF sidebar/export/lifecycle workflows (reader PHASE 5–7) and ePub annotations.
 
 ## HTML notes and rich text
 
@@ -60,7 +61,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Built-in and vault HTML/Markdown templates can create either note format; placeholder escaping/sanitization, correct extension, preview, and cursor placement are supported. Markdown remains the default.
 - ✅ Markdown/HTML notes export through an accessible action and native save dialog to Markdown or sanitized standalone HTML. Export does not modify the source, protects the original from being selected as output, confirms overwrites, requires consent for decrypted protected notes, embeds local raster images in HTML, and warns that relative links/other metadata are not packaged.
 - ✅ Web capture offers Markdown or HTML. Main-process sanitization preserves semantic headings, lists, tables and safe links, localizes supported raster images with alt descriptions, records canonical source attribution, opens/indexes the note, and announces partial image failures.
-- ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. The feature does not extend to PDF/ePub.
+- ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. PDF uses an independent target contract; ePub annotation UI remains open.
 
 ## Phase 4 — Search, indexing, and annotations
 
@@ -102,7 +103,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
-- 🚧 PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, and stable text-offset/quote mappings. Persistent annotations and PDF anchor storage remain open.
+- ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
 - ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits and Phase 3 annotation follow-up.
 - 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
 
@@ -110,10 +111,11 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 
 These are open implementation/design tasks, not externally blocked work:
 
-1. ✅ Add a bounded selectable PDF.js text layer, zoom/rotation transforms, canonical page text offsets, marked-content mappings, and quote/context resolution. Persistent anchors, selection highlights, and annotation UI remain open.
+1. ✅ Add a bounded selectable PDF.js text layer, zoom/rotation transforms, canonical page text offsets, marked-content mappings, persisted quote/context anchors, accessible note creation, and selection highlights.
 2. Add a safe ePub rendition with accessible reflow, navigation-document TOC entries, and archive-relative image/font/style resource resolution. Keep scripts disabled, reject unsafe archive paths/resources, and revoke/release renderer resources on book changes.
-3. Version the annotation anchor model for PDF page and ePub spine/CFI locations, plus quote/context fallback. Migrate and validate metadata, then add selection capture, persisted highlight rendering, jump, edit, and delete UI with stale/ambiguous-anchor reporting.
+3. ✅ Version and validate PDF page/quote targets in metadata v2 without changing Markdown/HTML records. Add selection/quote/semantic creation with confidence and orphan/unverified reporting. ePub spine/CFI anchors remain open.
 4. Test anchors and renderer lifecycle with PDF/ePub fixtures, unsafe archives, changed documents, and keyboard-only interaction. Manual Windows JAWS/NVDA/Narrator and UI Automation checks remain a separate validation step; passing them does not replace the missing implementation.
+5. PDF PHASE 5: annotation sidebar and bidirectional navigation. PHASE 6: clipboard export with original quotes. PHASE 7: lifecycle, cleanup, performance, and broader security validation. Continuous-page cross-page pointer selection remains follow-up; grouped per-page targets are supported by the contract.
 
 ## Phase 9 — Accessibility validation and release readiness
 

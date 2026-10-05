@@ -965,6 +965,14 @@ export default function App() {
   const handleContextCommand = async (commandId: CommandId) => {
     const request = contextMenu;
     if (!request) return;
+    if (commandId === 'annotate-pdf-selection' || commandId === 'annotate-current-semantic-element') {
+      window.setTimeout(() => {
+        window.dispatchEvent(
+          new CustomEvent(commandId, { detail: { range: request.selectionRange, element: request.invoker } }),
+        );
+      }, 0);
+      return;
+    }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
     if (commandId === 'context-export-note' && entry?.kind === 'note') {
       await beginExport(entry.path);
@@ -1374,6 +1382,15 @@ export default function App() {
       annotationTools.begin();
       return;
     }
+    if (commandId === 'annotate-pdf-selection' || commandId === 'annotate-current-semantic-element') {
+      if (selectedTab !== 'attachment' || !attachment?.path.toLowerCase().endsWith('.pdf')) {
+        setStatusMessage('Open a PDF before adding a PDF note.');
+        return;
+      }
+      const path = attachment.path;
+      window.setTimeout(() => window.dispatchEvent(new CustomEvent(commandId, { detail: { path } })), 0);
+      return;
+    }
     if (commandId.startsWith('format-')) {
       if (mode !== 'edit' || !currentNote) {
         setStatusMessage('Open a note in edit mode before formatting.');
@@ -1522,7 +1539,17 @@ export default function App() {
     }
     if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
       event.preventDefault();
-      if (document.activeElement instanceof HTMLElement) openContextMenu(document.activeElement);
+      if (document.activeElement instanceof HTMLElement) {
+        const selection = document.getSelection();
+        const selectedNode = selection?.anchorNode;
+        const selectedElement = selectedNode instanceof HTMLElement ? selectedNode : selectedNode?.parentElement;
+        const pdfContext = selectedElement?.closest<HTMLElement>('[data-context="pdf-selection"]');
+        openContextMenu(
+          document.activeElement === document.body && selection && !selection.isCollapsed && pdfContext
+            ? pdfContext
+            : document.activeElement,
+        );
+      }
       return;
     }
     if (event.key === 'F6' && !event.ctrlKey && !event.altKey && !event.metaKey) {
@@ -1659,9 +1686,11 @@ export default function App() {
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
   const contextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection)).map((command) =>
-        command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
-          ? { ...command, label: 'Unpin tab' }
-          : command,
+        command.id === 'annotate-pdf-selection'
+          ? { ...command, label: 'Add note' }
+          : command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
+            ? { ...command, label: 'Unpin tab' }
+            : command,
       )
     : [];
   const disabledContextCommands = new Set<CommandId>();

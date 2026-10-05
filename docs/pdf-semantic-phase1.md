@@ -56,9 +56,9 @@ parser and its navigation behavior remain unchanged.
 
 ## Current boundary
 
-This is a read-only semantic layer. It does not store annotations, persist
-anchors, or modify clipboard behavior. Browser screen-reader verification and
-detailed alignment checks for unusual PDF fonts/layouts still require manual testing.
+The PDF itself remains read-only; annotations are separate vault metadata.
+Browser screen-reader verification and detailed alignment checks for unusual
+PDF fonts/layouts still require manual testing.
 
 ## Phase 2 — PDF Reading preferences
 
@@ -87,5 +87,43 @@ toggle each preference while a PDF is open, check both reading views, then
 confirm that searching, selecting text, navigating pages, and restarting the app
 retain their expected behavior.
 
-Phase 3 will add PDF annotation/anchor persistence and selection workflows;
-this phase adds no annotation/bookmark UI or clipboard changes.
+## Phases 3–4 — Stable anchors and accessible notes
+
+PDF targets store PDF.js fingerprint, SHA-256 file hash, vault-relative path,
+one-based page, canonical UTF-16 range, original quote, normalized search quote,
+and surrounding context. The metadata envelope is version 2; PDF, Markdown,
+and HTML contracts are independently versioned at 1. Existing Markdown/HTML
+records keep their original shape.
+
+Resolution reports classification, confidence, and reason: unique exact match,
+context-disambiguated match, normalized match, ambiguous fallback, or orphan.
+Nearby pages are searched within a bounded range when the original page no
+longer matches. A changed hash is unverified, not automatic permission to move
+a highlight. Original quotes/context survive failed resolution. Manual
+reconfirmation requires choosing current text; deletion is explicit.
+An explicitly reconfirmed occurrence retains its canonical range only while
+the file hash and exact text still match, so even identical repeated
+quotations can be confirmed without trusting ambiguous automatic matches.
+
+The PDF reader supports selected-text notes, an **Annotate a quote** dialog
+with explicit match choices, and focused paragraph/heading/cell notes in the
+accessible text view. The existing modal provides keyboard focus trapping,
+Escape cancellation, labelled color choices, and label-or-comment validation.
+Shift+F10, Applications, and right-click use the context-aware command menu;
+the palette exposes PDF-specific commands without adding conflicting defaults.
+
+Highlights are a separate, non-selecting, assistive-technology-hidden overlay.
+Their geometry uses the same bounded viewport scale and rotation as the text
+layer, while saved canonical ranges remain unchanged. Borders provide a
+non-color-only cue, including forced-colors mode. Notes expose the quote and
+resolution status separately from the decorative overlay.
+
+The reader displays one page at a time, so a native pointer drag cannot cross
+page boundaries. Grouped per-page targets share one note ID; selection mapping
+supports multiple rendered page layers for future continuous-page reading.
+Search and extraction remain capped at 500 pages and 20 MB. Unsupported PDFs
+retain stored notes and quotes; encrypted PDFs are not silently decrypted.
+
+PHASE 5 adds the annotation sidebar and bidirectional navigation. PHASE 6 adds
+clipboard export. PHASE 7 covers broader lifecycle/performance/cleanup work.
+None of those workflows, new Settings sections, or releases are included here.

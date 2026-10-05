@@ -1,7 +1,8 @@
 import type { PDFDocumentProxy, PDFPageProxy, TextItem, TextMarkedContent } from 'pdfjs-dist/types/src/display/api';
 import type { PDFDocumentLoadingTask } from 'pdfjs-dist/types/src/display/api';
-import type { MarkedContentRange, PdfTextPart, TextCoordinates, TextModel } from './text-model';
-import { TextModel as CanonicalTextModel } from './text-model';
+import type { MarkedContentRange, PdfAnchorResolution, PdfTextPart, TextCoordinates, TextModel } from './text-model';
+import { isValidPdfAnchor, malformedStoredAnchorResolution, TextModel as CanonicalTextModel } from './text-model';
+import type { PdfAnnotationTarget } from '../../shared/pdf-annotation';
 import { createReflowView } from './reflow-view';
 import { StructAdapter, type SemanticNode } from './struct-adapter';
 import { HeuristicClassifier, type InferredPage } from './heuristic-classifier';
@@ -84,6 +85,73 @@ export class PdfDocument {
     return this.pdfPromise.then(() => undefined);
   }
 
+  get documentIdentity(): PdfAnnotationTarget['documentIdentity'] {
+    return { fingerprint: this.fingerprints[0] || this.fileHash, fileHash: this.fileHash, vaultPath: this.vaultPath };
+  }
+
+  async resolveAnnotationAnchor(target: PdfAnnotationTarget): Promise<PdfAnchorResolution> {
+    if (!isValidPdfAnchor(target)) {
+      return {
+        orphaned: true,
+        classification: 'orphan',
+        confidence: 'uncertain',
+        reason: 'Malformed PDF annotation target.',
+      };
+    }
+    const malformedStored = malformedStoredAnchorResolution(target);
+    if (malformedStored) return malformedStored;
+    await this.ready;
+    if (this.vaultPath !== target.documentIdentity.vaultPath) {
+      return {
+        orphaned: true,
+        classification: 'orphan',
+        confidence: 'uncertain',
+        verification: 'unverified',
+        reason: 'PDF vault path does not match the annotation document identity.',
+      };
+    }
+    if (target.page <= this.numPages) {
+      const initial = (await this.getPage(target.page)).resolveAnnotationAnchor(target);
+      if (!initial.orphaned) return initial;
+    }
+    const candidates: Array<Extract<PdfAnchorResolution, { offset: number }>> = [];
+    for (let page = Math.max(1, target.page - 2); page <= Math.min(this.numPages, target.page + 2); page += 1) {
+      if (page === target.page) continue;
+      const candidate = (await this.getPage(page)).resolveAnnotationAnchor(target);
+      if (!candidate.orphaned) candidates.push(candidate);
+    }
+    if (candidates.length === 1 && candidates[0].classification !== 'ambiguous') {
+      const candidate = candidates[0];
+      return {
+        ...candidate,
+        reason: `Resolved on nearby page ${candidate.page}. ${candidate.reason}`,
+      };
+    }
+    const verification =
+      this.fileHash !== target.documentIdentity.fileHash || target.verification === 'unverified'
+        ? 'unverified'
+        : 'verified';
+    if (candidates.length) {
+      return {
+        offset: -1,
+        page: target.page,
+        classification: 'ambiguous',
+        confidence: 'uncertain',
+        verification,
+        reason: 'Nearby pages contain multiple possible quote matches; manual reconfirmation is required.',
+      };
+    }
+    return {
+      orphaned: true,
+      classification: 'orphan',
+      confidence: 'uncertain',
+      verification,
+      reason:
+        'Quote not found on the original page or within two nearby pages.' +
+        (verification === 'unverified' ? ' File identity requires manual reconfirmation before highlighting.' : ''),
+    };
+  }
+
   setReadingPreferences(preferences: PdfReadingPreferences): void {
     this.readingPreferences = { ...preferences };
     for (const page of this.pages.values()) {
@@ -100,7 +168,13 @@ export class PdfDocument {
     if (cached) return cached;
     const created = this.pdfPromise.then(async (pdf) => {
       if (pageNum > pdf.numPages) throw new RangeError('PDF page number is out of range.');
-      return PdfPage.create(await pdf.getPage(pageNum), pageNum, this.pageLabels[pageNum - 1], this.readingPreferences);
+      return PdfPage.create(
+        await pdf.getPage(pageNum),
+        pageNum,
+        this.pageLabels[pageNum - 1],
+        this.readingPreferences,
+        this.documentIdentity,
+      );
     });
     this.pages.set(pageNum, created);
     return created;
@@ -158,6 +232,7 @@ export class PdfPage {
     pageNum: number,
     label?: string,
     preferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
+    identity?: PdfAnnotationTarget['documentIdentity'],
   ): Promise<PdfPage> {
     const [content, structure, annotations] = await Promise.all([
       page.getTextContent({ includeMarkedContent: true }),
@@ -171,6 +246,7 @@ export class PdfPage {
       markedContentMap,
       page.view as [number, number, number, number],
       pageNum,
+      identity,
     );
     const links = annotations.flatMap((annotation) => {
       if (annotation.subtype !== 'Link') return [];
@@ -189,6 +265,18 @@ export class PdfPage {
       ];
     });
     return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links, preferences);
+  }
+
+  get documentIdentity(): PdfAnnotationTarget['documentIdentity'] | undefined {
+    return this.textModel.documentIdentity;
+  }
+
+  createAnnotationAnchor(start: number, length: number): PdfAnnotationTarget {
+    return this.textModel.createAnchor(this.pageNum, start, length);
+  }
+
+  resolveAnnotationAnchor(target: PdfAnnotationTarget): PdfAnchorResolution {
+    return this.textModel.resolveAnchor(target);
   }
 
   async renderCanvas(zoom = 1, rotation = 0): Promise<HTMLCanvasElement> {
@@ -217,15 +305,9 @@ export class PdfPage {
 
   highlightAtAnchor(offset: number, length: number, zoom = 1, rotation = 0): TextCoordinates | null {
     const effectiveRotation = (this.canRotate + rotation) % 360;
-    const start = this.textModel.offsetToCoordinates(offset, zoom, effectiveRotation);
-    if (!start || length <= 0) return start;
-    const end = this.textModel.offsetToCoordinates(offset + length - 1, zoom, effectiveRotation);
-    if (!end) return start;
-    const left = Math.min(start[0], end[0]);
-    const top = Math.min(start[1], end[1]);
-    const right = Math.max(start[0] + start[2], end[0] + end[2]);
-    const bottom = Math.max(start[1] + start[3], end[1] + end[3]);
-    return [left, top, right - left, bottom - top];
+    return length > 0
+      ? this.textModel.offsetToCoordinates(offset, length, zoom, effectiveRotation)
+      : this.textModel.offsetToCoordinates(offset, zoom, effectiveRotation);
   }
 
   selectTextRange(startOffset: number, length: number, layer?: HTMLElement): boolean {

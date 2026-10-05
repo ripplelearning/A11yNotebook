@@ -104,8 +104,24 @@ Annotations appear under the right-pane heading with Jump, Edit, and Delete cont
 and are underlined, so color is never the only cue. Quote/context/offset anchors try to find shifted text; ambiguous,
 changed, or overlapping anchors are reported in the list rather than attached to unrelated text.
 Annotations persist in `.a11ynotebook/annotations.json`. The same text annotation UI works on sanitized `.html` note
-content. PDF/ePub annotations are not available; text-selection mapping, stable page/section anchors, and document
-highlight/jump/edit/delete still need implementation.
+content. PDF notes use a separate page/quote anchor contract:
+
+- Select PDF text, then choose **Annotate PDF selection** in the palette or the
+  Shift+F10 / Applications / right-click context menu.
+- Without a browser selection, use **Annotate a quote**, search for the quote,
+  and explicitly choose a match using its page/context preview.
+- Focus a paragraph, heading, or cell in accessible page text and choose
+  **Annotate this paragraph/heading/cell**.
+- Supply a label or comment (or both), choose a labelled color or None, and
+  Save. Tab/Shift+Tab stay in the dialog; Escape cancels. Comments support
+  multiple lines.
+
+PDF highlights follow zoom and rotation. Notes show resolution confidence;
+missing quotes are retained as orphans, and changed files require manual
+verification rather than silently moving highlights. The reader displays one
+page at a time; cross-page pointer dragging is not available. PDF sidebar,
+clipboard export, and broader lifecycle workflows are PHASE 5–7 follow-up.
+ePub annotation UI remains unavailable.
 
 ## Reminders and project progress
 
@@ -160,8 +176,8 @@ the captured note is opened and indexed.
 
 Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
-for a bounded canvas page, separate extracted page text, page navigation, and in-document search; there is no
-selectable/zoomable text layer. ePub uses epub.js to navigate and search flattened spine-section text; it does not
+for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
+page navigation, in-document search, and persisted PDF notes. ePub uses epub.js to navigate and search flattened spine-section text; it does not
 provide styled reflow or a TOC. Both are limited to 40 MB.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
@@ -215,7 +231,7 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 Recovery keys, whole-vault encryption, encrypted indexes, and sensitive-action audit logging are not available yet.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
-remain open. PDF text-layer selection/zoom, ePub styled reflow/TOC, and PDF/ePub annotations are open implementation
+remain open. PDF sidebar/export/lifecycle workflows, ePub styled reflow/TOC, and ePub annotations are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
 Recent-vault selection, heading and position bookmarks, named milestones, general YAML
 metadata editing, and calendar organization remain open.

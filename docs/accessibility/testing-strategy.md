@@ -23,6 +23,10 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 - The global context menu opens with Shift+F10, the Applications key, and right-click; its available commands follow
   the focused context, keyboard navigation works, and focus returns to the invoking element.
 - Rich-text mode exposes a labelled multiline textbox and a one-tab-stop toolbar; HTML paste is sanitized.
+- PDF note dialogs validate label-or-comment content, retain multiline comments,
+  expose named color choices, trap Tab/Shift+Tab, and cancel with Escape.
+  PDF-specific menu tests preserve the selected range through Shift+F10 and
+  Applications-key focus changes.
 
 ## Electron integration tests
 
@@ -79,6 +83,29 @@ Run each check with JAWS, NVDA, and Narrator on Windows 11, using the installed 
 ## Important limitation
 
 UI Automation and DOM tests do not prove that a screen reader speaks the right thing. They confirm that the app exposes accessible names, roles, and states. Speech output still needs manual screen-reader validation because the automation tree cannot reliably capture actual spoken output or speech timing.
+
+### PDF notes (PHASE 3–4; manual checks not yet executed)
+
+With each Windows screen reader, open tagged, untagged, and rotated PDF
+fixtures. Create a note from a keyboard selection through Shift+F10 or
+Applications, then repeat through the palette. Without browser selection,
+search an exact quotation and explicitly choose among repeated matches using
+the page/context previews. Focus a semantic paragraph, heading, and table
+cell and annotate each through its context menu.
+
+Check label/comment validation, named Red/Yellow/Green/Blue/None options,
+multiline comments, Enter submission outside the textarea, Tab/Shift+Tab
+trapping, Escape cancellation, focus restoration on cancel, and focus on the
+saved note after Save. Confirm that the canvas/text/highlight layers do not
+repeat the semantic page's spoken content.
+
+Zoom and rotate through all quarter turns; borders must remain visible in
+Windows forced colors and highlights must not intercept selection. Reopen
+the PDF, modify its bytes, and remove the quotation: confidence/reason and
+unverified/orphan warnings must be readable, original quotes must survive,
+and uncertain matches must not silently acquire a highlight. Verify an
+intended location explicitly, then test deletion. Single-page display does
+not offer native cross-page dragging.
 
 ## Extended feature regression coverage
 

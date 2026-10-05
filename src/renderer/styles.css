@@ -241,6 +241,73 @@ a:focus-visible,
   background: rgba(59, 130, 246, 0.35);
 }
 
+.pdf-note-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pdf-note-highlight {
+  position: absolute;
+  pointer-events: none;
+  border: 2px solid #111;
+  border-bottom-style: double;
+  box-sizing: border-box;
+}
+
+.pdf-note-color-red {
+  background: rgb(255 80 80 / 30%);
+}
+.pdf-note-color-yellow {
+  background: rgb(255 220 0 / 30%);
+}
+.pdf-note-color-green {
+  background: rgb(0 190 80 / 30%);
+}
+.pdf-note-color-blue {
+  background: rgb(50 130 255 / 30%);
+}
+.pdf-note-color-none {
+  border-style: dashed;
+}
+
+.pdf-notes {
+  margin-block: 1rem;
+}
+
+.pdf-note-instructions {
+  max-width: 65ch;
+}
+
+.pdf-note-comment {
+  white-space: pre-wrap;
+}
+
+.pdf-note-warning {
+  border-inline-start: 3px solid currentColor;
+  padding-inline-start: 0.75rem;
+}
+
+.pdf-note-quote,
+.pdf-quote-matches {
+  max-height: 14rem;
+  overflow: auto;
+  overflow-wrap: anywhere;
+}
+
+.pdf-quote-matches label {
+  display: block;
+  margin-block: 0.5rem;
+}
+
+@media (forced-colors: active) {
+  .pdf-note-highlight {
+    background: transparent;
+    border-color: Highlight;
+    forced-color-adjust: none;
+  }
+}
+
 .pdf-inferred-list {
   list-style: none;
 }

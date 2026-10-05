@@ -15,6 +15,7 @@ import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
+import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
@@ -204,11 +205,18 @@ async function openVaultNow(vaultPath: string) {
   metadata = createMetadataStore(nextService);
   assets = createAssetStore(nextService, metadata);
   annotations = createAnnotationStore({
-    read: () => metadataFor(nextService).read('annotations.json'),
-    write: (value) => metadataFor(nextService).write('annotations.json', value),
+    read: () => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+      return metadataFor(nextService).read('annotations.json');
+    },
+    write: (value) => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+      return metadataFor(nextService).write('annotations.json', value);
+    },
     validateNote: async (relative) => {
       await nextService.resolveEntry(relative);
     },
+    validatePdf: (relative) => nextService.validatePdfAnnotationDocument(relative),
   });
   if (masterKey || !securityConfig) await startReminders(nextService, vault);
   else reminderService = null;
@@ -897,6 +905,35 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !annotations) throw new Error('Invalid annotation request.');
     return annotations.list(relative);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotations, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !annotations) throw new Error('Invalid PDF annotation request.');
+    const current = annotations;
+    return serializeVaultOperation(() => current.pdf.list(relative));
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotationAdd, async (event, value: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!annotations) throw new Error('Open a vault first.');
+    const current = annotations;
+    return serializeVaultOperation(() => current.pdf.add(value as NewPdfAnnotation));
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultPdfAnnotationUpdate,
+    async (event, relative: unknown, id: unknown, update: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
+        throw new Error('Invalid PDF annotation request.');
+      const current = annotations;
+      return serializeVaultOperation(() => current.pdf.update(relative, id, update as PdfAnnotationUpdate));
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotationDelete, async (event, relative: unknown, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
+      throw new Error('Invalid PDF annotation request.');
+    const current = annotations;
+    return serializeVaultOperation(() => current.pdf.delete(relative, id));
   });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotationAdd, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
