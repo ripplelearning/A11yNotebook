@@ -1,11 +1,4 @@
-import {
-  createCipheriv,
-  createDecipheriv,
-  createHmac,
-  hkdfSync,
-  randomBytes,
-  scrypt as scryptCallback,
-} from 'node:crypto';
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt as scryptCallback } from 'node:crypto';
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
@@ -284,22 +277,16 @@ function integrityPayload(
   recoveryTag: string | null,
   recoveryWrappedDataKey: string | null,
   legacyCredentialsCleanupRequired: boolean,
-  legacyKey: EncryptedRecord,
   credentials: EncryptedRecord | null,
-  key: Buffer,
 ) {
-  const digest = (value: unknown) =>
-    createHmac('sha256', key)
-      .update(JSON.stringify(value) ?? 'null')
-      .digest('base64');
   return {
     version: 2,
     recoveryNonce,
     recoveryTag,
     recoveryWrappedDataKey,
     legacyCredentialsCleanupRequired,
-    legacyKeyDigest: digest(legacyKey),
-    credentialsDigest: credentials === null ? null : digest(credentials),
+    credentialsPresent: credentials !== null,
+    credentialsRecordId: credentials?.id ?? null,
   };
 }
 
@@ -320,9 +307,7 @@ function sealRecoverableConfig(
           base.recoveryTag,
           base.recoveryWrappedDataKey,
           base.legacyCredentialsCleanupRequired,
-          base.legacyKey,
           base.credentials,
-          key,
         ),
       ),
     ),
@@ -339,9 +324,7 @@ function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Bu
         config.recoveryTag,
         config.recoveryWrappedDataKey,
         config.legacyCredentialsCleanupRequired,
-        config.legacyKey,
         config.credentials,
-        key,
       ),
     )
   )

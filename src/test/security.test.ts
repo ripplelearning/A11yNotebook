@@ -59,6 +59,13 @@ describe('vault security primitives', () => {
     await expect(unlockVault({ ...migrated.config, credentials: null }, 'correct horse battery')).rejects.toThrow(
       /damaged security metadata/,
     );
+    const ciphertext = migrated.config.credentials!.ciphertext;
+    expect(() =>
+      decryptRecord(migrated.key, 'credentials', {
+        ...migrated.config.credentials!,
+        ciphertext: `${ciphertext[0] === 'A' ? 'B' : 'A'}${ciphertext.slice(1)}`,
+      }),
+    ).toThrow();
     await expect(
       unlockVault(
         { ...migrated.config, recoveryKey: 'must not be persisted' } as typeof migrated.config,

@@ -12,7 +12,8 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
   the app does not copy, persist, or log the recovery secret.
 - Version 2 wraps a fresh random data key independently with the existing scrypt-derived password key and the
   high-entropy recovery key. AES-GCM envelopes use fresh nonces, domain separation, authenticated identifiers, strict
-  bounds, and an authenticated configuration digest.
+  bounds, and an authenticated config manifest. The manifest binds recovery-wrapper fields and credential presence;
+  credential and legacy-key envelopes authenticate their own ciphertext.
 - The atomic `security.json` replacement is the migration commit boundary. It contains the re-encrypted credentials and
   a wrapped prior vault key for legacy vault-key-encrypted notes. The old encrypted credential file is removed after
   commit. A durable cleanup marker causes startup to retry cleanup before exposing the vault; a cleanup failure locks
