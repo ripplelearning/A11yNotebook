@@ -280,7 +280,12 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
 }
 
 function integrityPayload(
-  config: Omit<RecoverableVaultSecurityConfig, 'integrity'> | RecoverableVaultSecurityConfig,
+  recoveryNonce: string | null,
+  recoveryTag: string | null,
+  recoveryWrappedDataKey: string | null,
+  legacyCredentialsCleanupRequired: boolean,
+  legacyKey: EncryptedRecord,
+  credentials: EncryptedRecord | null,
   key: Buffer,
 ) {
   const digest = (value: unknown) =>
@@ -288,17 +293,13 @@ function integrityPayload(
       .update(JSON.stringify(value) ?? 'null')
       .digest('base64');
   return {
-    version: config.version,
-    passwordSalt: config.passwordSalt,
-    passwordNonce: config.passwordNonce,
-    passwordTag: config.passwordTag,
-    wrappedDataKey: config.wrappedDataKey,
-    recoveryNonce: config.recoveryNonce,
-    recoveryTag: config.recoveryTag,
-    recoveryWrappedDataKey: config.recoveryWrappedDataKey,
-    legacyCredentialsCleanupRequired: config.legacyCredentialsCleanupRequired,
-    legacyKeyDigest: digest(config.legacyKey),
-    credentialsDigest: config.credentials === null ? null : digest(config.credentials),
+    version: 2,
+    recoveryNonce,
+    recoveryTag,
+    recoveryWrappedDataKey,
+    legacyCredentialsCleanupRequired,
+    legacyKeyDigest: digest(legacyKey),
+    credentialsDigest: credentials === null ? null : digest(credentials),
   };
 }
 
@@ -313,14 +314,38 @@ function sealRecoverableConfig(
       key,
       'vault-config-integrity',
       'vault-config',
-      JSON.stringify(integrityPayload(base, key)),
+      JSON.stringify(
+        integrityPayload(
+          base.recoveryNonce,
+          base.recoveryTag,
+          base.recoveryWrappedDataKey,
+          base.legacyCredentialsCleanupRequired,
+          base.legacyKey,
+          base.credentials,
+          key,
+        ),
+      ),
     ),
   };
 }
 
 function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Buffer) {
   const actual = decryptRecord(key, 'vault-config-integrity', config.integrity);
-  if (actual !== JSON.stringify(integrityPayload(config, key))) throw new Error('Vault security metadata is invalid.');
+  if (
+    actual !==
+    JSON.stringify(
+      integrityPayload(
+        config.recoveryNonce,
+        config.recoveryTag,
+        config.recoveryWrappedDataKey,
+        config.legacyCredentialsCleanupRequired,
+        config.legacyKey,
+        config.credentials,
+        key,
+      ),
+    )
+  )
+    throw new Error('Vault security metadata is invalid.');
 }
 
 function passwordWrap(dataKey: Buffer, password: string, salt = randomBytes(SALT_BYTES)) {
