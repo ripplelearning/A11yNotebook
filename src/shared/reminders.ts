@@ -10,6 +10,8 @@ export interface Reminder {
   scheduledAt: string;
   originalScheduledAt: string;
   status: ReminderStatus;
+  privacy?: 'show-title' | 'hide-title';
+  notification?: boolean;
 }
 
 export interface CreateReminderInput {
@@ -17,6 +19,8 @@ export interface CreateReminderInput {
   path: string;
   /** Local YYYY-MM-DD HH:mm or an ISO timestamp with timezone. */
   scheduledAt: string;
+  privacy?: 'show-title' | 'hide-title';
+  notification?: boolean;
 }
 
 export interface ReminderState {
@@ -29,12 +33,20 @@ export interface ReminderStore {
   version: 1;
   standalone: Reminder[];
   states: Record<string, ReminderState>;
+  reviewStates?: Record<string, string>;
 }
 
 export type VaultReminderEvent =
   | { type: 'fired' | 'open'; vaultPath: string; reminder: Reminder }
+  | { type: 'flashcard-due'; vaultPath: string }
   | { type: 'changed'; vaultPath: string; reminders: Reminder[] }
   | { type: 'error'; vaultPath: string; message: string };
+
+export interface DueFlashcardReview {
+  id: string;
+  path: string;
+  scheduledAt: string;
+}
 
 /** Calendar validation avoids Date's silent rollover of impossible dates. */
 export function parseReminderDate(value: string): Date | null {

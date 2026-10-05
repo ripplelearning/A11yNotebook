@@ -7,6 +7,8 @@ import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf
 import type { AttachmentPreview } from './attachments';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
+import type { ReminderDefaults } from './reminder-defaults';
+import type { Milestone, MilestoneUpdate, NewMilestone } from './milestones';
 import type { VaultAsset } from './asset-bridge';
 import type { CardSchedule } from './assets';
 import type { PdfReadingPreferences } from './pdf-reading-preferences';
@@ -41,6 +43,12 @@ export interface VaultBridge {
   createReminder(input: CreateReminderInput): Promise<Reminder[]>;
   dismissReminder(id: string): Promise<Reminder[]>;
   snoozeReminder(id: string, duration: SnoozeDuration): Promise<Reminder[]>;
+  getReminderDefaults?(): Promise<ReminderDefaults>;
+  setReminderDefaults?(defaults: ReminderDefaults): Promise<ReminderDefaults>;
+  getMilestones?(): Promise<Milestone[]>;
+  createMilestone?(milestone: NewMilestone): Promise<Milestone>;
+  updateMilestone?(id: string, update: MilestoneUpdate): Promise<Milestone>;
+  deleteMilestone?(id: string): Promise<void>;
   onReminder(callback: (event: VaultReminderEvent) => void): () => void;
   readAsset(path: string): Promise<VaultAsset>;
   saveAsset(path: string, content: string, expectedContent: string): Promise<void>;
