@@ -96,6 +96,32 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
         }),
       );
     },
+    getScheduledFlashcards: async () => {
+      const stored = await schedules();
+      const due: Array<{ id: string; path: string; cardId: string; due: string }> = [];
+      for (const [relative, records] of Object.entries(stored)) {
+        if (assetType(relative).id !== 'flashcards') continue;
+        try {
+          const cards = parseFlashcards((await read(relative)).content);
+          for (const card of cards) {
+            const fingerprintValue = fingerprint(card.question, card.answer);
+            const schedule = records[fingerprintValue];
+            if (!schedule) continue;
+            const validated = validateSchedule(schedule);
+            due.push({
+              id: `flashcard:${relative}#${fingerprintValue}`,
+              path: relative,
+              cardId: card.id,
+              due: validated.due,
+            });
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code === 'ENOENT') continue;
+          throw error;
+        }
+      }
+      return due;
+    },
     saveSchedule: (relative: string, cardId: string, value: unknown, expected: string) =>
       serial(async () => {
         if (assetType(relative).id !== 'flashcards' || typeof cardId !== 'string' || typeof expected !== 'string')

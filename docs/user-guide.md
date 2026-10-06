@@ -132,7 +132,15 @@ same local clock time tomorrow; Dismiss removes an item from active views. Click
 its note when the vault is still open. Windows notification settings may suppress delivery.
 The scheduler runs only while the application is running; missed pending reminders fire on next launch, and
 already-fired reminders remain visible until dismissed. Reminder state persists in `.a11ynotebook/reminders.json`.
-Tasks also show per-notebook completion counts and native progress elements; named milestones are not implemented.
+The creation dialog can save time, snooze, title privacy, and notification choices as future defaults in
+`.a11ynotebook/reminder-defaults.json`; existing standalone reminders retain their choices. Task notifications
+use the current privacy/notification preferences. Due flashcard notifications are opt-in and share the same
+scheduler and persisted delivery tracking. Closing the last window exits the app on Windows; no notifications
+are delivered after process exit.
+Tasks also show per-notebook completion counts and native progress elements. Named milestone CRUD and live
+task-progress summaries are available through the typed vault bridge, persisted in `.a11ynotebook/milestones.json`.
+Milestone and task identities survive notebook moves; missing tasks remain associated and are counted as missing.
+A milestone planning UI is not yet available.
 
 ## Templates and cognitive tools
 
@@ -237,6 +245,6 @@ Recovery keys, whole-vault encryption, encrypted indexes, and sensitive-action a
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub styled reflow/TOC, and ePub annotations are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
-Recent-vault selection, heading and position bookmarks, named milestones, general YAML
+Recent-vault selection, heading and position bookmarks, milestone planning UI, general YAML
 metadata editing, and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.

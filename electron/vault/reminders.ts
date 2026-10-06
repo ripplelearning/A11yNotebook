@@ -4,6 +4,7 @@ import {
   parseReminderDate,
   snoozeUntil,
   type CreateReminderInput,
+  type DueFlashcardReview,
   type Reminder,
   type ReminderState,
   type ReminderStore,
@@ -52,15 +53,20 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
     if (fence) return [];
     const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
     if (!task) return [];
+    const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->$/.exec(task[2])?.[1];
     const marker = /(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})(?![\d:])/i.exec(task[2]);
     const date = marker && parseReminderDate(marker[1]);
     if (!marker || !date) return [];
     const scheduledAt = date.toISOString();
     return [
       {
-        id: `task:${path}:${index + 1}:${scheduledAt}`,
+        id: stableId ? `task:${path}:md:${stableId}:${scheduledAt}` : `task:${path}:${index + 1}:${scheduledAt}`,
         source: 'task' as const,
-        title: task[2].replace(marker[0], '').trim() || 'Task reminder',
+        title:
+          task[2]
+            .replace(marker[0], '')
+            .replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '')
+            .trim() || 'Task reminder',
         path,
         line: index + 1,
         scheduledAt,
@@ -97,6 +103,8 @@ function createPathMigrator(from: string, to: string) {
 function migrateTaskReminderId(id: string, migrate: (path: string) => string) {
   const html = /^task:(.*):html:([\w-]+):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
   if (html) return `task:${migrate(html[1])}:html:${html[2]}:${html[3]}`;
+  const markdownStable = /^task:(.*):md:([\w-]{8,80}):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
+  if (markdownStable) return `task:${migrate(markdownStable[1])}:md:${markdownStable[2]}:${markdownStable[3]}`;
   const markdown = /^task:(.*):(\d+):(\d{4}-\d{2}-\d{2}T.*Z)$/.exec(id);
   return markdown ? `task:${migrate(markdown[1])}:${markdown[2]}:${markdown[3]}` : id;
 }
@@ -115,7 +123,7 @@ function state(value: unknown): value is ReminderState {
 
 /** Missing stores are empty; malformed persisted metadata is rejected, never silently reset. */
 export function validateReminderStore(value: unknown): ReminderStore {
-  if (value === null || value === undefined) return { version: 1, standalone: [], states: {} };
+  if (value === null || value === undefined) return { version: 1, standalone: [], states: {}, reviewStates: {} };
   if (!object(value) || value.version !== 1 || !Array.isArray(value.standalone) || !object(value.states)) {
     throw new Error('Invalid reminder metadata.');
   }
@@ -132,7 +140,9 @@ export function validateReminderStore(value: unknown): ReminderStore {
       !item.title.trim() ||
       item.title.length > 500 ||
       typeof item.path !== 'string' ||
-      !isReminderPath(item.path)
+      !isReminderPath(item.path) ||
+      (item.privacy !== undefined && !['show-title', 'hide-title'].includes(item.privacy as string)) ||
+      (item.notification !== undefined && typeof item.notification !== 'boolean')
     )
       throw new Error('Invalid standalone reminder.');
     ids.add(item.id);
@@ -144,6 +154,8 @@ export function validateReminderStore(value: unknown): ReminderStore {
       scheduledAt: new Date(item.scheduledAt).toISOString(),
       originalScheduledAt: new Date(item.originalScheduledAt).toISOString(),
       status: item.status,
+      ...(item.privacy === undefined ? {} : { privacy: item.privacy as Reminder['privacy'] }),
+      ...(item.notification === undefined ? {} : { notification: item.notification }),
     };
   });
   const states = Object.fromEntries(
@@ -159,7 +171,16 @@ export function validateReminderStore(value: unknown): ReminderStore {
       ];
     }),
   );
-  return { version: 1, standalone, states };
+  const reviewStates = value.reviewStates === undefined ? {} : value.reviewStates;
+  if (
+    !object(reviewStates) ||
+    Object.entries(reviewStates).some(
+      ([id, date]) => !/^flashcard:.+#[\da-f]{64}$/i.test(id) || typeof date !== 'string' || !parseReminderDate(date),
+    )
+  ) {
+    throw new Error('Invalid flashcard scheduler state.');
+  }
+  return { version: 1, standalone, states, reviewStates: { ...reviewStates } as Record<string, string> };
 }
 
 export interface ReminderServiceOptions {
@@ -169,6 +190,8 @@ export interface ReminderServiceOptions {
   validateNote: (path: string) => Promise<void>;
   getNotes: () => Promise<ReminderNote[]>;
   notify: (reminder: Reminder) => void | Promise<void>;
+  getFlashcardReviews?: () => Promise<DueFlashcardReview[]>;
+  notifyFlashcard?: (review: DueFlashcardReview) => void | Promise<void>;
   onChange?: (reminders: Reminder[]) => void | Promise<void>;
   onError?: (error: unknown) => void | Promise<void>;
   now?: () => Date;
@@ -183,6 +206,7 @@ export function createReminderService(options: ReminderServiceOptions) {
   const clearTimer = options.clearTimeout ?? ((handle) => clearTimeout(handle as ReturnType<typeof setTimeout>));
   let store: ReminderStore = { version: 1, standalone: [], states: {} };
   let reminders: Reminder[] = [];
+  let reviews: DueFlashcardReview[] = [];
   let initialized = false;
   let stopped = false;
   let timer: unknown;
@@ -210,9 +234,17 @@ export function createReminderService(options: ReminderServiceOptions) {
   function arm(delay?: number) {
     cancelTimer();
     if (stopped) return;
-    const next = reminders
+    const nextReminder = reminders
       .filter((item) => item.status === 'pending')
       .reduce((earliest, item) => Math.min(earliest, Date.parse(item.scheduledAt)), Infinity);
+    const nextReview = reviews.reduce(
+      (earliest, item) =>
+        store.reviewStates?.[item.id] === item.scheduledAt
+          ? earliest
+          : Math.min(earliest, Date.parse(item.scheduledAt)),
+      Infinity,
+    );
+    const next = Math.min(nextReminder, nextReview);
     if (delay === undefined && next === Infinity) return;
     timer = setTimer(
       () => {
@@ -250,6 +282,30 @@ export function createReminderService(options: ReminderServiceOptions) {
       try {
         await options.validateNote(item.path);
         standalone.push(item);
+      } catch (error) {
+        report(error);
+      }
+    }
+    reviews = (await options.getFlashcardReviews?.()) ?? [];
+    reviews = reviews.filter(
+      (item) =>
+        typeof item.id === 'string' &&
+        /^flashcard:.+#[\da-f]{64}$/i.test(item.id) &&
+        isReminderPath(item.path) &&
+        !!parseReminderDate(item.scheduledAt),
+    );
+    reviews = [...new Map(reviews.map((review) => [review.id, review])).values()];
+    for (const review of reviews.filter(
+      (item) => Date.parse(item.scheduledAt) <= now().getTime() && store.reviewStates?.[item.id] !== item.scheduledAt,
+    )) {
+      if (stopped) return;
+      await save({
+        ...store,
+        reviewStates: { ...store.reviewStates, [review.id]: review.scheduledAt },
+      });
+      if (stopped) return;
+      try {
+        await options.notifyFlashcard?.(review);
       } catch (error) {
         report(error);
       }
@@ -334,7 +390,13 @@ export function createReminderService(options: ReminderServiceOptions) {
     const states = Object.fromEntries(
       Object.entries(store.states).map(([id, saved]) => [migrateTaskReminderId(id, migrate), saved]),
     );
-    await save(validateReminderStore({ ...store, standalone, states }));
+    const reviewStates = Object.fromEntries(
+      Object.entries(store.reviewStates ?? {}).map(([id, due]) => {
+        const match = /^flashcard:(.*)#([\da-f]{64})$/i.exec(id);
+        return [match ? `flashcard:${migrate(match[1])}#${match[2]}` : id, due];
+      }),
+    );
+    await save(validateReminderStore({ ...store, standalone, states, reviewStates }));
     // Migration is permitted after stop() so a filesystem move cannot race notifications.
     if (!stopped) await tick();
     else
@@ -369,7 +431,9 @@ export function createReminderService(options: ReminderServiceOptions) {
           !input.title.trim() ||
           input.title.length > 500 ||
           !isReminderPath(input.path) ||
-          !date
+          !date ||
+          (input.privacy !== undefined && !['show-title', 'hide-title'].includes(input.privacy)) ||
+          (input.notification !== undefined && typeof input.notification !== 'boolean')
         )
           throw new Error('Enter a title, valid note, and valid reminder date.');
         await options.validateNote(input.path);
@@ -382,6 +446,8 @@ export function createReminderService(options: ReminderServiceOptions) {
           scheduledAt: date.toISOString(),
           originalScheduledAt: date.toISOString(),
           status: 'pending',
+          privacy: input.privacy,
+          notification: input.notification,
         };
         await save({ ...store, standalone: [...store.standalone, item] });
         await tick();
@@ -396,6 +462,35 @@ export function createReminderService(options: ReminderServiceOptions) {
         }),
       ),
     migratePaths: (from: string, to: string) => serial(() => migratePaths(from, to)),
+    withTaskIdentity: <T>(path: string, before: string, after: string, operation: () => Promise<T>): Promise<T> =>
+      serial(async () => {
+        requireActive();
+        const previous = parseTaskReminders(before, path);
+        const next = parseTaskReminders(after, path);
+        const states = { ...store.states };
+        for (const task of previous) {
+          const replacement = next.find(
+            (item) =>
+              item.line === task.line &&
+              item.title === task.title &&
+              item.originalScheduledAt === task.originalScheduledAt,
+          );
+          if (replacement && replacement.id !== task.id && states[task.id]) {
+            states[replacement.id] = states[task.id];
+            delete states[task.id];
+          }
+        }
+        const result = await operation();
+        try {
+          if (JSON.stringify(states) !== JSON.stringify(store.states)) await save({ ...store, states });
+          await tick();
+        } catch (error) {
+          stopped = true;
+          cancelTimer();
+          throw error;
+        }
+        return result;
+      }),
     /** Serializes relocation with timer work. The callback must not await this service's queued methods.
      * If migration persistence fails after relocation, the scheduler stops; filesystem rollback belongs to the caller.
      */

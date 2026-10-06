@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReminderService, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
-import { parseReminderDate, snoozeUntil, type ReminderStore } from '../shared/reminders';
+import { parseReminderDate, snoozeUntil, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
@@ -91,11 +91,141 @@ describe('reminder parsing and validation', () => {
     expect(parseReminderDate('2028-02-29 10:00')).toBeInstanceOf(Date);
     expect(parseReminderDate('2026-10-03T10:00:00.000Z')?.toISOString()).toBe('2026-10-03T10:00:00.000Z');
     expect(() => validateReminderStore({ version: 1, standalone: [], states: { bad: {} } })).toThrow();
-    expect(validateReminderStore(null)).toEqual({ version: 1, standalone: [], states: {} });
+    expect(validateReminderStore(null)).toEqual({ version: 1, standalone: [], states: {}, reviewStates: {} });
   });
 });
 
 describe('vault reminder scheduler', () => {
+  it('preserves fired and snoozed states when assigning a stable task identity', async () => {
+    const f = fixture();
+    const [original] = await f.service.initialize();
+    await f.service.snoozeReminder(original.id, 15);
+    const before = '- [ ] Read remind:2026-10-03 09:00';
+    const after = `${before} <!-- a11y-task-id:stable-task-1234 -->`;
+    await f.service.withTaskIdentity('Study.md', before, after, async () => {
+      f.setNotes([{ path: 'Study.md', content: after }]);
+    });
+    const [anchored] = await f.service.getReminders();
+    expect(anchored).toMatchObject({
+      status: 'pending',
+      scheduledAt: new Date(Date.now() + 15 * 60_000).toISOString(),
+    });
+    expect(anchored.id).toContain(':md:stable-task-1234:');
+    expect(f.notify).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(15 * 60_000);
+    expect(f.notify).toHaveBeenCalledTimes(2);
+    await f.service.withTaskIdentity('Study.md', after, before, async () => {
+      f.setNotes([{ path: 'Study.md', content: before }]);
+    });
+    expect(f.notify).toHaveBeenCalledTimes(2);
+    expect(await f.service.getReminders()).toMatchObject([{ id: original.id, status: 'fired' }]);
+    f.service.stop();
+  });
+
+  it('shares one timer and persists delivery before notifying reminders and overdue reviews', async () => {
+    const f = fixture();
+    const review = {
+      id: `flashcard:Study.md#${'a'.repeat(64)}`,
+      path: 'Study.md',
+      scheduledAt: new Date().toISOString(),
+    };
+    const notifyFlashcard = vi.fn();
+    const options = { ...f.options, getFlashcardReviews: async () => [review, review], notifyFlashcard };
+    const service = createReminderService(options);
+    await service.initialize();
+    expect(f.notify).toHaveBeenCalledOnce();
+    expect(notifyFlashcard).toHaveBeenCalledOnce();
+    expect(f.writeStore.mock.invocationCallOrder[0]).toBeLessThan(notifyFlashcard.mock.invocationCallOrder[0]);
+    await Promise.all([service.refresh(), service.refresh()]);
+    expect(notifyFlashcard).toHaveBeenCalledOnce();
+    service.stop();
+    const restarted = createReminderService(options);
+    await restarted.initialize();
+    expect(notifyFlashcard).toHaveBeenCalledOnce();
+    expect(f.notify).toHaveBeenCalledOnce();
+    restarted.stop();
+  });
+
+  it('rechecks current review schedules and consent before a timer fires', async () => {
+    const f = fixture('- [ ] Later remind:2026-10-03 10:10');
+    let reviews: DueFlashcardReview[] = [
+      {
+        id: `flashcard:Study.md#${'a'.repeat(64)}`,
+        path: 'Study.md',
+        scheduledAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+      },
+    ];
+    const notifyFlashcard = vi.fn();
+    const service = createReminderService({ ...f.options, getFlashcardReviews: async () => reviews, notifyFlashcard });
+    await service.initialize();
+    expect(vi.getTimerCount()).toBe(1);
+    reviews = [{ ...reviews[0], scheduledAt: new Date(Date.now() + 20 * 60_000).toISOString() }];
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(notifyFlashcard).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(5 * 60_000);
+    expect(f.notify).toHaveBeenCalledOnce();
+    reviews = [];
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(notifyFlashcard).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    service.stop();
+  });
+
+  it('delivers a new review schedule once and preserves deduplication across deck moves', async () => {
+    const f = fixture('');
+    let review = {
+      id: `flashcard:Study.md#${'a'.repeat(64)}`,
+      path: 'Study.md',
+      scheduledAt: new Date().toISOString(),
+    };
+    const notifyFlashcard = vi.fn();
+    const service = createReminderService({ ...f.options, getFlashcardReviews: async () => [review], notifyFlashcard });
+    await service.initialize();
+    f.setNotes([{ path: 'Archive/Study.md', content: '' }]);
+    review = { ...review, id: `flashcard:Archive/Study.md#${'a'.repeat(64)}`, path: 'Archive/Study.md' };
+    await service.migratePaths('Study.md', 'Archive/Study.md');
+    expect(notifyFlashcard).toHaveBeenCalledOnce();
+    review = { ...review, scheduledAt: new Date(Date.now() + 60_000).toISOString() };
+    await service.refresh();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(notifyFlashcard).toHaveBeenCalledTimes(2);
+    await service.refresh();
+    expect(notifyFlashcard).toHaveBeenCalledTimes(2);
+    service.stop();
+  });
+
+  it('does not notify reviews after stop or after a failed delivery-state write', async () => {
+    const f = fixture('');
+    const review = {
+      id: `flashcard:Study.md#${'a'.repeat(64)}`,
+      path: 'Study.md',
+      scheduledAt: new Date().toISOString(),
+    };
+    const notifyFlashcard = vi.fn();
+    const service = createReminderService({
+      ...f.options,
+      getFlashcardReviews: async () => [review],
+      notifyFlashcard,
+      writeStore: async () => {
+        throw new Error('Disk full');
+      },
+    });
+    await expect(service.initialize()).rejects.toThrow('Disk full');
+    expect(notifyFlashcard).not.toHaveBeenCalled();
+    service.stop();
+    const stopped = createReminderService({
+      ...f.options,
+      notifyFlashcard,
+      getFlashcardReviews: async () => {
+        stopped.stop();
+        return [review];
+      },
+    });
+    await stopped.initialize();
+    expect(notifyFlashcard).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('fires overdue reminders on startup once, persisting before notifying across restarts', async () => {
     const f = fixture();
     await f.service.initialize();

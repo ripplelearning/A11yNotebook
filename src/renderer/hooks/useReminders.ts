@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Reminder } from '../../shared/reminders';
+import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../shared/reminder-defaults';
 
 export function useReminders(
   vaultPath: string | undefined,
@@ -7,13 +8,25 @@ export function useReminders(
   announce: (message: string) => void,
 ) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
+  const [defaults, setDefaults] = useState<ReminderDefaults>(DEFAULT_REMINDER_DEFAULTS);
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
   useEffect(() => {
     const bridge = window.a11yNotebook?.vault;
     setReminders([]);
+    setDefaults(DEFAULT_REMINDER_DEFAULTS);
     if (!vaultPath || !bridge?.getReminders) return;
     let cancelled = false;
+    if (typeof bridge.getReminderDefaults === 'function') {
+      void bridge
+        .getReminderDefaults()
+        .then((value) => {
+          if (!cancelled) setDefaults(value);
+        })
+        .catch(() => {
+          if (!cancelled) announce('Could not load reminder defaults.');
+        });
+    }
     void bridge
       .getReminders()
       .then((items) => {
@@ -29,6 +42,7 @@ export function useReminders(
       if (cancelled || event.vaultPath !== vaultPath) return;
       if (event.type === 'changed' && event.reminders) setReminders(event.reminders);
       if (event.type === 'fired' && event.reminder) announce(`Reminder: ${event.reminder.title}`);
+      if (event.type === 'flashcard-due') announce('A flashcard is due for review.');
       if (event.type === 'open' && event.reminder) openRef.current(event.reminder.path);
       if (event.type === 'error') announce(event.message ?? 'Could not update reminders.');
     });
@@ -37,5 +51,11 @@ export function useReminders(
       unsubscribe();
     };
   }, [vaultPath, announce]);
-  return { reminders, setReminders };
+  const saveDefaults = async (value: ReminderDefaults) => {
+    const save = window.a11yNotebook?.vault.setReminderDefaults;
+    if (!save) throw new Error('Reminder defaults are unavailable.');
+    const saved = await save(value);
+    setDefaults(saved);
+  };
+  return { reminders, setReminders, defaults, saveDefaults };
 }

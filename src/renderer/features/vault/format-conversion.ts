@@ -75,7 +75,7 @@ function blockMarkdown(node: Node): string {
         const due = item.getAttribute('data-a11y-task-due');
         const priority = item.getAttribute('data-a11y-task-priority');
         const reminder = item.getAttribute('data-a11y-task-remind');
-        return `- [${checked ? 'x' : ' '}] ${content}${due ? ` due:${due}` : ''}${priority ? ` priority:${priority}` : ''}${reminder ? ` remind:${reminder}` : ''}`;
+        return `- [${checked ? 'x' : ' '}] ${content}${due ? ` due:${due}` : ''}${priority ? ` priority:${priority}` : ''}${reminder ? ` remind:${reminder}` : ''} <!-- a11y-task-id:${task} -->`;
       });
     return items.join('\n');
   }
@@ -143,7 +143,8 @@ export function convertNoteContent(
       const due = originalText.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
       const priority = originalText.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase();
       const reminder = originalText.match(/remind:(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
-      item.setAttribute('data-a11y-task-id', crypto.randomUUID());
+      const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->/.exec(originalText)?.[1];
+      item.setAttribute('data-a11y-task-id', stableId ?? crypto.randomUUID());
       item.setAttribute('data-a11y-task-complete', String(checkbox[1].toLowerCase() === 'x'));
       if (due) item.setAttribute('data-a11y-task-due', due);
       if (priority) item.setAttribute('data-a11y-task-priority', priority);
@@ -155,6 +156,7 @@ export function convertNoteContent(
         let current = textNode.textContent ?? '';
         if (prefix) current = current.replace(/^\s*\[[ xX]\]\s*/, '');
         textNode.textContent = current
+          .replace(/<!--\s*a11y-task-id:[\w-]{8,80}\s*-->/g, '')
           .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
           .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
           .replace(/remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '');
@@ -171,9 +173,6 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
   const losses =
     from === 'html'
       ? [
-          /data-a11y-task-id/i.test(source)
-            ? 'HTML task identities and reminder scheduling metadata are not portable to Markdown'
-            : '',
           /<(?:script|style|form|iframe|object|embed|video|audio|svg|math)\b/i.test(source)
             ? 'active or embedded HTML content is not retained'
             : '',
@@ -184,6 +183,9 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
         ]
       : [/<[a-z][^>]*>/i.test(source) ? 'raw HTML is not rendered in the converted note' : ''];
   const details = losses.filter(Boolean);
+  if (/data-a11y-task-id\s*=|<!--\s*a11y-task-id:/i.test(source)) {
+    details.push('task identities are copied, but milestone associations remain with the original note');
+  }
   return `Create a ${to.toUpperCase()} sibling copy and keep the original? ${
     details.length
       ? `Possible losses: ${details.join('; ')}.`

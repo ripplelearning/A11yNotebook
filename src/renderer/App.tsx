@@ -2001,6 +2001,8 @@ export default function App() {
               <RemindersView
                 reminders={reminderState.reminders}
                 notePaths={notePaths}
+                defaults={reminderState.defaults}
+                onSaveDefaults={reminderState.saveDefaults}
                 onCreate={async (input) => {
                   reminderState.setReminders(await window.a11yNotebook!.vault.createReminder(input));
                   setStatusMessage('Reminder created.');
