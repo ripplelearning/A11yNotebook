@@ -186,7 +186,9 @@ Text and CSV have a text view/table. Raster images use a vault-validated custom 
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
 for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
 page navigation, in-document search, and persisted PDF notes. ePub uses epub.js to navigate and search flattened spine-section text; it does not
-provide styled reflow or a TOC. Both are limited to 40 MB.
+provide a paginated rendition of the book's styles and a nested table of contents. Extracted ePub text remains available
+for search and assistive technology; scripts, embedded frames, forms, and unsafe attributes are removed before display.
+Both are limited to 40 MB.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
 ## Settings
@@ -243,7 +245,7 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 Recovery keys, whole-vault encryption, encrypted indexes, and sensitive-action audit logging are not available yet.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
-remain open. PDF sidebar/export/lifecycle workflows, ePub styled reflow/TOC, and ePub annotations are open implementation
+remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
 Recent-vault selection, heading and position bookmarks, milestone planning UI, general YAML
 metadata editing, and calendar organization remain open.

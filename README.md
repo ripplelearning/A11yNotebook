@@ -24,7 +24,7 @@ and a sandboxed reader.
 - Built-in and user-editable note templates; outline, mind-map, flashcard, CSV, and Markdown-table tools.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
-- PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub currently has flattened section text navigation/search, with reflow/TOC/annotations still open.
+- PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub uses a paginated epub.js rendition with a nested TOC, sanitized chapters, and section text search. ePub annotations remain open.
 - Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
@@ -169,8 +169,8 @@ This remains an unfinished development build. Optional recovery keys can reset t
 credentials and legacy encrypted notes; recovery does not encrypt ordinary vault files or recover independently
 password-encrypted notes. Whole-vault encryption, encrypted indexes, and sensitive-action audit logging remain open.
 PDF reading includes a selectable text layer, zoom/rotation, semantic navigation, search, and persisted annotations;
-sidebar/export/lifecycle refinements remain open. epub.js exposes flattened spine-section text, not styled reflow or a
-navigation TOC, and ePub annotations remain open. Markdown and HTML notes support text annotations, with HTML anchored
+sidebar/export/lifecycle refinements remain open. epub.js renders paginated book content with a nested navigation TOC and
+retains bounded extracted text for search; ePub annotations remain open. Markdown and HTML notes support text annotations, with HTML anchored
 in the sanitized rendered note. Windows UI Automation and manual screen-reader validation have not been run. See the
 [roadmap](docs/roadmap.md), [security notes](docs/security.md), and [dependency-ordered continuation plan](docs/continuation-plan.md).
 No app version was changed and no release was published by this feature work.

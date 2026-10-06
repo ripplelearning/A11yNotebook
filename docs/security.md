@@ -93,8 +93,9 @@ plaintext. Whole-vault and annotation-metadata encryption remain unimplemented.
 PDF.js renders one bounded-scale canvas page with selectable text and stable
 canonical-range annotation mapping. Changed file hashes require explicit
 reconfirmation; unresolved notes keep their original quotes rather than being
-silently moved or discarded. ePub.js provides bounded flattened spine-section text navigation/search,
-not styled reflow, TOC rendering, or annotation UI. The reader's text extraction is capped at 500 pages and 20 MB.
+silently moved or discarded. ePub.js renders paginated spine content and a navigation TOC; chapter markup is sanitized
+with DOMPurify before rendering. Extracted text remains bounded to 500 sections and 20 MB, and ePub annotation UI is
+not implemented.
 Complex PDFs/fonts/encryption and some ePub packaging/content remain unsupported. Web capture preserves common semantic
 HTML and downloads only supported raster images. HTML task IDs and scheduling metadata are ordinary note content and
 are not a security boundary. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles

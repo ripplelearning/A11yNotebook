@@ -108,14 +108,14 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
 - ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits. Remaining PDF sidebar/export/lifecycle work is listed below.
-- 🚧 ePub reading extracts flattened text from spine sections. It does not render the book's styles/resources or expose its navigation document as a TOC; ePub annotations are not available.
+- 🚧 ePub uses epub.js to render paginated book content and a nested navigation TOC. Chapter output is sanitized; ePub annotations, broader lifecycle validation, and manual accessibility checks remain open.
 
 ### Document reader and annotation follow-up plan
 
 These are open implementation/design tasks, not externally blocked work:
 
 1. ✅ Add a bounded selectable PDF.js text layer, zoom/rotation transforms, canonical page text offsets, marked-content mappings, persisted quote/context anchors, accessible note creation, and selection highlights.
-2. Add a safe ePub rendition with accessible reflow, navigation-document TOC entries, and archive-relative image/font/style resource resolution. Keep scripts disabled, reject unsafe archive paths/resources, and revoke/release renderer resources on book changes.
+2. ✅ Add a paginated epub.js rendition, navigation-document TOC, chapter sanitization, bounded text search, and book cleanup. Broader hostile-content/resource validation, reading-progress persistence, and ePub annotation anchors remain open.
 3. ✅ Version and validate PDF page/quote targets in metadata v2 without changing Markdown/HTML records. Add selection/quote/semantic creation with confidence and orphan/unverified reporting. ePub spine/CFI anchors remain open.
 4. Test anchors and renderer lifecycle with PDF/ePub fixtures, unsafe archives, changed documents, and keyboard-only interaction. Manual Windows JAWS/NVDA/Narrator and UI Automation checks remain a separate validation step; passing them does not replace the missing implementation.
 5. PDF PHASE 5: annotation sidebar and bidirectional navigation. PHASE 6: clipboard export with original quotes. PHASE 7: lifecycle, cleanup, performance, and broader security validation. Continuous-page cross-page pointer selection remains follow-up; grouped per-page targets are supported by the contract.
