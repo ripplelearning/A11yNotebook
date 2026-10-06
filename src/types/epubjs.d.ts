@@ -3,14 +3,32 @@ declare module 'epubjs/src/index.js' {
     index: number;
     href: string;
     load: () => Promise<Element>;
+    hooks: {
+      serialize: {
+        register(callback: (this: { output: string }, content: string) => void): void;
+      };
+    };
   }
 
   interface EpubSpine {
     spineItems: EpubSection[];
   }
 
+  export interface EpubTocItem {
+    label: string;
+    href: string;
+    subitems?: EpubTocItem[];
+  }
+
+  interface EpubRendition {
+    display(target?: string | number): Promise<unknown>;
+    destroy(): void;
+  }
+
   interface EpubBook {
     spine: EpubSpine;
+    navigation: { toc: EpubTocItem[] };
+    renderTo(element: HTMLElement, options: { width: string; height: string; flow: 'paginated' }): EpubRendition;
     destroy: () => void;
   }
 

@@ -164,25 +164,75 @@ describe('local accessible document reader', () => {
   });
 
   it('uses epub.js for section navigation and search', async () => {
+    const display = vi.fn(async () => undefined);
+    const rendition = { display, destroy: vi.fn() };
+    const serializeCallbacks: Array<(this: { output: string }, content: string) => void> = [];
     const book = {
       spine: {
         spineItems: [
-          { index: 0, href: 'Text/one.xhtml', load: async () => ({ textContent: 'First chapter text' }) },
-          { index: 1, href: 'Text/two.xhtml', load: async () => ({ textContent: 'Second chapter text' }) },
+          {
+            index: 0,
+            href: 'Text/one.xhtml',
+            load: async () => ({ textContent: 'First chapter text' }),
+            hooks: {
+              serialize: {
+                register: (callback: (this: { output: string }, content: string) => void) =>
+                  serializeCallbacks.push(callback),
+              },
+            },
+          },
+          {
+            index: 1,
+            href: 'Text/two.xhtml',
+            load: async () => ({ textContent: 'Second chapter text' }),
+            hooks: {
+              serialize: {
+                register: (callback: (this: { output: string }, content: string) => void) =>
+                  serializeCallbacks.push(callback),
+              },
+            },
+          },
         ],
       },
+      navigation: {
+        toc: [
+          {
+            label: 'First chapter',
+            href: 'Text/one.xhtml',
+            subitems: [{ label: 'Second chapter', href: 'Text/two.xhtml#heading' }],
+          },
+        ],
+      },
+      renderTo: vi.fn((container: HTMLElement) => {
+        container.appendChild(document.createElement('iframe'));
+        return rendition;
+      }),
       destroy: vi.fn(),
     };
     ePub.mockResolvedValue(book);
-    render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    const reader = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
 
     expect(await screen.findByText('First chapter text')).toBeInTheDocument();
     expect(ePub).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+    expect(book.renderTo).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ flow: 'paginated' }));
+    await waitFor(() =>
+      expect(document.querySelector('.epub-rendition iframe')).toHaveAttribute('title', 'ePub content'),
+    );
+    const sanitized = { output: '' };
+    serializeCallbacks[0].call(sanitized, '<p onclick="alert(1)">Chapter</p><script>alert(1)</script>');
+    expect(sanitized.output).toBe('<p>Chapter</p>');
+    expect(await screen.findByRole('navigation', { name: 'ePub table of contents' })).toBeInTheDocument();
+    expect(display).toHaveBeenCalledWith('Text/one.xhtml');
     fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
     expect(await screen.findByText('Second chapter text')).toBeInTheDocument();
+    await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml'));
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in ePub' }), { target: { value: 'second' } });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Go to two.xhtml' })).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('button', { name: 'Second chapter' }));
+    await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml#heading'));
+    reader.unmount();
+    expect(book.destroy).toHaveBeenCalledOnce();
   });
 
   it('rejects an oversized file before passing it to a parser', async () => {

@@ -690,6 +690,15 @@ a:focus-visible,
     background: white;
   }
 
+  .epub-rendition {
+    min-height: 60vh;
+    width: 100%;
+  }
+
+  .epub-rendition iframe {
+    border: 0;
+  }
+
   pre {
     white-space: pre-wrap;
     overflow-wrap: anywhere;
