@@ -9,7 +9,8 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
   return content.split(/\r?\n/).flatMap((lineText, index) => {
     const checkbox = lineText.match(/^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/);
     if (!checkbox) return [];
-    const text = checkbox[2].trim();
+    const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->$/.exec(checkbox[2])?.[1];
+    const text = checkbox[2].replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '').trim();
     const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
     const priority = text.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase() as VaultTask['priority'];
     const title = text
@@ -18,9 +19,10 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
       .trim();
     return [
       {
-        id: `${relativePath}:${index + 1}`,
+        id: stableId ? `${relativePath}#${stableId}` : `${relativePath}:${index + 1}`,
         path: relativePath,
         line: index + 1,
+        ...(stableId ? { taskId: stableId } : {}),
         text: title,
         complete: checkbox[1].toLowerCase() === 'x',
         ...(dueDate ? { dueDate } : {}),

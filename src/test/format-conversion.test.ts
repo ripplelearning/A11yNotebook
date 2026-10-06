@@ -48,6 +48,17 @@ describe('note format conversion', () => {
     expect(markdown).toBe('Folder \\\\path\\\\file');
   });
 
+  it('preserves stable task IDs and reminders through a Markdown/HTML round trip', () => {
+    const source = '- [ ] Read remind:2026-10-05 09:30 <!-- a11y-task-id:stable-task-1234 -->';
+    const html = convertNoteContent(source, 'markdown', 'html', 'Read.html');
+    expect(html).toContain('data-a11y-task-id="stable-task-1234"');
+    expect(html).toContain('data-a11y-task-remind="2026-10-05 09:30"');
+    expect(convertNoteContent(html, 'html', 'markdown', 'Read.md')).toContain(source);
+    expect(formatConversionWarning(source, 'markdown', 'html')).toContain(
+      'milestone associations remain with the original note',
+    );
+  });
+
   it('uses a longer code fence when code contains backticks and preserves backslashes', () => {
     const markdown = convertNoteContent('<p><code>path\\with `ticks`</code></p>', 'html', 'markdown', 'Notes/Entry.md');
     expect(markdown).toBe('`` path\\with `ticks` ``');

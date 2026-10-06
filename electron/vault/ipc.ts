@@ -19,6 +19,8 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createReminderService } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
+import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
+import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import {
   createVaultSecurityConfig,
@@ -33,6 +35,7 @@ import {
   prepareVaultRecovery,
   reencryptPasswordNote,
   resetVaultPasswordWithRecovery,
+  revokeVaultRecoveryKey,
   rotateVaultRecoveryKey,
   updateRecoverableCredentials,
   updateRecoverableCredentialText,
@@ -52,6 +55,7 @@ let annotations: ReturnType<typeof createAnnotationStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
+let milestones: ReturnType<typeof createMilestoneStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
 const noteKeys = new Map<string, Buffer>();
@@ -219,8 +223,6 @@ async function openVaultNow(vaultPath: string) {
     if (savedSecurity && typeof savedSecurity === 'object' && !Array.isArray(savedSecurity)) {
       nextSecurity = savedSecurity as VaultSecurityConfig;
     }
-    if (nextSecurity?.version === 2 && nextSecurity.legacyCredentialsCleanupRequired)
-      await removeLegacyCredentialCopy(nextService);
     await rememberVault(vault.path);
   } catch (error) {
     await nextService.dispose().catch(() => undefined);
@@ -236,6 +238,21 @@ async function openVaultNow(vaultPath: string) {
   securityConfig = nextSecurity;
   metadata = createMetadataStore(nextService);
   assets = createAssetStore(nextService, metadata);
+  milestones = createMilestoneStore({
+    readStore: () => metadataFor(nextService).read('milestones.json'),
+    writeStore: (value) => metadataFor(nextService).write('milestones.json', value),
+    getTasks: () => nextService.getTasks(),
+    readNote: (relative) => nextService.readNote(relative),
+    saveNote: (relative, content, expected) => {
+      const save = () => nextService.saveNote(relative, content, expected);
+      return service === nextService && reminderService
+        ? reminderService.withTaskIdentity(relative, expected, content, save)
+        : save();
+    },
+    validateNote: async (relative) => {
+      await nextService.readNote(relative);
+    },
+  });
   annotations = createAnnotationStore({
     read: () => {
       if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
@@ -295,22 +312,49 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       await collect((await nextService.getVault()).entries);
       return notes;
     },
-    notify: (reminder) => {
-      if (service !== nextService) return;
-      sendReminder({ type: 'fired', vaultPath: vault.path, reminder });
+    getFlashcardReviews: async () => {
+      const defaults = await createReminderDefaultsStore(metadataFor(nextService)).get();
+      if (!defaults.notification.flashcards || !assets || service !== nextService) return [];
+      return (await assets.getScheduledFlashcards()).map((review) => ({
+        id: review.id,
+        path: review.path,
+        scheduledAt: new Date(`${review.due}T${defaults.time}:00`).toISOString(),
+      }));
+    },
+    notify: async (reminder) => {
+      const preferences =
+        reminder.source === 'task' ? await createReminderDefaultsStore(metadataFor(nextService)).get() : null;
+      if (service !== nextService || (securityConfig && !masterKey)) return;
+      if ((reminder.notification ?? preferences?.notification.reminders) === false) return;
+      const visible =
+        (reminder.privacy ?? preferences?.privacy) === 'hide-title' ? { ...reminder, title: 'Reminder' } : reminder;
+      sendReminder({ type: 'fired', vaultPath: vault.path, reminder: visible });
       if (Notification.isSupported()) {
-        const notification = new Notification({ title: 'A11y Notebook reminder', body: reminder.title });
+        const notification = new Notification({ title: 'A11y Notebook reminder', body: visible.title });
         const target = { path: reminder.path };
         notificationTargets.set(notification, target);
         notifications.add(notification);
         notification.on('click', () => {
           if (service === nextService)
-            sendReminder({ type: 'open', vaultPath: vault.path, reminder: { ...reminder, path: target.path } });
+            sendReminder({ type: 'open', vaultPath: vault.path, reminder: { ...visible, path: target.path } });
         });
         notification.on('close', () => {
           notifications.delete(notification);
           notificationTargets.delete(notification);
         });
+        notification.show();
+      }
+    },
+    notifyFlashcard: () => {
+      if (service !== nextService || (securityConfig && !masterKey)) return;
+      sendReminder({ type: 'flashcard-due', vaultPath: vault.path });
+      if (Notification.isSupported()) {
+        const notification = new Notification({
+          title: 'A11y Notebook',
+          body: 'A flashcard is due for review.',
+        });
+        notifications.add(notification);
+        notification.on('close', () => notifications.delete(notification));
         notification.show();
       }
     },
@@ -329,12 +373,25 @@ function metadataFor(vault: VaultService) {
   return metadata;
 }
 
+async function finishLegacyCredentialCleanup(vault: VaultService, key: Buffer) {
+  if (securityConfig?.version !== 3 || !securityConfig.legacyCredentialsCleanupRequired) return;
+  try {
+    await removeLegacyCredentialCopy(vault);
+    const completed = completeRecoverableCredentialMigration(securityConfig, key);
+    await metadataFor(vault).write('security.json', completed);
+    securityConfig = completed;
+  } catch {
+    lockVault();
+    throw new Error('Could not finish credential migration cleanup. The vault remains locked.');
+  }
+}
+
 function readVaultEncryptedNote(record: ReturnType<typeof encryptRecord>) {
   if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
   try {
     return decryptRecord(masterKey, 'note', record);
   } catch (error) {
-    if (securityConfig?.version !== 2) throw error;
+    if (securityConfig?.version !== 3) throw error;
     const legacyKey = unwrapLegacyVaultKey(securityConfig, masterKey);
     if (!legacyKey) throw error;
     try {
@@ -351,6 +408,7 @@ async function relocate(relative: string, destination: string) {
   const vault = requireService();
   const currentAnnotations = annotations;
   const currentReminders = reminderService;
+  const currentMilestones = milestones;
   const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
   const sourceExtension = path.posix.extname(relative).toLowerCase();
@@ -392,6 +450,7 @@ async function relocate(relative: string, destination: string) {
   const imageAlts = await store.read('image-alts.json');
   const bookmarksSnapshot = await store.read('bookmarks.json');
   let reminderSnapshot: unknown = null;
+  let milestoneSnapshot: unknown = null;
   const written: typeof repairs = [];
   let moved = false;
   let rolledBack = false;
@@ -405,12 +464,15 @@ async function relocate(relative: string, destination: string) {
     await store.write('flashcards.json', flashcards).catch(() => undefined);
     await store.write('image-alts.json', imageAlts).catch(() => undefined);
     await store.write('reminders.json', reminderSnapshot).catch(() => undefined);
+    await store.write('milestones.json', milestoneSnapshot).catch(() => undefined);
+    await currentMilestones?.migratePaths(destination, relative).catch(() => undefined);
     await store.write('bookmarks.json', bookmarksSnapshot).catch(() => undefined);
   };
   const operation = async () => {
     try {
       metadataFor(vault);
       reminderSnapshot = await store.read('reminders.json');
+      milestoneSnapshot = await store.read('milestones.json');
       try {
         await vault.moveEntry(relative, destination);
         moved = true;
@@ -433,6 +495,7 @@ async function relocate(relative: string, destination: string) {
         await vault.saveNote(item.nextPath, item.after, item.before);
       }
       await currentAnnotations?.migratePaths(relative, destination);
+      await currentMilestones?.migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
         ['image-alts.json', imageAlts],
@@ -498,7 +561,9 @@ export function setupVaultIpc(
     return {
       enabled: securityConfig !== null,
       locked: securityConfig !== null && masterKey === null,
-      recoveryAvailable: securityConfig?.version === 2 && securityConfig.recoveryWrappedDataKey !== null,
+      recoveryAvailable:
+        (securityConfig?.version === 2 && Boolean(securityConfig.recovery)) ||
+        (securityConfig?.version === 3 && securityConfig.recoveryWrappedDataKey !== null),
     };
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecuritySetup, async (event, password: unknown) => {
@@ -526,6 +591,7 @@ export function setupVaultIpc(
       const key = await unlockVault(securityConfig, password);
       masterKey?.fill(0);
       masterKey = key;
+      await finishLegacyCredentialCleanup(requireService(), key);
       resetIdleLock();
       const vault = await requireService().getVault();
       await startReminders(requireService(), vault);
@@ -547,7 +613,7 @@ export function setupVaultIpc(
       pendingRecovery?.key?.fill(0);
       pendingRecovery = null;
       const recoveryKey = generateVaultRecoveryKey();
-      if (securityConfig.version === 1) {
+      if (securityConfig.version !== 3) {
         const savedCredentials = await metadataFor(requireService()).read('credentials.json');
         const credentials = savedCredentials ? decryptRecord(masterKey, 'credentials', savedCredentials) : null;
         const prepared = await prepareVaultRecovery(securityConfig, password, recoveryKey, credentials);
@@ -588,7 +654,7 @@ export function setupVaultIpc(
       )
         throw new Error('Save the recovery key before confirming recovery setup.');
       const storedCredentials =
-        securityConfig?.version === 2
+        securityConfig?.version === 3
           ? securityConfig.credentials
           : await metadataFor(pending.vault).read('credentials.json');
       const credentialsText = storedCredentials ? decryptRecord(masterKey, 'credentials', storedCredentials) : null;
@@ -630,7 +696,7 @@ export function setupVaultIpc(
     return serializeVaultOperation(async () => {
       if (
         !securityConfig ||
-        securityConfig.version !== 2 ||
+        ![2, 3].includes(securityConfig.version) ||
         masterKey ||
         typeof recoveryKey !== 'string' ||
         typeof newPassword !== 'string'
@@ -645,6 +711,7 @@ export function setupVaultIpc(
       }
       securityConfig = recovered.config;
       masterKey = recovered.key;
+      await finishLegacyCredentialCleanup(requireService(), recovered.key);
       resetIdleLock();
       const vault = await requireService().getVault();
       await startReminders(requireService(), vault);
@@ -654,7 +721,7 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultSecurityRevokeRecovery, async (event, password: unknown) => {
     assertTrusted(event, isTrustedSender);
     return serializeVaultOperation(async () => {
-      if (!securityConfig || securityConfig.version !== 2 || !masterKey || typeof password !== 'string')
+      if (!securityConfig || ![2, 3].includes(securityConfig.version) || !masterKey || typeof password !== 'string')
         throw new Error('Vault recovery is not configured.');
       const authenticatedKey = await unlockVault(securityConfig, password);
       try {
@@ -662,7 +729,10 @@ export function setupVaultIpc(
       } finally {
         authenticatedKey.fill(0);
       }
-      const revoked = rotateVaultRecoveryKey(securityConfig, masterKey, null);
+      const revoked =
+        securityConfig.version === 3
+          ? rotateVaultRecoveryKey(securityConfig, masterKey, null)
+          : revokeVaultRecoveryKey(securityConfig);
       await metadataFor(requireService()).write('security.json', revoked);
       securityConfig = revoked;
       resetIdleLock();
@@ -713,7 +783,7 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (!masterKey) throw new Error('Unlock the vault first.');
     const saved =
-      securityConfig?.version === 2
+      securityConfig?.version === 3
         ? securityConfig.credentials
         : await metadataFor(requireService()).read('credentials.json');
     if (!saved) return [];
@@ -749,7 +819,7 @@ export function setupVaultIpc(
         )
           throw new Error('Invalid credential.');
         const saved =
-          securityConfig?.version === 2
+          securityConfig?.version === 3
             ? securityConfig.credentials
             : await metadataFor(requireService()).read('credentials.json');
         const credentials = saved
@@ -763,7 +833,7 @@ export function setupVaultIpc(
         const next = credentials.filter((item) => item.id !== normalizedId);
         next.push({ id: normalizedId, username, password });
         const encrypted = encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next));
-        if (securityConfig?.version === 2) {
+        if (securityConfig?.version === 3) {
           const updated = updateRecoverableCredentials(securityConfig, masterKey, next);
           await metadataFor(requireService()).write('security.json', updated);
           securityConfig = updated;
@@ -779,7 +849,7 @@ export function setupVaultIpc(
     return serializeVaultOperation(async () => {
       if (!masterKey || typeof id !== 'string' || id.length > 120) throw new Error('Invalid credential.');
       const saved =
-        securityConfig?.version === 2
+        securityConfig?.version === 3
           ? securityConfig.credentials
           : await metadataFor(requireService()).read('credentials.json');
       if (!saved) return;
@@ -790,7 +860,7 @@ export function setupVaultIpc(
         'credentials-store',
         JSON.stringify(credentials.filter((item) => item.id !== id)),
       );
-      if (securityConfig?.version === 2) {
+      if (securityConfig?.version === 3) {
         const updated = updateRecoverableCredentials(
           securityConfig,
           masterKey,
@@ -954,6 +1024,7 @@ export function setupVaultIpc(
       if (typeof relative !== 'string' || typeof id !== 'string' || typeof expected !== 'string' || !assets)
         throw new Error('Invalid deck rating.');
       await assets.saveSchedule(relative, id, schedule, expected);
+      await reminderService?.refresh();
     },
   );
   app.on('before-quit', () => {
@@ -969,7 +1040,10 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReminderCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!reminderService) throw new Error('Open a vault first.');
-    await reminderService.createReminder(input as CreateReminderInput);
+    if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid reminder.');
+    const defaults = await createReminderDefaultsStore(metadataFor(requireService())).get();
+    const request = input as CreateReminderInput;
+    await reminderService.createReminder(applyReminderDefaults(request, defaults));
     return reminderService.getReminders();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDismiss, async (event, id: unknown) => {
@@ -987,6 +1061,60 @@ export function setupVaultIpc(
     )
       throw new Error('Invalid snooze request.');
     return reminderService.snoozeReminder(id, duration as SnoozeDuration);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsGet, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return createReminderDefaultsStore(metadataFor(requireService())).get();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsSet, async (event, defaults: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const updated = await createReminderDefaultsStore(metadataFor(requireService())).set(defaults);
+    await reminderService?.refresh();
+    return updated;
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestonesGet, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    const vault = requireService();
+    if (!milestones) throw new Error('Open a vault first.');
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.getMilestones();
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneCreate, async (event, input: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const vault = requireService();
+    if (!milestones) throw new Error('Open a vault first.');
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.createMilestone(input as import('../../src/shared/milestones').NewMilestone);
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneUpdate, async (event, id: unknown, update: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const vault = requireService();
+    if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone update.');
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.updateMilestone(id, update as import('../../src/shared/milestones').MilestoneUpdate);
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultMilestoneDelete, async (event, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const vault = requireService();
+    if (typeof id !== 'string' || !milestones) throw new Error('Invalid milestone.');
+    const current = milestones;
+    return serializeVaultOperation(() => {
+      assertTrusted(event, isTrustedSender);
+      metadataFor(vault);
+      return current.deleteMilestone(id);
+    });
   });
   protocol.handle('vault-file', async (request) => {
     try {
