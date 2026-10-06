@@ -108,6 +108,43 @@ describe('PDF annotation IPC security and persistence', () => {
     ).rejects.toThrow();
   });
 
+  it('preserves PDF annotations and credentials across recovery reset and revocation', async () => {
+    const password = 'long-password-for-testing';
+    const newPassword = 'new-password-for-testing';
+    const credential = { id: 'research', username: 'reader', password: 'test-credential' };
+    const added = (await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input)) as PdfAnnotation;
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, password);
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, credential.id, credential.username, credential.password);
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, password);
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([added]);
+
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultOpen);
+    await expect(invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).rejects.toThrow('Unlock');
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, newPassword);
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([credential]);
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([added]);
+    const updated = await invoke(IPC_CHANNELS.vaultPdfAnnotationUpdate, input.path, added.id, {
+      comment: 'After recovery',
+    });
+    expect(updated).toMatchObject({ id: added.id, comment: 'After recovery' });
+    const second = await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, { ...input, label: 'After recovery' });
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([updated, second]);
+
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, newPassword);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'another-test-password')).rejects.toThrow(
+      /not configured/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, password)).rejects.toThrow(/Incorrect vault password/);
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, newPassword);
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([updated, second]);
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([credential]);
+    await invoke(IPC_CHANNELS.vaultPdfAnnotationDelete, input.path, added.id);
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([second]);
+  });
+
   it('rejects protected content even in an unlocked vault and blocks all PDF operations while locked', async () => {
     await writeFile(
       path.join(mock.root, 'Protected.pdf'),

@@ -40,11 +40,16 @@ describe('vault security primitives', () => {
       verifier: 'oytFLSZmGPZ3WSfoca4Ew6RWd0d9gpcOIGCu9XI6',
     };
     const legacyKey = await unlockVault(legacyConfig, 'legacy vault password');
-    const { config, key } = await createVaultSecurityConfig('correct horse battery');
-    expect(config.version).toBe(2);
-    expect(config.version === 2 && config.wrappedKey).toBeDefined();
+    const { config, key } = await prepareVaultRecovery(
+      legacyConfig,
+      'legacy vault password',
+      generateVaultRecoveryKey(),
+      null,
+    );
+    expect(config.version).toBe(3);
+    expect(config.wrappedDataKey).toBeDefined();
     expect(key.equals(legacyKey)).toBe(false);
-    const reopened = await unlockVault(config, 'correct horse battery');
+    const reopened = await unlockVault(config, 'legacy vault password');
     expect(reopened.equals(key)).toBe(true);
     legacyKey.fill(0);
     key.fill(0);
@@ -52,7 +57,48 @@ describe('vault security primitives', () => {
   });
 
   it('authenticates, rotates, revokes, and resets access with recovery material', async () => {
+    const { config: passwordConfig, key: legacyKey } = await createVaultSecurityConfig('old vault password');
+    const firstRecoveryKey = generateVaultRecoveryKey();
+    const { config, key } = await prepareVaultRecovery(passwordConfig, 'old vault password', firstRecoveryKey, null);
+    const recovered = await unlockVaultWithRecovery(config, firstRecoveryKey);
+    expect(recovered.equals(key)).toBe(true);
+    const rotatedRecoveryKey = generateVaultRecoveryKey();
+    const rotated = rotateVaultRecoveryKey(config, key, rotatedRecoveryKey);
+    expect(rotatedRecoveryKey).not.toBe(firstRecoveryKey);
+    expect(() => unlockVaultWithRecovery(rotated, firstRecoveryKey)).toThrow(/incorrect|damaged/i);
+    const reset = await resetVaultPasswordWithRecovery(rotated, rotatedRecoveryKey, 'new vault password');
+    expect(reset.key.equals(key)).toBe(true);
+    expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
+    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect vault password/);
+    const revoked = rotateVaultRecoveryKey(reset.config, reset.key, null);
+    expect(() => unlockVaultWithRecovery(revoked, rotatedRecoveryKey)).toThrow(/not configured/);
+    for (const item of [legacyKey, key, recovered, reset.key]) item.fill(0);
+  });
+
+  it('rejects malformed and tampered recovery envelopes', async () => {
+    const { config, key } = await createVaultSecurityConfig('correct horse battery');
+    const recoveryKey = generateVaultRecoveryKey();
+    const { config: configured, key: dataKey } = await prepareVaultRecovery(
+      config,
+      'correct horse battery',
+      recoveryKey,
+      null,
+    );
+    expect(() => unlockVaultWithRecovery(configured, 'not-a-recovery-key')).toThrow(/invalid/i);
+    expect(() => unlockVaultWithRecovery(configured, recoveryKey.slice(0, -1))).toThrow(/invalid/i);
+    expect(() =>
+      unlockVaultWithRecovery(
+        { ...configured, recoveryWrappedDataKey: `${configured.recoveryWrappedDataKey}A` },
+        recoveryKey,
+      ),
+    ).toThrow(/invalid/i);
+    key.fill(0);
+    dataKey.fill(0);
+  });
+
+  it('authenticates, rotates, revokes, and resets version-2 vaults with recovery material', async () => {
     const { config: passwordConfig, key } = await createVaultSecurityConfig('old vault password');
+    expect(passwordConfig.version).toBe(2);
     const first = createVaultRecoveryKey(passwordConfig, key);
     const recovered = unlockVaultWithRecovery(first.config, first.recoveryKey);
     expect(recovered.equals(key)).toBe(true);
@@ -68,7 +114,7 @@ describe('vault security primitives', () => {
     for (const item of [key, recovered, reset.key]) item.fill(0);
   });
 
-  it('rejects malformed and tampered recovery envelopes', async () => {
+  it('rejects malformed and tampered version-2 recovery envelopes', async () => {
     const { config, key } = await createVaultSecurityConfig('correct horse battery');
     const { config: configured, recoveryKey } = createVaultRecoveryKey(config, key);
     expect(() => unlockVaultWithRecovery(configured, 'not-a-recovery-key')).toThrow(/invalid/i);

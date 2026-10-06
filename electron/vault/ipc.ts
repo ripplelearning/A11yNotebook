@@ -645,7 +645,13 @@ export function setupVaultIpc(
         }
         return;
       }
-      if (acknowledged !== true || !pending || pending.vault !== requireService() || !masterKey)
+      if (
+        acknowledged !== true ||
+        !pending ||
+        pending.config.version !== 3 ||
+        pending.vault !== requireService() ||
+        !masterKey
+      )
         throw new Error('Save the recovery key before confirming recovery setup.');
       const storedCredentials =
         securityConfig?.version === 3
@@ -653,7 +659,16 @@ export function setupVaultIpc(
           : await metadataFor(pending.vault).read('credentials.json');
       const credentialsText = storedCredentials ? decryptRecord(masterKey, 'credentials', storedCredentials) : null;
       const dataKey = pending.key ?? masterKey;
-      const committedConfig = updateRecoverableCredentialText(pending.config, dataKey, credentialsText);
+      const committedConfig = updateRecoverableCredentialText(
+        {
+          ...pending.config,
+          legacyCredentialsCleanupRequired:
+            pending.config.legacyCredentialsCleanupRequired ||
+            (securityConfig?.version !== 3 && credentialsText !== null),
+        },
+        dataKey,
+        credentialsText,
+      );
       await metadataFor(pending.vault).write('security.json', committedConfig);
       const previousKey = masterKey;
       securityConfig = committedConfig;

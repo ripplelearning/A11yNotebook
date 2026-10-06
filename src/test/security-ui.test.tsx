@@ -82,12 +82,51 @@ describe('security controls', () => {
     const keyInput = await screen.findByLabelText('One-time vault recovery key');
     await waitFor(() => expect(keyInput).toHaveValue('A'.repeat(43)));
     await waitFor(() => expect(keyInput).toHaveFocus());
+    expect(screen.getByRole('group', { name: 'PDF Reading' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Hide running headers/footers from assistive technology')).toBeInTheDocument();
+    expect(screen.getByLabelText('Hide printed page numbers from assistive technology')).toBeInTheDocument();
     const confirm = screen.getByRole('button', { name: 'Confirm saved recovery key' });
     expect(confirm).toBeDisabled();
     fireEvent.click(screen.getByLabelText('I have saved this recovery key somewhere secure'));
     fireEvent.click(confirm);
     await waitFor(() => expect(onAcknowledgeRecovery).toHaveBeenCalledOnce());
     expect(await screen.findByText('Recovery key saved and enabled.')).toHaveAttribute('role', 'status');
+  });
+
+  it('prevents overlapping recovery preparation and allows retry after a failure', async () => {
+    let rejectPreparation!: (error: Error) => void;
+    const onPrepareRecovery = vi.fn().mockImplementationOnce(
+      () =>
+        new Promise<string>((_resolve, reject) => {
+          rejectPreparation = reject;
+        }),
+    );
+    onPrepareRecovery.mockResolvedValue('A'.repeat(43));
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        onSave={vi.fn()}
+        onClose={vi.fn()}
+        securityEnabled
+        onPrepareRecovery={onPrepareRecovery}
+        onAcknowledgeRecovery={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Current vault password'), {
+      target: { value: 'correct horse battery' },
+    });
+    const prepare = screen.getByRole('button', { name: 'Enable vault recovery' });
+    fireEvent.click(prepare);
+    expect(prepare).toBeDisabled();
+    fireEvent.click(prepare);
+    expect(onPrepareRecovery).toHaveBeenCalledOnce();
+    rejectPreparation(new Error('Preparation failed'));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Could not prepare recovery');
+    await waitFor(() => expect(prepare).toBeEnabled());
+    fireEvent.click(prepare);
+    await waitFor(() => expect(screen.getByLabelText('One-time vault recovery key')).toHaveValue('A'.repeat(43)));
+    expect(onPrepareRecovery).toHaveBeenCalledTimes(2);
+    expect(screen.getByRole('button', { name: 'Confirm saved recovery key' })).toBeDisabled();
   });
 
   it('saves configurable idle and unsaved-edit lock delays', async () => {

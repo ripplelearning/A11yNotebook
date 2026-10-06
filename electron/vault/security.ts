@@ -25,7 +25,7 @@ export interface PasswordEncryptedNote {
   ciphertext: string;
 }
 
-interface VaultSecurityConfigV1 {
+export interface LegacyVaultSecurityConfig {
   version: 1;
   salt: string;
   nonce: string;
@@ -64,7 +64,7 @@ export interface RecoverableVaultSecurityConfig {
   integrity: EncryptedRecord;
 }
 
-export type VaultSecurityConfig = VaultSecurityConfigV1 | VaultSecurityConfigV2 | RecoverableVaultSecurityConfig;
+export type VaultSecurityConfig = LegacyVaultSecurityConfig | VaultSecurityConfigV2 | RecoverableVaultSecurityConfig;
 
 function validatePassword(password: unknown): asserts password is string {
   if (typeof password !== 'string' || password.length < 8 || password.length > 1024) {
