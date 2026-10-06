@@ -25,11 +25,7 @@ export interface PasswordEncryptedNote {
   ciphertext: string;
 }
 
-<<<<<<< HEAD
 export interface LegacyVaultSecurityConfig {
-=======
-interface VaultSecurityConfigV1 {
->>>>>>> origin/main
   version: 1;
   salt: string;
   nonce: string;
@@ -37,8 +33,6 @@ interface VaultSecurityConfigV1 {
   verifier: string;
 }
 
-<<<<<<< HEAD
-=======
 export interface RecoveryEnvelope {
   nonce: string;
   tag: string;
@@ -55,7 +49,6 @@ interface VaultSecurityConfigV2 {
   recovery?: RecoveryEnvelope;
 }
 
->>>>>>> origin/main
 export interface RecoverableVaultSecurityConfig {
   version: 3;
   passwordSalt: string;
@@ -71,11 +64,7 @@ export interface RecoverableVaultSecurityConfig {
   integrity: EncryptedRecord;
 }
 
-<<<<<<< HEAD
-export type VaultSecurityConfig = LegacyVaultSecurityConfig | RecoverableVaultSecurityConfig;
-=======
-export type VaultSecurityConfig = VaultSecurityConfigV1 | VaultSecurityConfigV2 | RecoverableVaultSecurityConfig;
->>>>>>> origin/main
+export type VaultSecurityConfig = LegacyVaultSecurityConfig | VaultSecurityConfigV2 | RecoverableVaultSecurityConfig;
 
 function validatePassword(password: unknown): asserts password is string {
   if (typeof password !== 'string' || password.length < 8 || password.length > 1024) {
@@ -148,18 +137,32 @@ export async function createVaultSecurityConfig(
 ): Promise<{ config: VaultSecurityConfig; key: Buffer }> {
   validatePassword(password);
   const salt = randomBytes(SALT_BYTES);
-  const key = await deriveKey(password, salt);
-  const encryptedVerifier = encryptBytes(key, 'verifier', VERIFIER, Buffer.from(VERIFIER));
-  return {
-    key,
-    config: {
-      version: 1,
-      salt: salt.toString('base64'),
-      nonce: encryptedVerifier.nonce,
-      tag: encryptedVerifier.tag,
-      verifier: encryptedVerifier.ciphertext.toString('base64'),
-    },
-  };
+  const key = randomBytes(KEY_BYTES);
+  const passwordKey = await deriveKey(password, salt);
+  try {
+    const encryptedVerifier = encryptBytes(passwordKey, 'password-auth-v2', VERIFIER, Buffer.from(VERIFIER));
+    const wrappedKey = encryptBytes(passwordKey, 'password-wrap-v2', 'vault-data-key-v2', key);
+    return {
+      key,
+      config: {
+        version: 2,
+        salt: salt.toString('base64'),
+        nonce: encryptedVerifier.nonce,
+        tag: encryptedVerifier.tag,
+        verifier: encryptedVerifier.ciphertext.toString('base64'),
+        wrappedKey: {
+          nonce: wrappedKey.nonce,
+          tag: wrappedKey.tag,
+          ciphertext: wrappedKey.ciphertext.toString('base64'),
+        },
+      },
+    };
+  } catch (error) {
+    key.fill(0);
+    throw error;
+  } finally {
+    passwordKey.fill(0);
+  }
 }
 
 export async function unlockVault(config: VaultSecurityConfig, password: string): Promise<Buffer> {
@@ -203,8 +206,6 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
     typeof config.verifier !== 'string'
   )
     throw new Error('Vault security metadata is invalid.');
-<<<<<<< HEAD
-=======
   if (
     config.version === 2 &&
     (!config.wrappedKey ||
@@ -213,19 +214,38 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
       typeof config.wrappedKey.ciphertext !== 'string')
   )
     throw new Error('Vault security metadata is invalid.');
->>>>>>> origin/main
   const salt = Buffer.from(config.salt, 'base64');
   if (salt.length !== SALT_BYTES || salt.toString('base64') !== config.salt)
     throw new Error('Vault security metadata is invalid.');
   const key = await deriveKey(password, salt);
   try {
-    const verifier = decryptBytes(key, 'verifier', VERIFIER, config.nonce, config.tag, config.verifier);
+    const verifier = decryptBytes(
+      key,
+      config.version === 1 ? 'verifier' : 'password-auth-v2',
+      VERIFIER,
+      config.nonce,
+      config.tag,
+      config.verifier,
+    );
     try {
       if (!verifier.equals(Buffer.from(VERIFIER))) throw new Error('Incorrect vault password.');
-      return key;
     } finally {
       verifier.fill(0);
     }
+    if (config.version === 1) return key;
+    const dataKey = decryptBytes(
+      key,
+      'password-wrap-v2',
+      'vault-data-key-v2',
+      config.wrappedKey.nonce,
+      config.wrappedKey.tag,
+      config.wrappedKey.ciphertext,
+    );
+    if (dataKey.length !== KEY_BYTES) {
+      dataKey.fill(0);
+      throw new Error('Invalid vault data key.');
+    }
+    return dataKey;
   } catch {
     key.fill(0);
     throw new Error('Incorrect vault password or damaged security metadata.');
@@ -527,20 +547,14 @@ export function unlockVaultWithRecovery(config: VaultSecurityConfig, recoveryKey
 
 export async function resetVaultPasswordWithRecovery(
   config: VaultSecurityConfig,
-<<<<<<< HEAD
-  recoveryKey: string,
-  newPassword: string,
-): Promise<{ config: RecoverableVaultSecurityConfig; key: Buffer }> {
-  validatePassword(newPassword);
-=======
   recoveryKey: unknown,
-  password: string,
+  newPassword: string,
 ): Promise<{ config: VaultSecurityConfig; key: Buffer }> {
-  validatePassword(password);
+  validatePassword(newPassword);
   if (config.version === 2) {
     const key = unlockVaultWithRecovery(config, recoveryKey);
     const salt = randomBytes(SALT_BYTES);
-    const passwordKey = await deriveKey(password, salt);
+    const passwordKey = await deriveKey(newPassword, salt);
     try {
       const verifier = encryptBytes(passwordKey, 'password-auth-v2', VERIFIER, Buffer.from(VERIFIER));
       const wrappedKey = encryptBytes(passwordKey, 'password-wrap-v2', 'vault-data-key-v2', key);
@@ -568,10 +582,9 @@ export async function resetVaultPasswordWithRecovery(
     }
   }
   if (config.version !== 3) throw new Error('Vault recovery is not configured.');
->>>>>>> origin/main
   const key = await unlockVaultWithRecovery(config, recoveryKey);
   try {
-    const passwordFields = await passwordWrap(key, password);
+    const passwordFields = await passwordWrap(key, newPassword);
     return {
       config: sealRecoverableConfig({ ...(config as RecoverableVaultSecurityConfig), ...passwordFields }, key),
       key,

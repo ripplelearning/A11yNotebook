@@ -2,6 +2,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   createVaultSecurityConfig,
+  createVaultRecoveryKey,
   decryptPasswordEncryptedNote,
   decryptRecord,
   encryptRecord,
@@ -14,10 +15,7 @@ import {
   rotateVaultRecoveryKey,
   unlockVaultWithRecovery,
   unwrapLegacyVaultKey,
-<<<<<<< HEAD
-=======
   revokeVaultRecoveryKey,
->>>>>>> origin/main
   reencryptPasswordNote,
   unlockPasswordEncryptedNote,
   unlockVault,
@@ -48,7 +46,7 @@ describe('vault security primitives', () => {
       generateVaultRecoveryKey(),
       null,
     );
-    expect(config.version).toBe(2);
+    expect(config.version).toBe(3);
     expect(config.wrappedDataKey).toBeDefined();
     expect(key.equals(legacyKey)).toBe(false);
     const reopened = await unlockVault(config, 'legacy vault password');
@@ -56,6 +54,20 @@ describe('vault security primitives', () => {
     legacyKey.fill(0);
     key.fill(0);
     reopened.fill(0);
+  });
+
+  it('supports recovery envelopes for existing version-2 vaults', async () => {
+    const { config, key } = await createVaultSecurityConfig('correct horse battery');
+    expect(config.version).toBe(2);
+    const recovery = createVaultRecoveryKey(config, key);
+    const recovered = unlockVaultWithRecovery(recovery.config, recovery.recoveryKey);
+    expect(recovered.equals(key)).toBe(true);
+    const reset = await resetVaultPasswordWithRecovery(recovery.config, recovery.recoveryKey, 'new vault password');
+    expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
+    expect(() => unlockVaultWithRecovery(revokeVaultRecoveryKey(reset.config), recovery.recoveryKey)).toThrow(
+      /not configured/,
+    );
+    for (const item of [key, recovered, reset.key]) item.fill(0);
   });
 
   it('authenticates, rotates, revokes, and resets access with recovery material', async () => {
@@ -67,13 +79,13 @@ describe('vault security primitives', () => {
     const rotatedRecoveryKey = generateVaultRecoveryKey();
     const rotated = rotateVaultRecoveryKey(config, key, rotatedRecoveryKey);
     expect(rotatedRecoveryKey).not.toBe(firstRecoveryKey);
-    await expect(unlockVaultWithRecovery(rotated, firstRecoveryKey)).rejects.toThrow(/incorrect|damaged/i);
+    expect(() => unlockVaultWithRecovery(rotated, firstRecoveryKey)).toThrow(/incorrect|damaged/i);
     const reset = await resetVaultPasswordWithRecovery(rotated, rotatedRecoveryKey, 'new vault password');
     expect(reset.key.equals(key)).toBe(true);
     expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
     await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect vault password/);
     const revoked = rotateVaultRecoveryKey(reset.config, reset.key, null);
-    await expect(unlockVaultWithRecovery(revoked, rotatedRecoveryKey)).rejects.toThrow(/not configured/);
+    expect(() => unlockVaultWithRecovery(revoked, rotatedRecoveryKey)).toThrow(/not configured/);
     for (const item of [legacyKey, key, recovered, reset.key]) item.fill(0);
   });
 
@@ -86,14 +98,14 @@ describe('vault security primitives', () => {
       recoveryKey,
       null,
     );
-    await expect(unlockVaultWithRecovery(configured, 'not-a-recovery-key')).rejects.toThrow(/invalid/i);
-    await expect(unlockVaultWithRecovery(configured, recoveryKey.slice(0, -1))).rejects.toThrow(/invalid/i);
-    await expect(
+    expect(() => unlockVaultWithRecovery(configured, 'not-a-recovery-key')).toThrow(/invalid/i);
+    expect(() => unlockVaultWithRecovery(configured, recoveryKey.slice(0, -1))).toThrow(/invalid/i);
+    expect(() =>
       unlockVaultWithRecovery(
         { ...configured, recoveryWrappedDataKey: `${configured.recoveryWrappedDataKey}A` },
         recoveryKey,
       ),
-    ).rejects.toThrow(/invalid/i);
+    ).toThrow(/invalid/i);
     key.fill(0);
     dataKey.fill(0);
   });

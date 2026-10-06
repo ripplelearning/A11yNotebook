@@ -648,7 +648,7 @@ export function setupVaultIpc(
       if (
         acknowledged !== true ||
         !pending ||
-        pending.config.version !== 2 ||
+        pending.config.version !== 3 ||
         pending.vault !== requireService() ||
         !masterKey
       )
@@ -664,7 +664,7 @@ export function setupVaultIpc(
           ...pending.config,
           legacyCredentialsCleanupRequired:
             pending.config.legacyCredentialsCleanupRequired ||
-            (securityConfig?.version === 1 && credentialsText !== null),
+            ([1, 2].includes(securityConfig?.version ?? 0) && credentialsText !== null),
         },
         dataKey,
         credentialsText,
