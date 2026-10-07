@@ -52,10 +52,17 @@ let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
 const notifications = new Set<Notification>();
 const notificationTargets = new Map<Notification, { path: string }>();
 let vaultOperations: Promise<unknown> = Promise.resolve();
+let credentialStoreOperations: Promise<unknown> = Promise.resolve();
 
 function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
   const result = vaultOperations.then(operation, operation);
   vaultOperations = result.catch(() => undefined);
+  return result;
+}
+
+function serializeCredentialStoreOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const result = credentialStoreOperations.then(operation, operation);
+  credentialStoreOperations = result.catch(() => undefined);
   return result;
 }
 
@@ -500,40 +507,57 @@ export function setupVaultIpc(
         password.length > 4096
       )
         throw new Error('Invalid credential.');
-      const saved = await metadataFor(requireService()).read('credentials.json');
-      const credentials = saved
-        ? (JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as {
-            id: string;
-            username: string;
-            password: string;
-          }[])
-        : [];
-      const normalizedId = id.trim();
-      const next = credentials.filter((item) => item.id !== normalizedId);
-      next.push({ id: normalizedId, username, password });
-      await metadataFor(requireService()).write(
-        'credentials.json',
-        encryptRecord(masterKey, 'credentials', 'credentials-store', JSON.stringify(next)),
-      );
-      resetIdleLock();
+      const vault = requireService();
+      const key = masterKey;
+      if (!key) throw new Error('Unlock the vault first.');
+      return serializeCredentialStoreOperation(async () => {
+        assertTrusted(event, isTrustedSender);
+        if (service !== vault || masterKey !== key) throw new Error('The open vault has changed. Retry the operation.');
+        const saved = await metadataFor(vault).read('credentials.json');
+        const credentials = saved
+          ? (JSON.parse(decryptRecord(key, 'credentials', saved)) as {
+              id: string;
+              username: string;
+              password: string;
+            }[])
+          : [];
+        const normalizedId = id.trim();
+        const next = credentials.filter((item) => item.id !== normalizedId);
+        next.push({ id: normalizedId, username, password });
+        assertTrusted(event, isTrustedSender);
+        if (service !== vault || masterKey !== key) throw new Error('The open vault has changed. Retry the operation.');
+        await metadataFor(vault).write(
+          'credentials.json',
+          encryptRecord(key, 'credentials', 'credentials-store', JSON.stringify(next)),
+        );
+        resetIdleLock();
+      });
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultCredentialsDelete, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!masterKey || typeof id !== 'string' || id.length > 120) throw new Error('Invalid credential.');
-    const saved = await metadataFor(requireService()).read('credentials.json');
-    if (!saved) return;
-    const credentials = JSON.parse(decryptRecord(masterKey, 'credentials', saved)) as { id: string }[];
-    await metadataFor(requireService()).write(
-      'credentials.json',
-      encryptRecord(
-        masterKey,
-        'credentials',
-        'credentials-store',
-        JSON.stringify(credentials.filter((item) => item.id !== id)),
-      ),
-    );
-    resetIdleLock();
+    const vault = requireService();
+    const key = masterKey;
+    return serializeCredentialStoreOperation(async () => {
+      assertTrusted(event, isTrustedSender);
+      if (service !== vault || masterKey !== key) throw new Error('The open vault has changed. Retry the operation.');
+      const saved = await metadataFor(vault).read('credentials.json');
+      if (!saved) return;
+      const credentials = JSON.parse(decryptRecord(key, 'credentials', saved)) as { id: string }[];
+      assertTrusted(event, isTrustedSender);
+      if (service !== vault || masterKey !== key) throw new Error('The open vault has changed. Retry the operation.');
+      await metadataFor(vault).write(
+        'credentials.json',
+        encryptRecord(
+          key,
+          'credentials',
+          'credentials-store',
+          JSON.stringify(credentials.filter((item) => item.id !== id)),
+        ),
+      );
+      resetIdleLock();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultCaptureWeb, async (event, url: unknown, notebookPath: unknown) => {
     assertTrusted(event, isTrustedSender);

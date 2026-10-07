@@ -249,6 +249,26 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
   });
+  it('preserves concurrent credential updates and serializes save/delete races', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await Promise.all([
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'first', 'alice', 'first-secret'),
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'second', 'bob', 'second-secret'),
+    ]);
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'first', username: 'alice', password: 'first-secret' },
+      { id: 'second', username: 'bob', password: 'second-secret' },
+    ]);
+
+    await Promise.all([
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'racing', 'carol', 'race-secret'),
+      invoke(IPC_CHANNELS.vaultCredentialsDelete, 'racing'),
+    ]);
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'first', username: 'alice', password: 'first-secret' },
+      { id: 'second', username: 'bob', password: 'second-secret' },
+    ]);
+  });
   it('rejects unsafe web capture destinations and paths before network access', async () => {
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '')).rejects.toThrow(/HTTPS/);
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside')).rejects.toThrow(
