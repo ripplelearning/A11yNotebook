@@ -20,6 +20,8 @@ const mock = vi.hoisted(() => ({
   notifications: [] as { emit: (event: string) => void }[],
   reminderEvents: [] as unknown[],
   protocol: undefined as undefined | ((request: { url: string }) => Promise<Response>),
+  securitySetupGate: null as null | { started: () => void; wait: Promise<void> },
+  securitySetupKey: null as Buffer | null,
 }));
 
 vi.mock('node:fs/promises', async (importOriginal) => {
@@ -74,6 +76,23 @@ vi.mock('electron', () => ({
   },
   shell: { showItemInFolder: vi.fn(), openPath: vi.fn(async () => ''), trashItem: vi.fn(async () => undefined) },
 }));
+
+vi.mock('../../electron/vault/security', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/security')>();
+  return {
+    ...actual,
+    createVaultSecurityConfig: async (...args: Parameters<typeof actual.createVaultSecurityConfig>) => {
+      const gate = mock.securitySetupGate;
+      if (gate) {
+        gate.started();
+        await gate.wait;
+      }
+      const result = await actual.createVaultSecurityConfig(...args);
+      mock.securitySetupKey = result.key;
+      return result;
+    },
+  };
+});
 
 vi.mock('../../electron/vault/search', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../electron/vault/search')>();
@@ -130,6 +149,8 @@ beforeEach(async () => {
   mock.notificationsSupported = false;
   mock.notifications = [];
   mock.reminderEvents = [];
+  mock.securitySetupGate = null;
+  mock.securitySetupKey = null;
   temporary = await mkdtemp(path.join(os.tmpdir(), 'a11y-ipc-'));
   mock.root = path.join(temporary, 'vault');
   mock.userData = path.join(temporary, 'app');
@@ -172,6 +193,33 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultOpen)).rejects.toThrow('persistence failed');
     await expect(invoke(IPC_CHANNELS.vaultGet)).resolves.toEqual(expect.objectContaining({ path: previous }));
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toContain('alpha');
+  });
+  it('does not apply vault security to a newly selected vault during key derivation', async () => {
+    let started!: () => void;
+    let finishDerivation!: () => void;
+    const derivationStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const derivation = new Promise<void>((resolve) => {
+      finishDerivation = resolve;
+    });
+    mock.securitySetupGate = { started, wait: derivation };
+    const setup = invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await derivationStarted;
+
+    const nextVault = path.join(temporary, 'next-vault');
+    await mkdir(nextVault);
+    mock.root = nextVault;
+    await invoke(IPC_CHANNELS.vaultOpen);
+    finishDerivation();
+
+    await expect(setup).rejects.toThrow('The open vault changed.');
+    expect(mock.securitySetupKey).not.toBeNull();
+    expect(mock.securitySetupKey!.every((byte) => byte === 0)).toBe(true);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityStatus)).resolves.toEqual({ enabled: false, locked: false });
+    await expect(readFile(path.join(nextVault, '.a11ynotebook', 'security.json'))).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
   });
   it.each([1, 2])('rolls back committed disk mutations when index update %i fails', async (failure) => {
     mock.refreshCount = 0;

@@ -403,15 +403,22 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (securityConfig) throw new Error('Vault password protection is already configured.');
     if (typeof password !== 'string') throw new Error('Invalid vault password.');
+    const vault = requireService();
     const { config, key } = await createVaultSecurityConfig(password);
     try {
-      await metadataFor(requireService()).write('security.json', config);
+      await serializeVaultOperation(async () => {
+        if (service !== vault || securityConfig || masterKey)
+          throw new Error('The open vault changed. Retry the operation.');
+        await metadataFor(vault).write('security.json', config);
+        if (service !== vault || securityConfig || masterKey)
+          throw new Error('The open vault changed. Retry the operation.');
+        securityConfig = config;
+        masterKey = key;
+      });
     } catch (error) {
       key.fill(0);
       throw error;
     }
-    securityConfig = config;
-    masterKey = key;
     resetIdleLock();
   });
   ipcMain.handle(IPC_CHANNELS.vaultSecurityUnlock, async (event, password: unknown) => {
