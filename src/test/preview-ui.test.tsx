@@ -44,7 +44,7 @@ describe('safe preview rendering and image insertion', () => {
     expect(screen.getByAltText('Remote')).not.toHaveAttribute('src', 'https://example.org/image.png');
     expect(relativeReference('Notes/N.md', 'Images/My image.png')).toBe('../Images/My%20image.png');
   });
-  it('shows sandboxed PDF previews with extracted-text page navigation', () => {
+  it('shows sandboxed PDF previews with document-level extracted text', () => {
     render(
       <AttachmentView
         preview={{ path: 'Docs/Guide.pdf', kind: '.pdf', text: 'First\n\nSecond', pages: ['First', 'Second'] }}
@@ -55,9 +55,9 @@ describe('safe preview rendering and image insertion', () => {
       />,
     );
     expect(screen.getByTitle('PDF preview: Docs/Guide.pdf')).toHaveAttribute('sandbox', '');
-    expect(screen.getByText('First')).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
-    expect(screen.getByText('Second')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Document-level text' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Extracted PDF text').querySelector('pre')?.textContent).toBe('First\n\nSecond');
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
   });
   it('navigates extracted ePub sections', () => {
     render(
