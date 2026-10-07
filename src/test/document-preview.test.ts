@@ -86,6 +86,14 @@ describe('PDF and ePub extraction', () => {
     expect(extractPdfPages(withUnreferencedText)).toEqual(['Second page', 'First page']);
   });
 
+  it('keeps PDFs without a page tree as one document-level text chunk', () => {
+    const pdf = Buffer.from(
+      '%PDF-1.7\n<< /Length 37 >>\nstream\nBT (First) Tj ET\fBT (Second) Tj ET\nendstream\n',
+      'latin1',
+    );
+    expect(extractPdfPages(pdf)).toEqual(['First Second']);
+  });
+
   it('extracts ePub content in package spine order and decodes entities', () => {
     const epub = storedZip({
       'META-INF/container.xml': '<container><rootfile full-path="OPS/book.opf"/></container>',

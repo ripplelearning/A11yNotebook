@@ -79,20 +79,8 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
         <>
           <iframe title={`PDF preview: ${preview.path}`} sandbox="" src={imageUrl(preview.path)} />
           <section aria-label="Extracted PDF text">
-            <h3>
-              Page {pageIndex + 1} of {pages.length}
-            </h3>
-            <button type="button" disabled={pageIndex === 0} onClick={() => setPageIndex((page) => page - 1)}>
-              Previous page
-            </button>
-            <button
-              type="button"
-              disabled={pageIndex >= pages.length - 1}
-              onClick={() => setPageIndex((page) => Math.min(pages.length - 1, page + 1))}
-            >
-              Next page
-            </button>
-            <pre>{pages[pageIndex] || 'No extractable text was found on this page.'}</pre>
+            <h3>Document-level text</h3>
+            <pre>{preview.text || 'No extractable text was found in this document.'}</pre>
           </section>
         </>
       ) : preview.kind === '.epub' ? (

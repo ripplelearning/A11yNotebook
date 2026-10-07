@@ -836,7 +836,15 @@ export default function App() {
         throw new Error('The disk changed again. Review the latest conflict before continuing.');
       }
       const content = choice === 'mine' ? note.content : disk;
-      if (choice === 'mine') await bridge.saveNote(note.path, content, disk);
+      if (choice === 'mine') {
+        await bridge.saveNote(note.path, content, disk);
+        const lockKey = `${vault?.path ?? ''}\0${note.path}`;
+        setLockedEditPaths((paths) => {
+          const updated = new Set(paths);
+          updated.delete(lockKey);
+          return updated;
+        });
+      }
       setOpenNotes((items) =>
         items.map((item) => (item.path === note.path ? { ...item, content, saved: content } : item)),
       );
@@ -917,6 +925,12 @@ export default function App() {
           setOpenNotes((current) =>
             current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
           );
+          const lockKey = `${vault?.path ?? ''}\0${note.path}`;
+          setLockedEditPaths((paths) => {
+            const updated = new Set(paths);
+            updated.delete(lockKey);
+            return updated;
+          });
           setStatusMessage(`Saved ${note.title}.`);
           void refreshLinkIndex();
         })

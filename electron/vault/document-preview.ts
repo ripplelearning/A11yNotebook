@@ -92,7 +92,34 @@ export function extractPdfPages(bytes: Buffer): string[] {
       if (/\/Type\s*\/Page\b/.test(body)) pages.push(id);
     }
   }
-  if (!pages.length) throw new Error('This PDF does not contain readable pages.');
+  if (!pages.length) {
+    const streams: string[] = [];
+    let extractedBytes = 0;
+    const streamPattern = /<<(.*?)>>\s*stream(?:\r\n|\n|\r)/gims;
+    for (const match of source.matchAll(streamPattern)) {
+      if (extractedBytes >= MAX_EXTRACTED_BYTES) break;
+      const start = (match.index ?? 0) + match[0].length;
+      const end = source.indexOf('endstream', start);
+      if (end < 0 || end - start > MAX_EXTRACTED_BYTES - extractedBytes) continue;
+      let data = bytes.subarray(start, end);
+      if (data.at(-1) === 10) data = data.subarray(0, data.length - 1);
+      if (data.at(-1) === 13) data = data.subarray(0, data.length - 1);
+      if (match[1].includes('/FlateDecode')) {
+        try {
+          data = inflateSync(data, { maxOutputLength: MAX_EXTRACTED_BYTES - extractedBytes });
+        } catch {
+          continue;
+        }
+      } else if (/\/Filter\b/.test(match[1])) {
+        continue;
+      }
+      if (extractedBytes + data.length > MAX_EXTRACTED_BYTES) continue;
+      extractedBytes += data.length;
+      streams.push(data.toString('latin1'));
+    }
+    const text = extractTextOperators(streams.join('\n'));
+    return text ? [text] : [];
+  }
 
   let extractedBytes = 0;
   return pages.slice(0, 200).map((pageId) => {
