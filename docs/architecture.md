@@ -124,10 +124,10 @@ bundled local worker and a shared semantic model that tracks page labels, metada
 marked-content IDs, structure-tree roles, and inferred untagged paragraphs. It renders a bounded canvas with a selectable
 text layer and supports zoom/rotation while keeping quote and offset anchors independent of pixels. See
 `docs/pdf-semantic-phase1.md` for the verified spike findings and architecture. The epub.js reader parses the local
-archive and presents flattened spine-section text without executing book markup or loading its remote resources; it does
-not render book styles/resources or the navigation TOC. Both readers reject files over 40 MB and bound text extraction.
-Persistent document anchors, highlights/annotation UI, ePub zoomable/reflow presentation, TOC navigation, and manual
-Windows screen-reader/UI Automation validation remain open work. The follow-up plan is in `docs/roadmap.md`. The earlier
+archive, renders paginated spine content and a nested navigation TOC, and sanitizes chapter markup before display.
+Bounded extracted text remains available for search. Both readers reject files over 40 MB and bound text extraction.
+Persistent document anchors, highlights/annotation UI, reading-progress persistence, and manual Windows
+screen-reader/UI Automation validation remain open work. The follow-up plan is in `docs/roadmap.md`. The earlier
 bounded main-process extractors are retained for input validation; ePub's XML parser is overridden to patched
 `@xmldom/xmldom` 0.8.15. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
 limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.

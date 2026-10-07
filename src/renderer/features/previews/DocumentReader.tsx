@@ -1,4 +1,6 @@
 import type ePubFactory from 'epubjs/src/index.js';
+import type { EpubTocItem } from 'epubjs/src/index.js';
+import DOMPurify from 'dompurify';
 import { useEffect, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
@@ -288,11 +290,30 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   );
 }
 
+function EpubToc({ items, onSelect }: { items: EpubTocItem[]; onSelect: (href: string) => void }) {
+  return (
+    <ol>
+      {items.map((item) => (
+        <li key={item.href}>
+          <button type="button" onClick={() => onSelect(item.href)}>
+            {item.label}
+          </button>
+          {item.subitems?.length ? <EpubToc items={item.subitems} onSelect={onSelect} /> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 function EpubReader({ bytes }: { bytes: Uint8Array }) {
   const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
+  const [book, setBook] = useState<Awaited<ReturnType<typeof ePubFactory>> | null>(null);
+  const renditionRef = useRef<ReturnType<Awaited<ReturnType<typeof ePubFactory>>['renderTo']> | null>(null);
+  const renditionContainerRef = useRef<HTMLDivElement>(null);
+  const pendingHrefRef = useRef<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -307,6 +328,14 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
           return;
         }
         book = opened;
+        setBook(opened);
+        for (const section of opened.spine.spineItems) {
+          section.hooks.serialize.register(function (this: { output: string }, content: string) {
+            this.output = DOMPurify.sanitize(content, {
+              FORBID_TAGS: ['script', 'iframe', 'object', 'embed', 'form'],
+            });
+          });
+        }
         const items = opened.spine.spineItems.slice(0, MAX_SEARCHABLE_PAGES);
         const loaded: Array<{ label: string; text: string }> = [];
         let size = 0;
@@ -318,7 +347,9 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
           loaded.push({ label: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
           if (cancelled) break;
         }
-        if (!cancelled) setReaderModel(createDocumentReaderModel(loaded));
+        if (!cancelled) {
+          setReaderModel(createDocumentReaderModel(loaded));
+        }
       })
       .catch(() => {
         if (!cancelled) setError('This ePub could not be opened. Use Open in external app to continue.');
@@ -328,6 +359,38 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
       book?.destroy();
     };
   }, [bytes]);
+
+  useEffect(() => {
+    if (!book || !renditionContainerRef.current) return;
+    const rendition = book.renderTo(renditionContainerRef.current, {
+      width: '100%',
+      height: '60vh',
+      flow: 'paginated',
+    });
+    const labelFrames = () => {
+      renditionContainerRef.current?.querySelectorAll('iframe').forEach((frame) => {
+        if (!frame.title) frame.title = 'ePub content';
+      });
+    };
+    const observer = new MutationObserver(labelFrames);
+    observer.observe(renditionContainerRef.current, { childList: true, subtree: true });
+    labelFrames();
+    renditionRef.current = rendition;
+    return () => {
+      observer.disconnect();
+      renditionRef.current = null;
+    };
+  }, [book]);
+
+  useEffect(() => {
+    const section = book?.spine.spineItems[sectionIndex];
+    if (!section || !renditionRef.current) return;
+    const href = pendingHrefRef.current ?? section.href;
+    pendingHrefRef.current = null;
+    void renditionRef.current.display(href).catch(() => {
+      setError('This ePub section could not be rendered. Its accessible text remains available.');
+    });
+  }, [book, sectionIndex]);
 
   const matchingSections = readerModel.findSections(search);
   const activeSection = readerModel.sections[sectionIndex];
@@ -353,6 +416,26 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
           Next section
         </button>
       </div>
+      {book?.navigation.toc.length ? (
+        <nav aria-label="ePub table of contents">
+          <h4>Table of contents</h4>
+          <EpubToc
+            items={book.navigation.toc}
+            onSelect={(href) => {
+              const index = book.spine.spineItems.findIndex((section) => section.href === href.split('#')[0]);
+              if (index >= 0 && index !== sectionIndex) {
+                pendingHrefRef.current = href;
+                setSectionIndex(index);
+              } else {
+                void renditionRef.current?.display(href).catch(() => {
+                  setError('This ePub section could not be rendered. Its accessible text remains available.');
+                });
+              }
+            }}
+          />
+        </nav>
+      ) : null}
+      <div ref={renditionContainerRef} className="epub-rendition" />
       <label>
         Find in ePub
         <input value={search} onChange={(event) => setSearch(event.target.value)} />

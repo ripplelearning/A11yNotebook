@@ -41,7 +41,7 @@
 - [ ] Export format, format-loss warning, protected-content consent, save-dialog cancellation, overwrite confirmation, and completion/error status are keyboard and screen-reader accessible.
 - [ ] Web capture format selection, progress/errors, partial-image failure counts, and final saved-note status are accessible; HTML contains no remote resources.
 - [ ] HTML note-text annotations expose labels/descriptions and Jump/Edit/Delete; PDF/ePub selection mapping and document annotations are explicitly unimplemented.
-- [ ] PDF text is separately extracted from the fixed-scale canvas; do not treat it as a selectable/zoomable layer. ePub currently exposes flattened spine text, not styled reflow or TOC.
+- [ ] PDF text is separately extracted from the fixed-scale canvas; do not treat it as a selectable/zoomable layer. ePub renders paginated content with TOC and extracted text, but still needs keyboard, reading-order, and screen-reader validation.
 - [ ] Reminder table and agenda headings expose local times, notification status, snooze/dismiss actions, and startup missed reminders.
 - [ ] Notebook task progress has an accessible label, completion count, and native progress value.
 - [ ] Outline and mind-map trees expose level/expansion/selection and support indent/reorder/new-item editing without trapping Tab.
@@ -53,5 +53,5 @@
 - [ ] All above widgets pass JAWS, NVDA, Narrator, keyboard-only, and Windows forced-colors checks; record results rather than checking boxes based on DOM tests.
 
 These items are acceptance criteria, not completed manual-validation claims. Windows screen-reader, UI Automation, and
-forced-colors checks must be recorded when run. PDF/ePub visual layers, reflow/TOC, and document annotations are open
-implementation work; see the [document reader and annotation follow-up plan](../roadmap.md#document-reader-and-annotation-follow-up-plan).
+forced-colors checks must be recorded when run. Document annotations and manual PDF/ePub accessibility validation remain
+open implementation work; see the [document reader and annotation follow-up plan](../roadmap.md#document-reader-and-annotation-follow-up-plan).

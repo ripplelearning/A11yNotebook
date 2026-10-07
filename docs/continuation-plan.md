@@ -84,9 +84,9 @@ Implement adapters in this order after the shared contract and safe lifecycle ar
 1. **Markdown and sanitized HTML parity — open.** Reuse the existing safe capture/sanitization boundary; no active
    browsing scripts, relaxed sandbox, or arbitrary network access. Verify existing note annotations against the common
    capability contract.
-2. **ePub — open.** Add safe reflow, navigation-document TOC, resource resolution, and annotations. Reject traversal,
-   unsafe archives, remote resources, and scripts; bound archive entries, total decompression, and parsing. Release
-   resources on book/vault changes.
+2. **ePub — partial.** Paginated epub.js rendering, nested navigation-document TOC, chapter sanitization, bounded text
+   search, and cleanup are implemented. Validate remote-resource and hostile-archive handling; add document annotations
+   and persisted reading position.
 3. **DOCX — open.** Extract supported semantic structures for accessible reading/navigation; reject external resources,
    macros, unsafe ZIP expansion, and oversized/hostile documents. Never execute Office automation/macros or upload
    private documents to third-party services.
