@@ -940,7 +940,16 @@ export default function App() {
         });
     }, settings.autosaveDelay);
     return () => window.clearTimeout(timeout);
-  }, [openNotes, selectedTab, activeConflict, checkingDisk, checkDisk, settings.autosaveDelay, itemDialog]);
+  }, [
+    openNotes,
+    selectedTab,
+    activeConflict,
+    checkingDisk,
+    checkDisk,
+    settings.autosaveDelay,
+    itemDialog,
+    vault?.path,
+  ]);
 
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current) return;
