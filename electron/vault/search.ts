@@ -3,9 +3,11 @@ import { lstat, mkdir, open, readdir, rename, rm } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultSearchQuery, VaultSearchResult } from '../../src/shared/search';
+import { type DocxStructure } from '../../src/shared/docx';
 import { extractEpubPages, extractPdfPages } from './document-preview';
+import { docxSearchText, parseDocxStructure } from './docx-parser';
 
-const VERSION = 3;
+const VERSION = 4;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_INDEXED_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_CACHE_BYTES = 64 * 1024 * 1024;
@@ -14,7 +16,7 @@ const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.csv', '.html', '.htm']);
 interface IndexedDocument {
   path: string;
   title: string;
-  kind: 'note' | 'attachment';
+  kind: 'note' | 'attachment' | 'docx';
   notebook: string;
   tags: string[];
   text: string;
@@ -101,10 +103,14 @@ async function readSafeBuffer(root: string, relativePath: string, maximum: numbe
 
 function extractDocumentText(content: Buffer, extension: string) {
   try {
+    if (extension === '.docx') {
+      const structure: DocxStructure = parseDocxStructure(content);
+      return { text: docxSearchText(structure, MAX_FILE_BYTES), title: structure.title };
+    }
     const pages = extension === '.pdf' ? extractPdfPages(content) : extractEpubPages(content);
-    return pages.join('\n\n').slice(0, MAX_FILE_BYTES);
+    return { text: pages.join('\n\n').slice(0, MAX_FILE_BYTES), title: undefined };
   } catch {
-    return '';
+    return { text: '', title: undefined };
   }
 }
 
@@ -169,7 +175,7 @@ export function validateSearchQuery(value: unknown): VaultSearchQuery {
       (query.notebook !== '' && !isVisibleVaultPath(query.notebook)))
   )
     throw new Error('Invalid notebook filter.');
-  if (query.kind !== undefined && query.kind !== 'note' && query.kind !== 'attachment')
+  if (query.kind !== undefined && !['note', 'attachment', 'docx'].includes(query.kind))
     throw new Error('Invalid kind filter.');
   if (query.tag !== undefined && (typeof query.tag !== 'string' || !query.tag.trim() || query.tag.length > 100))
     throw new Error('Invalid tag filter.');
@@ -199,7 +205,7 @@ function validCachedDocument(value: unknown): value is IndexedDocument {
     isVisibleVaultPath(doc.path) &&
     typeof doc.title === 'string' &&
     doc.title.length <= 1000 &&
-    (doc.kind === 'note' || doc.kind === 'attachment') &&
+    ['note', 'attachment', 'docx'].includes(doc.kind) &&
     typeof doc.notebook === 'string' &&
     typeof doc.text === 'string' &&
     doc.text.length <= MAX_FILE_BYTES &&
@@ -295,7 +301,7 @@ export function createSearchIndex(root: string) {
               next.set(relative, cached);
               continue;
             }
-            const isDocument = extension === '.pdf' || extension === '.epub';
+            const isDocument = extension === '.pdf' || extension === '.epub' || extension === '.docx';
             const textRead =
               TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES
                 ? await readSafeText(root, relative, MAX_FILE_BYTES)
@@ -305,7 +311,7 @@ export function createSearchIndex(root: string) {
                 ? await readSafeBuffer(root, relative, MAX_INDEXED_DOCUMENT_BYTES)
                 : null;
             const content = textRead?.content ?? '';
-            const documentText = documentRead ? extractDocumentText(documentRead.content, extension) : '';
+            const documentText = documentRead ? extractDocumentText(documentRead.content, extension) : { text: '', title: undefined };
             const indexedStat = textRead?.stat ?? documentRead?.stat ?? stat;
             const title =
               extension === '.md'
@@ -315,8 +321,8 @@ export function createSearchIndex(root: string) {
                   : undefined;
             next.set(relative, {
               path: relative,
-              title: (title ?? path.basename(relative, extension)).slice(0, 1000),
-              kind: ['.md', '.html'].includes(extension) ? 'note' : 'attachment',
+              title: (documentText.title ?? title ?? path.basename(relative, extension)).slice(0, 1000),
+              kind: extension === '.docx' ? 'docx' : ['.md', '.html'].includes(extension) ? 'note' : 'attachment',
               notebook: path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative),
               tags:
                 extension === '.md'
@@ -324,7 +330,7 @@ export function createSearchIndex(root: string) {
                   : extension === '.html'
                     ? extractTags(extractText(content, extension))
                     : [],
-              text: isDocument ? documentText : extractText(content, extension),
+              text: isDocument ? documentText.text : extractText(content, extension),
               size: indexedStat.size,
               mtime: indexedStat.mtimeMs,
               ctime: indexedStat.ctimeMs,

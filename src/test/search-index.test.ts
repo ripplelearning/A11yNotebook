@@ -31,6 +31,7 @@ function storedZip(entries: Record<string, string>) {
     header.writeUInt32LE(0x04034b50, 0);
     header.writeUInt16LE(20, 4);
     header.writeUInt16LE(0x800, 6);
+    header.writeUInt32LE(crc32(content), 14);
     header.writeUInt32LE(content.length, 18);
     header.writeUInt32LE(content.length, 22);
     header.writeUInt16LE(filename.length, 26);
@@ -40,6 +41,7 @@ function storedZip(entries: Record<string, string>) {
     record.writeUInt16LE(20, 4);
     record.writeUInt16LE(20, 6);
     record.writeUInt16LE(0x800, 8);
+    record.writeUInt32LE(crc32(content), 16);
     record.writeUInt32LE(content.length, 20);
     record.writeUInt32LE(content.length, 24);
     record.writeUInt16LE(filename.length, 28);
@@ -55,6 +57,15 @@ function storedZip(entries: Record<string, string>) {
   end.writeUInt32LE(directory.length, 12);
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, directory, end]);
+}
+
+function crc32(buffer: Buffer) {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) crc = (crc >>> 1) ^ (crc & 1 ? 0xedb88320 : 0);
+  }
+  return (crc ^ 0xffffffff) >>> 0;
 }
 
 afterEach(async () => {
@@ -129,6 +140,31 @@ describe('persistent vault search', () => {
     ]);
   });
 
+  it('indexes bounded DOCX paragraph and table text as a docx result', async () => {
+    const root = await folder();
+    await writeFile(
+      path.join(root, 'manual.docx'),
+      storedZip({
+        '[Content_Types].xml':
+          '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/word/document.xml" ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/></Types>',
+        '_rels/.rels':
+          '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="doc" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="word/document.xml"/></Relationships>',
+        'word/document.xml':
+          '<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body><w:p><w:r><w:t>needleDocxParagraph</w:t></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>needleDocxTable</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>',
+      }),
+    );
+    const service = await open(root);
+    expect(await service.search({ text: 'needleDocxParagraph', kind: 'docx' })).toMatchObject([
+      { path: 'manual.docx', kind: 'docx' },
+    ]);
+    expect(await service.search({ text: 'needleDocxTable', kind: 'docx' })).toMatchObject([
+      { path: 'manual.docx', kind: 'docx' },
+    ]);
+    expect(await service.readDocxStructure('manual.docx')).toMatchObject({
+      blocks: [{ kind: 'paragraph', text: 'needleDocxParagraph' }, { kind: 'table' }],
+    });
+  });
+
   it('extracts txt, csv, and HTML without script/style text, and only filenames for unsupported files', async () => {
     const root = await folder();
     await writeFile(path.join(root, 'data.csv'), 'subject,value\naccessible,42');
@@ -173,7 +209,7 @@ describe('persistent vault search', () => {
     const first = await open(root);
     await first.dispose();
     const cache = JSON.parse(await readFile(path.join(root, '.a11ynotebook', 'search-index.json'), 'utf8'));
-    expect(cache.version).toBe(3);
+    expect(cache.version).toBe(4);
     expect(cache.root).toBe(root);
     await writeFile(path.join(root, 'old.md'), '# Fresh text');
     await rm(path.join(root, 'gone.md'));

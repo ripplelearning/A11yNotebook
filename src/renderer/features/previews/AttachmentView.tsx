@@ -46,7 +46,7 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
   return (
     <section
       aria-label="Attachment preview"
-      data-context={/\.(?:pdf|epub)$/i.test(preview.path) ? 'document-preview' : 'attachment'}
+      data-context={/\.(?:pdf|epub|docx)$/i.test(preview.path) ? 'document-preview' : 'attachment'}
       data-path={preview.path}
       tabIndex={-1}
     >
@@ -82,6 +82,8 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
         <DocumentReader key={preview.path} path={preview.path} kind=".pdf" />
       ) : preview.kind === '.epub' ? (
         <DocumentReader key={preview.path} path={preview.path} kind=".epub" />
+      ) : preview.kind === '.docx' ? (
+        <DocumentReader key={preview.path} path={preview.path} kind=".docx" />
       ) : preview.kind === '.csv' ? (
         csvError ? (
           <p>{csvError}</p>

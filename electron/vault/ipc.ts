@@ -1493,7 +1493,24 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid attachment path.');
     if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative);
+    if (/\.docx$/i.test(relative)) {
+      await requireService().resolveEntry(relative);
+      return { path: relative, kind: '.docx', text: '' };
+    }
     return readTextAttachment(requireService().resolveEntry, relative);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReadDocxStructure, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !/\.docx$/i.test(relative)) {
+      throw new Error('DOCX structure requests require a .docx path.');
+    }
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const structure = await access.vault.readDocxStructure(relative);
+      access.assertCurrent();
+      return structure;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultImageAlt, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);

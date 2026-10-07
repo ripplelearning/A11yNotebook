@@ -1,7 +1,7 @@
 export interface VaultSearchQuery {
   text: string;
   notebook?: string;
-  kind?: 'note' | 'attachment';
+  kind?: 'note' | 'attachment' | 'docx';
   tag?: string;
   modifiedAfter?: string;
   modifiedBefore?: string;
@@ -11,7 +11,7 @@ export interface VaultSearchQuery {
 export interface VaultSearchResult {
   path: string;
   title: string;
-  kind: 'note' | 'attachment';
+  kind: 'note' | 'attachment' | 'docx';
   notebook: string;
   tags: string[];
   modified: string;

@@ -1121,10 +1121,26 @@ describe('extended vault IPC integration', () => {
       kind: '.pdf',
       pages: ['Guide text'],
     });
+
     expect((await mock.protocol!({ url: 'vault-file://attachment/Topic.md' })).status).toBe(415);
     expect((await mock.protocol!({ url: 'vault-file://attachment/%2e%2e/Photo.png' })).status).toBe(404);
     await symlink(path.join(mock.root, 'Photo.png'), path.join(mock.root, 'Escape.png'));
     expect((await mock.protocol!({ url: 'vault-file://attachment/Escape.png' })).status).toBe(404);
+  });
+  it('exposes bounded DOCX previews through the typed structure channel', async () => {
+    await writeFile(path.join(mock.root, 'Guide.docx'), 'not a DOCX archive');
+    await expect(invoke(IPC_CHANNELS.vaultReadAttachment, 'Guide.docx')).resolves.toEqual({
+      path: 'Guide.docx',
+      kind: '.docx',
+      text: '',
+    });
+    await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, '../outside.docx')).rejects.toThrow(
+      'not valid inside this vault',
+    );
+    await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, 'Guide.docx')).rejects.toThrow(/malformed|truncated/i);
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'docx-lock-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, 'Guide.docx')).rejects.toThrow('Unlock the vault');
   });
   it('persists assets and schedules but rejects changed-deck ratings', async () => {
     await invoke(IPC_CHANNELS.vaultAssetCreate, 'Study.cards.md', 'Q :: A\n');

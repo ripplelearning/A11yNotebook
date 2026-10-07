@@ -5,6 +5,8 @@ import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import type { DocxStructure } from '../../src/shared/docx';
+import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
 import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDate } from './tasks';
 import type { VaultChangedEvent } from '../../src/shared/search';
@@ -162,8 +164,28 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         } finally {
           await loadingTask.destroy();
         }
+
         return;
       }
+    } finally {
+      await file.close();
+    }
+  }
+
+  async function readDocxStructure(relativePath: string): Promise<DocxStructure> {
+    if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX reading requires a .docx document.');
+    const absolute = await resolveEntry(relativePath);
+    const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) {
+        throw new Error('This DOCX exceeds the 40 MiB archive limit.');
+      }
+      const bytes = await file.readFile();
+      if (bytes.length > 40 * 1024 * 1024) throw new Error('This DOCX exceeds the 40 MiB archive limit.');
+      const structure = parseDocxStructure(bytes);
+      if (disposed || !root) throw new Error('This vault is closed.');
+      return structure;
     } finally {
       await file.close();
     }
@@ -422,7 +444,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         candidates.map(async (bookmark) => {
           try {
             const target = await resolveEntry(bookmark.path);
-            return isNotePath(target) ? bookmark : null;
+            return isNotePath(target) || path.extname(target).toLowerCase() === '.docx' ? bookmark : null;
           } catch {
             return null;
           }
@@ -436,7 +458,9 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function toggleBookmark(relativePath: string) {
     const target = await resolveEntry(relativePath);
-    if (!isNotePath(target)) throw new Error('Only notes can be bookmarked.');
+    if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') {
+      throw new Error('Only notes and DOCX documents can be bookmarked.');
+    }
     const bookmarks = await getBookmarks();
     const next = bookmarks.some((bookmark) => bookmark.path === relativePath)
       ? bookmarks.filter((bookmark) => bookmark.path !== relativePath)
@@ -470,6 +494,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     toggleBookmark,
     resolveEntry,
     validatePdfAnnotationDocument,
+    readDocxStructure,
     resolveMetadata,
     search,
     getTags,

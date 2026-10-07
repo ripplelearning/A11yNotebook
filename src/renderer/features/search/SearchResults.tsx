@@ -36,13 +36,14 @@ export default function SearchResults({ filters, onFilters, notebooks, results, 
             onChange={(event) =>
               onFilters({
                 ...filters,
-                kind: event.target.value ? (event.target.value as 'note' | 'attachment') : undefined,
+                kind: event.target.value ? (event.target.value as 'note' | 'attachment' | 'docx') : undefined,
               })
             }
           >
             <option value="">All kinds</option>
             <option value="note">Notes</option>
             <option value="attachment">Text attachments</option>
+            <option value="docx">DOCX documents</option>
           </select>
         </label>
         <label>

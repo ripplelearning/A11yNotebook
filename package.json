@@ -37,6 +37,7 @@
     "test:ui-smoke": "powershell -ExecutionPolicy Bypass -File scripts/windows-ui-automation-smoke.ps1"
   },
   "dependencies": {
+    "@xmldom/xmldom": "0.9.12",
     "dompurify": "^3.4.16",
     "electron-updater": "^6.8.9",
     "epubjs": "^0.4.2",
