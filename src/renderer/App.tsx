@@ -161,7 +161,7 @@ export default function App() {
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
-  const [lockedEditPath, setLockedEditPath] = useState<string | null>(null);
+  const [lockedEditPaths, setLockedEditPaths] = useState<Set<string>>(() => new Set());
   const [encryptedNotePath, setEncryptedNotePath] = useState<string | null>(null);
   const [notePasswordDialog, setNotePasswordDialog] = useState<{
     action: 'encrypt' | 'unlock';
@@ -180,7 +180,8 @@ export default function App() {
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
-  const currentNoteEditLocked = currentNote?.path === lockedEditPath;
+  const currentEditLockKey = currentNote && vault ? `${vault.path}\0${currentNote.path}` : null;
+  const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
   const allEntries = flattenEntries(vault?.entries ?? []);
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
   const notePaths = allEntries.filter((entry) => entry.kind === 'note').map((entry) => entry.path);
@@ -220,14 +221,14 @@ export default function App() {
     const remaining = (settings.noteEditLockMinutes ?? 0) * 60_000 - (Date.now() - editLockStart.current.timestamp);
     const timer = window.setTimeout(
       () => {
-        setLockedEditPath(path);
+        setLockedEditPaths((paths) => new Set(paths).add(`${vault?.path ?? ''}\0${path}`));
         setMode('read-only');
         setStatusMessage(`Editing locked for ${title}; save the unsaved changes to continue.`);
       },
       Math.max(0, remaining),
     );
     return () => window.clearTimeout(timer);
-  }, [currentNote, settings.noteEditLockMinutes]);
+  }, [currentNote, settings.noteEditLockMinutes, vault?.path]);
 
   const searchRef = useRef<HTMLInputElement>(null);
   const navigationRef = useRef<HTMLElement>(null);
@@ -260,6 +261,7 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    if (securityLocked) return;
     void window.a11yNotebook?.vault
       .getSettings?.()
       .then((value) => {
@@ -269,7 +271,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [vault?.path]);
+  }, [vault?.path, securityLocked]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -279,7 +281,6 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setNoteAnnotations([]);
-    setLockedEditPath(null);
     if (currentNote?.path)
       void window.a11yNotebook?.vault
         .getAnnotations?.(currentNote.path)
@@ -347,7 +348,7 @@ export default function App() {
       setOpenNotes([]);
       setNotePasswordDialog(null);
       setAttachment(null);
-      setLockedEditPath(null);
+      setLockedEditPaths(new Set());
       setNoteAnnotations([]);
       setTasks([]);
       setLinks([]);
@@ -853,7 +854,12 @@ export default function App() {
       setOpenNotes((current) =>
         current.map((item) => (item.id === note.id ? { ...item, saved: contentToSave } : item)),
       );
-      setLockedEditPath((lockedPath) => (lockedPath === note.path ? null : lockedPath));
+      const lockKey = `${vault?.path ?? ''}\0${note.path}`;
+      setLockedEditPaths((paths) => {
+        const updated = new Set(paths);
+        updated.delete(lockKey);
+        return updated;
+      });
       setStatusMessage(`Saved ${note.title}.`);
       await refreshVault();
       await refreshLinkIndex();
@@ -1813,7 +1819,6 @@ export default function App() {
           onSave={async (value) => {
             await window.a11yNotebook!.vault.saveSettings(value);
             setSettings(value);
-            if (!value.noteEditLockMinutes) setLockedEditPath(null);
             setStatusMessage('Settings saved.');
           }}
           onSetVaultPassword={async (password) => {

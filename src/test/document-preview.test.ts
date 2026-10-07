@@ -42,34 +42,48 @@ function storedZip(entries: Record<string, string>) {
   return Buffer.concat([...local, directory, end]);
 }
 
+function pdfWithPages(pages: { pageId: number; contentId: number; operators: string }[], pageOrder = pages) {
+  const objects = [
+    '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj',
+    `2 0 obj << /Type /Pages /Kids [${pageOrder.map(({ pageId }) => `${pageId} 0 R`).join(' ')}] /Count ${pages.length} >> endobj`,
+    ...pages.flatMap(({ pageId, contentId, operators }) => {
+      const content = `BT ${operators} ET`;
+      return [
+        `${pageId} 0 obj << /Type /Page /Parent 2 0 R /Contents ${contentId} 0 R >> endobj`,
+        `${contentId} 0 obj << /Length ${Buffer.byteLength(content)} >> stream\n${content}\nendstream endobj`,
+      ];
+    }),
+  ];
+  return Buffer.from(`%PDF-1.7\n${objects.join('\n')}\n`, 'latin1');
+}
+
 describe('PDF and ePub extraction', () => {
   it('extracts literal and hex PDF text operators', () => {
-    const pdf = Buffer.from(
-      '%PDF-1.7\n<< /Length 28 >>\nstream\nBT (Hello\\040world) Tj <00410042> Tj ET\nendstream\n',
-      'latin1',
-    );
+    const pdf = pdfWithPages([{ pageId: 3, contentId: 4, operators: '(Hello\\040world) Tj <00410042> Tj' }]);
     expect(extractPdfPages(pdf)).toEqual(['Hello world AB']);
   });
 
   it('extracts text-array PDF operators with escaped delimiters', () => {
-    const pdf = Buffer.from('%PDF-1.7\n[(First) -20 (Second\\)part)] TJ\n', 'latin1');
+    const pdf = pdfWithPages([{ pageId: 3, contentId: 4, operators: '[(First) -20 (Second\\)part)] TJ' }]);
     expect(extractPdfPages(pdf)).toEqual(['FirstSecond)part']);
   });
 
-  it('extracts referenced PDF content streams in page-tree order', () => {
-    const pdf = Buffer.from(
-      '%PDF-1.7\n' +
-        '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n' +
-        '2 0 obj << /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 >> endobj\n' +
-        '3 0 obj << /Type /Page /Contents [8 0 R 9 0 R] >> endobj\n' +
-        '4 0 obj << /Type /Page /Contents 6 0 R >> endobj\n' +
-        '5 0 obj << /Length 15 >> stream\nBT (Unreferenced) Tj ET\nendstream endobj\n' +
-        '6 0 obj << /Length 16 >> stream\nBT (Second page) Tj ET\nendstream endobj\n' +
-        '8 0 obj << /Length 11 >> stream\nBT (First ) Tj ET\nendstream endobj\n' +
-        '9 0 obj << /Length 10 >> stream\nBT (page) Tj ET\nendstream endobj\n',
-      'latin1',
+  it('extracts referenced streams in page-tree order and skips unreferenced streams', () => {
+    const pdf = pdfWithPages(
+      [
+        { pageId: 3, contentId: 4, operators: '(First page) Tj' },
+        { pageId: 5, contentId: 6, operators: '(Second page) Tj' },
+      ],
+      [
+        { pageId: 5, contentId: 6, operators: '' },
+        { pageId: 3, contentId: 4, operators: '' },
+      ],
     );
-    expect(extractPdfPages(pdf)).toEqual(['Second page', 'First page']);
+    const withUnreferencedText = Buffer.concat([
+      pdf.subarray(0, -1),
+      Buffer.from('9 0 obj << /Length 26 >> stream\nBT (Not a page) Tj ET\nendstream endobj\n', 'latin1'),
+    ]);
+    expect(extractPdfPages(withUnreferencedText)).toEqual(['Second page', 'First page']);
   });
 
   it('extracts ePub content in package spine order and decodes entities', () => {

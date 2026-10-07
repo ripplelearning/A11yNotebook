@@ -29,6 +29,7 @@ describe('web capture conversion and URL validation', () => {
       'https://localhost/',
       'https://127.0.0.1/',
       'https://192.0.0.1/',
+      'https://192.0.0.8/',
       'https://192.0.2.1/',
       'https://198.51.100.1/',
       'https://203.0.113.1/',
@@ -37,12 +38,14 @@ describe('web capture conversion and URL validation', () => {
       'https://[fc00::1]/',
       'https://[fe80::1]/',
       'https://[2001:db8::1]/',
-      'https://[2002::1]/',
+      'https://[2002:c000:0201::1]/',
       'https://[3fff::1]/',
       '******example.org/',
       'https://example.org:8443/',
     ]) {
       expect(() => validateCaptureUrl(url)).toThrow();
     }
+    expect(validateCaptureUrl('https://192.0.3.1/')).toBe('https://192.0.3.1/');
+    expect(validateCaptureUrl('https://[2001:4860:4860::8888]/')).toBe('https://[2001:4860:4860::8888]/');
   });
 });

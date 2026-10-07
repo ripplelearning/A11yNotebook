@@ -19,6 +19,7 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 };
 
 function isPublicAddress(address: string) {
+  if (!isIP(address)) return false;
   try {
     return ipaddr.parse(address).range() === 'unicast';
   } catch {
