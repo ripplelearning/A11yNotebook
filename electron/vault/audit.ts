@@ -1,4 +1,5 @@
-import { open, rename, unlink } from 'node:fs/promises';
+import { lstat, open, rename, unlink } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import type { MetadataResolver } from './metadata';
 
 export const AUDIT_OPERATIONS = [
@@ -69,14 +70,18 @@ export function createAuditStore(resolver: MetadataResolver, now: () => number =
     let filename: string;
     try {
       filename = await resolver.resolveMetadata('audit.json');
+      const stat = await lstat(filename);
+      if (!stat.isFile() || stat.size > AUDIT_MAX_BYTES) throw new Error('Invalid audit file or size.');
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') return [];
       throw error;
     }
-    const file = await open(filename, 'r').catch((error: NodeJS.ErrnoException) => {
-      if (error.code === 'ENOENT') return null;
-      throw error;
-    });
+    const file = await open(filename, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK).catch(
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      },
+    );
     if (!file) return [];
     try {
       const stat = await file.stat();

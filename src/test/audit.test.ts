@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -111,6 +111,15 @@ describe('bounded local audit schema', () => {
       });
       expect(await readFile(path.join(root, 'audit.json'), 'utf8')).toBe(content);
     }
+  });
+
+  it('rejects a non-file before attempting to read it', async () => {
+    await mkdir(path.join(root, 'audit.json'));
+    expect(await createAuditStore(resolver, () => clock).record('protection.lock', 'succeeded')).toEqual({
+      recorded: false,
+      reason: 'storage-failure',
+    });
+    expect(await readdir(root)).toEqual(['audit.json']);
   });
 
   it('prunes old and future timestamps and retains only the newest 1000 entries', async () => {

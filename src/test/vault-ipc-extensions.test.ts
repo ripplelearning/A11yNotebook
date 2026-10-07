@@ -318,6 +318,30 @@ describe('extended vault IPC integration', () => {
     ]);
   });
 
+  it('audits recovery preparation, cancellation, migration, password reset and revocation without keys', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'recovery-audit-test-password');
+    const discarded = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'recovery-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'recovery-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'replacement-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, 'replacement-audit-test-password');
+    const text = await readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8');
+    expect(text).not.toContain(discarded);
+    expect(text).not.toContain(recoveryKey);
+    expect(text).not.toMatch(/recovery-audit-test-password|replacement-audit-test-password/);
+    const log = JSON.parse(text) as { entries: { operation: string; outcome: string }[] };
+    expect(log.entries.filter(({ operation }) => operation.startsWith('recovery.'))).toEqual([
+      expect.objectContaining({ operation: 'recovery.prepare', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.commit', outcome: 'cancelled' }),
+      expect.objectContaining({ operation: 'recovery.prepare', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.commit', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.reset-password', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.revoke', outcome: 'succeeded' }),
+    ]);
+  });
+
   it('rejects an untrusted audited call without adding an entry', async () => {
     await expect(mock.handlers.get(IPC_CHANNELS.vaultSecuritySetup)!({}, 'test-password')).rejects.toThrow(
       'Untrusted IPC sender',
