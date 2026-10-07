@@ -591,7 +591,8 @@ export function setupVaultIpc(
           .replace(/[. ]+$/g, '')
           .trim()
           .slice(0, 100) || 'Web capture';
-      const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}.md`;
+      const filenameTitle = safeTitle.startsWith('.') ? `Web capture ${safeTitle}` : safeTitle;
+      const notePath = `${noteDirectory}${filenameTitle}-${captureId.slice(0, 8)}.md`;
       const content = `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
       await vault.createNote(notePath, content);
       noteCreated = true;
