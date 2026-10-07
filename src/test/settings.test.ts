@@ -19,4 +19,16 @@ describe('settings and shortcut validation', () => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, autosaveDelay: -1 })).toThrow();
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { bad: 'Ctrl+T' } })).toThrow();
   });
+  it('validates idle and unsaved-edit lock timeouts with legacy defaults', () => {
+    expect(validateSettings({ ...DEFAULT_SETTINGS, vaultLockMinutes: 0, noteEditLockMinutes: 10 })).toMatchObject({
+      vaultLockMinutes: 0,
+      noteEditLockMinutes: 10,
+    });
+    expect(validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} })).toMatchObject({
+      vaultLockMinutes: 15,
+      noteEditLockMinutes: 0,
+    });
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, vaultLockMinutes: 241 })).toThrow();
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, noteEditLockMinutes: -1 })).toThrow();
+  });
 });

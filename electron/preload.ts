@@ -54,6 +54,17 @@ const CHANNELS: typeof SharedChannels = {
   vaultAssetCreate: 'vault:asset-create',
   vaultFlashcardsGet: 'vault:flashcards-get',
   vaultFlashcardsSave: 'vault:flashcards-save',
+  vaultSecurityStatus: 'vault:security-status',
+  vaultSecuritySetup: 'vault:security-setup',
+  vaultSecurityUnlock: 'vault:security-unlock',
+  vaultSecurityLock: 'vault:security-lock',
+  vaultNoteEncrypt: 'vault:note-encrypt',
+  vaultNoteEncryptionStatus: 'vault:note-encryption-status',
+  vaultCredentialsRead: 'vault:credentials-read',
+  vaultCredentialsSave: 'vault:credentials-save',
+  vaultCredentialsDelete: 'vault:credentials-delete',
+  vaultCaptureWeb: 'vault:capture-web',
+  vaultSecurityLocked: 'vault:security-locked',
 };
 
 function subscribe<T>(
@@ -61,7 +72,8 @@ function subscribe<T>(
     | typeof CHANNELS.updaterStatus
     | typeof CHANNELS.menuCommand
     | typeof CHANNELS.vaultChanged
-    | typeof CHANNELS.vaultReminderEvent,
+    | typeof CHANNELS.vaultReminderEvent
+    | typeof CHANNELS.vaultSecurityLocked,
   callback: (value: T) => void,
 ) {
   // Never hand the raw IpcRendererEvent (which exposes the sender) to the page.
@@ -83,7 +95,7 @@ const bridge: NotebookBridge = {
   vault: {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
-    readNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath),
+    readNote: (relativePath, password) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath, password),
     saveNote: (relativePath, content, expectedContent) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveNote, relativePath, content, expectedContent),
     createNotebook: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultCreateNotebook, relativePath),
@@ -115,6 +127,19 @@ const bridge: NotebookBridge = {
     getFlashcardSchedules: (relative) => ipcRenderer.invoke(CHANNELS.vaultFlashcardsGet, relative),
     saveFlashcardSchedule: (relative, id, schedule, expected) =>
       ipcRenderer.invoke(CHANNELS.vaultFlashcardsSave, relative, id, schedule, expected),
+    getSecurityStatus: () => ipcRenderer.invoke(CHANNELS.vaultSecurityStatus),
+    setupVaultPassword: (password) => ipcRenderer.invoke(CHANNELS.vaultSecuritySetup, password),
+    unlockVault: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityUnlock, password),
+    lockVault: () => ipcRenderer.invoke(CHANNELS.vaultSecurityLock),
+    encryptNote: (relative, expected, password) =>
+      ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected, password),
+    isNoteEncrypted: (relative) => ipcRenderer.invoke(CHANNELS.vaultNoteEncryptionStatus, relative),
+    readCredentials: () => ipcRenderer.invoke(CHANNELS.vaultCredentialsRead),
+    saveCredential: (id, username, password) =>
+      ipcRenderer.invoke(CHANNELS.vaultCredentialsSave, id, username, password),
+    deleteCredential: (id) => ipcRenderer.invoke(CHANNELS.vaultCredentialsDelete, id),
+    captureWeb: (url, notebookPath) => ipcRenderer.invoke(CHANNELS.vaultCaptureWeb, url, notebookPath),
+    onSecurityLocked: (callback) => subscribe<boolean>(CHANNELS.vaultSecurityLocked, () => callback()),
     reveal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReveal, relativePath),
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),

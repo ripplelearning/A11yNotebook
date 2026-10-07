@@ -16,6 +16,8 @@ const mock = vi.hoisted(() => ({
   failReminderWrite: false,
   partialRepairWrite: false,
   failRecentWrite: false,
+  delayCredentialWrites: false,
+  captureTitle: '.Research',
   notificationsSupported: false,
   notifications: [] as { emit: (event: string) => void }[],
   reminderEvents: [] as unknown[],
@@ -106,8 +108,26 @@ vi.mock('../../electron/vault/metadata', async (importOriginal) => {
             mock.failReminderWrite = false;
             throw new Error('Reminder migration failed.');
           }
+          if (name === 'credentials.json' && mock.delayCredentialWrites)
+            await new Promise((resolve) => setTimeout(resolve, 20));
           return store.write(name, value);
         },
+      };
+    },
+  };
+});
+
+vi.mock('../../electron/vault/web-capture', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/web-capture')>();
+  return {
+    ...actual,
+    captureWebPage: async (url: string) => {
+      actual.validateCaptureUrl(url);
+      return {
+        sourceUrl: 'https://example.org/',
+        title: mock.captureTitle,
+        markdown: 'Captured content',
+        images: [],
       };
     },
   };
@@ -127,6 +147,8 @@ beforeEach(async () => {
   mock.failReminderWrite = false;
   mock.partialRepairWrite = false;
   mock.failRecentWrite = false;
+  mock.delayCredentialWrites = false;
+  mock.captureTitle = '.Research';
   mock.notificationsSupported = false;
   mock.notifications = [];
   mock.reminderEvents = [];
@@ -213,6 +235,107 @@ describe('extended vault IPC integration', () => {
       }),
     );
   });
+  it('locks a password-protected vault and encrypts notes with note-specific passwords and credentials', async () => {
+    const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: false });
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password');
+    const encryptedOnDisk = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    expect(encryptedOnDisk).not.toContain('alpha');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe(original);
+    await expect(invoke(IPC_CHANNELS.vaultSearch, { text: 'alpha' })).resolves.toEqual([]);
+
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'example', 'alice', 'secret');
+    expect(await readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).not.toContain('secret');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'example', username: 'alice', password: 'secret' },
+    ]);
+
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+    expect(((await invoke(IPC_CHANNELS.vaultGet)) as { entries: unknown[] }).entries).toEqual([]);
+    await writeFile(path.join(mock.root, 'Private.png'), new Uint8Array([1, 2, 3]));
+    expect((await mock.protocol!({ url: 'vault-file://attachment/Private.png' })).status).toBe(423);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/Unlock the vault/);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow(
+      /Incorrect vault password/,
+    );
+    const reopened = await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    expect(reopened).toEqual(expect.objectContaining({ path: mock.root }));
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/note’s password/);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md', 'wrong note password')).rejects.toThrow(
+      /Incorrect note password/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md', 'note-specific password')).resolves.toBe(original);
+    await invoke(IPC_CHANNELS.vaultSaveNote, 'Topic.md', '# Updated\n', original);
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
+  });
+  it('keeps concurrent credential updates in one read-modify-write sequence', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    mock.delayCredentialWrites = true;
+    await Promise.all([
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'first', 'alice', 'first-secret'),
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'second', 'bob', 'second-secret'),
+    ]);
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual(
+      expect.arrayContaining([
+        { id: 'first', username: 'alice', password: 'first-secret' },
+        { id: 'second', username: 'bob', password: 'second-secret' },
+      ]),
+    );
+  });
+  it('does not apply password setup to a vault selected during key derivation', async () => {
+    const setup = invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    const originalRoot = mock.root;
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    await writeFile(path.join(mock.root, 'Other.md'), '# Other\n');
+    const open = invoke(IPC_CHANNELS.vaultOpen);
+    await Promise.all([setup, open]);
+    expect(await invoke(IPC_CHANNELS.vaultGet)).toEqual(expect.objectContaining({ path: mock.root }));
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).rejects.toThrow();
+    const savedConfig = JSON.parse(await readFile(path.join(originalRoot, '.a11ynotebook', 'security.json'), 'utf8'));
+    expect(savedConfig.version).toBe(1);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: false, locked: false });
+  });
+  it('does not install an unlock key in a newly selected vault', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    const otherRoot = path.join(temporary, 'other-protected-vault');
+    await mkdir(otherRoot);
+    await mkdir(path.join(otherRoot, '.a11ynotebook'));
+    const { createVaultSecurityConfig } = await import('../../electron/vault/security');
+    const { config, key } = await createVaultSecurityConfig('another correct password');
+    key.fill(0);
+    await writeFile(path.join(otherRoot, '.a11ynotebook', 'security.json'), JSON.stringify(config));
+    mock.root = otherRoot;
+    const unlocking = invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    const opening = invoke(IPC_CHANNELS.vaultOpen);
+    await Promise.all([unlocking, opening]);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+  });
+  it('does not finish an unlock after a newer lock request', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    const unlocking = invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(unlocking).rejects.toThrow(/changed while unlocking/);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toEqual({ enabled: true, locked: true });
+  });
+  it('creates captured notes with visible filenames when the remote title starts with dots', async () => {
+    await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '');
+    const vault = (await invoke(IPC_CHANNELS.vaultGet)) as { entries: { name: string }[] };
+    expect(vault.entries.some(({ name }) => /^Research-[\da-f]{8}\.md$/i.test(name))).toBe(true);
+    expect((await readdir(mock.root)).some((name) => name.startsWith('.Research'))).toBe(false);
+  });
+  it('rejects unsafe web capture destinations and paths before network access', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '')).rejects.toThrow(/HTTPS/);
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside')).rejects.toThrow(
+      /valid inside this vault/,
+    );
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 42, '')).rejects.toThrow(/Invalid web capture request/);
+  });
   it('rejects untrusted senders on every registered channel', async () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');
   });
@@ -249,9 +372,23 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultReadAttachment, '../outside.txt')).rejects.toThrow();
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');
   });
-  it('serves only validated raster images through the protocol', async () => {
+  it('serves validated raster and PDF documents through the protocol', async () => {
     await writeFile(path.join(mock.root, 'Photo.png'), new Uint8Array([1, 2, 3]));
+    await writeFile(
+      path.join(mock.root, 'Guide.pdf'),
+      Buffer.from(
+        '%PDF-1.7\n1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n3 0 obj << /Type /Page /Parent 2 0 R /Contents 4 0 R >> endobj\n4 0 obj << /Length 21 >> stream\nBT (Guide text) Tj ET\nendstream endobj\n',
+        'latin1',
+      ),
+    );
     expect((await mock.protocol!({ url: 'vault-file://attachment/Photo.png' })).status).toBe(200);
+    const documentResponse = await mock.protocol!({ url: 'vault-file://attachment/Guide.pdf' });
+    expect(documentResponse.status).toBe(200);
+    expect(documentResponse.headers.get('Content-Type')).toBe('application/pdf');
+    await expect(invoke(IPC_CHANNELS.vaultReadAttachment, 'Guide.pdf')).resolves.toMatchObject({
+      kind: '.pdf',
+      pages: ['Guide text'],
+    });
     expect((await mock.protocol!({ url: 'vault-file://attachment/Topic.md' })).status).toBe(415);
     expect((await mock.protocol!({ url: 'vault-file://attachment/%2e%2e/Photo.png' })).status).toBe(404);
     await symlink(path.join(mock.root, 'Photo.png'), path.join(mock.root, 'Escape.png'));

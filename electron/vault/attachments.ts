@@ -10,6 +10,11 @@ export const IMAGE_TYPES: Record<string, string> = {
   '.bmp': 'image/bmp',
 };
 
+export const DOCUMENT_TYPES: Record<string, string> = {
+  '.pdf': 'application/pdf',
+  '.epub': 'application/epub+zip',
+};
+
 export function protocolPath(url: string): string {
   const match = /^vault-file:\/\/attachment\/([^?#]+)$/.exec(url);
   if (!match) throw new Error('Invalid attachment URL.');

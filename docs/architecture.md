@@ -75,7 +75,18 @@ is installed. `flashcards.json` maps deck paths and question/answer fingerprints
 `image-alts.json` stores image descriptions. `settings.json` stores appearance/autosave/shortcut overrides, with
 app userData defaults. Metadata operations reject symlink directories/files and atomically replace JSON.
 
-The `vault-file://attachment/` protocol serves only bounded, validated raster-image bytes with no-store/nosniff.
-HTML is read through validated IPC, sanitized with existing DOMPurify, and put into a sandboxed srcdoc frame with
-its own default-src-none policy. The production CSP permits local frames and this image scheme, not remote resources.
-PDF/ePub workers, encrypted data formats, and web capture are not implemented; no new runtime dependencies were added.
+The `vault-file://attachment/` protocol serves bounded, validated raster images and inline PDF bytes with
+no-store/nosniff. HTML is sanitized with existing DOMPurify and put into a sandboxed srcdoc frame. PDF text
+extraction handles common literal/hex strings in uncompressed and Flate streams; PDF rendering uses the bundled
+Chromium viewer when available. ePub extraction reads bounded stored/deflate ZIP entries in spine order. These
+format handlers use Node built-ins rather than bundled pdf.js/epub.js workers and are not complete replacements for
+those libraries. User-initiated web capture accepts public HTTPS destinations, pins resolved public IPs for requests,
+limits response/image sizes and redirects, strips active HTML, and stores downloaded raster images as attachments.
+
+`electron/vault/security.ts` derives vault and per-note keys with scrypt and encrypts selected notes and the credentials
+store with AES-256-GCM. Unlocked keys remain only in main-process memory and are cleared on vault lock or switch.
+Typed IPC gates vault operations when password protection is enabled and the vault is locked. Idle lock and
+unsaved-edit lock delays are validated settings.
+Password protection is an access lock, not whole-vault encryption: unmarked notes, the search index, other metadata,
+and filesystem names remain plaintext. Individually encrypted notes use separate scrypt-derived passwords. Full
+PDF.js/ePub.js fidelity and guaranteed memory erasure are not provided.

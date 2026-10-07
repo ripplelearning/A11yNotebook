@@ -11,9 +11,15 @@ afterEach(() => {
   delete window.a11yNotebook;
 });
 
-function setup(customBold = false) {
+function setup(
+  customBold = false,
+  noteEditLockMinutes = 0,
+  protectedVault = false,
+  settingsAfterUnlock: typeof DEFAULT_SETTINGS = DEFAULT_SETTINGS,
+) {
   let content = '# Note\n\ntext';
   let listener: (event: VaultChangedEvent) => void = () => undefined;
+  let settingsReadCount = 0;
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
@@ -40,11 +46,18 @@ function setup(customBold = false) {
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
-      getSettings: vi.fn(async () => ({
-        ...DEFAULT_SETTINGS,
-        autosaveDelay: 0,
-        shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
-      })),
+      getSettings: vi.fn(async () => {
+        settingsReadCount += 1;
+        return {
+          ...DEFAULT_SETTINGS,
+          autosaveDelay: 0,
+          noteEditLockMinutes,
+          shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
+          ...(protectedVault && settingsReadCount > 1 ? settingsAfterUnlock : {}),
+        };
+      }),
+      getSecurityStatus: vi.fn(async () => ({ enabled: protectedVault, locked: protectedVault })),
+      unlockVault: vi.fn(async () => vault),
       onChanged: (callback) => {
         listener = callback;
         return () => undefined;
@@ -155,6 +168,36 @@ describe('feature wiring in the application shell', () => {
     expect(editor).toHaveValue('# Note\n\ntext');
     fireEvent.keyDown(editor, { key: 'b', ctrlKey: true, altKey: true });
     await waitFor(() => expect(editor).toHaveValue('# Note\n\n**text**'));
+  });
+  it('keeps a timed-out dirty note locked after switching tabs', async () => {
+    setup(false, 1);
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Note.md/ }));
+    await screen.findByRole('heading', { name: 'Note', level: 2 });
+    vi.useFakeTimers();
+    try {
+      fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+      const editor = screen.getByRole('textbox', { name: 'Markdown source' });
+      fireEvent.change(editor, { target: { value: 'unsaved change' } });
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Welcome' }));
+      fireEvent.click(screen.getByRole('tab', { name: /Note/ }));
+      fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+      expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+  it('reloads settings after unlocking a protected vault', async () => {
+    const afterUnlock = { ...DEFAULT_SETTINGS, theme: 'dark' as const };
+    const { bridge } = setup(false, 0, true, afterUnlock);
+    await screen.findByRole('dialog', { name: 'Vault locked' });
+    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'correct horse battery' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+    await waitFor(() => expect(bridge.vault.getSettings).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+    expect(screen.queryByRole('dialog', { name: 'Vault locked' })).not.toBeInTheDocument();
   });
   it('queries the index after debounce and does not scan note contents in the renderer', async () => {
     const { bridge } = setup();
