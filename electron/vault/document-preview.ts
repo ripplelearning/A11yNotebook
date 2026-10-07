@@ -55,11 +55,78 @@ function extractTextOperators(source: string) {
   return output.join(' ').replace(/\s+/g, ' ').trim();
 }
 
+function extractPdfStream(object: string, remainingBytes: number) {
+  const match = /<<(.*?)>>\s*stream\r?\n/gims.exec(object);
+  if (!match) return;
+  const start = match.index + match[0].length;
+  const end = object.indexOf('endstream', start);
+  if (end < 0 || end - start > remainingBytes) return;
+  const data = Buffer.from(object.slice(start, end), 'latin1');
+  if (match[1].includes('/FlateDecode')) {
+    try {
+      const inflated = inflateSync(data, { maxOutputLength: remainingBytes });
+      return { content: inflated.toString('latin1'), bytes: inflated.length };
+    } catch {
+      return;
+    }
+  }
+  return { content: data.toString('latin1'), bytes: data.length };
+}
+
 export function extractPdfPages(bytes: Buffer): string[] {
   if (bytes.length > MAX_DOCUMENT_BYTES || !bytes.subarray(0, 1024).toString('latin1').includes('%PDF-')) {
     throw new Error('This PDF is invalid or too large to preview.');
   }
   const source = bytes.toString('latin1');
+  const objects = new Map<number, string>();
+  const orderedObjects: { id: number; body: string }[] = [];
+  for (const match of source.matchAll(/(\d+)\s+\d+\s+obj\b([\s\S]*?)endobj/g)) {
+    const object = { id: Number(match[1]), body: match[2] };
+    objects.set(object.id, object.body);
+    orderedObjects.push(object);
+  }
+  const pageTree = orderedObjects.find(({ body }) => /\/Type\s*\/Catalog\b/.test(body));
+  const pagesRoot = pageTree && /\/Pages\s+(\d+)\s+\d+\s+R/.exec(pageTree.body)?.[1];
+  const pageObjects: string[] = [];
+  const visited = new Set<number>();
+  const visitPageTree = (id: number) => {
+    if (visited.has(id)) return;
+    visited.add(id);
+    const object = objects.get(id);
+    if (!object) return;
+    if (/\/Type\s*\/Page\b/.test(object)) {
+      pageObjects.push(object);
+      return;
+    }
+    const kids = /\/Kids\s*\[([\s\S]*?)\]/.exec(object)?.[1];
+    if (kids) {
+      for (const child of kids.matchAll(/(\d+)\s+\d+\s+R/g)) visitPageTree(Number(child[1]));
+    }
+  };
+  if (pagesRoot) visitPageTree(Number(pagesRoot));
+  if (!pageObjects.length) {
+    pageObjects.push(...orderedObjects.filter(({ body }) => /\/Type\s*\/Page\b/.test(body)).map(({ body }) => body));
+  }
+
+  if (pageObjects.length) {
+    let extractedBytes = 0;
+    const pages = pageObjects.slice(0, 200).map((page) => {
+      const contents = /\/Contents\s*(\[[\s\S]*?\]|\d+\s+\d+\s+R)/.exec(page)?.[1] ?? '';
+      const streams: string[] = [];
+      for (const reference of contents.matchAll(/(\d+)\s+\d+\s+R/g)) {
+        if (extractedBytes >= MAX_EXTRACTED_BYTES) break;
+        const object = objects.get(Number(reference[1]));
+        if (!object) continue;
+        const stream = extractPdfStream(object, MAX_EXTRACTED_BYTES - extractedBytes);
+        if (!stream) continue;
+        extractedBytes += stream.bytes;
+        streams.push(stream.content);
+      }
+      return extractTextOperators(streams.join('\n'));
+    });
+    return pages;
+  }
+
   const streams: string[] = [];
   const streamPattern = /<<(.*?)>>\s*stream\r?\n/gims;
   let extractedBytes = 0;

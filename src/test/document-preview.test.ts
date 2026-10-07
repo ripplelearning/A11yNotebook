@@ -56,6 +56,22 @@ describe('PDF and ePub extraction', () => {
     expect(extractPdfPages(pdf)).toEqual(['FirstSecond)part']);
   });
 
+  it('extracts referenced PDF content streams in page-tree order', () => {
+    const pdf = Buffer.from(
+      '%PDF-1.7\n' +
+        '1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n' +
+        '2 0 obj << /Type /Pages /Kids [4 0 R 3 0 R] /Count 2 >> endobj\n' +
+        '3 0 obj << /Type /Page /Contents [8 0 R 9 0 R] >> endobj\n' +
+        '4 0 obj << /Type /Page /Contents 6 0 R >> endobj\n' +
+        '5 0 obj << /Length 15 >> stream\nBT (Unreferenced) Tj ET\nendstream endobj\n' +
+        '6 0 obj << /Length 16 >> stream\nBT (Second page) Tj ET\nendstream endobj\n' +
+        '8 0 obj << /Length 11 >> stream\nBT (First ) Tj ET\nendstream endobj\n' +
+        '9 0 obj << /Length 10 >> stream\nBT (page) Tj ET\nendstream endobj\n',
+      'latin1',
+    );
+    expect(extractPdfPages(pdf)).toEqual(['Second page', 'First page']);
+  });
+
   it('extracts ePub content in package spine order and decodes entities', () => {
     const epub = storedZip({
       'META-INF/container.xml': '<container><rootfile full-path="OPS/book.opf"/></container>',
