@@ -30,6 +30,7 @@ const mock = vi.hoisted(() => ({
   securityWriteGate: undefined as undefined | (() => Promise<void>),
   saveDialogGate: undefined as undefined | (() => Promise<void>),
   failAuditWrite: false,
+  auditWriteGate: undefined as undefined | (() => Promise<void>),
   messages: [] as { title?: string; message?: string }[],
   savePath: '',
   saveCanceled: false,
@@ -59,7 +60,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       return actual.writeFile(...args);
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
-      if (mock.failAuditWrite && String(args[1]).endsWith('audit.json')) throw new Error('Audit storage unavailable.');
+      if (String(args[1]).endsWith('audit.json')) {
+        if (mock.failAuditWrite) throw new Error('Audit storage unavailable.');
+        await mock.auditWriteGate?.();
+      }
       return actual.rename(...args);
     },
   };
@@ -242,6 +246,7 @@ beforeEach(async () => {
   mock.securityWriteGate = undefined;
   mock.saveDialogGate = undefined;
   mock.failAuditWrite = false;
+  mock.auditWriteGate = undefined;
   mock.messages = [];
   mock.saveCanceled = false;
   mock.saveOptions = undefined;
@@ -349,6 +354,25 @@ describe('extended vault IPC integration', () => {
     await expect(readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8')).rejects.toMatchObject({
       code: 'ENOENT',
     });
+  });
+
+  it('withholds decrypted credentials if locking occurs during audit persistence', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'test-id', 'test-user', 'test-value');
+    const started = deferred();
+    const resume = deferred();
+    mock.auditWriteGate = async () => {
+      started.resolve();
+      await resume.promise;
+    };
+    const reading = invoke(IPC_CHANNELS.vaultCredentialsRead);
+    await started.promise;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ locked: true });
+    resume.resolve();
+    await expect(reading).rejects.toThrow(/Unlock|withheld/);
+    await locking;
   });
 
   it('rejects a symlink audit destination without following it or undoing protection setup', async () => {

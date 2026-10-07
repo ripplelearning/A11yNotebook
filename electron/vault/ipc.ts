@@ -582,12 +582,13 @@ export function setupVaultIpc(
     ipcMain.handle(channel, async (event, ...args: unknown[]) => {
       assertTrusted(event, isTrustedSender, true);
       const vault = requireService();
+      const generation = securityGeneration;
       let store = auditStores.get(vault);
       if (!store) {
         store = createAuditStore(vault);
         auditStores.set(vault, store);
       }
-      return runAudited(
+      const result = await runAudited(
         store,
         operation,
         (audit) => handler(audit, event, ...args),
@@ -603,6 +604,16 @@ export function setupVaultIpc(
           });
         },
       );
+      if (
+        ['credentials.read', 'recovery.prepare', 'protection.unlock', 'recovery.reset-password'].includes(operation)
+      ) {
+        if (service !== vault || securityGeneration !== generation)
+          throw new Error(
+            'The operation completed, but the vault or lock state changed. Its response was withheld; check the current vault state before repeating it.',
+          );
+        assertTrusted(event, isTrustedSender);
+      }
+      return result;
     });
   };
   ipcMain.handle(IPC_CHANNELS.vaultSecurityStatus, async (event) => {
