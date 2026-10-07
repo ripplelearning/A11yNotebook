@@ -22,10 +22,23 @@ describe('web capture conversion and URL validation', () => {
 
   it('accepts only public HTTPS URLs without credentials or nonstandard ports', () => {
     expect(validateCaptureUrl('https://example.org/article')).toBe('https://example.org/article');
+    expect(validateCaptureUrl('https://8.8.8.8/')).toBe('https://8.8.8.8/');
+    expect(validateCaptureUrl('https://[2606:4700:4700::1111]/')).toBe('https://[2606:4700:4700::1111]/');
     for (const url of [
       'http://example.org/',
       'https://localhost/',
       'https://127.0.0.1/',
+      'https://192.0.0.1/',
+      'https://192.0.2.1/',
+      'https://198.51.100.1/',
+      'https://203.0.113.1/',
+      'https://[::1]/',
+      'https://[::ffff:127.0.0.1]/',
+      'https://[fc00::1]/',
+      'https://[fe80::1]/',
+      'https://[2001:db8::1]/',
+      'https://[2002::1]/',
+      'https://[3fff::1]/',
       '******example.org/',
       'https://example.org:8443/',
     ]) {
