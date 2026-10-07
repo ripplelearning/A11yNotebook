@@ -8,7 +8,8 @@ Markdown and HTML note content are sanitized in the renderer; HTML attachment pr
 protocol serves bounded local raster, PDF, and ePub data with nosniff and no-store. PDF.js uses a bundled worker;
 epub.js processes the local archive as accessible text without rendering book markup or loading remote resources.
 Web capture is an explicit user action:
-main-process requests require public HTTPS DNS addresses, pin an address for each request, revalidate redirects,
+main-process requests require globally routable unicast addresses for both URL literals and DNS results, reject
+special-purpose/reserved ranges and IPv4-mapped IPv6 addresses, pin an address for each request, revalidate redirects,
 and bound page/image sizes. Both capture formats use the same URL checks and deadlines. HTML capture is sanitized in
 the main process with an allowlist; it contains no scripts, handlers, forms, or remote resources. Only downloaded
 raster images with descriptions are localized, and failures are reported.
@@ -31,6 +32,10 @@ the main process. Version-1 `security.json` stores only the salt and an AES-GCM-
 caches the key until manual lock, configured idle timeout, vault switch, or application exit; locks clear the Buffer and
 the renderer clears open notes, search results, credentials, and other content state. JavaScript cannot guarantee
 that every copy in memory is erased.
+
+Queued security and credential operations retain their initiating vault and recheck authorization when they execute.
+Lock requests invalidate in-flight unlock derivations; discarded keys are wiped. Attachment reads and web captures
+recheck vault/lock identity before returning bytes or committing downloaded content.
 
 Notes are encrypted only after the user selects **Encrypt note** and supplies a separate note password. Their `.md`
 or `.html` file then contains a versioned AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random salt and stable
@@ -66,7 +71,8 @@ without those note passwords. Recovery is not whole-vault encryption, and it doe
 plaintext metadata from direct filesystem access.
 
 Vault idle lock defaults to 15 minutes and can be disabled or set from 1–240 minutes. The optional unsaved-edit
-timeout changes the editor to read-only and requires saving before editing again. This edit timeout is an interface
+timeout changes the editor to read-only and requires a successful save before editing again, even after switching tabs.
+Settings are reloaded after vault unlock; a settings-read failure does not undo a successful unlock. This edit timeout is an interface
 guard, not a substitute for OS-level access control.
 
 The note-encryption dialog can generate a cryptographically random note password. Copying a generated password starts a
@@ -101,3 +107,7 @@ HTML and downloads only supported raster images. HTML task IDs and scheduling me
 are not a security boundary. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles
 through the OS notification UI. Clipboard auto-clear applies only to generated note passwords copied from the
 encryption dialog, not arbitrary text or other secrets.
+
+The separate bounded PDF text extractor used by search follows page-tree/content-reference order for simple PDFs,
+preserves blank pages, and ignores unreferenced streams. Unstructured input falls back to document-level text; it is
+not a replacement for the PDF.js reader and does not support all PDF object streams, encodings, or filters.

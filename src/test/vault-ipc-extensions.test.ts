@@ -22,6 +22,10 @@ const mock = vi.hoisted(() => ({
   failRecentWrite: false,
   failSecurityWriteAt: 0,
   securityWriteCount: 0,
+  derivationGate: undefined as undefined | (() => Promise<void>),
+  derivedKeys: [] as Buffer[],
+  captureGate: undefined as undefined | (() => Promise<void>),
+  attachmentReadGate: undefined as undefined | (() => Promise<void>),
   savePath: '',
   saveCanceled: false,
   saveOptions: undefined as unknown,
@@ -35,6 +39,10 @@ vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
     ...actual,
+    readFile: async (...args: Parameters<typeof actual.readFile>) => {
+      if (String(args[0]).endsWith('Private.png')) await mock.attachmentReadGate?.();
+      return actual.readFile(...args);
+    },
     writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
       if (mock.failRecentWrite && String(args[0]).endsWith('recent-vault.json'))
         throw new Error('Recent-vault persistence failed.');
@@ -44,6 +52,44 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         throw Object.assign(new Error('Partial write: disk full.'), { code: 'ENOSPC' });
       }
       return actual.writeFile(...args);
+    },
+  };
+});
+
+vi.mock('../../electron/vault/security', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/security')>();
+  return {
+    ...actual,
+    createVaultSecurityConfig: async (...args: Parameters<typeof actual.createVaultSecurityConfig>) => {
+      const result = await actual.createVaultSecurityConfig(...args);
+      mock.derivedKeys.push(result.key);
+      await mock.derivationGate?.();
+      return result;
+    },
+    unlockVault: async (...args: Parameters<typeof actual.unlockVault>) => {
+      const key = await actual.unlockVault(...args);
+      mock.derivedKeys.push(key);
+      await mock.derivationGate?.();
+      return key;
+    },
+  };
+});
+
+vi.mock('../../electron/vault/web-capture', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../electron/vault/web-capture')>();
+  return {
+    ...actual,
+    captureWebPage: async (url: string) => {
+      actual.validateCaptureUrl(url);
+      await mock.captureGate?.();
+      return {
+        sourceUrl: url,
+        title: '.Research',
+        markdown: 'Captured content',
+        html: '<h1>Research</h1>',
+        images: [],
+        omittedImages: 0,
+      };
     },
   };
 });
@@ -142,6 +188,14 @@ let temporary = '';
 const trusted = {};
 const invoke = (channel: string, ...args: unknown[]) => mock.handlers.get(channel)!(trusted, ...args);
 
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 beforeEach(async () => {
   vi.resetModules();
   mock.handlers.clear();
@@ -154,6 +208,10 @@ beforeEach(async () => {
   mock.failRecentWrite = false;
   mock.failSecurityWriteAt = 0;
   mock.securityWriteCount = 0;
+  mock.derivationGate = undefined;
+  mock.derivedKeys = [];
+  mock.captureGate = undefined;
+  mock.attachmentReadGate = undefined;
   mock.saveCanceled = false;
   mock.saveOptions = undefined;
   mock.notificationsSupported = false;
@@ -445,6 +503,148 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
   });
+  it.each([false, true])(
+    'serializes concurrent credential saves, reads and deletes (recovery envelope: %s)',
+    async (recovery) => {
+      await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+      if (recovery) {
+        await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+        await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+      }
+      await Promise.all([
+        invoke(IPC_CHANNELS.vaultCredentialsSave, 'first', 'alice', 'first-secret'),
+        invoke(IPC_CHANNELS.vaultCredentialsSave, 'second', 'bob', 'second-secret'),
+      ]);
+      const saving = invoke(IPC_CHANNELS.vaultCredentialsSave, 'third', 'carol', 'third-secret');
+      const deleting = invoke(IPC_CHANNELS.vaultCredentialsDelete, 'first');
+      const reading = invoke(IPC_CHANNELS.vaultCredentialsRead);
+      await Promise.all([saving, deleting]);
+      await expect(reading).resolves.toEqual([
+        { id: 'second', username: 'bob', password: 'second-secret' },
+        { id: 'third', username: 'carol', password: 'third-secret' },
+      ]);
+    },
+  );
+
+  it('rejects password setup queued for a vault that has since changed', async () => {
+    const original = mock.root;
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    const opening = invoke(IPC_CHANNELS.vaultOpen);
+    await Promise.resolve();
+    const setup = invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await Promise.all([opening, expect(setup).rejects.toThrow(/changed/)]);
+    for (const root of [original, mock.root])
+      await expect(readFile(path.join(root, '.a11ynotebook', 'security.json'), 'utf8')).rejects.toThrow();
+  });
+
+  it('keeps password setup on its original vault when a switch is requested during derivation', async () => {
+    const original = mock.root;
+    const entered = deferred();
+    const release = deferred();
+    mock.derivationGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const setup = invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await entered.promise;
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    const opening = invoke(IPC_CHANNELS.vaultOpen);
+    release.resolve();
+    await Promise.all([setup, opening]);
+    expect(JSON.parse(await readFile(path.join(original, '.a11ynotebook', 'security.json'), 'utf8')).version).toBe(2);
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8')).rejects.toThrow();
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ enabled: false, locked: false });
+  });
+
+  it('cancels an in-flight unlock on a newer lock request and wipes its derived key', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    const entered = deferred();
+    const release = deferred();
+    mock.derivationGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const unlocking = invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    await entered.promise;
+    const rejected = expect(unlocking).rejects.toThrow(/changed/);
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release.resolve();
+    await Promise.all([rejected, locking]);
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ enabled: true, locked: true });
+  });
+
+  it('rejects credential operations queued behind a vault switch', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'original', 'alice', 'secret');
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    const opening = invoke(IPC_CHANNELS.vaultOpen);
+    await Promise.resolve();
+    const queued = [
+      invoke(IPC_CHANNELS.vaultCredentialsRead),
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'wrong-vault', 'bob', 'secret'),
+      invoke(IPC_CHANNELS.vaultCredentialsDelete, 'original'),
+    ];
+    await Promise.all([opening, ...queued.map((operation) => expect(operation).rejects.toThrow(/changed/))]);
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'credentials.json'), 'utf8')).rejects.toThrow();
+  });
+
+  it('does not serve attachment bytes after the vault locks during a read', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await writeFile(path.join(mock.root, 'Private.png'), Buffer.from('private-image'));
+    const entered = deferred();
+    const release = deferred();
+    mock.attachmentReadGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const reading = mock.protocol!({ url: 'vault-file://attachment/Private.png' });
+    await entered.promise;
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    release.resolve();
+    const response = await reading;
+    expect(response.status).toBe(423);
+    expect(await response.text()).not.toContain('private-image');
+  });
+
+  it.each(['markdown', 'html'])('creates visible capture notes for dot-prefixed titles (%s)', async (format) => {
+    const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '', format)) as {
+      notePath: string;
+      vault: { entries: { path: string }[] };
+    };
+    expect(result.notePath).toMatch(/^Research-.*\.(?:md|html)$/);
+    expect(result.vault.entries).toContainEqual(expect.objectContaining({ path: result.notePath }));
+  });
+
+  it.each(['lock', 'switch'])('rejects a web capture if vault access changes during download (%s)', async (change) => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    const original = mock.root;
+    const entered = deferred();
+    const release = deferred();
+    mock.captureGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const capture = invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '', 'markdown');
+    await entered.promise;
+    const rejected = expect(capture).rejects.toThrow(/Unlock|changed/);
+    if (change === 'lock') await invoke(IPC_CHANNELS.vaultSecurityLock);
+    else {
+      mock.root = path.join(temporary, 'other-vault');
+      await mkdir(mock.root);
+      await invoke(IPC_CHANNELS.vaultOpen);
+    }
+    release.resolve();
+    await rejected;
+    expect((await readdir(original)).some((name) => name.startsWith('Research-') || name === 'Attachments')).toBe(
+      false,
+    );
+  });
+
   it('atomically migrates credentials to a recovery envelope and resets the password without losing legacy notes', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     mock.securityWriteCount = 0;

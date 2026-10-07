@@ -6,9 +6,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { captureWebPage, htmlToMarkdown, validateCaptureUrl } from '../../electron/vault/web-capture';
 import { sanitizeHtmlFragment } from '../../electron/vault/html-sanitize';
 
-vi.mock('node:dns/promises', () => ({
+const { lookup } = vi.hoisted(() => ({
   lookup: vi.fn(async () => [{ address: '93.184.216.34', family: 4 }]),
 }));
+vi.mock('node:dns/promises', () => ({ lookup }));
 vi.mock('node:https', () => ({ request: vi.fn() }));
 
 beforeEach(() => vi.clearAllMocks());
@@ -153,5 +154,41 @@ describe('web capture conversion and URL validation', () => {
     ]) {
       expect(() => validateCaptureUrl(url)).toThrow();
     }
+  });
+
+  it.each([
+    '192.0.0.8',
+    '192.0.2.1',
+    '198.51.100.1',
+    '203.0.113.1',
+    '192.88.99.1',
+    '198.18.0.1',
+    '100.64.0.1',
+    '240.0.0.1',
+    '[2001:db8::1]',
+    '[2001:2::1]',
+    '[2002:7f00:1::]',
+    '[4000::1]',
+    '[64:ff9b::a00:1]',
+    '[::ffff:192.0.2.1]',
+    '[::ffff:c000:201]',
+  ])('rejects special-purpose literal addresses (%s)', (address) => {
+    expect(() => validateCaptureUrl(`https://${address}/`)).toThrow(/public/);
+  });
+
+  it.each(['192.0.2.1', '198.51.100.1', '203.0.113.1', '2001:db8::1', '::ffff:c000:201'])(
+    'rejects DNS results containing a non-public address (%s) before requesting',
+    async (address) => {
+      lookup.mockResolvedValueOnce([
+        { address: '93.184.216.34', family: 4 },
+        { address, family: address.includes(':') ? 6 : 4 },
+      ]);
+      await expect(captureWebPage('https://example.org/article')).rejects.toThrow(/public address/);
+      expect(request).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts a public IPv6 literal', () => {
+    expect(validateCaptureUrl('https://[2606:4700:4700::1111]/')).toBe('https://[2606:4700:4700::1111]/');
   });
 });

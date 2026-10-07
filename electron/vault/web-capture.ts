@@ -2,6 +2,7 @@ import { lookup } from 'node:dns/promises';
 import { isIP } from 'node:net';
 import { request, type RequestOptions } from 'node:https';
 import type { IncomingHttpHeaders } from 'node:http';
+import ipaddr from 'ipaddr.js';
 import { decodeHtmlEntities } from './html-entities';
 import { sanitizeHtmlFragment } from './html-sanitize';
 
@@ -19,27 +20,15 @@ const IMAGE_EXTENSIONS: Record<string, string> = {
 };
 
 function isPublicAddress(address: string) {
-  if (isIP(address) === 4) {
-    const [a, b] = address.split('.').map(Number);
-    return !(
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      (a === 198 && (b === 18 || b === 19)) ||
-      a >= 224
+  if (!isIP(address)) return false;
+  try {
+    const parsed = ipaddr.parse(address);
+    return (
+      parsed.range() === 'unicast' && (parsed instanceof ipaddr.IPv4 || parsed.match(ipaddr.IPv6.parse('2000::'), 3))
     );
+  } catch {
+    return false;
   }
-  if (isIP(address) === 6) {
-    const normalized = address.toLowerCase();
-    if (normalized.startsWith('::ffff:')) return isPublicAddress(normalized.slice(7));
-    const first = parseInt(normalized.split(':')[0] || '0', 16);
-    return first >= 0x2000 && first <= 0x3fff && !normalized.startsWith('2001:db8:');
-  }
-  return false;
 }
 
 function parseCaptureUrl(value: string): URL {

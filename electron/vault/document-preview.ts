@@ -60,35 +60,72 @@ export function extractPdfPages(bytes: Buffer): string[] {
     throw new Error('This PDF is invalid or too large to preview.');
   }
   const source = bytes.toString('latin1');
-  const streams: string[] = [];
-  const streamPattern = /<<(.*?)>>\s*stream\r?\n/gims;
-  let extractedBytes = 0;
-  for (const match of source.matchAll(streamPattern)) {
-    const start = (match.index ?? 0) + match[0].length;
-    const end = source.indexOf('endstream', start);
-    if (end < 0 || end - start > MAX_EXTRACTED_BYTES) continue;
-    if (extractedBytes >= MAX_EXTRACTED_BYTES) break;
-    const data = bytes.subarray(start, end);
-    if (match[1].includes('/FlateDecode')) {
-      try {
-        const inflated = inflateSync(data, { maxOutputLength: MAX_EXTRACTED_BYTES - extractedBytes });
-        extractedBytes += inflated.length;
-        streams.push(inflated.toString('latin1'));
-      } catch {
-        continue;
-      }
-    } else {
-      extractedBytes += data.length;
-      streams.push(data.toString('latin1'));
+  const objects = new Map<string, string>();
+  for (const match of source.matchAll(/(\d+)\s+(\d+)\s+obj\b([\s\S]*?)endobj\b/g)) {
+    objects.set(`${match[1]} ${match[2]}`, match[3]);
+  }
+  const pages: string[] = [];
+  const visited = new Set<string>();
+  const catalog = [...objects.values()].find((body) => /\/Type\s*\/Catalog\b/.test(body));
+  const root = catalog && /\/Pages\s+(\d+)\s+(\d+)\s+R\b/.exec(catalog);
+  const pending = root ? [`${root[1]} ${root[2]}`] : [];
+  while (pending.length && pages.length < 200) {
+    const id = pending.pop()!;
+    if (visited.has(id)) continue;
+    visited.add(id);
+    const body = objects.get(id) ?? '';
+    if (/\/Type\s*\/Page\b/.test(body)) pages.push(id);
+    else if (/\/Type\s*\/Pages\b/.test(body)) {
+      const kids = /\/Kids\s*\[([\s\S]*?)\]/.exec(body)?.[1] ?? '';
+      const references = [...kids.matchAll(/(\d+)\s+(\d+)\s+R\b/g)];
+      for (const reference of references.reverse()) pending.push(`${reference[1]} ${reference[2]}`);
     }
   }
-  const nonStreamSource = source.replace(/<<(.*?)>>\s*stream\r?\n[\s\S]*?endstream/gims, '');
+  if (!root) {
+    for (const [id, body] of objects) {
+      if (/\/Type\s*\/Page\b/.test(body)) pages.push(id);
+      if (pages.length >= 200) break;
+    }
+  }
+  let extractedBytes = 0;
+  const extractStream = (content: string) => {
+    const stream = /stream(?:\r\n|\n|\r)/.exec(content);
+    if (!stream || extractedBytes >= MAX_EXTRACTED_BYTES) return '';
+    const start = stream.index + stream[0].length;
+    const end = content.indexOf('endstream', start);
+    if (end < 0 || end - start > MAX_EXTRACTED_BYTES - extractedBytes) return '';
+    const dictionary = content.slice(0, stream.index);
+    let data = Buffer.from(content.slice(start, end), 'latin1');
+    if (data.at(-1) === 10) data = data.subarray(0, data.length - 1);
+    if (data.at(-1) === 13) data = data.subarray(0, data.length - 1);
+    if (/\/Filter\s*(?:\/FlateDecode\b|\[\s*\/FlateDecode\s*\])/.test(dictionary)) {
+      try {
+        data = inflateSync(data, { maxOutputLength: MAX_EXTRACTED_BYTES - extractedBytes });
+      } catch {
+        return '';
+      }
+    } else if (/\/Filter\b/.test(dictionary)) {
+      return '';
+    }
+    if (extractedBytes + data.length > MAX_EXTRACTED_BYTES) return '';
+    extractedBytes += data.length;
+    return data.toString('latin1');
+  };
+  if (root || pages.length) {
+    return pages.map((id) => {
+      const contents = /\/Contents\s*(\[[\s\S]*?\]|\d+\s+\d+\s+R\b)/.exec(objects.get(id) ?? '')?.[1] ?? '';
+      const streams = [...contents.matchAll(/(\d+)\s+(\d+)\s+R\b/g)].map((reference) =>
+        extractStream(objects.get(`${reference[1]} ${reference[2]}`) ?? ''),
+      );
+      return extractTextOperators(streams.join('\n'));
+    });
+  }
+  const streams = [...source.matchAll(/<<(.*?)>>\s*stream(?:\r\n|\n|\r)[\s\S]*?endstream/gims)].map((match) =>
+    extractStream(match[0]),
+  );
+  const nonStreamSource = source.replace(/<<(.*?)>>\s*stream(?:\r\n|\n|\r)[\s\S]*?endstream/gims, '');
   const text = extractTextOperators(`${nonStreamSource}\n${streams.join('\n')}`);
-  return text
-    .split('\f')
-    .map((page) => page.trim())
-    .filter(Boolean)
-    .slice(0, 200);
+  return text ? [text] : [];
 }
 
 function decodeHtmlText(html: string) {

@@ -12,8 +12,17 @@ afterEach(() => {
   delete window.a11yNotebook;
 });
 
-function setup(customBold = false, note?: { path: string; content: string; tasks: VaultTask[] }) {
+function setup(
+  customBold = false,
+  note?: { path: string; content: string; tasks: VaultTask[] },
+  options: {
+    noteEditLockMinutes?: number;
+    protectedVault?: boolean;
+    failSettingsAfterUnlock?: boolean;
+  } = {},
+) {
   let content = note?.content ?? '# Note\n\ntext';
+  let unlocked = !options.protectedVault;
   let listener: (event: VaultChangedEvent) => void = () => undefined;
   let lock: () => void = () => undefined;
   let reminderListener: (event: VaultReminderEvent) => void = () => undefined;
@@ -52,11 +61,25 @@ function setup(customBold = false, note?: { path: string; content: string; tasks
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
-      getSettings: vi.fn(async () => ({
-        ...DEFAULT_SETTINGS,
-        autosaveDelay: 0,
-        shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
+      getSettings: vi.fn(async () => {
+        if (!unlocked || options.failSettingsAfterUnlock) throw new Error('Settings unavailable.');
+        return {
+          ...DEFAULT_SETTINGS,
+          autosaveDelay: 0,
+          noteEditLockMinutes: options.noteEditLockMinutes ?? 0,
+          theme: options.protectedVault ? ('dark' as const) : DEFAULT_SETTINGS.theme,
+          shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
+        };
+      }),
+      getSecurityStatus: vi.fn(async () => ({
+        enabled: !!options.protectedVault,
+        locked: !unlocked,
+        recoveryAvailable: false,
       })),
+      unlockVault: vi.fn(async () => {
+        unlocked = true;
+        return vault;
+      }),
       onSecurityLocked: (callback) => {
         lock = callback;
         return () => undefined;
@@ -114,6 +137,50 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('keeps timed-out dirty notes locked across tab switches and failed saves, clearing only after a successful save', async () => {
+    const { bridge } = setup(false, undefined, { noteEditLockMinutes: 1 });
+    const editor = await editNote();
+    vi.useFakeTimers();
+    try {
+      fireEvent.change(editor, { target: { value: 'unsaved change' } });
+      await act(async () => {
+        vi.advanceTimersByTime(60_000);
+      });
+      fireEvent.click(screen.getByRole('tab', { name: 'Welcome' }));
+      fireEvent.click(screen.getByRole('tab', { name: /Note/ }));
+      fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+      expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
+      vi.mocked(bridge.vault.saveNote).mockRejectedValueOnce(new Error('Disk full.'));
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 's', ctrlKey: true });
+      });
+      fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+      expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
+      await act(async () => {
+        fireEvent.keyDown(document.body, { key: 's', ctrlKey: true });
+      });
+      fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+      expect(screen.getByRole('textbox', { name: 'Markdown source' })).toHaveValue('unsaved change');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it.each([false, true])(
+    'reloads settings after unlock without treating a settings failure as an unlock failure (%s)',
+    async (failure) => {
+      const { bridge } = setup(false, undefined, { protectedVault: true, failSettingsAfterUnlock: failure });
+      await screen.findByRole('dialog', { name: 'Vault locked' });
+      const before = vi.mocked(bridge.vault.getSettings).mock.calls.length;
+      fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'correct horse battery' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+      await waitFor(() => expect(bridge.vault.getSettings).toHaveBeenCalledTimes(before + 1));
+      expect(screen.queryByRole('dialog', { name: 'Vault locked' })).not.toBeInTheDocument();
+      if (!failure) await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
+      else await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Could not load settings.'));
+    },
+  );
+
   it('creates HTML notes from the format picker', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
