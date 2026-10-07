@@ -12,6 +12,7 @@ import type { Milestone, MilestoneUpdate, NewMilestone } from './milestones';
 import type { VaultAsset } from './asset-bridge';
 import type { CardSchedule } from './assets';
 import type { PdfReadingPreferences } from './pdf-reading-preferences';
+import type { DocxStructure } from './docx';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
@@ -35,6 +36,7 @@ export interface VaultBridge {
   updatePdfAnnotation(path: string, id: string, update: PdfAnnotationUpdate): Promise<PdfAnnotation>;
   deletePdfAnnotation(path: string, id: string): Promise<void>;
   readAttachment(path: string): Promise<AttachmentPreview>;
+  readDocxStructure(path: string): Promise<DocxStructure>;
   getImageAlt(path: string): Promise<string>;
   saveImageAlt(path: string, alt: string): Promise<void>;
   getSettings(): Promise<NotebookSettings>;

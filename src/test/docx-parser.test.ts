@@ -23,12 +23,14 @@ function zip(entries: Record<string, string | Buffer>, options: { symlink?: stri
   for (const [name, source] of Object.entries(entries)) {
     const filename = Buffer.from(name);
     const content = Buffer.isBuffer(source) ? source : Buffer.from(source);
-    const compressed = deflateRawSync(content);
+    const isDirectory = name.endsWith('/');
+    const method = isDirectory ? 0 : 8;
+    const compressed = isDirectory ? content : deflateRawSync(content);
     const header = Buffer.alloc(30);
     header.writeUInt32LE(0x04034b50, 0);
     header.writeUInt16LE(20, 4);
     header.writeUInt16LE(0x800, 6);
-    header.writeUInt16LE(8, 8);
+    header.writeUInt16LE(method, 8);
     header.writeUInt32LE(checksum(content), 14);
     header.writeUInt32LE(compressed.length, 18);
     header.writeUInt32LE(content.length, 22);
@@ -39,7 +41,7 @@ function zip(entries: Record<string, string | Buffer>, options: { symlink?: stri
     record.writeUInt16LE(options.symlink === name ? 0x0314 : 20, 4);
     record.writeUInt16LE(20, 6);
     record.writeUInt16LE(0x800, 8);
-    record.writeUInt16LE(8, 10);
+    record.writeUInt16LE(method, 10);
     record.writeUInt32LE(checksum(content), 16);
     record.writeUInt32LE(compressed.length, 20);
     record.writeUInt32LE(content.length, 24);
@@ -57,6 +59,20 @@ function zip(entries: Record<string, string | Buffer>, options: { symlink?: stri
   end.writeUInt32LE(centralDirectory.length, 12);
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...local, centralDirectory, end]);
+}
+
+function setExpandedSizes(archive: Buffer, updates: Record<string, number>) {
+  const end = archive.lastIndexOf(Buffer.from([0x50, 0x4b, 0x05, 0x06]));
+  let cursor = archive.readUInt32LE(end + 16);
+  for (let index = 0; index < archive.readUInt16LE(end + 10); index += 1) {
+    const nameLength = archive.readUInt16LE(cursor + 28);
+    const extraLength = archive.readUInt16LE(cursor + 30);
+    const commentLength = archive.readUInt16LE(cursor + 32);
+    const name = archive.subarray(cursor + 46, cursor + 46 + nameLength).toString('utf8');
+    if (updates[name] !== undefined) archive.writeUInt32LE(updates[name], cursor + 24);
+    cursor += 46 + nameLength + extraLength + commentLength;
+  }
+  return archive;
 }
 
 function validEntries(
@@ -150,6 +166,37 @@ describe('bounded local DOCX parser', () => {
     ]);
     expect(parseDocxStructure(zip(entries)).blocks[0]).toMatchObject({ text: 'Mixed encoding' });
     expect(() => parseDocxStructure(zip({ ...validEntries(), 'word/large.xml': Buffer.alloc(21 * 1024 * 1024) }))).toThrow();
+  });
+
+  it('enforces the archive entry-count and aggregate expansion limits before extraction', () => {
+    const entries = Object.fromEntries(Array.from({ length: 10_001 }, (_, index) => [`payload/${index}.bin`, 'x']));
+    expect(() => parseDocxStructure(zip(entries))).toThrow(/entry count/i);
+    const bomb = setExpandedSizes(zip(validEntries()), {
+      '[Content_Types].xml': 19 * 1024 * 1024,
+      'word/document.xml': 19 * 1024 * 1024,
+      'word/styles.xml': 19 * 1024 * 1024,
+    });
+    expect(() => parseDocxStructure(bomb)).toThrow(/50 MiB/i);
+  });
+
+  it('accepts an empty document and reports omitted comments, fonts, and form controls', () => {
+    const empty = parseDocxStructure(
+      zip(validEntries(`<w:document xmlns:w="${wordNs}"><w:body><w:sectPr/></w:body></w:document>`)),
+    );
+    expect(empty.blocks).toEqual([]);
+    expect(empty.title).toBe('Guide');
+    const unsupported = validEntries(
+      `<w:document xmlns:w="${wordNs}"><w:body><w:sdt><w:sdtContent><w:p><w:r><w:t>Not included</w:t></w:r></w:p></w:sdtContent></w:sdt></w:body></w:document>`,
+    );
+    unsupported['word/comments.xml'] = '<w:comments xmlns:w="' + wordNs + '"/>';
+    unsupported['word/fontTable.xml'] = '<w:fonts xmlns:w="' + wordNs + '"/>';
+    expect(parseDocxStructure(zip(unsupported)).unsupportedFeatures).toEqual(
+      expect.arrayContaining(['comments (content not included)', 'embedded fonts (content not included)', 'form fields or content controls (content not included)']),
+    );
+  });
+
+  it('validates ordinary directory entries in a DOCX package', () => {
+    expect(parseDocxStructure(zip({ ...validEntries(), 'word/': '' })).blocks).toHaveLength(1);
   });
 
   it('truncates paragraph extraction at the documented limit', () => {

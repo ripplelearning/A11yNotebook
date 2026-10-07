@@ -8,6 +8,7 @@ import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
+import DocxReader from './DocxReader';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
@@ -15,12 +16,14 @@ const MAX_SEARCHABLE_TEXT = 20 * 1024 * 1024;
 
 interface Props {
   path: string;
-  kind: '.pdf' | '.epub';
+  kind: '.pdf' | '.epub' | '.docx';
 }
+
+type ByteDocumentProps = Omit<Props, 'kind'> & { kind: '.pdf' | '.epub' };
 
 const emptyDocument: DocumentReaderModel = createDocumentReaderModel([]);
 
-function useDocumentBytes(path: string, kind: Props['kind']) {
+function useDocumentBytes(path: string, kind: ByteDocumentProps['kind']) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [loadedPath, setLoadedPath] = useState('');
   const [error, setError] = useState('');
@@ -460,7 +463,7 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
   );
 }
 
-export default function DocumentReader({ path, kind }: Props) {
+function ByteDocumentReader({ path, kind }: ByteDocumentProps) {
   const { bytes, error } = useDocumentBytes(path, kind);
   return error ? (
     <>
@@ -474,4 +477,9 @@ export default function DocumentReader({ path, kind }: Props) {
   ) : (
     <EpubReader bytes={bytes} />
   );
+}
+
+export default function DocumentReader({ path, kind }: Props) {
+  if (kind === '.docx') return <DocxReader path={path} />;
+  return <ByteDocumentReader path={path} kind={kind} />;
 }

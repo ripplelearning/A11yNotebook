@@ -49,6 +49,20 @@ interface ZipEntry {
   mediaType?: string;
 }
 
+function collectPackageUnsupported(entries: Map<string, ZipEntry>, unsupported: Set<string>) {
+  for (const entry of entries.values()) {
+    const path = entry.path.toLowerCase();
+    if (/(?:^|\/)(?:fonts|fonttable)(?:\/|\.|$)/i.test(path)) unsupported.add('embedded fonts');
+    if (/(?:^|\/)comments(?:extended)?\.xml$/i.test(path)) unsupported.add('comments');
+    if (/^word\/(?:header|footer)[^/]*\.xml$/i.test(path)) {
+      const document = parseXml(entries, entry.path, false);
+      if (document && (descendants(document, 'watermark').length || /PowerPlusWaterMarkObject/i.test(entry.bytes.toString('utf8')))) {
+        unsupported.add('watermarks');
+      }
+    }
+  }
+}
+
 interface Relationship {
   type: string;
   target: string;
@@ -108,6 +122,8 @@ function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
 
   const metadata: Array<{
     path: string;
+    name: string;
+    isDirectory: boolean;
     flags: number;
     method: number;
     crc: number;
@@ -169,7 +185,20 @@ function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
     if (expandedTotal > MAX_EXPANDED_BYTES) invalid('The DOCX archive expands beyond the 50 MiB limit.');
     if (names.has(normalized.toLowerCase())) invalid('The DOCX archive contains duplicate entry names.');
     names.add(normalized.toLowerCase());
-    if (!isDirectory) metadata.push({ path: normalized, flags, method, crc, compressedSize, expandedSize, localOffset });
+    if (isDirectory && (compressedSize !== 0 || expandedSize !== 0)) {
+      invalid('DOCX ZIP directory entries must not contain file data.');
+    }
+    metadata.push({
+      path: normalized,
+      name,
+      isDirectory,
+      flags,
+      method,
+      crc,
+      compressedSize,
+      expandedSize,
+      localOffset,
+    });
     cursor = recordEnd;
   }
   if (cursor !== directoryEnd) invalid('The DOCX ZIP directory length is inconsistent.');
@@ -190,7 +219,7 @@ function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
     if (
       flags !== item.flags ||
       method !== item.method ||
-      localName !== item.path ||
+      localName !== item.name ||
       dataStart < offset + 30 + localNameLength ||
       dataStart > directoryOffset ||
       dataEnd > directoryOffset
@@ -220,7 +249,7 @@ function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
     if (content.length !== item.expandedSize || crc32(content) !== item.crc) {
       invalid('A DOCX ZIP entry failed its size or checksum validation.');
     }
-    entries.set(item.path, { path: item.path, bytes: content });
+    if (!item.isDirectory) entries.set(item.path, { path: item.path, bytes: content });
   }
   dataRanges.sort((left, right) => left[0] - right[0]);
   for (let index = 1; index < dataRanges.length; index += 1) {
@@ -439,7 +468,7 @@ function checkRejectedParts(entries: Map<string, ZipEntry>) {
   for (const entry of entries.values()) {
     const name = entry.path.toLowerCase();
     if (
-      /(?:^|\/)(?:vbaproject\.bin|activeX|embeddings|oleobjects|externallinks|printersettings|fonts)(?:\/|\.|$)/i.test(name) ||
+      /(?:^|\/)(?:vbaproject\.bin|activeX|embeddings|oleobjects|externallinks|printersettings)(?:\/|\.|$)/i.test(name) ||
       name.startsWith('_xmlsignatures/') ||
       /(?:^|\/)(?:connections|querytables|externaldata)(?:\/|\.|$)/i.test(name)
     ) {
@@ -675,13 +704,23 @@ function parseParagraph(
         countRun();
         const text = runText(run).slice(0, 20_000);
         if (!text) continue;
-        if (!rel?.external || !rel.type.endsWith('/hyperlink')) invalid('A DOCX hyperlink has no safe external target.');
-        const target = safeHyperlink(rel.target);
-        runs.push({ text, ...runFormatting(run), link: target });
-        links.push({ text, target, blockIndex });
+        if (rel?.external && rel.type.endsWith('/hyperlink')) {
+          const target = safeHyperlink(rel.target);
+          runs.push({ text, ...runFormatting(run), link: target });
+          links.push({ text, target, blockIndex });
+        } else if (!linkId && (child.getAttribute('w:anchor') || child.getAttribute('anchor'))) {
+          unsupported.add('internal cross-references');
+          runs.push({ text, ...runFormatting(run) });
+        } else {
+          invalid('A DOCX hyperlink has no safe external target.');
+        }
       }
     } else if (child.localName === 'r') {
       countRun();
+      if (descendants(child, 'fldChar').length || descendants(child, 'instrText').length) {
+        unsupported.add('fields');
+        continue;
+      }
       const text = runText(child).slice(0, 20_000);
       if (text) runs.push({ text, ...runFormatting(child) });
       for (const br of descendants(child, 'br')) {
@@ -742,9 +781,6 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
     const source = part === '_rels/.rels' ? '' : part.replace(/(^|\/)_rels\//, '$1').replace(/\.rels$/, '');
     relationships(entries, source);
   }
-  if (entries.has('word/comments.xml') || entries.has('word/commentsExtended.xml')) {
-    invalid('DOCX comments are not supported.');
-  }
   const rootRels = relationships(entries, '');
   const officeDocument = findRelationshipByType(rootRels, 'officeDocument');
   if (!officeDocument || officeDocument[1].external) invalid('The DOCX main document relationship is missing or external.');
@@ -760,6 +796,9 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
     root.namespaceURI !== 'http://schemas.openxmlformats.org/wordprocessingml/2006/main'
   ) {
     invalid('The DOCX main document XML is malformed.');
+  }
+  if (descendants(document, 'object').length || descendants(document, 'oleObject').length) {
+    invalid('OLE and embedded objects are not supported in DOCX files.');
   }
   const body = descendants(document, 'body')[0];
   if (!body) invalid('The DOCX main document body is missing.');
@@ -788,6 +827,7 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
   const headings = styleHeadings(entries);
   const numbering = numberingMap(entries);
   const unsupported = new Set<string>();
+  collectPackageUnsupported(entries, unsupported);
   collectUnsupported(document, unsupported);
   const blocks: DocxStructure['blocks'] = [];
   const headingItems: DocxStructure['headings'] = [];
