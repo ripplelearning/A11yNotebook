@@ -1,6 +1,7 @@
 # Product roadmap
 
-Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked on external or manual work
+Status key: ✅ implemented · 🚧 partial/in progress · ⏳ open · ⛔ blocked on external or manual work.
+Implemented does not mean production-ready; automated tests do not replace the manual accessibility/release gates.
 
 ## Phase 1 — Foundation shell and accessibility model ✅
 
@@ -78,7 +79,8 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 - ✅ Persisted, validated reminder defaults and creation-dialog preferences without rewriting existing reminders.
 - ✅ Named milestone service/typed IPC with stable task associations, move preservation, and live progress.
 - ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and vault switch/lock cancellation.
-- ⏳ Exited-process notification delivery and milestone planning UI.
+- ✅ Milestone planning UI on existing service/typed IPC: list/detail/create/edit/delete, task/note associations, dates/status/progress and keyboard/focus regression tests.
+- ⏳ Exited-process notification delivery: no Task Scheduler/helper integration ships yet.
 - ⛔ Manual Windows notification and screen-reader verification.
 
 ## Phase 6 — Cognitive assets and templates
@@ -94,7 +96,7 @@ Status key: ✅ complete · 🚧 partial/in progress · ⏳ open · ⛔ blocked 
 
 - ✅ Optional vault password gate, configurable idle lock, and unsaved-edit timeout.
 - ✅ Opt-in versioned vault recovery with a separate random recovery key, authenticated password wrapper, credential-preserving atomic migration, password reset, rotation and revocation
-- ⏳ Sensitive-action audit logging with bounded retention and explicit storage-failure handling
+- ✅ Scoped sensitive-action audit logging with a bounded versioned schema, retention, redaction, atomic staging and explicit storage-failure/committed-operation outcomes; see security documentation for exclusions and OS-user tampering limits.
 - ✅ AES-256-GCM encrypted credential storage using the main-process vault key.
 - ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing for passwords generated in the note-encryption dialog.
@@ -136,7 +138,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 ## Other requested roadmap items
 
 - ⏳ Tag and metadata suggestions, general YAML editing, and calendar-like organization are not implemented.
-- 🚧 Notebook task-completion summaries and milestone service/progress exist; milestone planning UI remains open.
+- ✅ Notebook task-completion summaries, milestone service/progress and planning UI; manual Windows AT validation remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
 - ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
 - ⏳ Recent-vault selection is not available; the app restores the last opened vault automatically.
@@ -144,7 +146,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 
 ## Dependency-ordered continuation
 
-`docs/continuation-plan.md` distinguishes this increment's shipped recovery foundation from open or externally blocked
+`docs/continuation-plan.md` distinguishes existing recovery, this increment's scoped audit/milestone implementation and open or externally blocked
 work. It includes acceptance criteria for security follow-ups, Phase 5/6, and common accessible reading/navigation/
 annotation across Markdown, sanitized HTML, ePub, DOCX, and (if no safe local parser is feasible) legacy DOC. It also
 includes the required Windows assistive-technology and UI Automation validation matrix. None of those remaining

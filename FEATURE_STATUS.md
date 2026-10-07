@@ -1,14 +1,33 @@
-# A11y Notebook — Feature Completion Status
+# A11y Notebook — Implementation Status
 
 **Last Updated:** 2026-10-07  
 **Current Version:** 0.1.0  
-**Main Branch Commit:** 222d0610 (PR #25 merged: selective replacement integration for PR #5)
+**Starting main:** 41ddefc (includes merged PR #25 and the subsequent status document)
+
+Status marks below mean **implemented**, **partial**, **open**, or **externally blocked**. They do not mean
+production-ready or manually verified. Automated DOM/mocked OS tests do not establish Windows toast delivery,
+installer behavior, screen-reader speech, or secure erasure.
+
+## Requested six-feature increment
+
+| Feature                               | Evidence-based status                                                                                                                                                                                                                                                             |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions. |
+| Opt-in encrypted metadata/indexes     | **Not implemented.** Verified store inventory and proposed threat model/domain/key/migration boundary documented. No toggle, encryption migration or plaintext-cache guarantee ships.                                                                                             |
+| Cognitive unsaved-edit crash recovery | **Not implemented.** No persistent draft/checkpoint/restore/discard flow. Depends on verified encrypted metadata/draft policy.                                                                                                                                                    |
+| Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                  |
+| DOCX accessible local reading         | **Not implemented/unsupported.** No parser/dependency or hostile fixtures added. Legacy `.doc` remains unsupported.                                                                                                                                                               |
+| Exited-process Windows reminders      | **Not implemented.** No Task Scheduler/helper registration, consent/status API or cleanup. In-process scheduling is not delivery after exit; Windows verification remains unrun.                                                                                                  |
+
+The exact unfinished acceptance criteria and Windows matrix are in `docs/continuation-plan.md`. Designs are not
+implementation, and mocks are not actual Windows verification.
 
 ---
 
-## ✅ Completed Features
+## Implemented functionality (not a production-readiness claim)
 
 ### Phase 1 — Foundation Shell and Accessibility Model
+
 - ✅ Electron + React + TypeScript scaffold (installs, type checks, lints, tests, builds cleanly)
 - ✅ Real focus management: F6/Shift+F6 pane cycling, modal command palette, WAI-ARIA tabs
 - ✅ Windows packaging: NSIS installer and portable `.exe` (electron-builder)
@@ -17,6 +36,7 @@
 - ✅ Code-signing wiring (WINDOWS_CERTIFICATE secrets)
 
 ### Phase 2 — Vault and Notebook Model
+
 - ✅ Local vault folders with notebooks, Markdown/HTML notes, and attachments
 - ✅ Human-readable hidden `.a11ynotebook/` metadata directory
 - ✅ Filesystem service with path validation and symlink rejection
@@ -28,6 +48,7 @@
 - ✅ Context-menu note encryption when vault protection enabled
 
 ### Phase 3 — Reader and Editor Experience
+
 - ✅ Sanitized semantic Markdown rendering and plain-text source editing
 - ✅ Tab management: close controls, unsaved state, Ctrl+W, Ctrl+Tab, autosave
 - ✅ Wiki and relative Markdown links with link index, outgoing links, backlinks
@@ -38,6 +59,7 @@
 - ✅ PDF zoom/rotation-aware highlights
 
 ### Phase 3b — HTML Notes and Rich Text
+
 - ✅ Create and edit `.html` notes in plain source or keyboard-accessible rich-text mode
 - ✅ Semantic rich-text toolbar (headings, emphasis, lists, code, links, tables, local images with alt text)
 - ✅ HTML sanitization on load, render, save, and rich paste
@@ -50,6 +72,7 @@
 - ✅ HTML and Markdown note annotations with shared quote/context anchor storage
 
 ### Phase 4 — Search, Indexing, and Annotations
+
 - ✅ Persistent main-process indexed search and Markdown/HTML annotations
 - ✅ Markdown, HTML, plain-text, CSV, PDF, and ePub text search with bounded extraction
 - ✅ PDF.js rendering with accessible text, page navigation, and in-document search
@@ -57,6 +80,7 @@
 - 🚧 **Inline/front-matter tag extraction and filtering** — extracted; general YAML editing remains open
 
 ### Phase 5 — Tasks, Reminders, and Project Planning
+
 - ✅ Markdown and semantic HTML checkbox tasks with optional due dates/priorities
 - ✅ Task filters, sortable table, and safe source-file toggles
 - ✅ Task markers and standalone reminders with persisted main-process scheduler
@@ -68,9 +92,10 @@
 - ✅ Unified reminder and opt-in flashcard scheduler with persistent deduplication
 - ✅ Vault switch and lock cancellation for scheduled tasks
 - ⏳ **Exited-process notification delivery** — open; design needed for opt-in Windows integration
-- ⏳ **Milestone planning UI** — open; service infrastructure complete
+- ✅ **Milestone planning UI** — existing-service list/detail/create/edit/delete and associations; manual AT verification open
 
 ### Phase 6 — Cognitive Assets and Templates
+
 - ✅ Markdown outlines with semantic heading preservation
 - ✅ JSON mind maps with primary accessible trees and decorative SVG
 - ✅ Markdown outline export
@@ -87,6 +112,7 @@
 - ⏳ **Crash recovery for unsaved asset edits** — open; depends on encrypted metadata policy
 
 ### Phase 7 — Security and Local Protection
+
 - ✅ Optional vault password gate with configurable idle-lock timeout
 - ✅ Unsaved-edit timeout protection with timed-out notes cleared after successful saves
 - ✅ Opt-in versioned vault recovery with separate random recovery key
@@ -98,11 +124,12 @@
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`
 - ✅ Vault switch/lock detection and race-condition guarding for security operations
 - ✅ Recovery migration commit race-condition protection against concurrent locks
-- ⏳ **Sensitive-action audit logging** — open; bounded format with retention policy needed
+- ✅ **Scoped sensitive-action audit logging** — bounded schema/retention, redaction, interruption/error tests; OS-user tampering and coverage limits apply
 - ⏳ **Encrypted indexes and metadata** — open; depends on stable key handling and per-store domain separation
 - ⏳ **Whole-vault encryption** — open; separate opt-in mode with streaming/container format design needed
 
 ### Phase 8 — Import and Document Support
+
 - ✅ Attachments stored in vault, listed in tree, reveal/external open available
 - ✅ Sanitized sandboxed HTML, plain-text/CSV, and raster-image previews
 - ✅ Saved image descriptions and validated image protocol
@@ -123,6 +150,7 @@
 - ⏳ **Legacy `.doc` support** — unsupported; pending vetted local parser/converter strategy
 
 ### Phase 9 — Accessibility Validation and Release Readiness
+
 - ✅ Automated DOM and keyboard interaction tests
 - ✅ Windows UI Automation smoke-test script (`npm run test:ui-smoke` after `npm run package:win`)
 - ✅ Packaging, installer, and release process
@@ -139,31 +167,37 @@
 ## ⏳ Open Features (Not Yet Implemented)
 
 ### Remaining Phase 2 Work
+
 - Recent-vault picker UI (only automatic last-vault restoration currently exists)
 - Reference-style Markdown link repair
 - Crash-atomic multi-file moves
 
 ### Remaining Phase 3 Work
+
 - Heading/position bookmarks
 - Guaranteed fallback undo
 
 ### Remaining Phase 4 Work
+
 - General YAML metadata editing and suggestions
 
 ### Remaining Phase 5 Work
+
 - **Exited-process reminders/reviews** — requires opt-in Windows integration (Task Scheduler or equivalent)
   - Explicit consent, uninstall/disable cleanup, no shell injection/secrets/plaintext
   - Duplicate/restart/race prevention and privacy/lock behavior design
-- **Milestone planning UI** — service infrastructure exists; UI layer needed
+- **Milestone Windows accessibility validation** — UI implemented; real AT speech/focus checks remain
 - **Due flashcard notifications** — requires out-of-process delivery infrastructure
 
 ### Remaining Phase 6 Work
+
 - **Crash recovery for unsaved edits** — requires encrypted metadata/draft policy
 - **Markdown-to-outline conversion** — requires heading hierarchy preservation and content-loss preview
 - **Mind-map visual layouts** — semantic tree is authoritative; visual enhancements remain
 - **Due flashcard background notifications** — depends on Phase 5 out-of-process delivery
 
 ### Shared Accessible Reader (Cross-document)
+
 - Common reader capability contract for outline/TOC, sequential navigation, headings/links/tables, search, bookmarks
 - Original-quote export with confidence/orphan status reporting
 - Reading position persistence (especially for ePub)
@@ -175,11 +209,13 @@
 - PDF clipboard export with original quotes (Phase 6 work)
 
 ### Security and Storage
-- **Audit logging** — requires bounded format, retention policy, and explicit error handling
+
+- **Audit history follow-ups** — native warning Windows AT validation, viewer/repair UI and broader automatic event coverage remain; scoped logging implemented
 - **Encrypted indexes/metadata** — requires per-store domain separation, versioning, and backward-compatible migration
 - **Whole-vault encryption** — requires threat model specification, streaming/container format, and crash/rollback testing
 
 ### Other Requested Features
+
 - Tag and metadata suggestions with calendar-like organization
 - Exited-process reminder delivery verification on Windows
 - Whole-vault encryption and encrypted metadata
@@ -199,23 +235,18 @@
 
 ## Summary
 
-**Production Ready Features:** Phases 1–4, 6, most of Phase 5, partial Phase 7, partial Phase 8, partial Phase 9  
+**Production readiness:** Not established. Implemented functionality still has explicit security/storage limitations and unrun Windows accessibility/packaging gates.  
 **Testable on Windows:** Core app, installer, updater, UI Automation smoke tests, portable `.exe`  
 **Manual AT Validation Needed:** All new security workflows, recovery flows, PDF/ePub navigation, milestone planning  
-**Design & Implementation Open:** Exited-process delivery, audit logging, encrypted metadata, whole-vault encryption, shared reader contract, DOCX/`.doc` support
+**Design & Implementation Open:** Exited-process delivery, encrypted metadata, cognitive crash recovery, whole-vault encryption, shared reader contract, DOCX support; legacy `.doc` unsupported
 
 ---
 
-## Recent PR #5 Integration (2026-10-07)
+## Provenance and validation
 
-**PR #25** (merged) completed the remaining checklist items from PR #5:
-- ✅ PDF/ePub support fully implemented via pdf.js and epub.js (PR #23)
-- ✅ Typecheck, lint, tests (537 passed), build, and format check all passing
-- ✅ CodeQL security scan: 0 alerts
-- ✅ Secret scan: clean
-- ✅ Vault security race-condition guards implemented and tested
-- ✅ Credential serialization and key disposal on lock
-- ✅ Recovery migration race protection
-- ✅ Capture filename visibility and IP classification
+PR #25 was verified merged into `main` on 2026-10-07. This branch starts from later main commit 41ddefc and preserves
+that work. Historical PR #5 closure/checklist changes are not assumed or performed here. PDF/ePub implementation
+does not imply every format, lifecycle, hostile-input or accessibility requirement is complete.
 
-PR #5 remains open for reference but will not be merged due to stale base-branch conflicts. All intended functionality is live on `main`.
+Validation results for this increment are reported on the implementation PR. Earlier reported test counts or scans
+are not evidence for new changes. No version bump, release, signing setup or repository-protection change is included.
