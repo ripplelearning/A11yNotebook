@@ -113,8 +113,10 @@ Vitest covers persisted index build/update/filters/tags/snippets (including HTML
 sender/path/protocol validation, repaired links and migrated metadata, annotation re-anchoring and selection,
 formatting transforms/dialog keyboard flow, template expansion/cursor placement, scheduler startup/snooze/move
 races, SM-2 scheduling, outline/mind-map serialization, grid keyboard editing, and shortcut conflict detection.
-Encryption and wrong-password regression tests exist for the current vault/selected-note implementation. They do
-not prove whole-vault encryption, encrypted indexes, recovery, or secure erasure; those features remain unimplemented.
+Encryption, wrong-password and opt-in recovery regression tests exist for the current vault/selected-note implementation.
+Audit tests cover redaction, retention, interruption, malformed metadata and storage failures independently of operation
+commit outcomes. They do not prove whole-vault encryption, encrypted metadata/indexes, secure erasure, comprehensive
+forensic history, or actual screen-reader speech. Metadata encryption and cognitive draft recovery remain unimplemented.
 
 ## New-widget manual matrix (not yet executed)
 

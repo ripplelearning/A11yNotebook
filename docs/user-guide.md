@@ -140,7 +140,15 @@ are delivered after process exit.
 Tasks also show per-notebook completion counts and native progress elements. Named milestone CRUD and live
 task-progress summaries are available through the typed vault bridge, persisted in `.a11ynotebook/milestones.json`.
 Milestone and task identities survive notebook moves; missing tasks remain associated and are counted as missing.
-A milestone planning UI is not yet available.
+Use **Tasks → Open Milestones**, **Tools → Open Milestones** in the native menu, or the command palette's
+**Open Milestones** command. The Milestones tab lists plans by due date with a status filter. Activate a title for
+detail/progress and associated note/task links; **Create milestone** and **Edit milestone** offer labelled title,
+date, status, note and task controls. Status is set manually; progress follows saved task completion.
+Associating a Markdown task may add a stable task identity marker to its note. Ambiguous task identities cannot
+be newly associated, and missing notes/tasks remain visibly unavailable rather than silently rebound.
+**Delete milestone** asks for explicit confirmation and deletes only the plan, not its notes/tasks. Cancel/Escape
+returns focus without saving; save/delete errors remain readable for retry. Windows screen-reader verification has
+not been run.
 
 ## Templates and cognitive tools
 
@@ -185,8 +193,9 @@ the captured note is opened and indexed.
 Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
 for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
-page navigation, in-document search, and persisted PDF notes. ePub uses epub.js to navigate and search flattened spine-section text; it does not
-provide a paginated rendition of the book's styles and a nested table of contents. Extracted ePub text remains available
+page navigation, in-document search, and persisted PDF notes. ePub uses local epub.js paginated spine rendering,
+a nested navigation table of contents and section navigation/search. Chapter markup is sanitized; broader hostile-
+archive/resource validation, reading-position persistence and ePub annotations remain open. Extracted ePub text remains available
 for search and assistive technology; scripts, embedded frames, forms, and unsafe attributes are removed before display.
 Both are limited to 40 MB.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
@@ -210,8 +219,21 @@ acknowledgment before committing it. The app never copies the recovery key autom
 password and preserves migrated credentials and vault-key-encrypted notes; it cannot recover notes with independent
 passwords. You can rotate the recovery key after saving its replacement or revoke recovery after confirming the current
 password. Losing a note password is unrecoverable. Vault protection gates app access but does not encrypt unmarked
-files, filenames, search indexes, or most metadata. Encrypted indexes, whole-vault encryption, and sensitive-action
-audit history are not implemented; see [Security](security.md) before storing sensitive information.
+files, filenames, search indexes, or most metadata. Encrypted metadata/indexes and whole-vault encryption are not
+implemented; see [Security](security.md) before storing sensitive information.
+
+### Sensitive-action history
+
+The app keeps a small local `.a11ynotebook/audit.json` log of protection, recovery, credential access/changes,
+note encryption and export requests. It contains only the operation category, result and time, never passwords,
+keys, credentials, note text or paths. It retains at most 1,000 entries from the last 90 days when a new entry is
+written. This plaintext local file can be changed/deleted by anyone with your OS account and is not a forensic proof.
+
+If a warning says an entry was **not recorded**, read its operation outcome: a successful change/export remains
+successful, and a committed operation may have encountered later cleanup/indexing errors. Do not repeat the
+operation merely to retry logging. Check disk space and metadata permissions; a damaged log is not silently
+deleted or overwritten. There is no in-app history/repair viewer. Automatic idle/exit/switch locks and ordinary
+editing are not logged. See the security documentation for exact limits.
 
 ## Keyboard shortcuts
 
@@ -243,10 +265,14 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 ## Not available yet
 
-Recovery keys, whole-vault encryption, encrypted indexes, and sensitive-action audit logging are not available yet.
+Whole-vault encryption and encrypted metadata/indexes are not available yet. Unsaved cognitive-asset edits have no
+persistent crash-recovery drafts: save outlines, mind maps, flashcards and grids explicitly before closing.
+DOCX and legacy `.doc` local reading are unsupported; this increment does not add a parser or conversion service.
+Reminders require the app process to be running: no opt-in Task Scheduler/helper integration ships here, and closing
+a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
-Recent-vault selection, heading and position bookmarks, milestone planning UI, general YAML
+Recent-vault selection, heading and position bookmarks, general YAML
 metadata editing, and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.

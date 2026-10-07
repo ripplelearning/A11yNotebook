@@ -54,6 +54,7 @@ import type { NoteTemplate } from '../shared/templates';
 import { useAnnotations } from './features/annotations/useAnnotations';
 import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
+import MilestonesView from './features/milestones/MilestonesView';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
@@ -146,7 +147,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'insert-attachment',
     ],
   },
-  { label: 'Tasks', items: ['show-tasks', 'show-reminders'] },
+  { label: 'Tasks', items: ['show-tasks', 'show-reminders', 'show-milestones'] },
   { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode', 'show-settings', 'show-assets'] },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
@@ -171,6 +172,7 @@ export default function App() {
   const [bookmarks, setBookmarks] = useState<VaultBookmark[]>([]);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
+  const [milestoneTabOpen, setMilestoneTabOpen] = useState(false);
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
   const [assetDirty, setAssetDirty] = useState(false);
@@ -297,6 +299,7 @@ export default function App() {
     { id: 'welcome', label: 'Welcome' },
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
     ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
+    ...(milestoneTabOpen ? [{ id: 'milestones', label: 'Milestones' }] : []),
     ...(assetTabOpen ? [{ id: 'assets', label: 'Cognitive tools' }] : []),
     ...(attachment ? [{ id: 'attachment', label: attachment.path.split('/').at(-1) ?? attachment.path }] : []),
     ...openNotes.map((note) => ({
@@ -304,6 +307,7 @@ export default function App() {
       label: `${note.title}${note.content !== note.saved ? ' (unsaved)' : ''}`,
     })),
   ];
+  const milestoneGeneration = vaultGenerationRef.current;
   const reminderState = useReminders(
     securityLocked ? undefined : vault?.path,
     (relative) => {
@@ -622,9 +626,14 @@ export default function App() {
     updater.check();
   };
 
-  const openEntry = async (entry: VaultEntry, notePassword?: string) => {
+  const openEntry = async (
+    entry: VaultEntry,
+    notePassword?: string,
+    canContinue: () => boolean = () => true,
+    onOpened?: () => void,
+  ) => {
     const bridge = window.a11yNotebook;
-    if (!bridge || switchingRef.current) return;
+    if (!bridge || switchingRef.current || !canContinue()) return;
     const root = vaultPathRef.current;
     setTreeSelection(entry.path);
     if (assetRegistry.resolve(entry.path)) {
@@ -641,12 +650,12 @@ export default function App() {
     if (entry.kind === 'attachment') {
       if (/\.(?:txt|csv|html?|pdf|epub)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
-        if (switchingRef.current || vaultPathRef.current !== root) return;
+        if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
         setAttachment(preview);
         setSelectedTab('attachment');
       } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(entry.path)) {
         const alt = await bridge.vault.getImageAlt(entry.path);
-        if (switchingRef.current || vaultPathRef.current !== root) return;
+        if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
         setImageAlt(alt);
         setAttachment({ path: entry.path, text: '', kind: 'image' });
         setSelectedTab('attachment');
@@ -659,6 +668,7 @@ export default function App() {
     if (entry.kind !== 'note') return;
     const existingNote = openNotes.find((item) => item.id === entry.path);
     if (existingNote) {
+      onOpened?.();
       setSelectedTab(existingNote.id);
       return;
     }
@@ -667,13 +677,14 @@ export default function App() {
       const loaded = await bridge.vault.readNote(entry.path, notePassword);
       content = /\.html$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
     } catch (error) {
+      if (!canContinue()) return;
       if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
         setNotePasswordDialog({ action: 'unlock', entry });
         return;
       }
       throw error;
     }
-    if (switchingRef.current || vaultPathRef.current !== root) return;
+    if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
@@ -687,6 +698,7 @@ export default function App() {
         : [...current, note],
     );
     setSelectedTab(note.id);
+    onOpened?.();
     setNotePasswordDialog(null);
   };
 
@@ -966,6 +978,7 @@ export default function App() {
       setOpenNotes((current) => current.filter((item) => item.id !== tabId));
     } else if (tabId === 'tasks') setTaskTabOpen(false);
     else if (tabId === 'reminders') setReminderTabOpen(false);
+    else if (tabId === 'milestones') setMilestoneTabOpen(false);
     else if (tabId === 'assets') {
       if (assetBusy || (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?'))) return;
       setAssetTabOpen(false);
@@ -1043,6 +1056,7 @@ export default function App() {
       setOpenNotes((current) => current.filter((note) => retained(note.id)));
       setTaskTabOpen(retained('tasks') && taskTabOpen);
       setReminderTabOpen(retained('reminders') && reminderTabOpen);
+      setMilestoneTabOpen(retained('milestones') && milestoneTabOpen);
       setAssetTabOpen(retained('assets') && assetTabOpen);
       if (!retained('attachment')) setAttachment(null);
       setSelectedTab(request.tabId);
@@ -1377,6 +1391,17 @@ export default function App() {
       setSelectedTab('reminders');
       return;
     }
+    if (commandId === 'show-milestones') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      if (!vault || securityLocked || switchingRef.current) {
+        setStatusMessage('Open and unlock a vault before using milestones.');
+        return;
+      }
+      setMilestoneTabOpen(true);
+      setSelectedTab('milestones');
+      setPendingFocus('main');
+      return;
+    }
     if (commandId === 'show-assets') {
       if (!vault) {
         setStatusMessage('Open a vault before using cognitive tools.');
@@ -1516,6 +1541,11 @@ export default function App() {
       }
       if (selectedTab === 'reminders') {
         setReminderTabOpen(false);
+        setSelectedTab('welcome');
+        return;
+      }
+      if (selectedTab === 'milestones') {
+        setMilestoneTabOpen(false);
         setSelectedTab('welcome');
         return;
       }
@@ -1976,6 +2006,11 @@ export default function App() {
                           if (selected) setSelectedTab('welcome');
                           return;
                         }
+                        if (tab.id === 'milestones') {
+                          setMilestoneTabOpen(false);
+                          if (selected) setSelectedTab('welcome');
+                          return;
+                        }
                         if (tab.id === 'attachment') {
                           setAttachment(null);
                           if (selected) setSelectedTab('welcome');
@@ -2027,7 +2062,28 @@ export default function App() {
                 />
               </div>
             ) : null}
-            {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'reminders' ? (
+            {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'milestones' ? (
+              vault && !switchingVault ? (
+                <MilestonesView
+                  key={`${vault.path}:${vaultGenerationRef.current}`}
+                  vaultPath={vault.path}
+                  notePaths={notePaths}
+                  isCurrent={() =>
+                    !switchingRef.current &&
+                    vaultPathRef.current === vault.path &&
+                    vaultGenerationRef.current === milestoneGeneration
+                  }
+                  announce={setStatusMessage}
+                  onOpenNote={async (relative, canContinue) => {
+                    const entry = findEntry(vault.entries, relative);
+                    if (!entry) throw new Error('The associated note is no longer available.');
+                    await openEntry(entry, undefined, canContinue, () => setPendingFocus('main'));
+                  }}
+                />
+              ) : (
+                <p>Open and unlock a vault to view milestones.</p>
+              )
+            ) : selectedTab === 'reminders' ? (
               <RemindersView
                 reminders={reminderState.reminders}
                 notePaths={notePaths}

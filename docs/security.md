@@ -41,7 +41,7 @@ Notes are encrypted only after the user selects **Encrypt note** and supplies a 
 or `.html` file then contains a versioned AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random salt and stable
 record ID, and authenticated format, domain, and record ID. The note key is derived with scrypt and cached only in
 main-process memory until vault lock, switch, or exit. Legacy `credentials.json` stores its encrypted list with a
-separate HKDF key domain; recovery-enabled version-2 vaults keep the authenticated credential envelope in
+separate HKDF key domain; recovery-enabled version-3 vaults keep the authenticated credential envelope in
 `security.json` so credentials and wrapped keys share one atomic migration boundary. Wrong passwords, malformed
 envelopes, and authentication failures are rejected without returning plaintext. Renaming/moving an encrypted note
 preserves its record ID. The renderer never receives a derived key.
@@ -54,12 +54,13 @@ one-time key is displayed in an accessible read-only field; it is not written to
 clipboard automatically. The renderer handles the recovery secret only for explicit saving or user-initiated recovery;
 derived keys and the random vault data key remain in the main process.
 
-Recovery migration writes a version-2 `security.json` containing a fresh random 256-bit data key wrapped separately by
+Current recovery migration writes a version-3 `security.json` containing a fresh random 256-bit data key wrapped separately by
 the scrypt-derived password key and the high-entropy random recovery key. AES-256-GCM uses fresh nonces, authenticated
 version/domain/record identifiers, and independent HKDF domains. The configuration authenticates its credential
 envelope and a wrapped copy of the prior vault key, preserving credentials and legacy vault-key-encrypted notes. The
 credential envelope and key wrappers share one atomically replaced JSON file as the migration commit boundary; legacy
-credential ciphertext is removed only after that commit. If the initial write fails, the version-1 security record and
+credential ciphertext is removed only after that commit. Existing version-1/2 configurations remain backward-compatible.
+If the initial write fails, the prior security record and
 credentials remain unchanged. If cleanup is interrupted after commit, the vault is locked and reopening retries removal
 before exposing the vault. No plaintext export is part of migration.
 
@@ -87,7 +88,8 @@ its persisted index may contain plaintext; it is not a secure store. Encrypted n
 does not contribute tasks or link data. HTML task indexing does not decrypt or inspect encrypted note envelopes.
 Credentials are encrypted at rest, but are decrypted into renderer memory
 when the credential manager is open. A vault recovery key does not recover independently password-encrypted notes.
-Encrypted indexes, sensitive-action audit logging, and whole-vault encryption are not implemented. Protect the vault
+Encrypted indexes and whole-vault encryption are not implemented. The limited local audit log described below does not
+encrypt metadata or prove that every action was recorded. Protect the vault
 with OS account controls and disk encryption.
 
 PDF annotation paths are validated inside the current vault, including symlink
@@ -104,10 +106,106 @@ with DOMPurify before rendering. Extracted text remains bounded to 500 sections 
 not implemented.
 Complex PDFs/fonts/encryption and some ePub packaging/content remain unsupported. Web capture preserves common semantic
 HTML and downloads only supported raster images. HTML task IDs and scheduling metadata are ordinary note content and
-are not a security boundary. Sensitive-action audit logging is not implemented. Notifications may expose reminder titles
+are not a security boundary. Notifications may expose reminder titles
 through the OS notification UI. Clipboard auto-clear applies only to generated note passwords copied from the
 encryption dialog, not arbitrary text or other secrets.
 
 The separate bounded PDF text extractor used by search follows page-tree/content-reference order for simple PDFs,
 preserves blank pages, and ignores unreferenced streams. Unstructured input falls back to document-level text; it is
 not a replacement for the PDF.js reader and does not support all PDF object streams, encodings, or filters.
+
+## Sensitive-action audit log
+
+The main process records trusted requests for vault password setup, unlock and manual lock; recovery preparation,
+commit/rotation, password reset and revocation; note encryption; credential read/save/delete; and note export.
+The allowlist is fixed in `electron/vault/audit.ts`. Ordinary note reads/saves, automatic idle/exit/switch locking,
+clipboard actions and actions in external applications are not audited. This is a scoped local history, not a
+comprehensive forensic or compliance log.
+
+`.a11ynotebook/audit.json` uses schema version 1: an `entries` array with exactly `operation`, `outcome`, and UTC `time`.
+No renderer-supplied payload, error text, identifier, credential, password, key, note body, quote, filename or path is
+included. Outcomes are `succeeded`, `failed`, `cancelled`, or `committed-with-error`. These describe the request result;
+`failed` does **not** promise that a filesystem operation was rolled back. Known commits followed by processing failures
+are labelled explicitly and the caller receives a committed-operation error rather than advice to repeat the mutation.
+Preparation of recovery only means a key was prepared, not that recovery was enabled.
+
+On each append the log retains the newest 1,000 entries within 90 days and drops future timestamps; it is limited to
+256 KiB. Pruning occurs on writes, not while the app is exited. Unsupported versions, extra fields, bad dates,
+malformed/truncated JSON, non-files, symlinks and oversized existing logs are rejected without overwriting the evidence.
+Writes share a queue across store instances for the same canonical destination, including same-vault reopening.
+They use a private exclusive staging file, flush that file, revalidate the
+destination and atomically replace it. One `pending-audit.json` staging file bounds crash leftovers; it is never
+treated as committed history and is replaced on the next valid append. The app's single-instance lock and
+in-process queue are assumed; simultaneous writers from separate installations/profiles are not supported.
+File flushing and rename do not guarantee survival of every filesystem/OS/power failure.
+
+Audit persistence returns a separate recorded/not-recorded outcome. On storage failure a native warning explains
+whether the operation succeeded, failed, was cancelled, or committed before failing. A successful operation is not
+undone or rejected merely because its history could not be written. Do not repeat a successful export, credential
+change or recovery operation to retry logging. If even the warning dialog fails, the main process emits a fixed,
+content-free diagnostic; it cannot guarantee that the user saw it. Inspect disk space/permissions and damaged
+metadata before explicitly repairing a log. There is no audit viewer, repair button, automatic corrupt-log deletion,
+cryptographic chain or remote log transmission.
+
+Anyone who can act as the OS user can alter/delete the log, change the clock, replace app files or race filesystem
+validation. The log is plaintext, and operation times themselves reveal activity. It cannot establish authenticity,
+prevent OS-user tampering, guarantee secure erasure or record an abruptly killed process's unfinished requests.
+
+## Encrypted metadata and drafts: inventory and proposed boundary (not implemented)
+
+Do not infer metadata protection from password gating, note encryption or recovery. The current stores are:
+
+| Location                                               | Owner / writers                                  | Sensitive content and encryption status                                                                                                       |
+| ------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Vault `annotations.json`                               | `annotations.ts`, `ipc.ts`                       | Markdown/HTML **and PDF** quotes, context, labels, comments; plaintext                                                                        |
+| Vault `reminders.json`                                 | `reminders.ts` via IPC                           | Standalone titles, note/task associations, scheduling and delivery/dedup state; plaintext                                                     |
+| Vault `reminder-defaults.json`                         | `reminder-defaults.ts` via IPC                   | Notification consent/privacy/time/snooze defaults; plaintext                                                                                  |
+| Vault `flashcards.json`                                | `assets.ts` via IPC                              | Deck paths, card fingerprints and review schedules; plaintext                                                                                 |
+| Vault `milestones.json`                                | `milestones.ts` via IPC                          | Titles, status, dates, note/task associations; plaintext                                                                                      |
+| Vault `settings.json` and app userData `settings.json` | `ipc.ts`                                         | Shortcuts, theme, edit/lock timeouts; plaintext, two copies                                                                                   |
+| Vault `image-alts.json`                                | `ipc.ts`                                         | Image paths and user descriptions; plaintext                                                                                                  |
+| Vault `bookmarks.json`                                 | `service.ts`, move rollback in IPC               | Note paths; plaintext, includes direct service writes                                                                                         |
+| Vault `links.json`                                     | `service.ts` on open/refresh/save                | Paths and link graph; plaintext, direct writer                                                                                                |
+| Vault `search-index.json` and `search-index-*.tmp`     | `search.ts` on initialization/refresh/watch/save | Root/path, extracted text/snippets/tags/stat cache; plaintext, separate writer and memory cache                                               |
+| Vault `security.json`                                  | `security.ts` through IPC                        | Existing version 1/2/3 key wrappers, verifier/config authentication; version 3 embeds encrypted credentials/legacy key, not ordinary metadata |
+| Vault `credentials.json` (legacy)                      | Credential IPC / recovery cleanup                | **Already ciphertext**, independent credential domain; recovery migration folds it into version 3, never plaintext                            |
+| Vault `audit.json`, `pending-audit.json`               | `audit.ts`                                       | Content-free activity history; plaintext by deliberate policy                                                                                 |
+| App userData `recent-vault.json`                       | `ipc.ts`                                         | Last-opened vault path; plaintext                                                                                                             |
+| App userData `a11y-notebook-store.json` and `.tmp`     | `electron/store.ts`                              | Shell/sample-vault data and PDF reading preferences; plaintext, not vault-scoped                                                              |
+| Cognitive asset files                                  | `assets.ts` / asset editors                      | Outline/mind-map/flashcard/grid source files; ordinary plaintext files, not metadata                                                          |
+| Crash/recovery drafts                                  | No store exists                                  | Unsaved cognitive edits are memory-only; no recovery or protected draft policy ships here                                                     |
+
+“Vault” rows refer to `.a11ynotebook/`. There is no separate `pdf-annotations.json`, `assets.json`, binary search
+database or persisted recovery-key plaintext store. Existing metadata staging `pending-*.json` must also be accounted
+for in any migration. Filesystem watchers and direct service/index writers make replacing only `metadata.write`
+insufficient.
+
+The **proposed**, not shipped, threat model is offline disclosure or modification of opted-in metadata when the data
+key is unavailable. It excludes a compromised running app, renderer plaintext while unlocked, malicious OS-user
+processes, filenames, ordinary note/asset/attachment files, exported documents and external-editor copies. This is
+not whole-vault encryption. Existing plaintext copies, OS backups/snapshots and deletion remnants cannot be securely
+erased by this application.
+
+A future explicit migration should require an unlocked recovery-enabled version-3 vault with a stable random data key.
+Legacy version-1/2 vaults continue unchanged unless the user explicitly migrates recovery first. Metadata keys belong
+to the main process; password reset and recovery-key rotation rewrap the same data key, not independently
+password-encrypted notes. No passwords or keys may be persisted for scheduled helpers. Each logical store needs a
+distinct HKDF domain (`metadata:annotations`, `metadata:reminders`, `metadata:reminder-defaults`,
+`metadata:flashcards`, `metadata:milestones`, `metadata:settings`, `metadata:image-alts`, `metadata:bookmarks`,
+`metadata:links`, `metadata:search-index`, `metadata:asset-drafts`) and bounded authenticated envelopes binding
+schema version, store identity, vault identity, generation and record identity. Audit and nonsensitive global
+preferences require explicit documented exclusions; sensitive global copies must be removed or stopped.
+
+Before implementation, introduce one authenticated generation manifest/commit point, pause all producers/watchers,
+snapshot validated sources, encrypt **before** staging, and publish the complete generation atomically. On restart
+choose only a fully committed generation; discard/roll back uncommitted ciphertext without silently selecting a
+plaintext fallback. Persist cleanup intent and refuse to expose a partially protected vault until cleanup can finish.
+After opt-in, absent, malformed or unauthenticated protected stores must fail closed while locked or on tampering;
+all protected memory/index/renderer caches must clear on lock/switch. Direct startup/index/settings writers must
+obey that policy before opening files. No migration or encryption toggle is exposed in this increment.
+
+Remaining tests/implementation gates: cancellation before commit, interruption at every stage and restart,
+rollback without key loss, post-commit cleanup failures, cross-store/generation substitution, nonce/bounds/tamper
+rejection, recovery/password reset/rotation/revocation, data-key rotation with two-generation rollback, legacy notes,
+independent note passwords, concurrent watcher/scheduler/write/lock/switch races, and absence of plaintext staging,
+caches or drafts. Data-key rotation is distinct from recovery-key rotation and has no implementation yet.

@@ -28,6 +28,10 @@ const mock = vi.hoisted(() => ({
   captureTitle: '.Research',
   attachmentReadGate: undefined as undefined | (() => Promise<void>),
   securityWriteGate: undefined as undefined | (() => Promise<void>),
+  saveDialogGate: undefined as undefined | (() => Promise<void>),
+  failAuditWrite: false,
+  auditWriteGate: undefined as undefined | (() => Promise<void>),
+  messages: [] as { title?: string; message?: string }[],
   savePath: '',
   saveCanceled: false,
   saveOptions: undefined as unknown,
@@ -54,6 +58,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
         throw Object.assign(new Error('Partial write: disk full.'), { code: 'ENOSPC' });
       }
       return actual.writeFile(...args);
+    },
+    rename: async (...args: Parameters<typeof actual.rename>) => {
+      if (String(args[1]).endsWith('audit.json')) {
+        if (mock.failAuditWrite) throw new Error('Audit storage unavailable.');
+        await mock.auditWriteGate?.();
+      }
+      return actual.rename(...args);
     },
   };
 });
@@ -115,9 +126,13 @@ vi.mock('electron', () => ({
   },
   dialog: {
     showOpenDialog: async () => ({ canceled: false, filePaths: [mock.root] }),
-    showMessageBox: async () => ({ response: mock.confirm }),
+    showMessageBox: async (options: { title?: string; message?: string }) => {
+      mock.messages.push(options);
+      return { response: mock.confirm };
+    },
     showSaveDialog: async (options: unknown) => {
       mock.saveOptions = options;
+      await mock.saveDialogGate?.();
       return { canceled: mock.saveCanceled, filePath: mock.savePath };
     },
   },
@@ -229,6 +244,10 @@ beforeEach(async () => {
   mock.captureTitle = '.Research';
   mock.attachmentReadGate = undefined;
   mock.securityWriteGate = undefined;
+  mock.saveDialogGate = undefined;
+  mock.failAuditWrite = false;
+  mock.auditWriteGate = undefined;
+  mock.messages = [];
   mock.saveCanceled = false;
   mock.saveOptions = undefined;
   mock.notificationsSupported = false;
@@ -261,6 +280,141 @@ afterEach(async () => {
 });
 
 describe('extended vault IPC integration', () => {
+  it('audits security, credentials and cancelled exports without secrets or paths', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'sensitive-id', 'sensitive-user', 'sensitive-value');
+    await invoke(IPC_CHANNELS.vaultCredentialsRead);
+    await invoke(IPC_CHANNELS.vaultCredentialsDelete, 'sensitive-id');
+    mock.saveCanceled = true;
+    await invoke(IPC_CHANNELS.vaultExportNote, 'Topic.md', 'markdown', 'private-export-body', false);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'incorrect-test-password')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'audit-test-password');
+    const text = await readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8');
+    expect(text).not.toMatch(/audit-test-password|sensitive-|private-export-body|Topic\.md|incorrect-test-password/);
+    const log = JSON.parse(text) as { entries: { operation: string; outcome: string }[] };
+    expect(log.entries.map(({ operation, outcome }) => [operation, outcome])).toEqual([
+      ['protection.setup', 'succeeded'],
+      ['credentials.save', 'succeeded'],
+      ['credentials.read', 'succeeded'],
+      ['credentials.delete', 'succeeded'],
+      ['note.export', 'cancelled'],
+      ['protection.lock', 'succeeded'],
+      ['protection.unlock', 'failed'],
+      ['protection.unlock', 'succeeded'],
+    ]);
+  });
+
+  it('warns of audit failure without hiding a committed credential save or exposing the secret', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    mock.failAuditWrite = true;
+    await expect(
+      invoke(IPC_CHANNELS.vaultCredentialsSave, 'test-id', 'test-user', 'test-value'),
+    ).resolves.toBeUndefined();
+    expect(mock.messages.at(-1)).toEqual(
+      expect.objectContaining({
+        title: 'Audit entry not recorded',
+        message: expect.stringContaining('operation succeeded'),
+      }),
+    );
+    mock.failAuditWrite = false;
+    expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([
+      { id: 'test-id', username: 'test-user', password: 'test-value' },
+    ]);
+  });
+
+  it('audits recovery preparation, cancellation, migration, password reset and revocation without keys', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'recovery-audit-test-password');
+    const discarded = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'recovery-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
+    const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'recovery-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'replacement-audit-test-password');
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, 'replacement-audit-test-password');
+    const text = await readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8');
+    expect(text).not.toContain(discarded);
+    expect(text).not.toContain(recoveryKey);
+    expect(text).not.toMatch(/recovery-audit-test-password|replacement-audit-test-password/);
+    const log = JSON.parse(text) as { entries: { operation: string; outcome: string }[] };
+    expect(log.entries.filter(({ operation }) => operation.startsWith('recovery.'))).toEqual([
+      expect.objectContaining({ operation: 'recovery.prepare', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.commit', outcome: 'cancelled' }),
+      expect.objectContaining({ operation: 'recovery.prepare', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.commit', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.reset-password', outcome: 'succeeded' }),
+      expect.objectContaining({ operation: 'recovery.revoke', outcome: 'succeeded' }),
+    ]);
+  });
+
+  it('rejects an untrusted audited call without adding an entry', async () => {
+    await expect(mock.handlers.get(IPC_CHANNELS.vaultSecuritySetup)!({}, 'test-password')).rejects.toThrow(
+      'Untrusted IPC sender',
+    );
+    await expect(readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8')).rejects.toMatchObject({
+      code: 'ENOENT',
+    });
+  });
+
+  it('withholds decrypted credentials if locking occurs during audit persistence', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'test-id', 'test-user', 'test-value');
+    const started = deferred();
+    const resume = deferred();
+    mock.auditWriteGate = async () => {
+      started.resolve();
+      await resume.promise;
+    };
+    const reading = invoke(IPC_CHANNELS.vaultCredentialsRead);
+    await started.promise;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ locked: true });
+    resume.resolve();
+    await expect(reading).rejects.toThrow(/Unlock|withheld/);
+    await locking;
+  });
+
+  it('rejects a symlink audit destination without following it or undoing protection setup', async () => {
+    const outside = path.join(temporary, 'outside.json');
+    await writeFile(outside, 'unchanged');
+    await symlink(outside, path.join(mock.root, '.a11ynotebook', 'audit.json'));
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    expect(await readFile(outside, 'utf8')).toBe('unchanged');
+    expect(mock.messages.at(-1)?.title).toBe('Audit entry not recorded');
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ enabled: true, locked: false });
+  });
+
+  it('rejects export after locking while the save dialog is pending without writing plaintext', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    const started = deferred();
+    const resume = deferred();
+    mock.saveDialogGate = async () => {
+      started.resolve();
+      await resume.promise;
+    };
+    const exportResult = invoke(IPC_CHANNELS.vaultExportNote, 'Topic.md', 'markdown', 'private body', false);
+    await started.promise;
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    resume.resolve();
+    await expect(exportResult).rejects.toThrow(/Unlock|changed/);
+    await expect(readFile(mock.savePath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reports encryption committed before a failed index refresh rather than claiming no change', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
+    const content = await invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md');
+    mock.failIndexRefreshAt = mock.refreshCount + 1;
+    await expect(
+      invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', content, 'independent-test-password'),
+    ).rejects.toThrow('operation committed');
+    expect(JSON.parse(await readFile(path.join(mock.root, 'Topic.md'), 'utf8'))).toHaveProperty('ciphertext');
+    const log = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'audit.json'), 'utf8')) as {
+      entries: { operation: string; outcome: string }[];
+    };
+    expect(log.entries.at(-1)).toMatchObject({ operation: 'note.encrypt', outcome: 'committed-with-error' });
+  });
+
   it('persists reminder defaults and applies creation preferences without rewriting existing reminders', async () => {
     const request = { title: 'Meeting', path: 'Topic.md', scheduledAt: '2099-10-05 12:30' };
     const original = await invoke(IPC_CHANNELS.vaultReminderCreate, request);

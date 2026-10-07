@@ -1,7 +1,8 @@
 # Dependency-ordered continuation
 
-This document is an implementation queue, not a completion claim. Only the recovery foundation in the first section
-ships in this increment. Remaining phases require their own focused implementations, tests, reviews, and accessibility
+This document is an implementation queue, not a completion claim. The recovery foundation already exists on main.
+This increment adds scoped sensitive-action auditing and milestone planning UI; it does not deliver metadata
+encryption, cognitive draft recovery, DOCX or exited-process reminders. Remaining phases require focused implementations, tests, reviews, and accessibility
 validation. Do not combine unrelated data migrations or infer that a feature is complete from roadmap scaffolding.
 
 ## Delivered here — opt-in vault recovery ✅
@@ -10,7 +11,7 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 - After confirming the existing password in an unlocked vault, the user can generate a 256-bit random recovery key,
   save it separately, and explicitly acknowledge saving it. It is displayed once in an accessible read-only field;
   the app does not copy, persist, or log the recovery secret.
-- Version 2 wraps a fresh random data key independently with the existing scrypt-derived password key and the
+- Current version 3 wraps a fresh random data key independently with the existing scrypt-derived password key and the
   high-entropy recovery key. AES-GCM envelopes use fresh nonces, domain separation, authenticated identifiers, strict
   bounds, and an authenticated config manifest. The manifest binds recovery-wrapper fields and credential presence;
   credential and legacy-key envelopes authenticate their own ciphertext.
@@ -26,16 +27,20 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 
 ## Security and storage follow-ups — open
 
-1. **Sensitive-action audit log — open.** Define a local, bounded append/retention format and validate every event.
-   Record operation, outcome, and time only; exclude passwords, recovery/data/derived keys, credential values, note
-   bodies, quotes, and unnecessary sensitive paths. Use atomic/validated writes and explicit error handling: a failed
-   audit write must not be reported as recorded success. Document that a local log is not tamper-proof against the OS
-   user. Tests must cover malformed logs, size/retention limits, interrupted writes, and redaction.
+1. **Sensitive-action audit log — scoped implementation, automated tests.** Version 1 records only allowlisted
+   operation/outcome/time for protection, recovery, credentials, note encryption and export. Bounded retention,
+   redaction, interruption, concurrency, malicious metadata and independent storage-failure outcomes are tested.
+   See `security.md` for exact coverage/exclusions, crash/durability and OS-user tampering limits. Native warning
+   speech/focus still needs Windows AT verification; an audit viewer and comprehensive automatic-lock/event history
+   are not implemented.
 2. **Encrypted indexes and metadata — open, depends on stable key handling.** Inventory annotations (including PDF),
    reminders, flashcard schedules, settings, image descriptions, link/search indexes, and any recovery/crash drafts.
    Specify per-store domains and versioned authenticated envelopes in the main process. Migrate explicitly and
    backward-compatibly; reject protected reads while locked. Test interruption/restart, rollback, key rotation,
    malformed/tampered records, and ensure no plaintext temporary file, index, or draft is produced.
+   The verified store inventory, proposed domain/key ownership and generation-commit policy are in `security.md`.
+   Direct `service.ts` link/bookmark writers, `search.ts` cache/startup/watch writers, both settings copies and global
+   preferences must be addressed; do not silently add encryption to only the generic metadata writer.
 3. **Whole-vault encryption — open design and implementation.** This is a separate opt-in storage mode, not password
    gating. Before implementation, specify threat model and behavior for ordinary-file interoperability, filenames and
    attachments, external editors/watchers, search, export, lock, migration, and recovery. Require a bounded authenticated
@@ -44,12 +49,12 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 
 ## Phase 5 — tasks, reminders, and planning — open
 
-- Persist and validate reminder defaults (time, snooze, privacy, and notification choices); creation dialogs consume
+- Already implemented: persist and validate reminder defaults (time, snooze, privacy, and notification choices); creation dialogs consume
   defaults without rewriting existing reminders.
-- Add named milestones with stable IDs, task/note associations, due dates, statuses, accessible summaries, and
+- Named milestone service already implemented; this increment adds planning UI with stable IDs, task/note associations, due dates, statuses, accessible summaries, and
   progress. Preserve identity across moves/deletes and source changes; HTML task IDs stay stable and Markdown task
   identity must be safe across edits.
-- First share the main-process scheduler, due summaries, consent/privacy choices, deduplication, and switch/lock
+- Already implemented in-process: shared main-process scheduler, due summaries, consent/privacy choices, deduplication, and switch/lock
   behavior across reminders and due flashcard reviews. Explicitly distinguish a closed window from an exited process.
 - **Exited-process reminders/reviews remain open.** Design an opt-in Windows integration (Task Scheduler/helper or
   supported equivalent) with explicit consent, uninstall/disable cleanup, no shell injection, secrets, or plaintext
@@ -61,6 +66,14 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 1. **Unsaved-edit recovery first.** Add bounded, versioned crash-recovery records for outlines, mind maps, flashcards,
    and grids; offer accessible explicit restore/discard; validate vault scope and external-edit baselines/conflicts;
    clean stale drafts. Protected data must not create plaintext drafts. Depends on encrypted metadata/draft policy.
+   Still no draft store, checkpoint hook or restore/discard dialog exists. After the metadata commit policy ships,
+   define a versioned vault/asset-scoped encrypted draft envelope with asset type, content, saved baseline/hash,
+   revision and expiry; validate type and size before parsing. Checkpoint on debounce/explicit save boundaries,
+   never automatically overwrite a file. Offer restore/discard with keyboard focus and announcements and an explicit
+   conflict path when the file changed externally, moved or was deleted. Save success removes only the matching draft
+   revision; save failure retains it. Moves must preserve identity; delete/switch/lock must cancel stale writes and
+   clear memory. Test partial writes/restart, stale cleanup, races, external conflict, discard cancellation and no
+   plaintext protected content. Disabling persistent drafts is safer than a plaintext fallback while policy is open.
 2. **General Markdown-to-outline conversion.** Preserve heading hierarchy and meaningful content; deliberately handle
    front matter, fenced code, and lists; preview content-loss warnings; create a sibling asset without overwriting the
    source.
@@ -112,3 +125,53 @@ screen-reader compatibility. Record app/build, OS, assistive-technology version,
 Also verify keyboard-only operation, visible focus, 200–400% reflow/zoom without loss of reading order, reduced motion,
 high contrast and Windows forced colors, semantic headings/landmarks, and no duplicate decorative SVG announcements.
 Windows execution and licensed/tooling-dependent manual passes are externally blocked in this environment.
+
+## Exited-process Windows implementation gates — no integration ships here
+
+Tray/closed-window behavior is not delivery after exit. No Task Scheduler registration/helper/enable/disable/status
+API, settings consent or uninstall cleanup exists. The existing app scheduler is not an interprocess transaction.
+Before claiming implementation:
+
+- Use explicit opt-in, per-user non-elevated registration, confirmation before enable/disable and actionable status/
+  registration/update/unregister failures. Launch only the trusted installed helper using argument arrays without a
+  shell; Task Scheduler XML/arguments contain neither note text/titles nor passwords/keys. Define task ownership and
+  path validation, version/update reconciliation and installer-uninstall cleanup; never silently install a service.
+- Define installed-only support versus portable/dev paths (unsupported until reliable identity/cleanup exists),
+  scheduled helper bounded lifetime, missed/reboot triggers, opt-out cancellation and stale-task cleanup.
+- Reuse reminder consent/privacy/defaults and missed-delivery logic. Add an atomic **interprocess** lease/delivery
+  ledger before concurrent helper/app startup can claim notifications. Existing in-process dedup alone is insufficient.
+- Encrypted schedules cannot be decrypted after exit without an unlocked main-process key. Prefer an explicitly
+  consented generic “Open A11y Notebook to check reminders” wake-up with no persisted sensitive schedule, or explicitly
+  document no per-reminder delivery for protected vaults. Never persist credentials to bypass locking. Specify vault
+  switch/lock behavior, task cancellation, reboot and app/helper coordination before exporting even generic wake times.
+- Add mocked OS tests for malicious arguments/paths/XML, failed registration/updates/unregister, consent cancellation,
+  duplicate helpers, lease crash/restart, changed installation paths and locked/encrypted schedules. Mocks do not
+  establish actual Task Scheduler or Windows toast behavior.
+
+Manual matrix (all **not run**, no Windows runner in this session):
+
+| Build/scenario                                       | Required verification                                                    |
+| ---------------------------------------------------- | ------------------------------------------------------------------------ |
+| Installed, opted out / enable cancelled              | No tasks/helper; no notifications after exit                             |
+| Installed, opted in, window closed vs process exited | Correct distinction; bounded helper lifetime; generic privacy-safe toast |
+| Restart/reboot/sleep after due time                  | One missed delivery; no duplicate app/helper toast                       |
+| Concurrent app startup and helper executions         | Single delivery claim; crash/lease expiry recovers                       |
+| Lock/switch/recovery/encrypted schedules             | No secret/key/title disclosure or unintended decryption                  |
+| Disable/update/uninstall                             | Owned tasks removed or reconciled; actionable retry if cleanup fails     |
+| Portable/dev/moved binary                            | Explicit supported/unsupported status; no silent registration            |
+| JAWS/NVDA/Narrator/keyboard/forced colors            | Consent, errors/status and notification action accessible                |
+
+## DOCX implementation gates — unsupported in this increment
+
+No local DOCX parser/dependency was added or vetted in this session. A parser choice must be checked against dependency
+advisories, maintained local parsing behavior and license, and tested before exposing typed document IPC. A semantic
+adapter must preserve paragraphs, headings, ordered/unordered lists, table headers/cells, safe links and image
+descriptions; add keyboard navigation and bounded search using the reader architecture rather than altering PDF or
+epub.js semantics. Original bytes remain unchanged and all filesystem/archive processing stays in the main process.
+
+Preflight ZIP structure **before** parser expansion: bound compressed and expanded totals, each entry, entry count,
+compression ratio and nesting/XML depth; reject duplicate/traversal/absolute/backslash paths, unsupported compression,
+malformed central/local headers, encrypted archives, macros, ActiveX/OLE/embedded packages, DTD/entities, active content
+and unsafe external relationships/resources. Never fetch resources, use Office automation or upload files. Add hostile
+fixtures (including forged size fields and expansion bombs), time/resource bounds, sender/path/cancellation/race tests
+and semantic/keyboard/focus tests. Legacy binary `.doc` remains explicitly unsupported, not guessed as ZIP/DOCX.
