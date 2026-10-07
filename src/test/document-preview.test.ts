@@ -2,6 +2,7 @@
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { deflateSync } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import { extractEpubPages, extractPdfPages, readDocumentAttachment } from '../../electron/vault/document-preview';
 
@@ -54,6 +55,61 @@ describe('PDF and ePub extraction', () => {
   it('extracts text-array PDF operators with escaped delimiters', () => {
     const pdf = Buffer.from('%PDF-1.7\n[(First) -20 (Second\\)part)] TJ\n', 'latin1');
     expect(extractPdfPages(pdf)).toEqual(['FirstSecond)part']);
+  });
+
+  it('follows page-tree and content-array order, preserving blank pages and ignoring unrelated streams', () => {
+    const pdf = Buffer.from(
+      `%PDF-1.7
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [7 0 R 2 0 R 3 0 R 9 0 R] >> endobj
+3 0 obj << /Type /Page /Contents [4 0 R 5 0 R] >> endobj
+4 0 obj << /Length 20 >> stream
+BT (First) Tj ET
+endstream endobj
+5 0 obj << /Length 20 >> stream
+BT (continued) Tj ET
+endstream endobj
+6 0 obj << /Length 20 >> stream
+BT (Second) Tj ET
+endstream endobj
+7 0 obj << /Type /Pages /Kids [8 0 R] >> endobj
+8 0 obj << /Type /Page /Contents 6 0 R >> endobj
+9 0 obj << /Type /Page >> endobj
+10 0 obj << /Length 20 >> stream
+BT (Not a page) Tj ET
+endstream endobj
+`,
+      'latin1',
+    );
+    expect(extractPdfPages(pdf)).toEqual(['Second', 'First continued', '']);
+  });
+
+  it('keeps unstructured PDF text as one document-level chunk rather than inventing pages', () => {
+    const pdf = Buffer.from(
+      '%PDF-1.7\n<< /Length 40 >> stream\nBT (First) Tj ET\fBT (Second) Tj ET\nendstream\n',
+      'latin1',
+    );
+    expect(extractPdfPages(pdf)).toEqual(['First Second']);
+  });
+
+  it('decodes referenced Flate streams and skips unsupported filters', () => {
+    const compressed = deflateSync(Buffer.from('BT (Compressed page) Tj ET'));
+    const pdf = Buffer.concat([
+      Buffer.from(
+        `%PDF-1.7
+1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj
+2 0 obj << /Type /Pages /Kids [3 0 R 5 0 R] >> endobj
+3 0 obj << /Type /Page /Contents 4 0 R >> endobj
+4 0 obj << /Filter /FlateDecode /Length ${compressed.length} >> stream\r\n`,
+        'latin1',
+      ),
+      compressed,
+      Buffer.from(
+        '\r\nendstream endobj\n5 0 obj << /Type /Page /Contents 6 0 R >> endobj\n6 0 obj << /Filter /Unknown >> stream\nBT (Not decoded) Tj ET\nendstream endobj',
+        'latin1',
+      ),
+    ]);
+    expect(extractPdfPages(pdf)).toEqual(['Compressed page', '']);
   });
 
   it('extracts ePub content in package spine order and decodes entities', () => {
