@@ -25,7 +25,9 @@ const mock = vi.hoisted(() => ({
   derivationGate: undefined as undefined | (() => Promise<void>),
   derivedKeys: [] as Buffer[],
   captureGate: undefined as undefined | (() => Promise<void>),
+  captureTitle: '.Research',
   attachmentReadGate: undefined as undefined | (() => Promise<void>),
+  securityWriteGate: undefined as undefined | (() => Promise<void>),
   savePath: '',
   saveCanceled: false,
   saveOptions: undefined as unknown,
@@ -72,6 +74,18 @@ vi.mock('../../electron/vault/security', async (importOriginal) => {
       await mock.derivationGate?.();
       return key;
     },
+    encryptNoteWithPassword: async (...args: Parameters<typeof actual.encryptNoteWithPassword>) => {
+      const result = await actual.encryptNoteWithPassword(...args);
+      mock.derivedKeys.push(result.key);
+      await mock.derivationGate?.();
+      return result;
+    },
+    unlockPasswordEncryptedNote: async (...args: Parameters<typeof actual.unlockPasswordEncryptedNote>) => {
+      const result = await actual.unlockPasswordEncryptedNote(...args);
+      mock.derivedKeys.push(result.key);
+      await mock.derivationGate?.();
+      return result;
+    },
   };
 });
 
@@ -84,7 +98,7 @@ vi.mock('../../electron/vault/web-capture', async (importOriginal) => {
       await mock.captureGate?.();
       return {
         sourceUrl: url,
-        title: '.Research',
+        title: mock.captureTitle,
         markdown: 'Captured content',
         html: '<h1>Research</h1>',
         images: [],
@@ -177,7 +191,8 @@ vi.mock('../../electron/vault/metadata', async (importOriginal) => {
             mock.failReminderWrite = false;
             throw new Error('Reminder migration failed.');
           }
-          return store.write(name, value);
+          await store.write(name, value);
+          if (name === 'security.json') await mock.securityWriteGate?.();
         },
       };
     },
@@ -211,7 +226,9 @@ beforeEach(async () => {
   mock.derivationGate = undefined;
   mock.derivedKeys = [];
   mock.captureGate = undefined;
+  mock.captureTitle = '.Research';
   mock.attachmentReadGate = undefined;
+  mock.securityWriteGate = undefined;
   mock.saveCanceled = false;
   mock.saveOptions = undefined;
   mock.notificationsSupported = false;
@@ -577,6 +594,61 @@ describe('extended vault IPC integration', () => {
     expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({ enabled: true, locked: true });
   });
 
+  it('does not reinstall a recovery key when locking races with the migration commit', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    await invoke(IPC_CHANNELS.vaultCredentialsSave, 'original', 'alice', 'secret');
+    await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
+    const entered = deferred();
+    const release = deferred();
+    mock.securityWriteGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const acknowledging = invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await entered.promise;
+    const rejected = expect(acknowledging).rejects.toThrow(/changed/);
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release.resolve();
+    await Promise.all([rejected, locking]);
+    expect(await invoke(IPC_CHANNELS.vaultSecurityStatus)).toMatchObject({
+      enabled: true,
+      locked: true,
+      recoveryAvailable: true,
+    });
+    mock.securityWriteGate = undefined;
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
+      { id: 'original', username: 'alice', password: 'secret' },
+    ]);
+  });
+
+  it.each(['encrypt', 'unlock'])('discards a note key derived after vault locking (%s)', async (action) => {
+    const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
+    if (action === 'unlock') {
+      await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password');
+      await invoke(IPC_CHANNELS.vaultSecurityLock);
+      await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
+    }
+    const entered = deferred();
+    const release = deferred();
+    mock.derivationGate = () => {
+      entered.resolve();
+      return release.promise;
+    };
+    const operation =
+      action === 'encrypt'
+        ? invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', original, 'note-specific password')
+        : invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md', 'note-specific password');
+    await entered.promise;
+    const rejected = expect(operation).rejects.toThrow(/Unlock|changed/);
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    release.resolve();
+    await rejected;
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    if (action === 'encrypt') expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(original);
+  });
+
   it('rejects credential operations queued behind a vault switch', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     await invoke(IPC_CHANNELS.vaultCredentialsSave, 'original', 'alice', 'secret');
@@ -612,12 +684,15 @@ describe('extended vault IPC integration', () => {
   });
 
   it.each(['markdown', 'html'])('creates visible capture notes for dot-prefixed titles (%s)', async (format) => {
-    const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '', format)) as {
-      notePath: string;
-      vault: { entries: { path: string }[] };
-    };
-    expect(result.notePath).toMatch(/^Research-.*\.(?:md|html)$/);
-    expect(result.vault.entries).toContainEqual(expect.objectContaining({ path: result.notePath }));
+    for (const title of ['.Research', '. .Research', '.\u00a0.Research', '...']) {
+      mock.captureTitle = title;
+      const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '', format)) as {
+        notePath: string;
+        vault: { entries: { path: string }[] };
+      };
+      expect(result.notePath).toMatch(/^(?:Research|Web capture)-.*\.(?:md|html)$/);
+      expect(result.vault.entries).toContainEqual(expect.objectContaining({ path: result.notePath }));
+    }
   });
 
   it.each(['lock', 'switch'])('rejects a web capture if vault access changes during download (%s)', async (change) => {

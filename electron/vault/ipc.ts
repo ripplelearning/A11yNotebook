@@ -720,8 +720,14 @@ export function setupVaultIpc(
         credentialsText,
       );
       await metadataFor(pending.vault).write('security.json', committedConfig);
-      const previousKey = masterKey;
       securityConfig = committedConfig;
+      try {
+        access.assertCurrent();
+      } catch (error) {
+        lockVault();
+        throw error;
+      }
+      const previousKey = masterKey;
       if (pending.key) masterKey = pending.key;
       if (pending.key && previousKey !== pending.key) previousKey.fill(0);
       pendingRecovery = null;
@@ -912,6 +918,7 @@ export function setupVaultIpc(
           access.assertCurrent();
         } else {
           await metadataFor(access.vault).write('credentials.json', encrypted);
+          access.assertCurrent();
         }
         resetIdleLock();
       });
@@ -947,6 +954,7 @@ export function setupVaultIpc(
         access.assertCurrent();
       } else {
         await metadataFor(access.vault).write('credentials.json', encrypted);
+        access.assertCurrent();
       }
       resetIdleLock();
     });
@@ -992,7 +1000,7 @@ export function setupVaultIpc(
             .join('')
             .replace(/[. ]+$/g, '')
             .trim()
-            .replace(/^\.+/g, '')
+            .replace(/^[.\s]+/g, '')
             .trim()
             .slice(0, 100) || 'Web capture';
         const extension = format === 'html' ? '.html' : '.md';
