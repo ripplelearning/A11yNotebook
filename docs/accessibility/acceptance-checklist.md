@@ -40,8 +40,8 @@
 - [ ] Template output format has an accessible selector and Markdown remains the default; HTML output is sanitized and its extension, placeholders, and cursor position match the selected format.
 - [ ] Export format, format-loss warning, protected-content consent, save-dialog cancellation, overwrite confirmation, and completion/error status are keyboard and screen-reader accessible.
 - [ ] Web capture format selection, progress/errors, partial-image failure counts, and final saved-note status are accessible; HTML contains no remote resources.
-- [ ] HTML note-text annotations expose labels/descriptions and Jump/Edit/Delete; PDF/ePub selection mapping and document annotations are explicitly unimplemented.
-- [ ] PDF text is separately extracted from the fixed-scale canvas; do not treat it as a selectable/zoomable layer. ePub renders paginated content with TOC and extracted text, but still needs keyboard, reading-order, and screen-reader validation.
+- [ ] HTML note-text annotations expose labels/descriptions and Jump/Edit/Delete; verify implemented PDF range/quote mapping and persisted notes, without implying ePub annotations are implemented.
+- [ ] Verify the bounded-scale PDF canvas, selectable text layer, zoom/rotation and separate semantic text without duplicate announcements. ePub paginated content with TOC and extracted text still needs keyboard, reading-order, and screen-reader validation.
 - [ ] Reminder table and agenda headings expose local times, notification status, snooze/dismiss actions, and startup missed reminders.
 - [ ] Notebook task progress has an accessible label, completion count, and native progress value.
 - [ ] Outline and mind-map trees expose level/expansion/selection and support indent/reorder/new-item editing without trapping Tab.
@@ -53,5 +53,10 @@
 - [ ] All above widgets pass JAWS, NVDA, Narrator, keyboard-only, and Windows forced-colors checks; record results rather than checking boxes based on DOM tests.
 
 These items are acceptance criteria, not completed manual-validation claims. Windows screen-reader, UI Automation, and
-forced-colors checks must be recorded when run. Document annotations and manual PDF/ePub accessibility validation remain
-open implementation work; see the [document reader and annotation follow-up plan](../roadmap.md#document-reader-and-annotation-follow-up-plan).
+forced-colors checks must be recorded when run. Remaining document annotation/sidebar/export/lifecycle work and manual
+PDF/ePub accessibility validation are open; see the [document reader and annotation follow-up plan](../roadmap.md#document-reader-and-annotation-follow-up-plan).
+
+- [ ] Audit storage-failure warnings clearly distinguish a completed operation from a missing history entry, are
+      announced once, and preserve understandable native-dialog focus with JAWS, NVDA and Narrator.
+- [ ] Milestone list/detail/create/edit/association/delete workflows expose dates/status/progress, trap modal focus,
+      return it predictably on cancel/save/delete, announce results once and clear content on lock/switch.

@@ -193,8 +193,9 @@ the captured note is opened and indexed.
 Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
 for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
-page navigation, in-document search, and persisted PDF notes. ePub uses epub.js to navigate and search flattened spine-section text; it does not
-provide a paginated rendition of the book's styles and a nested table of contents. Extracted ePub text remains available
+page navigation, in-document search, and persisted PDF notes. ePub uses local epub.js paginated spine rendering,
+a nested navigation table of contents and section navigation/search. Chapter markup is sanitized; broader hostile-
+archive/resource validation, reading-position persistence and ePub annotations remain open. Extracted ePub text remains available
 for search and assistive technology; scripts, embedded frames, forms, and unsafe attributes are removed before display.
 Both are limited to 40 MB.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.

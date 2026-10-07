@@ -41,7 +41,7 @@ Notes are encrypted only after the user selects **Encrypt note** and supplies a 
 or `.html` file then contains a versioned AES-256-GCM envelope with a fresh 96-bit nonce, 128-bit tag, random salt and stable
 record ID, and authenticated format, domain, and record ID. The note key is derived with scrypt and cached only in
 main-process memory until vault lock, switch, or exit. Legacy `credentials.json` stores its encrypted list with a
-separate HKDF key domain; recovery-enabled version-2 vaults keep the authenticated credential envelope in
+separate HKDF key domain; recovery-enabled version-3 vaults keep the authenticated credential envelope in
 `security.json` so credentials and wrapped keys share one atomic migration boundary. Wrong passwords, malformed
 envelopes, and authentication failures are rejected without returning plaintext. Renaming/moving an encrypted note
 preserves its record ID. The renderer never receives a derived key.
@@ -54,12 +54,13 @@ one-time key is displayed in an accessible read-only field; it is not written to
 clipboard automatically. The renderer handles the recovery secret only for explicit saving or user-initiated recovery;
 derived keys and the random vault data key remain in the main process.
 
-Recovery migration writes a version-2 `security.json` containing a fresh random 256-bit data key wrapped separately by
+Current recovery migration writes a version-3 `security.json` containing a fresh random 256-bit data key wrapped separately by
 the scrypt-derived password key and the high-entropy random recovery key. AES-256-GCM uses fresh nonces, authenticated
 version/domain/record identifiers, and independent HKDF domains. The configuration authenticates its credential
 envelope and a wrapped copy of the prior vault key, preserving credentials and legacy vault-key-encrypted notes. The
 credential envelope and key wrappers share one atomically replaced JSON file as the migration commit boundary; legacy
-credential ciphertext is removed only after that commit. If the initial write fails, the version-1 security record and
+credential ciphertext is removed only after that commit. Existing version-1/2 configurations remain backward-compatible.
+If the initial write fails, the prior security record and
 credentials remain unchanged. If cleanup is interrupted after commit, the vault is locked and reopening retries removal
 before exposing the vault. No plaintext export is part of migration.
 
@@ -131,7 +132,8 @@ Preparation of recovery only means a key was prepared, not that recovery was ena
 On each append the log retains the newest 1,000 entries within 90 days and drops future timestamps; it is limited to
 256 KiB. Pruning occurs on writes, not while the app is exited. Unsupported versions, extra fields, bad dates,
 malformed/truncated JSON, non-files, symlinks and oversized existing logs are rejected without overwriting the evidence.
-Writes are serialized per captured vault, use a private exclusive staging file, flush that file, revalidate the
+Writes share a queue across store instances for the same canonical destination, including same-vault reopening.
+They use a private exclusive staging file, flush that file, revalidate the
 destination and atomically replace it. One `pending-audit.json` staging file bounds crash leftovers; it is never
 treated as committed history and is replaced on the next valid append. The app's single-instance lock and
 in-process queue are assumed; simultaneous writers from separate installations/profiles are not supported.

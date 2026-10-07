@@ -12,7 +12,7 @@ import {
   type AuditOperation,
 } from '../../electron/vault/audit';
 
-const fault = vi.hoisted(() => ({ stage: '' }));
+const fault = vi.hoisted(() => ({ stage: '', syncGate: undefined as undefined | (() => Promise<void>) }));
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
   return {
@@ -20,6 +20,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     open: async (...args: Parameters<typeof actual.open>) => {
       const file = await actual.open(...args);
       if (String(args[0]).endsWith('pending-audit.json')) {
+        if (fault.syncGate) {
+          const sync = file.sync.bind(file);
+          vi.spyOn(file, 'sync').mockImplementation(async () => {
+            await fault.syncGate?.();
+            await sync();
+          });
+        }
         if (fault.stage === 'write')
           vi.spyOn(file, 'writeFile').mockImplementation(async () => {
             await actual.writeFile(file, '{"version":');
@@ -43,7 +50,7 @@ let failCommit = false;
 let destinationChecks = 0;
 const resolver = {
   resolveMetadata: async (name: string) => {
-    if (name === 'audit.json' && ++destinationChecks === 3 && failCommit)
+    if (name === 'audit.json' && ++destinationChecks === 4 && failCommit)
       throw new Error('Simulated interruption before replacement.');
     return path.join(root, name);
   },
@@ -59,6 +66,7 @@ beforeEach(async () => {
   failCommit = false;
   destinationChecks = 0;
   fault.stage = '';
+  fault.syncGate = undefined;
 });
 afterEach(async () => {
   await rm(root, { force: true, recursive: true });
@@ -153,6 +161,49 @@ describe('bounded local audit schema', () => {
     const store = createAuditStore(resolver, () => clock);
     await Promise.all(Array.from({ length: 30 }, () => store.record('credentials.read', 'succeeded')));
     expect((await saved()).entries).toHaveLength(30);
+  });
+
+  it('serializes separate stores for the same canonical destination without losing entries', async () => {
+    const first = createAuditStore(resolver, () => clock);
+    const reopened = createAuditStore(resolver, () => clock);
+    expect(
+      await Promise.all([first.record('credentials.read', 'succeeded'), reopened.record('note.export', 'cancelled')]),
+    ).toEqual([{ recorded: true }, { recorded: true }]);
+    expect((await saved()).entries.map((item) => item.operation)).toEqual(['credentials.read', 'note.export']);
+  });
+
+  it('does not let a disposed writer delete a reopened store staging file', async () => {
+    let disposed = false;
+    let signalStarted!: () => void;
+    let resume!: () => void;
+    const started = new Promise<void>((resolve) => {
+      signalStarted = resolve;
+    });
+    const paused = new Promise<void>((resolve) => {
+      resume = resolve;
+    });
+    fault.syncGate = async () => {
+      signalStarted();
+      await paused;
+    };
+    const first = createAuditStore(
+      {
+        resolveMetadata: async (name) => {
+          if (disposed) throw new Error('Vault service disposed.');
+          return path.join(root, name);
+        },
+      },
+      () => clock,
+    );
+    const writing = first.record('credentials.read', 'succeeded');
+    await started;
+    const reopening = createAuditStore(resolver, () => clock).record('note.export', 'cancelled');
+    disposed = true;
+    resume();
+    expect(await writing).toEqual({ recorded: false, reason: 'storage-failure' });
+    expect(await reopening).toEqual({ recorded: true });
+    expect((await saved()).entries).toEqual([{ ...entry, operation: 'note.export', outcome: 'cancelled' }]);
+    expect(await readdir(root)).toEqual(['audit.json']);
   });
 
   it('interruption before replacement leaves the prior log intact and removes its temporary file', async () => {

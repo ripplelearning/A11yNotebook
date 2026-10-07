@@ -30,6 +30,8 @@ interface AuditEntry {
 }
 export type AuditWriteResult = { recorded: true } | { recorded: false; reason: 'invalid-event' | 'storage-failure' };
 
+const pendingAudits = new Map<string, Promise<AuditWriteResult>>();
+
 function validEntry(value: unknown): value is AuditEntry {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const entry = value as Record<string, unknown>;
@@ -60,10 +62,20 @@ function validateLog(value: unknown): AuditEntry[] {
 
 /** No renderer arguments, paths, error messages, or content may enter this store. */
 export function createAuditStore(resolver: MetadataResolver, now: () => number = Date.now) {
-  let pending: Promise<unknown> = Promise.resolve();
-  const serialize = <T>(work: () => Promise<T>) => {
-    const next = pending.then(work, work);
-    pending = next.catch(() => undefined);
+  const serialize = async (work: () => Promise<AuditWriteResult>): Promise<AuditWriteResult> => {
+    let destination: string;
+    try {
+      destination = await resolver.resolveMetadata('audit.json', true);
+    } catch {
+      return { recorded: false, reason: 'storage-failure' };
+    }
+    const previous = pendingAudits.get(destination) ?? Promise.resolve();
+    const next = previous.then(work, work);
+    pendingAudits.set(destination, next);
+    const release = () => {
+      if (pendingAudits.get(destination) === next) pendingAudits.delete(destination);
+    };
+    void next.then(release, release);
     return next;
   };
   async function read(): Promise<AuditEntry[]> {
@@ -119,7 +131,7 @@ export function createAuditStore(resolver: MetadataResolver, now: () => number =
           const data = JSON.stringify({ version: 1, entries });
           if (Buffer.byteLength(data) > AUDIT_MAX_BYTES) throw new Error('Audit log exceeds its size bound.');
           const destination = await resolver.resolveMetadata('audit.json', true);
-          // The app is single-instance and this store serializes writes. One staging
+          // All stores for this canonical destination share a queue, even on reopen. One staging
           // file bounds disk use across crashes; it is never treated as a committed log.
           temporary = await resolver.resolveMetadata('pending-audit.json', true);
           await unlink(temporary).catch((error: NodeJS.ErrnoException) => {

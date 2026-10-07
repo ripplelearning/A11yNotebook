@@ -11,7 +11,7 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 - After confirming the existing password in an unlocked vault, the user can generate a 256-bit random recovery key,
   save it separately, and explicitly acknowledge saving it. It is displayed once in an accessible read-only field;
   the app does not copy, persist, or log the recovery secret.
-- Version 2 wraps a fresh random data key independently with the existing scrypt-derived password key and the
+- Current version 3 wraps a fresh random data key independently with the existing scrypt-derived password key and the
   high-entropy recovery key. AES-GCM envelopes use fresh nonces, domain separation, authenticated identifiers, strict
   bounds, and an authenticated config manifest. The manifest binds recovery-wrapper fields and credential presence;
   credential and legacy-key envelopes authenticate their own ciphertext.
