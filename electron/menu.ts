@@ -65,7 +65,12 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     },
     {
       label: '&Tools',
-      submenu: [commandItem('show-reminders'), commandItem('show-assets'), commandItem('show-settings')],
+      submenu: [
+        commandItem('show-reminders'),
+        commandItem('show-milestones'),
+        commandItem('show-assets'),
+        commandItem('show-settings'),
+      ],
     },
     { label: '&View', submenu: viewItems },
     {

@@ -24,6 +24,7 @@ export type CommandId =
   | 'annotate-pdf-selection'
   | 'annotate-current-semantic-element'
   | 'show-reminders'
+  | 'show-milestones'
   | 'show-assets'
   | 'format-bold'
   | 'format-italic'
@@ -266,6 +267,11 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open Reminders',
     description: 'Show reminders and the grouped agenda.',
     shortcut: 'Ctrl+Shift+R',
+  },
+  {
+    id: 'show-milestones',
+    label: 'Open Milestones',
+    description: 'Plan milestones with associated notes, tasks, and live progress.',
   },
   {
     id: 'show-assets',
