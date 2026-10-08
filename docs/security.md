@@ -151,7 +151,69 @@ Anyone who can act as the OS user can alter/delete the log, change the clock, re
 validation. The log is plaintext, and operation times themselves reveal activity. It cannot establish authenticity,
 prevent OS-user tampering, guarantee secure erasure or record an abruptly killed process's unfinished requests.
 
-## Encrypted metadata and drafts: inventory and proposed boundary (not implemented)
+## Investigation milestone — 2026-10-08, live main `91482f1`
+
+The prior research task's findings were not retrievable: its completed Actions log reports a final response but
+does not include its text, and the session-store lookup returned no report. This investigation was completed
+independently before implementation. Specifications are the security inventory below, `continuation-plan.md`
+(storage, cognitive and Windows gates), `roadmap.md` phases 5–8 and `FEATURE_STATUS.md`; some DOCX status prose
+is stale despite the merged parser, IPC, reader and hostile-fixture tests.
+
+Evidence and ownership:
+
+- `metadata.ts:9–37` serializes generic JSON writes through plaintext random staging. `ipc.ts:224–288` opens
+  security/settings and constructs annotations, assets and milestone stores; `metadataFor` checks service identity.
+- `service.ts:36–47,319–329,422–424,459–476` and `search.ts` independently create/rebuild/write link, bookmark and
+  search indexes, including before unlocking. Watcher refreshes are not mediated by the generic metadata writer.
+- `ipc.ts` reminder/default/milestone/image-description handlers and `assets.ts:61–65,125–138` own the other
+  generic stores. `ipc.ts` settings handlers write both vault and userData copies; `store.ts:68` separately writes
+  shell/sample data and PDF preferences. `recent-vault.json`, content-free audit history and password/recovery
+  bootstrap configuration are deliberate plaintext exclusions, not encrypted-content stores.
+- `security.ts:28–65,135–165,663–707` defines legacy v1, wrapped-key v2 and authenticated recovery v3 records.
+  Recovery migration commits in `security.json`, embeds encrypted credentials, retains a wrapped legacy note key,
+  and durably retries credential cleanup. Password reset/rotation/revocation rewrap the stable data key; independent
+  note passwords remain separate. Actual data-key rotation is not implemented.
+- `assets.ts:47–86` validates source types/bounds but saves in place. `AssetsWorkspace.tsx:65–123` keeps dirty edits
+  only in memory. `App.tsx:408–433` clears/unmounts them on lock; note autosave is not a cognitive checkpoint.
+  No persisted drafts exist. Source asset files, notes, attachments and exports remain ordinary files.
+- `reminders.ts` provides in-process queues/dedup, not interprocess leases. `electron-builder.yml` packages NSIS
+  and portable builds but has no reminder helper or uninstall hook. No Task Scheduler registration is present.
+- Live `App.tsx:650–665` omits DOCX from attachment routing despite the shipped reader; this is a routing defect,
+  not evidence that DOCX needs to be implemented again.
+
+### Feasibility decision and design before implementation
+
+Deliver a **scoped opt-in**: encrypted annotations (Markdown/HTML/PDF) and new encrypted cognitive checkpoints.
+Do not offer a universal metadata/index encryption toggle. Every other row below remains excluded/open.
+Only an unlocked version-3 vault may opt in, after explicit acknowledgement of these exclusions.
+
+Use main-process AES-GCM/HKDF store domains, a bounded versioned ciphertext container, authenticated vault/store/
+generation identities, and an authenticated pointer in `security.json`. Stage ciphertext first; atomically commit
+the pointer; then remove legacy annotation plaintext with durable cleanup intent. Before commit, old annotations
+remain authoritative; after commit, missing/tampered ciphertext must never fall back to plaintext. Interrupted
+cleanup blocks protected access and is retried after unlocking. Subsequent container generations replace atomically.
+No decryption key is saved outside existing wrappers. Queued work rechecks vault/lock generation before publishing
+or returning; protected plaintext is not retained in a main-process cache.
+
+Checkpoints use asset type/path, revision, timestamps/expiry, baseline hash and encrypted baseline/content.
+Debounce edits, bound retention and size, offer explicit restore/discard, and never automatically overwrite source.
+External baseline changes require a conflict path. Atomic saves preserve the source on staging failures; checkpoint
+retirement must match the saved revision. Move/delete/lock/switch must invalidate stale requests. Plaintext draft
+fallback is forbidden. A crash within the debounce window can still lose the latest edits.
+
+Offline disclosure/tampering while keys are unavailable is the target. Compromised running applications, unlocked
+renderer memory, malicious OS-user processes, file names, source files, exports, backups and filesystem rollback
+are outside this protection. Deletion is not guaranteed secure erasure; GC-managed strings cannot be reliably wiped.
+Rename is a crash commit boundary, not a guarantee against every power/filesystem failure.
+
+Exited-process Windows delivery is viable as a separate installed-only project, but unsafe to ship as an incomplete
+registration scaffold here. Remaining gates include a trusted signed helper and activation boundary, argument-array
+launch and validated XML, per-user non-elevated consent/status/failure UI, durable interprocess leases, app/helper
+coordination, reboot/missed-event handling, opt-out/update/uninstall cleanup and real Windows toast tests. Any exported
+opaque due-time snapshot needs separate leakage consent and generic messages; never save unlock keys or protected
+titles. No task will be registered on this runner. The manual matrix in `continuation-plan.md` remains unrun.
+
+## Encrypted metadata and drafts: inventory
 
 Do not infer metadata protection from password gating, note encryption or recovery. The current stores are:
 
