@@ -45,6 +45,8 @@ import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog'
 import SearchResults from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
+import ReminderAlerts from './features/reminders/ReminderAlerts';
+import type { Reminder } from '../shared/reminders';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
 import type { AttachmentPreview } from '../shared/attachments';
@@ -199,6 +201,7 @@ export default function App() {
   const [tags, setTags] = useState<string[]>([]);
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
+  const [settingsVaultPath, setSettingsVaultPath] = useState<string>();
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
@@ -321,11 +324,15 @@ export default function App() {
 
   useEffect(() => {
     let cancelled = false;
+    setSettingsVaultPath(undefined);
     if (securityLocked) return;
     void window.a11yNotebook?.vault
       .getSettings?.()
       .then((value) => {
-        if (!cancelled) setSettings(value);
+        if (!cancelled) {
+          setSettings(value);
+          setSettingsVaultPath(vault?.path);
+        }
       })
       .catch(() => {
         if (!cancelled) setStatusMessage('Could not load settings.');
@@ -648,7 +655,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
         setAttachment(preview);
@@ -1317,6 +1324,32 @@ export default function App() {
       setStatusMessage(nextComplete ? 'Task marked complete.' : 'Task marked open.');
     } catch {
       setStatusMessage('Could not update the task.');
+    }
+  };
+  const completeReminder = async (reminder: Reminder) => {
+    if (
+      switchingRef.current ||
+      securityLocked ||
+      openNotes.some((note) => note.path === reminder.path && note.content !== note.saved) ||
+      activeConflict
+    ) {
+      throw new Error('Save or resolve note changes before completing this reminder.');
+    }
+    const path = vault?.path;
+    const complete = window.a11yNotebook?.vault.completeReminder;
+    if (!complete) throw new Error('Reminder completion is unavailable.');
+    const updated = await complete(reminder.id, reminder.revision);
+    if (vaultPathRef.current !== path || switchingRef.current) return;
+    reminderState.setReminders(updated);
+    const nextTasks = await window.a11yNotebook!.vault.getTasks();
+    if (vaultPathRef.current !== path || switchingRef.current) return;
+    setTasks(nextTasks);
+    if (reminder.source === 'task' && openNotes.some((note) => note.path === reminder.path)) {
+      const content = await window.a11yNotebook!.vault.readNote(reminder.path);
+      if (vaultPathRef.current !== path || switchingRef.current) return;
+      setOpenNotes((items) =>
+        items.map((note) => (note.path === reminder.path ? { ...note, content, saved: content } : note)),
+      );
     }
   };
 
@@ -2456,6 +2489,16 @@ export default function App() {
         <KeyboardShortcutsDialog shortcuts={settings.shortcuts} onClose={closeDialog} />
       ) : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+      {vault && !securityLocked && settingsVaultPath === vault.path ? (
+        <ReminderAlerts
+          key={vault.path}
+          vaultPath={vault.path}
+          settings={settings}
+          blocked={!!activeDialog || !!itemDialog || !!notePasswordDialog || !!activeConflict || switchingRef.current}
+          onComplete={completeReminder}
+          announce={setStatusMessage}
+        />
+      ) : null}
       {activeDialog === 'settings' ? (
         <SettingsDialog
           settings={settings}

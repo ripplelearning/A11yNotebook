@@ -22,6 +22,45 @@ function fixture(initial?: unknown) {
 }
 
 describe('annotation persistence', () => {
+  it.each(['lock', 'switch'])('rejects queued annotation work after a %s generation change', async () => {
+    let generation = 0;
+    let release!: () => void;
+    let started!: () => void;
+    const began = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const write = vi.fn(async () => undefined);
+    const store = createAnnotationStore({
+      read: async () => {
+        started();
+        await gate;
+        return null;
+      },
+      write,
+      validateNote: async () => undefined,
+      captureAuthorization: () => {
+        const captured = generation;
+        return () => {
+          if (generation !== captured) throw new Error('authorization changed');
+        };
+      },
+    });
+    const listing = store.list(input.path);
+    const addition = store.add(input);
+    const rejected = Promise.all([
+      expect(listing).rejects.toThrow('authorization changed'),
+      expect(addition).rejects.toThrow('authorization changed'),
+    ]);
+    await began;
+    generation += 1;
+    release();
+    await rejected;
+    expect(write).not.toHaveBeenCalled();
+  });
+
   it('persists main-process IDs, lists, edits, deletes, and reloads records', async () => {
     const { store, read, write, validateNote } = fixture();
     const added = await store.add(input);

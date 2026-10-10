@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   assetTypes,
   createAssetRegistry,
@@ -8,11 +8,15 @@ import {
   parseCsv,
   parseGridMarkdown,
   serializeOutline,
+  serializeMindMap,
+  serializeCsv,
+  serializeGridMarkdown,
   type OutlineNode,
   type GridData,
   type CardSchedule,
 } from '../../../shared/assets';
 import type { VaultAsset } from '../../../shared/asset-bridge';
+import type { AssetDraft, AssetDraftRecovery } from '../../../shared/asset-drafts';
 import { OutlineEditor, MindMapEditor, GridEditor, FlashcardReview } from './index';
 
 interface Props {
@@ -56,6 +60,41 @@ export default function AssetsWorkspace({
   const [error, setError] = useState('');
   const [deckSource, setDeckSource] = useState('');
   const [reviewReady, setReviewReady] = useState(false);
+  const [recovery, setRecovery] = useState<AssetDraftRecovery | null>(null);
+  const [compare, setCompare] = useState(false);
+  const [checkpointStatus, setCheckpointStatus] = useState('');
+  const [restoredConflict, setRestoredConflict] = useState(false);
+  const session = useRef(0);
+  const restoreButton = useRef<HTMLButtonElement>(null);
+  const editor = useRef<HTMLDivElement>(null);
+  const discoveredDraft = useRef('');
+  const returnToEditor = useRef(false);
+  useEffect(() => {
+    if (busy) return;
+    if (recovery?.draft) {
+      const identity = `${recovery.draft.path}:${recovery.draft.revision}`;
+      if (discoveredDraft.current !== identity) {
+        discoveredDraft.current = identity;
+        restoreButton.current?.focus();
+        announce(`Unsaved asset checkpoint from ${recovery.draft.updatedAt} found. Restore, discard, or compare it.`);
+      }
+    } else if (returnToEditor.current) {
+      returnToEditor.current = false;
+      const target =
+        editor.current?.querySelector<HTMLElement>('textarea:not(:disabled), input:not(:disabled)') ??
+        editor.current?.querySelector<HTMLElement>('button:not(:disabled)');
+      const details = target?.closest('details');
+      if (details) details.open = true;
+      target?.focus();
+    }
+  }, [busy, recovery, announce]);
+  const loadContent = useCallback((value: VaultAsset) => {
+    if (value.type === 'outline') setOutline(parseOutline(value.content));
+    if (value.type === 'mindmap') setMindmap(parseMindMap(value.content));
+    if (value.type === 'grid' || value.type === 'markdown-grid')
+      setGrid(value.type === 'grid' ? parseCsv(value.content) : parseGridMarkdown(value.content));
+    if (value.type === 'flashcards') setDeckSource(value.content);
+  }, []);
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => onBusy(busy), [busy, onBusy]);
   useEffect(() => {
@@ -68,17 +107,21 @@ export default function AssetsWorkspace({
       return;
     }
     let cancelled = false;
+    session.current += 1;
     setBusy(true);
     setReviewReady(false);
     setAsset(null);
+    setRecovery(null);
+    discoveredDraft.current = '';
+    returnToEditor.current = false;
+    setCompare(false);
+    setRestoredConflict(false);
+    setCheckpointStatus('');
     void window
       .a11yNotebook!.vault.readAsset(path)
       .then(async (value) => {
         if (cancelled) return;
-        if (value.type === 'outline') setOutline(parseOutline(value.content));
-        if (value.type === 'mindmap') setMindmap(parseMindMap(value.content));
-        if (value.type === 'grid' || value.type === 'markdown-grid')
-          setGrid(value.type === 'grid' ? parseCsv(value.content) : parseGridMarkdown(value.content));
+        loadContent(value);
         if (value.type === 'flashcards') {
           setDeckSource(value.content);
           const stored = await window.a11yNotebook!.vault.getFlashcardSchedules(path);
@@ -89,6 +132,8 @@ export default function AssetsWorkspace({
         setAsset(value);
         setDirty(false);
         setError('');
+        const recoverable = await window.a11yNotebook!.vault.readAssetDraft?.(path);
+        if (!cancelled) setRecovery(recoverable ?? { enabled: false, token: '', draft: null });
       })
       .catch((failure: Error) => {
         if (!cancelled) setError(failure.message);
@@ -98,33 +143,197 @@ export default function AssetsWorkspace({
       });
     return () => {
       cancelled = true;
+      session.current += 1;
     };
-  }, [path]);
+  }, [path, loadContent]);
+
+  const source =
+    asset?.type === 'outline'
+      ? serializeOutline(outline)
+      : asset?.type === 'mindmap'
+        ? serializeMindMap(mindmap)
+        : asset?.type === 'grid'
+          ? serializeCsv(grid)
+          : asset?.type === 'markdown-grid'
+            ? serializeGridMarkdown(grid)
+            : deckSource;
+  useEffect(() => {
+    if (!asset || !dirty || busy || !recovery?.enabled || recovery.draft) return;
+    const generation = session.current;
+    setCheckpointStatus('Encrypted checkpoint pending.');
+    const timer = setTimeout(() => {
+      void window.a11yNotebook!.vault.checkpointAssetDraft!(
+        {
+          path: asset.path,
+          type: asset.type,
+          baselineContent: asset.content,
+          content: source,
+        },
+        recovery.token,
+      )
+        .then(() => {
+          if (session.current === generation) setCheckpointStatus('Encrypted checkpoint saved.');
+        })
+        .catch((failure: Error) => {
+          if (session.current === generation) setCheckpointStatus(`Checkpoint failed: ${failure.message}`);
+        });
+    }, 750);
+    return () => clearTimeout(timer);
+  }, [asset, dirty, busy, recovery, source]);
+
+  const discardRecovery = async (draft: AssetDraft) => {
+    if (!asset || !recovery || busy) return;
+    const generation = session.current;
+    setBusy(true);
+    try {
+      await window.a11yNotebook!.vault.discardAssetDraft!(asset.path, draft.revision, recovery.token);
+      if (session.current !== generation) return;
+      const next = await window.a11yNotebook!.vault.readAssetDraft!(asset.path);
+      if (session.current !== generation) return;
+      setRecovery(next);
+      returnToEditor.current = true;
+      setCompare(false);
+      announce('Recovered draft discarded. The source file was not changed.');
+    } catch (failure) {
+      if (session.current === generation) setError((failure as Error).message);
+    } finally {
+      if (session.current === generation) setBusy(false);
+    }
+  };
+  const discardEdits = async () => {
+    if (!asset || busy) return;
+    session.current += 1;
+    const generation = session.current;
+    setBusy(true);
+    try {
+      const latest = await window.a11yNotebook!.vault.readAssetDraft?.(asset.path);
+      if (session.current !== generation) return;
+      if (latest?.draft)
+        await window.a11yNotebook!.vault.discardAssetDraft!(asset.path, latest.draft.revision, latest.token);
+      if (session.current !== generation) return;
+      const next = latest?.enabled ? await window.a11yNotebook!.vault.readAssetDraft!(asset.path) : latest;
+      if (session.current !== generation) return;
+      loadContent(asset);
+      setDirty(false);
+      setRestoredConflict(false);
+      setReviewReady(asset.type === 'flashcards');
+      setCheckpointStatus('');
+      setRecovery(next ?? recovery);
+      announce('Unsaved changes and their checkpoint discarded. Source file unchanged.');
+    } catch (failure) {
+      if (session.current === generation) setError((failure as Error).message);
+    } finally {
+      if (session.current === generation) setBusy(false);
+    }
+  };
 
   const save = (content: string) => {
-    if (!asset || busy) return;
+    if (!asset || busy || recovery?.draft) return;
+    session.current += 1;
+    const saveGeneration = session.current;
     setBusy(true);
     if (asset.type === 'flashcards') setReviewReady(false);
     void window
       .a11yNotebook!.vault.saveAsset(asset.path, content, asset.content)
       .then(async () => {
+        if (session.current !== saveGeneration) return;
         setAsset({ ...asset, content });
         setDirty(false);
+        setRestoredConflict(false);
         if (asset.type === 'flashcards') {
           setDeckSource(content);
           setSchedules(await window.a11yNotebook!.vault.getFlashcardSchedules(asset.path));
           setReviewReady(true);
         }
         await refresh();
+        const nextRecovery = await window.a11yNotebook!.vault.readAssetDraft?.(asset.path);
+        if (session.current !== saveGeneration) return;
+        if (nextRecovery) setRecovery(nextRecovery);
+        setCheckpointStatus('');
         announce('Cognitive asset saved.');
       })
-      .catch((failure: Error) => setError(failure.message))
-      .finally(() => setBusy(false));
+      .catch(async (failure: Error) => {
+        if (session.current !== saveGeneration) return;
+        setError(failure.message);
+        try {
+          const nextRecovery = await window.a11yNotebook!.vault.readAssetDraft?.(asset.path);
+          if (nextRecovery && session.current === saveGeneration) setRecovery({ ...nextRecovery, draft: null });
+        } catch {
+          // A failed protected-store read must not turn into plaintext draft persistence.
+        }
+      })
+      .finally(() => {
+        if (session.current === saveGeneration) setBusy(false);
+      });
   };
   return (
     <section aria-labelledby="assets-heading">
       <h2 id="assets-heading">Cognitive tools</h2>
-      <p>Save changes before switching files or closing this view. Unsaved changes stay only in this view.</p>
+      <p>
+        Save changes before switching files or closing this view. Encrypted checkpoints require opted-in metadata
+        protection; the latest edits within 750 milliseconds may be lost.
+      </p>
+      {recovery && !recovery.enabled ? <p>Encrypted recovery is off. Unsaved changes stay only in this view.</p> : null}
+      {checkpointStatus ? <p role="status">{checkpointStatus}</p> : null}
+      {recovery?.draft && asset ? (
+        <section role="region" aria-labelledby="asset-recovery-heading">
+          <h3 id="asset-recovery-heading">Recover unsaved asset changes</h3>
+          <p>
+            Checkpoint from {recovery.draft.updatedAt}. Restore changes only in the editor; saving is a separate action.
+          </p>
+          {recovery.draft.baselineContent !== asset.content ? (
+            <p role="alert">
+              Conflict: the source file changed since this checkpoint. Compare before restoring. Nothing will be
+              overwritten automatically.
+            </p>
+          ) : null}
+          <button
+            ref={restoreButton}
+            disabled={busy}
+            onClick={() => {
+              try {
+                loadContent({ ...asset, content: recovery.draft!.content });
+                setRestoredConflict(recovery.draft!.baselineContent !== asset.content);
+                setDirty(true);
+                setReviewReady(false);
+                setRecovery({ ...recovery, draft: null });
+                returnToEditor.current = true;
+                setCompare(false);
+                announce('Draft restored as unsaved changes. The source file was not changed.');
+              } catch (failure) {
+                setError(
+                  `Draft source is incomplete. Compare and copy it before discarding: ${(failure as Error).message}`,
+                );
+                setCompare(true);
+              }
+            }}
+          >
+            Restore as unsaved changes
+          </button>
+          <button disabled={busy} onClick={() => void discardRecovery(recovery.draft!)}>
+            Discard recovered draft
+          </button>
+          <button disabled={busy} aria-expanded={compare} onClick={() => setCompare(!compare)}>
+            Compare recovered draft
+          </button>
+          {compare ? (
+            <div>
+              <label>
+                Checkpoint baseline
+                <textarea readOnly value={recovery.draft.baselineContent} />
+              </label>
+              <label>
+                Current source
+                <textarea readOnly value={asset.content} />
+              </label>
+              <label>
+                Recovered unsaved source
+                <textarea readOnly value={recovery.draft.content} />
+              </label>
+            </div>
+          ) : null}
+        </section>
+      ) : null}
       <label>
         Asset file
         <select disabled={busy || dirty} value={path} onChange={(event) => setPath(event.target.value)}>
@@ -182,12 +391,25 @@ export default function AssetsWorkspace({
         </button>
       </form>
       {error ? <p role="alert">{error}</p> : null}
-      {dirty ? <p>Unsaved asset changes.</p> : null}
-      <div aria-busy={busy}>
+      {dirty ? (
+        <div>
+          <p>Unsaved asset changes.</p>
+          <button disabled={busy} onClick={() => void discardEdits()}>
+            Discard unsaved asset changes
+          </button>
+        </div>
+      ) : null}
+      {restoredConflict ? (
+        <p role="alert">
+          Restored draft conflicts with the checkpoint baseline. Your explicit save will replace the current source only
+          if it has not changed again. Review your changes first.
+        </p>
+      ) : null}
+      <div ref={editor} aria-busy={busy}>
         {asset?.type === 'outline' ? (
           <OutlineEditor
             value={outline}
-            readOnly={busy}
+            readOnly={busy || !!recovery?.draft}
             onChange={(value) => {
               setOutline(value);
               setDirty(true);
@@ -198,7 +420,7 @@ export default function AssetsWorkspace({
         {asset?.type === 'mindmap' ? (
           <MindMapEditor
             value={mindmap}
-            readOnly={busy}
+            readOnly={busy || !!recovery?.draft}
             onChange={(value) => {
               setMindmap(value);
               setDirty(true);
@@ -220,7 +442,7 @@ export default function AssetsWorkspace({
         {asset && ['grid', 'markdown-grid'].includes(asset.type) ? (
           <GridEditor
             value={grid}
-            readOnly={busy}
+            readOnly={busy || !!recovery?.draft}
             onChange={(value) => {
               setGrid(value);
               setDirty(true);
@@ -237,7 +459,7 @@ export default function AssetsWorkspace({
             }}
           />
         ) : null}
-        {asset?.type === 'flashcards' && reviewReady && !dirty ? (
+        {asset?.type === 'flashcards' && reviewReady && !dirty && !recovery?.draft ? (
           <FlashcardReview
             key={`${asset.path}:${asset.content}`}
             cards={parseFlashcards(asset.content)}
@@ -260,7 +482,7 @@ export default function AssetsWorkspace({
             <label>
               Flashcard deck source
               <textarea
-                disabled={busy}
+                disabled={busy || !!recovery?.draft}
                 value={deckSource}
                 onChange={(event) => {
                   setDeckSource(event.target.value);
@@ -268,7 +490,7 @@ export default function AssetsWorkspace({
                 }}
               />
             </label>
-            <button type="button" disabled={busy} onClick={() => save(deckSource)}>
+            <button type="button" disabled={busy || !!recovery?.draft} onClick={() => save(deckSource)}>
               Save flashcard deck
             </button>
           </details>

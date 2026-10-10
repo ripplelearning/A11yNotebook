@@ -4,6 +4,7 @@ import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
 import { IPC_CHANNELS, isMenuCommand, type MenuCommand } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
+import type { VaultReminderEvent } from '../src/shared/reminders';
 import { buildApplicationMenu } from './menu';
 import { setupUpdater } from './updater';
 import { setupVaultIpc } from './vault/ipc';
@@ -19,6 +20,8 @@ const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html')
 const rendererIndexUrl = pathToFileURL(rendererIndexPath).href;
 
 let mainWindow: BrowserWindow | null = null;
+let pendingReminderAlerts: VaultReminderEvent[] = [];
+const MAX_PENDING_REMINDER_ALERTS = 100;
 
 function isAppUrl(url: string) {
   if (isDevelopment && url.startsWith(`${DEV_SERVER_URL}/`)) {
@@ -79,6 +82,10 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       webSecurity: true,
+      // The main-process scheduler delivers sound events even while minimized.
+      // Keep this single trusted renderer responsive; alerts still wait for focus.
+      backgroundThrottling: false,
+      autoplayPolicy: 'no-user-gesture-required',
     },
   });
 
@@ -137,12 +144,36 @@ if (!app.requestSingleInstanceLock()) {
       send: (status) => sendToRenderer(IPC_CHANNELS.updaterStatus, status),
       isTrustedSender,
     });
+    ipcMain.handle(IPC_CHANNELS.reminderAlertsReady, (event) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted reminder readiness request.');
+      const pending = pendingReminderAlerts;
+      pendingReminderAlerts = [];
+      return pending;
+    });
     setupVaultIpc(
       isTrustedSender,
       (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.vaultChanged, event);
       },
       (event) => {
+        if (event.type === 'fired') {
+          pendingReminderAlerts.push(event);
+          if (pendingReminderAlerts.length > MAX_PENDING_REMINDER_ALERTS)
+            pendingReminderAlerts.splice(0, pendingReminderAlerts.length - MAX_PENDING_REMINDER_ALERTS);
+        }
+        if (event.type === 'changed') {
+          pendingReminderAlerts = pendingReminderAlerts.filter(
+            (pending) =>
+              pending.type === 'fired' &&
+              pending.vaultPath === event.vaultPath &&
+              event.reminders.some(
+                (item) =>
+                  item.id === pending.reminder.id &&
+                  item.status === 'fired' &&
+                  item.scheduledAt === pending.reminder.scheduledAt,
+              ),
+          );
+        }
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.vaultReminderEvent, event);
           if (event.type === 'open') {
@@ -152,6 +183,7 @@ if (!app.requestSingleInstanceLock()) {
         }
       },
       () => {
+        pendingReminderAlerts = [];
         if (mainWindow && !mainWindow.isDestroyed()) {
           mainWindow.webContents.send(IPC_CHANNELS.vaultSecurityLocked, true);
         }

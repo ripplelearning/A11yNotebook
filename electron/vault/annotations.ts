@@ -23,6 +23,7 @@ export interface AnnotationStoreOptions {
   write: (value: AnnotationMetadata) => Promise<void>;
   validateNote: (path: string) => Promise<void>;
   validatePdf?: (path: string) => Promise<void>;
+  captureAuthorization?: () => () => void;
 }
 
 export interface AnnotationMetadata {
@@ -265,15 +266,35 @@ function pdfRecord(value: unknown): PdfAnnotation {
 }
 
 /** Callbacks must securely read/write vault-local metadata and reject notes outside the vault, including symlinks. */
-export function createAnnotationStore({ read, write, validateNote, validatePdf }: AnnotationStoreOptions) {
+export function createAnnotationStore({
+  read,
+  write: persist,
+  validateNote,
+  validatePdf,
+  captureAuthorization,
+}: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
+  let activeAuthorization: (() => void) | undefined;
+  async function write(value: AnnotationMetadata) {
+    activeAuthorization?.();
+    await persist(value);
+    activeAuthorization?.();
+  }
   function serial<T>(operation: () => Promise<T>): Promise<T> {
-    const result = queue.then(operation);
+    const authorize = captureAuthorization?.();
+    const result = queue.then(async () => {
+      authorize?.();
+      activeAuthorization = authorize;
+      const value = await operation();
+      authorize?.();
+      return value;
+    });
     queue = result.catch(() => undefined);
     return result;
   }
   async function load(): Promise<AnnotationMetadata> {
     const raw = await read();
+    activeAuthorization?.();
     if (raw === undefined || raw === null) return { version: 2, annotations: [], pdfAnnotations: [] };
     const data = object(raw);
     if (
@@ -375,6 +396,8 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
   };
   return {
     pdf,
+    snapshot: () => serial(load),
+    restore: (value: AnnotationMetadata) => serial(() => write(value)),
     list(path: string): Promise<NoteAnnotation[]> {
       return serial(async () => {
         const safe = await validate(path);

@@ -103,7 +103,8 @@ Ctrl+Shift+A or choose Annotate selection. Give the highlight a **text label**, 
 Annotations appear under the right-pane heading with Jump, Edit, and Delete controls. Highlights expose descriptions
 and are underlined, so color is never the only cue. Quote/context/offset anchors try to find shifted text; ambiguous,
 changed, or overlapping anchors are reported in the list rather than attached to unrelated text.
-Annotations persist in `.a11ynotebook/annotations.json`. The same text annotation UI works on sanitized `.html` note
+Annotations persist in `.a11ynotebook/annotations.json` unless scoped annotation/checkpoint protection is explicitly
+enabled, in which case the authenticated encrypted container is authoritative. The same text annotation UI works on sanitized `.html` note
 content. PDF notes use a separate page/quote anchor contract:
 
 - Select PDF text, then choose **Annotate PDF selection** in the palette or the
@@ -127,7 +128,7 @@ ePub annotation UI remains unavailable.
 
 Put `remind:2026-10-04 09:30` or `⏰ 2026-10-04 09:30` on an open checkbox task (local time).
 Completed tasks do not notify. **Open Reminders** (Ctrl+Shift+R) also creates standalone note reminders.
-Switch between the labelled table and Overdue/Today/This week lists. Snooze for 5/15/60 minutes or until the
+Switch between the labelled table and Overdue/Today/This week lists. Snooze for 5/15/30/60 minutes, 1 day, or until the
 same local clock time tomorrow; Dismiss removes an item from active views. Clicking a native notification opens
 its note when the vault is still open. Windows notification settings may suppress delivery.
 The scheduler runs only while the application is running; missed pending reminders fire on next launch, and
@@ -137,6 +138,37 @@ The creation dialog can save time, snooze, title privacy, and notification choic
 use the current privacy/notification preferences. Due flashcard notifications are opt-in and share the same
 scheduler and persisted delivery tracking. Closing the last window exits the app on Windows; no notifications
 are delivered after process exit.
+
+### In-app reminder alerts
+
+In **Settings**, enable **in-app reminder alerts** independently of native Electron/Windows notifications.
+Configure **Play reminder sound**, the bundled sound choice and volume; **Test sound** previews the selected sound.
+System mute is respected. While the app is running, sound can play when its window is unfocused or minimized.
+The alert waits until you focus A11y Notebook; it never brings the app in front of another application.
+
+The bundled `src/assets/reminder-gentle-chime.wav` is an original generated asset distributed under this project's
+MIT license, not a third-party recording. It is 0.6 seconds of mono 16-bit PCM at 22,050 Hz: sequential 660/880 Hz
+sine tones with squared-sine fades and a peak amplitude of 9,000. No downloaded sound or additional runtime
+dependency is used.
+
+The accessible alert takes keyboard focus and presents queued reminders one at a time with a waiting count.
+Use **Mark Complete** to complete the linked source task (conflicting note edits must be resolved first), or complete
+a standalone reminder. **Dismiss** and **Snooze** use the existing reminder service; the alert offers 5 minutes,
+15 minutes, 30 minutes, 1 hour and 1 day (24 hours). The legacy Tomorrow choice keeps the same local time on the
+next calendar day, which can differ across daylight-saving changes. Tab/Shift+Tab stay within the dialog and focus returns after it closes.
+Outcomes are announced in the status region. **Escape/Later closes the alert without dismissing the reminder**;
+the item remains in Reminders. Hidden-title alerts use generic text.
+Switching vaults cancels the old vault's alert queue. Startup missed reminders use the same queue.
+The startup sound replay buffer retains the latest 100 deliveries; older overflow reminders remain available in
+the visual queue and Reminders but load silently. Previously fired reminders also reload silently to avoid repeating sound.
+
+**Locked-vault delivery is partial:** locking stops the existing scheduler and cancels queued alerts/sound.
+No titles are exposed, but reminders due while locked do not sound or produce the requested generic unlock alert.
+Unlocking restarts scheduling and catches up missed reminders. A generic privacy-safe locked-delivery snapshot
+on the same scheduler remains open; do not rely on reminder delivery until the vault is unlocked.
+
+This is not exited-process delivery: **nothing fires after A11y Notebook exits**. Actual Windows background/minimized
+sound and focus, and JAWS/NVDA/Narrator announcements, still need manual verification.
 Tasks also show per-notebook completion counts and native progress elements. Named milestone CRUD and live
 task-progress summaries are available through the typed vault bridge, persisted in `.a11ynotebook/milestones.json`.
 Milestone and task identities survive notebook moves; missing tasks remain associated and are counted as missing.
@@ -169,6 +201,22 @@ SM-2-style schedules persist in `.a11ynotebook/flashcards.json` and changes to a
 Save before closing cognitive tools or switching files; unsaved data is kept while switching to another tab.
 External asset changes are rejected at save time; preserve your work separately before closing/reopening to reload.
 
+### Encrypted cognitive checkpoints
+
+After explicitly enabling scoped annotation/checkpoint protection in an unlocked version-3 vault, edits to outlines,
+mind maps, flashcards and CSV/Markdown grids are checkpointed after a 750 ms debounce. Persistent recovery is disabled
+without that consent; there is no plaintext-draft fallback. Source asset files themselves remain ordinary files.
+Records retain the saved baseline and its hash, have a seven-day expiry, and are bounded to 20 records, 2 MiB per
+content/baseline and 8 MiB total. Checkpoint status/errors are visible; a crash during debounce can lose the latest edits.
+
+Reopen an asset to receive **Restore / Discard / Compare** choices. Compare shows the draft and source without writing.
+Restore places the draft in the editor as **unsaved** content. If the source changed since the baseline, a conflict
+warning is shown; nothing silently overwrites the file. Discard removes the checkpoint, not the source.
+Malformed outline, mind-map or grid drafts can be compared/copied but cannot be restored into their structured
+editors until the content is valid; they are not silently discarded.
+Successful saves retire the matching checkpoint; app-managed moves/renames and deletes update draft paths/lifecycle.
+Locking/switching clears the editor and rejects stale checkpoint requests. Save important work explicitly.
+
 ## Export and web capture
 
 Use **Export note…** on an open note, **Export current note…** in the command palette/menu, or **Export note…** in
@@ -198,6 +246,9 @@ a nested navigation table of contents and section navigation/search. Chapter mar
 archive/resource validation, reading-position persistence and ePub annotations remain open. Extracted ePub text remains available
 for search and assistive technology; scripts, embedded frames, forms, and unsafe attributes are removed before display.
 Both are limited to 40 MB.
+DOCX uses a local bounded parser and semantic reader with headings, lists, tables, safe links, raster images,
+navigation and search. Encrypted Office archives, macros, embedded OLE packages and unsafe external resources are
+rejected. DOCX annotations are not available; legacy binary `.doc` is unsupported.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
 ## Settings
@@ -206,8 +257,8 @@ Both are limited to 40 MB.
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.
 Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the vault's
 `.a11ynotebook/settings.json` and app userData defaults. Keyboard Shortcuts and the palette display active bindings;
-the generated documentation lists defaults. Vault idle locking is available in Security settings; reminder-default
-settings are not implemented.
+the generated documentation lists defaults. Vault idle locking is available in Security settings. Reminder defaults
+are saved from the reminder creation dialog; in-app alert/sound preferences are available in Settings.
 
 ## Security
 
@@ -219,8 +270,16 @@ acknowledgment before committing it. The app never copies the recovery key autom
 password and preserves migrated credentials and vault-key-encrypted notes; it cannot recover notes with independent
 passwords. You can rotate the recovery key after saving its replacement or revoke recovery after confirming the current
 password. Losing a note password is unrecoverable. Vault protection gates app access but does not encrypt unmarked
-files, filenames, search indexes, or most metadata. Encrypted metadata/indexes and whole-vault encryption are not
-implemented; see [Security](security.md) before storing sensitive information.
+files, filenames, search indexes, or most metadata.
+
+Scoped annotation/checkpoint protection requires an unlocked **version-3** vault (enable recovery first for older
+configs) and explicit consent. It protects only Markdown/HTML/PDF annotations and cognitive checkpoints.
+**Search index/snippets, link index, bookmarks, reminders, settings, flashcard schedules, milestones, image
+descriptions, source files, attachments and exports remain plaintext. This is not whole-vault encryption.**
+Migration removes the old annotation store after committing authenticated ciphertext; deleted plaintext may still
+persist on disk or in backups. Tampered/missing protected data fails closed, never silently falls back to plaintext.
+Recovery password reset and recovery-key rotation/revocation preserve protected stores; independent note passwords
+remain separate. See [Security](security.md) before storing sensitive information.
 
 ### Sensitive-action history
 
@@ -265,9 +324,9 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 ## Not available yet
 
-Whole-vault encryption and encrypted metadata/indexes are not available yet. Unsaved cognitive-asset edits have no
-persistent crash-recovery drafts: save outlines, mind maps, flashcards and grids explicitly before closing.
-DOCX and legacy `.doc` local reading are unsupported; this increment does not add a parser or conversion service.
+Whole-vault encryption and encryption of excluded indexes/metadata are not available. Cognitive checkpoints require
+explicit scoped protection consent; save important edits explicitly, including while persistent recovery is disabled.
+DOCX local reading is implemented; DOCX annotations and legacy `.doc` local reading remain unavailable.
 Reminders require the app process to be running: no opt-in Task Scheduler/helper integration ships here, and closing
 a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion

@@ -1,4 +1,5 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt as scryptCallback } from 'node:crypto';
+import type { MetadataProtectionPointer } from '../../src/shared/metadata-protection';
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
@@ -62,6 +63,7 @@ export interface RecoverableVaultSecurityConfig {
   credentials: EncryptedRecord | null;
   legacyCredentialsCleanupRequired: boolean;
   integrity: EncryptedRecord;
+  metadataProtection?: MetadataProtectionPointer;
 }
 
 export type VaultSecurityConfig = LegacyVaultSecurityConfig | VaultSecurityConfigV2 | RecoverableVaultSecurityConfig;
@@ -305,6 +307,7 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
           'credentials',
           'legacyCredentialsCleanupRequired',
           'integrity',
+          'metadataProtection',
         ].includes(key),
     ) ||
     typeof config.legacyCredentialsCleanupRequired !== 'boolean' ||
@@ -328,6 +331,37 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
   if (config.recoveryNonce !== null) decodeBase64(config.recoveryNonce, NONCE_BYTES);
   if (config.recoveryTag !== null) decodeBase64(config.recoveryTag, TAG_BYTES);
   if (config.recoveryWrappedDataKey !== null) decodeBase64(config.recoveryWrappedDataKey, KEY_BYTES);
+  if (config.metadataProtection !== undefined) validateMetadataProtectionPointer(config.metadataProtection);
+}
+
+export function validateMetadataProtectionPointer(value: unknown): asserts value is MetadataProtectionPointer {
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid protected metadata pointer.');
+  const pointer = value as MetadataProtectionPointer;
+  const uuid = /^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i;
+  if (
+    Object.keys(pointer).sort().join(',') !== 'stores,vaultId,version' ||
+    pointer.version !== 1 ||
+    typeof pointer.vaultId !== 'string' ||
+    !uuid.test(pointer.vaultId) ||
+    !pointer.stores ||
+    typeof pointer.stores !== 'object' ||
+    Object.keys(pointer.stores).sort().join(',') !== 'annotations,checkpoints'
+  )
+    throw new Error('Invalid protected metadata pointer.');
+  for (const store of Object.values(pointer.stores)) {
+    if (
+      !store ||
+      typeof store !== 'object' ||
+      Object.keys(store).sort().join(',') !== 'cleanupRequired,digest,generation' ||
+      typeof store.generation !== 'string' ||
+      !uuid.test(store.generation) ||
+      typeof store.digest !== 'string' ||
+      !/^[\da-f]{64}$/.test(store.digest) ||
+      typeof store.cleanupRequired !== 'boolean'
+    )
+      throw new Error('Invalid protected metadata pointer.');
+  }
 }
 
 function integrityPayload(
@@ -336,6 +370,7 @@ function integrityPayload(
   recoveryWrappedDataKey: string | null,
   legacyCredentialsCleanupRequired: boolean,
   credentials: EncryptedRecord | null,
+  metadataProtection?: MetadataProtectionPointer,
 ) {
   return {
     version: 3,
@@ -345,6 +380,7 @@ function integrityPayload(
     legacyCredentialsCleanupRequired,
     credentialsPresent: credentials !== null,
     credentialsRecordId: credentials?.id ?? null,
+    ...(metadataProtection === undefined ? {} : { metadataProtection }),
   };
 }
 
@@ -366,6 +402,7 @@ function sealRecoverableConfig(
           base.recoveryWrappedDataKey,
           base.legacyCredentialsCleanupRequired,
           base.credentials,
+          base.metadataProtection,
         ),
       ),
     ),
@@ -383,10 +420,22 @@ function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Bu
         config.recoveryWrappedDataKey,
         config.legacyCredentialsCleanupRequired,
         config.credentials,
+        config.metadataProtection,
       ),
     )
   )
     throw new Error('Vault security metadata is invalid.');
+}
+
+export function updateMetadataProtection(
+  config: VaultSecurityConfig,
+  key: Buffer,
+  pointer: MetadataProtectionPointer,
+): RecoverableVaultSecurityConfig {
+  if (config.version !== 3 || key.length !== KEY_BYTES) throw new Error('Unlock a version-3 vault first.');
+  verifyRecoverableConfig(config, key);
+  validateMetadataProtectionPointer(pointer);
+  return sealRecoverableConfig({ ...config, metadataProtection: pointer }, key);
 }
 
 function passwordWrap(dataKey: Buffer, password: string, salt = randomBytes(SALT_BYTES)) {
@@ -662,7 +711,13 @@ export function unwrapLegacyVaultKey(config: VaultSecurityConfig, dataKey: Buffe
 
 export function encryptRecord(
   key: Buffer,
-  domain: 'note' | 'credentials' | 'legacy-vault-key' | 'vault-config-integrity',
+  domain:
+    | 'note'
+    | 'credentials'
+    | 'legacy-vault-key'
+    | 'vault-config-integrity'
+    | 'metadata-annotations'
+    | 'metadata-checkpoints',
   id: string,
   plaintext: string,
 ): EncryptedRecord {
@@ -681,7 +736,13 @@ export function encryptRecord(
 
 export function decryptRecord(
   key: Buffer,
-  domain: 'note' | 'credentials' | 'legacy-vault-key' | 'vault-config-integrity',
+  domain:
+    | 'note'
+    | 'credentials'
+    | 'legacy-vault-key'
+    | 'vault-config-integrity'
+    | 'metadata-annotations'
+    | 'metadata-checkpoints',
   value: unknown,
 ): string {
   if (

@@ -1,8 +1,8 @@
 # A11y Notebook — Implementation Status
 
-**Last Updated:** 2026-10-07  
+**Last Updated:** 2026-10-10  
 **Current Version:** 0.1.0  
-**Starting main:** 41ddefc (includes merged PR #25 and the subsequent status document)
+**Starting main:** ea347f3 (includes PR #26 audit logging, PR #27 DOCX and PR #28 investigation)
 
 Status marks below mean **implemented**, **partial**, **open**, or **externally blocked**. They do not mean
 production-ready or manually verified. Automated DOM/mocked OS tests do not establish Windows toast delivery,
@@ -10,14 +10,15 @@ installer behavior, screen-reader speech, or secure erasure.
 
 ## Requested six-feature increment
 
-| Feature                               | Evidence-based status                                                                                                                                                                                                                                                             |
-| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions. |
-| Opt-in encrypted metadata/indexes     | **Not implemented.** Verified store inventory and proposed threat model/domain/key/migration boundary documented. No toggle, encryption migration or plaintext-cache guarantee ships.                                                                                             |
-| Cognitive unsaved-edit crash recovery | **Not implemented.** No persistent draft/checkpoint/restore/discard flow. Depends on verified encrypted metadata/draft policy.                                                                                                                                                    |
-| Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                  |
-| DOCX accessible local reading         | **Not implemented/unsupported.** No parser/dependency or hostile fixtures added. Legacy `.doc` remains unsupported.                                                                                                                                                               |
-| Exited-process Windows reminders      | **Not implemented.** No Task Scheduler/helper registration, consent/status API or cleanup. In-process scheduling is not delivery after exit; Windows verification remains unrun.                                                                                                  |
+| Feature                               | Evidence-based status                                                                                                                                                                                                                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions.                                              |
+| Opt-in encrypted metadata/indexes     | **Scoped implementation:** Markdown/HTML/PDF annotations and cognitive checkpoints only, stable unlocked v3 config, explicit exclusion consent, authenticated per-store containers/pointers and resumable cleanup. Other metadata/indexes remain plaintext/open; not whole-vault encryption.                                   |
+| Cognitive unsaved-edit crash recovery | **Scoped implementation:** bounded encrypted debounced checkpoints, baseline conflict detection and explicit unsaved Restore/Discard/Compare. Malformed structured drafts are compare/copy-only (partial); no plaintext fallback. Debounce-window loss and manual Windows AT checks remain.                                    |
+| Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                                                               |
+| DOCX accessible local reading         | **Implemented on main (PR #27).** Bounded local ZIP/XML parser, semantic reader, navigation/search and hostile fixtures. DOCX annotations remain open; legacy `.doc` remains unsupported.                                                                                                                                      |
+| Exited-process Windows reminders      | **Not implemented.** No Task Scheduler/helper registration, consent/status API or cleanup. In-process scheduling is not delivery after exit; Windows verification remains unrun.                                                                                                                                               |
+| Custom in-app reminder alerts         | **Partial on existing scheduler:** persisted alert/sound settings, bundled sound, focused dialog/unfocused queue, complete/dismiss/snooze actions and hidden-title privacy. Locking stops delivery; generic locked alert/sound remains open. Windows minimized audio/focus and AT need manual validation. Alerts stop on exit. |
 
 The exact unfinished acceptance criteria and Windows matrix are in `docs/continuation-plan.md`. Designs are not
 implementation, and mocks are not actual Windows verification.
@@ -91,6 +92,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Named milestone service with stable task associations, move preservation, and live progress
 - ✅ Unified reminder and opt-in flashcard scheduler with persistent deduplication
 - ✅ Vault switch and lock cancellation for scheduled tasks
+- ✅ Settings-controlled in-app reminder alert queue and bundled sound; independent native notification preference
 - ⏳ **Exited-process notification delivery** — open; design needed for opt-in Windows integration
 - ✅ **Milestone planning UI** — existing-service list/detail/create/edit/delete and associations; manual AT verification open
 
@@ -109,7 +111,7 @@ implementation, and mocks are not actual Windows verification.
 - ⏳ **Rich mind-map visual layouts** — open; semantic tree is authoritative
 - ⏳ **Background flashcard review notifications** — open
 - ⏳ **General Markdown-to-outline conversion** — open; heading hierarchy/content preservation design needed
-- ⏳ **Crash recovery for unsaved asset edits** — open; depends on encrypted metadata policy
+- ✅ **Encrypted cognitive checkpoints** — opted-in bounded drafts and explicit unsaved restore/discard/compare; manual Windows AT validation remains
 
 ### Phase 7 — Security and Local Protection
 
@@ -125,7 +127,8 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Vault switch/lock detection and race-condition guarding for security operations
 - ✅ Recovery migration commit race-condition protection against concurrent locks
 - ✅ **Scoped sensitive-action audit logging** — bounded schema/retention, redaction, interruption/error tests; OS-user tampering and coverage limits apply
-- ⏳ **Encrypted indexes and metadata** — open; depends on stable key handling and per-store domain separation
+- ✅ **Scoped encrypted annotations/checkpoints** — stable v3 keys, per-store authenticated envelopes and pointer migration
+- ⏳ **Excluded indexes and metadata** — search, links, bookmarks, reminders, settings and other documented exclusions remain plaintext/open
 - ⏳ **Whole-vault encryption** — open; separate opt-in mode with streaming/container format design needed
 
 ### Phase 8 — Import and Document Support
@@ -146,7 +149,7 @@ implementation, and mocks are not actual Windows verification.
 - 🚧 **ePub annotations** — open; lifecycle validation and manual accessibility checks remain
 - ⏳ **PDF sidebar/export/lifecycle workflows** — open; annotation sidebar, bidirectional navigation, clipboard export
 - ⏳ **ePub reading-progress persistence** — open
-- ⏳ **DOCX support** — open; requires semantic structure extraction and hostile-archive validation
+- ✅ **DOCX local reading** — bounded semantic parser, reader/navigation/search and hostile-archive tests; annotations and manual AT validation remain open
 - ⏳ **Legacy `.doc` support** — unsupported; pending vetted local parser/converter strategy
 
 ### Phase 9 — Accessibility Validation and Release Readiness
@@ -191,7 +194,7 @@ implementation, and mocks are not actual Windows verification.
 
 ### Remaining Phase 6 Work
 
-- **Crash recovery for unsaved edits** — requires encrypted metadata/draft policy
+- **Cognitive recovery manual validation** — JAWS/NVDA/Narrator, keyboard focus and speech on Windows remain unrun
 - **Markdown-to-outline conversion** — requires heading hierarchy preservation and content-loss preview
 - **Mind-map visual layouts** — semantic tree is authoritative; visual enhancements remain
 - **Due flashcard background notifications** — depends on Phase 5 out-of-process delivery
@@ -203,7 +206,7 @@ implementation, and mocks are not actual Windows verification.
 - Reading position persistence (especially for ePub)
 - Markdown and sanitized HTML annotation parity verification
 - ePub hostile-archive and remote-resource validation
-- DOCX support: semantic structure extraction without external resource loading
+- DOCX annotations and manual Windows assistive-technology validation
 - Legacy `.doc` support: pending safe local parser/converter strategy
 - PDF annotation sidebar and bidirectional navigation (Phase 5 work)
 - PDF clipboard export with original quotes (Phase 6 work)
@@ -211,7 +214,7 @@ implementation, and mocks are not actual Windows verification.
 ### Security and Storage
 
 - **Audit history follow-ups** — native warning Windows AT validation, viewer/repair UI and broader automatic event coverage remain; scoped logging implemented
-- **Encrypted indexes/metadata** — requires per-store domain separation, versioning, and backward-compatible migration
+- **Excluded indexes/metadata** — broader migration of direct writers/caches remains open beyond scoped annotation/checkpoint protection
 - **Whole-vault encryption** — requires threat model specification, streaming/container format, and crash/rollback testing
 
 ### Other Requested Features
@@ -238,15 +241,27 @@ implementation, and mocks are not actual Windows verification.
 **Production readiness:** Not established. Implemented functionality still has explicit security/storage limitations and unrun Windows accessibility/packaging gates.  
 **Testable on Windows:** Core app, installer, updater, UI Automation smoke tests, portable `.exe`  
 **Manual AT Validation Needed:** All new security workflows, recovery flows, PDF/ePub navigation, milestone planning  
-**Design & Implementation Open:** Exited-process delivery, encrypted metadata, cognitive crash recovery, whole-vault encryption, shared reader contract, DOCX support; legacy `.doc` unsupported
+**Design & Implementation Open:** Exited-process delivery, excluded indexes/metadata, whole-vault encryption, shared reader contract, DOCX annotations; legacy `.doc` unsupported. Windows sound/focus and new recovery/alert AT workflows require manual validation.
 
 ---
 
 ## Provenance and validation
 
-PR #25 was verified merged into `main` on 2026-10-07. This branch starts from later main commit 41ddefc and preserves
-that work. Historical PR #5 closure/checklist changes are not assumed or performed here. PDF/ePub implementation
+This branch starts from main commit ea347f3 and preserves merged audit, DOCX, milestone and PDF/ePub work.
+The investigation commit 4ee9e4eb contains documentation only: cognitive-recovery channels and `asset-drafts.ts`
+were not present on live main before this implementation. Historical PR #5 closure/checklist changes are not
+assumed or performed here. PDF/ePub implementation
 does not imply every format, lifecycle, hostile-input or accessibility requirement is complete.
 
 Validation results for this increment are reported on the implementation PR. Earlier reported test counts or scans
 are not evidence for new changes. No version bump, release, signing setup or repository-protection change is included.
+
+Current local validation: `npm run typecheck`, `npm run lint`, `npm test` (**671 tests, 65 files**) and
+`npm run build` passed. After review fixes, the final full suite passed **677 tests across 65 files**;
+typecheck, lint and build passed again. The build reports Vite chunk-size warnings. `npm run format:check` failed on five unchanged
+files: `electron/vault/docx-parser.ts`, `electron/vault/search.ts`,
+`src/renderer/features/previews/DocxReader.tsx`, `src/test/docx-parser.test.ts` and `src/test/docx-reader.test.tsx`.
+Changed-file formatting passed. Secret scanning found no secrets. CI initially required approval and ran no jobs;
+it is not reported as passed. Real Windows sound/focus and JAWS/NVDA/Narrator checks were not run.
+CodeQL found zero JavaScript alerts. The automated code-review service failed with a model-registry error;
+a separate read-only reviewer identified two reminder issues that were fixed and confirmed in follow-up review.

@@ -23,14 +23,17 @@ export function createMetadataStore(service: MetadataResolver) {
           throw error;
         }
       }),
-    write: (name: string, value: unknown): Promise<void> =>
+    write: (name: string, value: unknown, assertCurrent?: () => void): Promise<void> =>
       serialize(async () => {
+        assertCurrent?.();
         const destination = await service.resolveMetadata(name, true);
         const temporary = await service.resolveMetadata(`pending-${randomUUID()}.json`, true);
         try {
           await writeFile(temporary, JSON.stringify(value, null, 2), { flag: 'wx', mode: 0o600 });
           await service.resolveMetadata(name, true);
+          assertCurrent?.();
           await rename(temporary, destination);
+          assertCurrent?.();
         } finally {
           await unlink(temporary).catch(() => undefined);
         }

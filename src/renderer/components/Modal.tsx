@@ -27,6 +27,8 @@ type ModalProps = {
   className?: string;
   onClose: () => void;
   children: ReactNode;
+  role?: 'dialog' | 'alertdialog';
+  restoreFocusTo?: HTMLElement | null;
 };
 
 /**
@@ -34,13 +36,23 @@ type ModalProps = {
  * keeps Tab and Shift+Tab within the dialog, closes on Escape, and restores focus
  * to the element that was focused before it opened.
  */
-export default function Modal({ titleId, title, describedBy, className, onClose, children }: ModalProps) {
+export default function Modal({
+  titleId,
+  title,
+  describedBy,
+  className,
+  onClose,
+  children,
+  role = 'dialog',
+  restoreFocusTo,
+}: ModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
   useEffect(() => {
-    const previouslyFocused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const previouslyFocused =
+      restoreFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const dialog = dialogRef.current;
     if (dialog) {
       focusInitialElement(dialog);
@@ -57,11 +69,11 @@ export default function Modal({ titleId, title, describedBy, className, onClose,
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn);
-      if (previouslyFocused && previouslyFocused.isConnected) {
+      if ((role !== 'alertdialog' || document.hasFocus()) && previouslyFocused && previouslyFocused.isConnected) {
         previouslyFocused.focus();
       }
     };
-  }, []);
+  }, [role, restoreFocusTo]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === 'Escape') {
@@ -96,7 +108,7 @@ export default function Modal({ titleId, title, describedBy, className, onClose,
       <div
         ref={dialogRef}
         className={className ? `modal ${className}` : 'modal'}
-        role="dialog"
+        role={role}
         aria-modal="true"
         aria-labelledby={titleId}
         aria-describedby={describedBy}

@@ -1,7 +1,9 @@
-import { createHash } from 'node:crypto';
-import { lstat, readFile, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import { lstat, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { assetTypes, createAssetRegistry, parseFlashcards, type CardSchedule } from '../../src/shared/assets';
 import type { createMetadataStore } from './metadata';
+import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 
 interface Resolver {
   resolveEntry(relative: string, missing?: boolean): Promise<string>;
@@ -50,6 +52,14 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
     const stat = await lstat(target);
     if (!stat.isFile() || stat.size > 2 * 1024 * 1024) throw new Error('Assets must be files smaller than 2 MB.');
     const content = await readFile(target, 'utf8');
+    let envelope: unknown;
+    try {
+      envelope = JSON.parse(content);
+    } catch {
+      envelope = null;
+    }
+    if (isEncryptedRecord(envelope) || isPasswordEncryptedNote(envelope))
+      throw new Error('Encrypted notes cannot be opened or checkpointed as cognitive assets.');
     type.parse(content);
     return { path: relative, type: type.id, content };
   }
@@ -66,21 +76,33 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
   }
   return {
     read,
-    save: (relative: string, content: string, expected: string) =>
+    save: (relative: string, content: string, expected: string, assertCurrent: () => void = () => undefined) =>
       serial(async () => {
         const type = assetType(relative);
-        if (typeof content !== 'string' || content.length > 2 * 1024 * 1024 || typeof expected !== 'string')
+        if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024 || typeof expected !== 'string')
           throw new Error('Invalid asset content.');
         type.parse(content);
         const target = await vault.resolveEntry(relative);
         if ((await read(relative)).content !== expected)
           throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
-        await writeFile(target, content, 'utf8');
+        const temporary = path.join(path.dirname(target), `.asset-${randomUUID()}.tmp`);
+        try {
+          const stat = await lstat(target);
+          await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: stat.mode & 0o777 });
+          await vault.resolveEntry(relative);
+          if ((await read(relative)).content !== expected)
+            throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
+          assertCurrent();
+          await rename(temporary, target);
+        } finally {
+          await rm(temporary, { force: true }).catch(() => undefined);
+        }
       }),
     create: (relative: string, content: string) =>
       serial(async () => {
         const type = assetType(relative);
-        if (typeof content !== 'string' || content.length > 2 * 1024 * 1024) throw new Error('Invalid asset content.');
+        if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024)
+          throw new Error('Invalid asset content.');
         type.parse(content);
         const target = await vault.resolveEntry(relative, true);
         await writeFile(target, content, { flag: 'wx' });

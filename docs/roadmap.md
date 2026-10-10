@@ -79,6 +79,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Persisted, validated reminder defaults and creation-dialog preferences without rewriting existing reminders.
 - ✅ Named milestone service/typed IPC with stable task associations, move preservation, and live progress.
 - ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and vault switch/lock cancellation.
+- 🚧 Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. Generic locked-vault alert/sound remains open; lock stops delivery until unlock.
+- ⛔ Real Windows minimized/background audio, focus and JAWS/NVDA/Narrator verification remains manual.
 - ✅ Milestone planning UI on existing service/typed IPC: list/detail/create/edit/delete, task/note associations, dates/status/progress and keyboard/focus regression tests.
 - ⏳ Exited-process notification delivery: no Task Scheduler/helper integration ships yet.
 - ⛔ Manual Windows notification and screen-reader verification.
@@ -90,7 +92,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ CSV/Markdown-table grids with keyboard cell editing, sorting, and row/column controls.
 - ✅ Built-in Daily/Meeting/Project/Reading/Lecture templates, placeholders/cursor, preview, and editable `Templates/` Markdown/HTML.
 - ✅ Extensible shared asset-type registry; no executable plugin loading.
-- ⏳ Rich mind-map layout, background flashcard review notifications, general Markdown-to-outline conversion, crash recovery for unsaved asset edits.
+- ✅ Opt-in encrypted cognitive checkpoints, debounced bounded retention, explicit restore/discard/compare and source-baseline conflict warnings.
+- ⏳ Rich mind-map layout, exited-process flashcard review notifications and general Markdown-to-outline conversion.
 
 ## Phase 7 — Security and local protection 🚧
 
@@ -100,7 +103,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ AES-256-GCM encrypted credential storage using the main-process vault key.
 - ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing for passwords generated in the note-encryption dialog.
-- ⏳ Encrypted indexes/metadata and whole-vault encryption.
+- ✅ Scoped opt-in encrypted Markdown/HTML/PDF annotations and cognitive checkpoints using stable v3 keys, authenticated pointers and resumable plaintext cleanup.
+- ⏳ Excluded indexes/metadata and whole-vault encryption remain plaintext/open; scoped protection does not cover search, links, bookmarks, reminders or settings.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
@@ -111,6 +115,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
 - ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits. Remaining PDF sidebar/export/lifecycle work is listed below.
 - 🚧 ePub uses epub.js to render paginated book content and a nested navigation TOC. Chapter output is sanitized; ePub annotations, broader lifecycle validation, and manual accessibility checks remain open.
+- ✅ Local DOCX semantic parsing, typed IPC, navigation/search and hostile-archive tests (PR #27). DOCX annotations and manual Windows AT validation remain open; legacy `.doc` remains unsupported.
 
 ### Document reader and annotation follow-up plan
 

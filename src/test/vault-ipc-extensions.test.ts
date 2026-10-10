@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
 import { encryptRecord, unlockVault } from '../../electron/vault/security';
 import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
+import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { Milestone } from '../shared/milestones';
 
 const mock = vi.hoisted(() => ({
@@ -27,6 +28,8 @@ const mock = vi.hoisted(() => ({
   captureGate: undefined as undefined | (() => Promise<void>),
   captureTitle: '.Research',
   attachmentReadGate: undefined as undefined | (() => Promise<void>),
+  assetReadGate: undefined as undefined | (() => Promise<void>),
+  taskWriteGate: undefined as undefined | (() => Promise<void>),
   securityWriteGate: undefined as undefined | (() => Promise<void>),
   saveDialogGate: undefined as undefined | (() => Promise<void>),
   failAuditWrite: false,
@@ -47,9 +50,11 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     ...actual,
     readFile: async (...args: Parameters<typeof actual.readFile>) => {
       if (String(args[0]).endsWith('Private.png')) await mock.attachmentReadGate?.();
+      if (String(args[0]).endsWith('Plan.outline.md')) await mock.assetReadGate?.();
       return actual.readFile(...args);
     },
     writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
+      if (path.basename(String(args[0])).startsWith('.Topic.md.')) await mock.taskWriteGate?.();
       if (mock.failRecentWrite && String(args[0]).endsWith('recent-vault.json'))
         throw new Error('Recent-vault persistence failed.');
       if (mock.partialRepairWrite && path.basename(String(args[0])).includes('Reference.md')) {
@@ -243,6 +248,8 @@ beforeEach(async () => {
   mock.captureGate = undefined;
   mock.captureTitle = '.Research';
   mock.attachmentReadGate = undefined;
+  mock.assetReadGate = undefined;
+  mock.taskWriteGate = undefined;
   mock.securityWriteGate = undefined;
   mock.saveDialogGate = undefined;
   mock.failAuditWrite = false;
@@ -280,6 +287,225 @@ afterEach(async () => {
 });
 
 describe('extended vault IPC integration', () => {
+  it('persists and reloads reminder settings through IPC and migrates old settings defaults', async () => {
+    const settings = {
+      ...DEFAULT_SETTINGS,
+      reminderAlerts: true,
+      reminderSound: true,
+      reminderSoundChoice: 'gentle-chime' as const,
+      reminderVolume: 35,
+    };
+    await invoke(IPC_CHANNELS.settingsSave, settings);
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.settingsGet)).toEqual(settings);
+    const persisted = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'settings.json'), 'utf8'));
+    expect(persisted).toEqual(settings);
+    await writeFile(
+      path.join(mock.root, '.a11ynotebook', 'settings.json'),
+      JSON.stringify({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} }),
+    );
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(await invoke(IPC_CHANNELS.settingsGet)).toMatchObject({
+      reminderAlerts: false,
+      reminderSound: false,
+      reminderSoundChoice: 'gentle-chime',
+      reminderVolume: 50,
+    });
+  });
+  it('fires a generic in-app reminder with native notifications disabled without creating a native title', async () => {
+    mock.notificationsSupported = true;
+    await invoke(IPC_CHANNELS.vaultReminderCreate, {
+      title: 'Never expose this native title',
+      path: 'Topic.md',
+      scheduledAt: '2020-01-01 09:00',
+      privacy: 'hide-title',
+      notification: false,
+    });
+    expect(mock.reminderEvents).toContainEqual(
+      expect.objectContaining({
+        type: 'fired',
+        reminder: expect.objectContaining({ title: 'Reminder', privacy: 'hide-title' }),
+      }),
+    );
+    expect(mock.notifications).toHaveLength(0);
+    expect(
+      JSON.stringify(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')),
+    ).not.toContain('Never expose this native title');
+  });
+  it('keeps cognitive checkpoints encrypted, retires saves, follows moves and rejects stale tokens', async () => {
+    const relative = 'Plan.outline.md';
+    await writeFile(path.join(mock.root, relative), '- Baseline\n');
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, relative)).toMatchObject({ enabled: false, draft: null });
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'draft-fixture-password');
+    await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'draft-fixture-password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: true });
+    let recovery = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, relative)) as {
+      token: string;
+      draft: { revision: string; content: string } | null;
+    };
+    const input = {
+      path: relative,
+      type: 'outline',
+      baselineContent: '- Baseline\n',
+      content: '- Private unsaved text\n',
+    };
+    await invoke(IPC_CHANNELS.vaultAssetDraftCheckpoint, input, recovery.token);
+    const files = await readdir(path.join(mock.root, '.a11ynotebook'));
+    for (const filename of files) {
+      const bytes = await readFile(path.join(mock.root, '.a11ynotebook', filename), 'utf8');
+      expect(bytes).not.toContain('Private unsaved text');
+    }
+    expect(await readFile(path.join(mock.root, relative), 'utf8')).toBe('- Baseline\n');
+    const stale = recovery.token;
+    await invoke(IPC_CHANNELS.vaultRename, relative, 'Moved.outline.md');
+    await expect(invoke(IPC_CHANNELS.vaultAssetDraftCheckpoint, input, stale)).rejects.toThrow('session changed');
+    recovery = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')) as typeof recovery;
+    expect(recovery.draft?.content).toBe(input.content);
+    await invoke(
+      IPC_CHANNELS.vaultAssetSave,
+      'Moved.outline.md',
+      '- Newest edit before debounce\n',
+      input.baselineContent,
+    );
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')).toMatchObject({ draft: null });
+    recovery = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')) as typeof recovery;
+    await invoke(
+      IPC_CHANNELS.vaultAssetDraftCheckpoint,
+      {
+        ...input,
+        path: 'Moved.outline.md',
+        baselineContent: '- Newest edit before debounce\n',
+        content: '- Another unsaved edit\n',
+      },
+      recovery.token,
+    );
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')).rejects.toThrow('Unlock');
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'draft-fixture-password');
+    await expect(invoke(IPC_CHANNELS.vaultAssetDraftCheckpoint, input, recovery.token)).rejects.toThrow(
+      'session changed',
+    );
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')).toMatchObject({
+      draft: { content: '- Another unsaved edit\n' },
+    });
+    await writeFile(path.join(mock.root, 'Plan.outline.md'), '- Original\n');
+    const active = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')) as typeof recovery;
+    const entered = deferred();
+    const blocked = deferred();
+    mock.assetReadGate = async () => {
+      entered.resolve();
+      await blocked.promise;
+    };
+    const pending = invoke(
+      IPC_CHANNELS.vaultAssetDraftCheckpoint,
+      {
+        path: 'Plan.outline.md',
+        type: 'outline',
+        baselineContent: '- Original\n',
+        content: '- Must not persist\n',
+      },
+      active.token,
+    );
+    const rejection = expect(pending).rejects.toThrow();
+    await entered.promise;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    blocked.resolve();
+    await rejection;
+    await locking;
+    mock.assetReadGate = undefined;
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'draft-fixture-password');
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')).toMatchObject({ draft: null });
+    for (const operation of ['discard', 'save', 'reopen'] as const) {
+      const current = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')) as typeof recovery;
+      const originalDraft = (await invoke(
+        IPC_CHANNELS.vaultAssetDraftCheckpoint,
+        {
+          path: 'Plan.outline.md',
+          type: 'outline',
+          baselineContent: '- Original\n',
+          content: '- Retained checkpoint\n',
+        },
+        current.token,
+      )) as { revision: string };
+      const waiting = deferred();
+      const release = deferred();
+      mock.assetReadGate = async () => {
+        waiting.resolve();
+        await release.promise;
+      };
+      const oldCheckpoint = invoke(
+        IPC_CHANNELS.vaultAssetDraftCheckpoint,
+        {
+          path: 'Plan.outline.md',
+          type: 'outline',
+          baselineContent: '- Original\n',
+          content: '- Stale replacement\n',
+        },
+        current.token,
+      );
+      const rejected = expect(oldCheckpoint).rejects.toThrow('session changed');
+      await waiting.promise;
+      const mutation =
+        operation === 'discard'
+          ? invoke(IPC_CHANNELS.vaultAssetDraftDiscard, 'Plan.outline.md', originalDraft.revision, current.token)
+          : operation === 'save'
+            ? invoke(IPC_CHANNELS.vaultAssetSave, 'Plan.outline.md', '- Original\n', '- Original\n')
+            : invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md');
+      mock.assetReadGate = undefined;
+      release.resolve();
+      await rejected;
+      await mutation;
+      const after = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')) as typeof recovery;
+      if (operation === 'reopen') expect(after.draft?.content).toBe('- Retained checkpoint\n');
+      else expect(after.draft).toBeNull();
+    }
+    await writeFile(path.join(mock.root, 'Plan.outline.md'), '- External edit\n');
+    await expect(
+      invoke(IPC_CHANNELS.vaultAssetSave, 'Plan.outline.md', '- Conflicted unsaved edit\n', '- Original\n'),
+    ).rejects.toThrow('changed');
+    const conflicted = (await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')) as typeof recovery;
+    await invoke(
+      IPC_CHANNELS.vaultAssetDraftCheckpoint,
+      {
+        path: 'Plan.outline.md',
+        type: 'outline',
+        baselineContent: '- Original\n',
+        content: '- Conflicted unsaved edit\n',
+      },
+      conflicted.token,
+    );
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')).toMatchObject({
+      draft: { baselineContent: '- Original\n', content: '- Conflicted unsaved edit\n' },
+    });
+    expect(await readFile(path.join(mock.root, 'Plan.outline.md'), 'utf8')).toBe('- External edit\n');
+    const { shell } = await import('electron');
+    vi.mocked(shell.trashItem).mockImplementationOnce(async (target) => {
+      await rm(target);
+    });
+    await invoke(IPC_CHANNELS.vaultDelete, 'Moved.outline.md');
+    expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')).toMatchObject({ draft: null });
+    const metadataPath = path.join(mock.root, '.a11ynotebook');
+    const config = JSON.parse(await readFile(path.join(metadataPath, 'security.json'), 'utf8'));
+    await writeFile(
+      path.join(metadataPath, 'checkpoints.json'),
+      JSON.stringify({
+        version: 1,
+        drafts: [
+          {
+            ...input,
+            content: '- Untrusted plaintext fallback\n',
+          },
+        ],
+      }),
+    );
+    await writeFile(
+      path.join(metadataPath, `protected-checkpoints-${config.metadataProtection.stores.checkpoints.generation}.json`),
+      '{}',
+    );
+    await expect(invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')).rejects.toThrow();
+  });
+
   it('audits security, credentials and cancelled exports without secrets or paths', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
     await invoke(IPC_CHANNELS.vaultCredentialsSave, 'sensitive-id', 'sensitive-user', 'sensitive-value');
@@ -506,7 +732,57 @@ describe('extended vault IPC integration', () => {
       });
       await writeFile(path.join(mock.root, 'Topic.md'), '- [ ] Silent task remind:2020-01-02 09:00');
       await invoke(IPC_CHANNELS.vaultReminders);
-      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toEqual([]);
+      expect(mock.reminderEvents).toContainEqual(
+        expect.objectContaining({
+          type: 'fired',
+          reminder: expect.objectContaining({ title: 'Silent task' }),
+        }),
+      );
+      expect(mock.notifications).toEqual([]);
+    } finally {
+      mock.disableWatcher = false;
+    }
+  });
+
+  it('completes standalone reminders and rejects stale Markdown and HTML task completion', async () => {
+    mock.disableWatcher = true;
+    try {
+      await invoke(IPC_CHANNELS.vaultOpen);
+      await invoke(IPC_CHANNELS.vaultReminderCreate, {
+        title: 'Standalone',
+        path: 'Topic.md',
+        scheduledAt: '2020-01-01 09:00',
+      });
+      const standalone = ((await invoke(IPC_CHANNELS.vaultReminders)) as import('../shared/reminders').Reminder[]).find(
+        (item) => item.source === 'standalone',
+      )!;
+      const completed = await invoke(IPC_CHANNELS.vaultReminderComplete, standalone.id);
+      expect(completed).toContainEqual(expect.objectContaining({ id: standalone.id, status: 'completed' }));
+      for (const [filename, content] of [
+        ['Topic.md', '- [ ] Read remind:2020-01-01 09:00'],
+        [
+          'Topic.html',
+          '<ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-remind="2020-01-01 09:00">Read</li></ul>',
+        ],
+      ]) {
+        await writeFile(path.join(mock.root, filename), content);
+        const task = ((await invoke(IPC_CHANNELS.vaultReminders)) as import('../shared/reminders').Reminder[]).find(
+          (item) => item.source === 'task' && item.path === filename,
+        )!;
+        await writeFile(path.join(mock.root, filename), `${content}\nExternal edit`);
+        await expect(invoke(IPC_CHANNELS.vaultReminderComplete, task.id, task.revision)).rejects.toThrow('changed');
+        expect(await readFile(path.join(mock.root, filename), 'utf8')).toContain(content);
+        const fresh = ((await invoke(IPC_CHANNELS.vaultReminders)) as import('../shared/reminders').Reminder[]).find(
+          (item) => item.id === task.id,
+        )!;
+        await invoke(IPC_CHANNELS.vaultReminderComplete, fresh.id, fresh.revision);
+        const saved = await readFile(path.join(mock.root, filename), 'utf8');
+        expect(saved).toContain(filename.endsWith('.html') ? 'data-a11y-task-complete="true"' : '- [x] Read');
+      }
+      await expect(mock.handlers.get(IPC_CHANNELS.vaultReminderComplete)!({}, standalone.id)).rejects.toThrow(
+        'Untrusted',
+      );
+      await expect(invoke(IPC_CHANNELS.vaultReminderComplete, { id: standalone.id })).rejects.toThrow('Invalid');
     } finally {
       mock.disableWatcher = false;
     }
@@ -526,6 +802,60 @@ describe('extended vault IPC integration', () => {
     await Promise.all([locking, ...queued.map((request) => expect(request).rejects.toThrow('Unlock the vault'))]);
     await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'phase-five-test-password');
     expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([milestone]);
+  });
+
+  it('rejects reminder completion queued behind locking without completing it', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
+    const created = (await invoke(IPC_CHANNELS.vaultReminderCreate, {
+      title: 'Private reminder',
+      path: 'Topic.md',
+      scheduledAt: '2030-01-01 09:00',
+    })) as import('../shared/reminders').Reminder[];
+    const reminder = created.find((item) => item.source === 'standalone')!;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    const completion = invoke(IPC_CHANNELS.vaultReminderComplete, reminder.id);
+    await Promise.all([locking, expect(completion).rejects.toThrow(/Unlock|changed/)]);
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'phase-five-test-password');
+    expect(await invoke(IPC_CHANNELS.vaultReminders)).toContainEqual(
+      expect.objectContaining({ id: reminder.id, status: 'pending' }),
+    );
+  });
+
+  it('rejects reminder completion queued behind a vault switch', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
+    const created = (await invoke(IPC_CHANNELS.vaultReminderCreate, {
+      title: 'Old vault reminder',
+      path: 'Topic.md',
+      scheduledAt: '2030-01-01 09:00',
+    })) as import('../shared/reminders').Reminder[];
+    const reminder = created.find((item) => item.source === 'standalone')!;
+    mock.root = path.join(temporary, 'other-vault');
+    await mkdir(mock.root);
+    const opening = invoke(IPC_CHANNELS.vaultOpen);
+    await Promise.resolve();
+    const completion = invoke(IPC_CHANNELS.vaultReminderComplete, reminder.id);
+    await Promise.all([opening, expect(completion).rejects.toThrow(/changed/)]);
+  });
+
+  it('does not commit a task completion when locking during its staging write', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
+    const original = '- [ ] Private task remind:2030-01-01 09:00\n';
+    await writeFile(path.join(mock.root, 'Topic.md'), original);
+    const reminders = (await invoke(IPC_CHANNELS.vaultReminders)) as import('../shared/reminders').Reminder[];
+    const task = reminders.find((item) => item.source === 'task')!;
+    const entered = deferred();
+    const release = deferred();
+    mock.taskWriteGate = async () => {
+      entered.resolve();
+      await release.promise;
+    };
+    const completion = invoke(IPC_CHANNELS.vaultReminderComplete, task.id, task.revision);
+    await entered.promise;
+    const rejected = expect(completion).rejects.toThrow(/Unlock|changed/);
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release.resolve();
+    await Promise.all([locking, rejected]);
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(original);
   });
 
   it('does not redeliver a fired task reminder when a milestone assigns its stable identity', async () => {

@@ -1,6 +1,6 @@
 // @vitest-environment node
-import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
@@ -56,7 +56,7 @@ beforeEach(async () => {
   vi.resetModules();
   mock.handlers.clear();
   mock.quit = [];
-  folder = path.resolve(`.pdf-annotation-ipc-test-${randomUUID()}`);
+  folder = await mkdtemp(path.join(tmpdir(), 'a11y-pdf-annotation-ipc-test-'));
   mock.root = path.join(folder, 'vault');
   mock.app = path.join(folder, 'app');
   await mkdir(mock.root, { recursive: true });
@@ -79,6 +79,39 @@ afterEach(async () => {
 });
 
 describe('PDF annotation IPC security and persistence', () => {
+  it('opts in only with explicit consent and keeps annotations encrypted across move and recovery', async () => {
+    const added = await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input);
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'old vault password');
+    await expect(invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: true })).rejects.toThrow();
+    const recovery = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'old vault password');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await expect(
+      invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: false }),
+    ).rejects.toThrow();
+    expect(await invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: true })).toMatchObject({
+      enabled: true,
+      cleanupRequired: false,
+    });
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([added]);
+    await invoke(IPC_CHANNELS.vaultMove, input.path, 'Archive/Research.pdf');
+    const directory = path.join(mock.root, '.a11ynotebook');
+    expect(await readdir(directory)).not.toContain('annotations.json');
+    for (const name of (await readdir(directory)).filter((name) => /^(?:protected-|pending-)/.test(name))) {
+      const text = await readFile(path.join(directory, name), 'utf8');
+      expect(text).not.toContain('Study');
+      expect(text).not.toContain('Archive/Research.pdf');
+    }
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await expect(invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).rejects.toThrow('Unlock');
+    await invoke(IPC_CHANNELS.vaultSecurityRecover, recovery, 'new vault password');
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).toHaveLength(1);
+    await invoke(IPC_CHANNELS.vaultSecurityRevokeRecovery, 'new vault password');
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
+    expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).toHaveLength(1);
+    expect(await readdir(directory)).not.toContain('annotations.json');
+  });
+
   it('supports explicit CRUD methods and preserves identities when moved', async () => {
     const added = (await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input)) as PdfAnnotation;
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([added]);

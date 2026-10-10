@@ -257,7 +257,7 @@ describe('vault reminder scheduler', () => {
     expect(Date.parse(snoozed.scheduledAt)).toBe(Date.now() + 5 * 60_000);
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(f.notify).toHaveBeenCalledTimes(2);
-    for (const duration of [15, 60] as const) {
+    for (const duration of [15, 30, 60, 1440] as const) {
       const [next] = await f.service.snoozeReminder(item.id, duration);
       expect(Date.parse(next.scheduledAt)).toBe(Date.now() + duration * 60_000);
     }

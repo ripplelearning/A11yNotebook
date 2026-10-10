@@ -29,6 +29,144 @@ function setup() {
 }
 
 describe('vault-backed cognitive workspace', () => {
+  it('debounces encrypted editor checkpoints and does not save source', async () => {
+    const { vault, props, unmount } = setup();
+    const checkpoint = vi.fn(async () => ({}) as never);
+    window.a11yNotebook!.vault.readAssetDraft = vi.fn(async () => ({ enabled: true, token: 'session', draft: null }));
+    window.a11yNotebook!.vault.checkpointAssetDraft = checkpoint;
+    await screen.findByText('Alpha');
+    await waitFor(() =>
+      expect(
+        screen.queryByText('Encrypted recovery is off. Unsaved changes stay only in this view.'),
+      ).not.toBeInTheDocument(),
+    );
+    fireEvent.change(screen.getByLabelText('Flashcard deck source'), { target: { value: 'One :: Edit\n' } });
+    fireEvent.change(screen.getByLabelText('Flashcard deck source'), { target: { value: 'Newest :: Edit\n' } });
+    expect(checkpoint).not.toHaveBeenCalled();
+    await waitFor(() => expect(checkpoint).toHaveBeenCalledTimes(1), { timeout: 1500 });
+    expect(checkpoint).toHaveBeenCalledWith(
+      {
+        path: 'First.cards.md',
+        type: 'flashcards',
+        baselineContent: 'Alpha :: One\nBeta :: Two\n',
+        content: 'Newest :: Edit\n',
+      },
+      'session',
+    );
+    expect(vault.saveAsset).not.toHaveBeenCalled();
+    expect(props.onDirty).toHaveBeenLastCalledWith(true);
+    unmount();
+  });
+
+  it('offers accessible explicit compare and restores conflicts as unsaved edits without saving', async () => {
+    const vault = vaultExtensions();
+    vault.readAsset.mockResolvedValue({ path: 'Plan.cards.md', type: 'flashcards', content: 'Disk :: Current\n' });
+    const discard = vi.fn(async () => undefined);
+    const checkpoint = vi.fn(async () => ({}) as never);
+    window.a11yNotebook = {
+      vault: {
+        ...vault,
+        readAssetDraft: vi.fn(async () => ({
+          enabled: true,
+          token: 'session',
+          draft: {
+            path: 'Plan.cards.md',
+            type: 'flashcards',
+            revision: 'revision',
+            updatedAt: '2026-10-10T00:00:00.000Z',
+            expiresAt: '2026-10-17T00:00:00.000Z',
+            baselineHash: 'hash',
+            baselineContent: 'Before :: Baseline\n',
+            content: 'Recovered :: Unsaved\n',
+          },
+        })),
+        checkpointAssetDraft: checkpoint,
+        discardAssetDraft: discard,
+      },
+    } as unknown as NotebookBridge;
+    const announce = vi.fn();
+    render(
+      <AssetsWorkspace
+        paths={['Plan.cards.md']}
+        initialPath="Plan.cards.md"
+        refresh={async () => undefined}
+        announce={announce}
+        onDirty={vi.fn()}
+        onBusy={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Recover unsaved asset changes' });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Restore as unsaved changes' })).toHaveFocus());
+    expect(announce).toHaveBeenCalledWith(
+      'Unsaved asset checkpoint from 2026-10-10T00:00:00.000Z found. Restore, discard, or compare it.',
+    );
+    expect(screen.getByLabelText('Flashcard deck source')).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Compare recovered draft' }));
+    expect(screen.getByLabelText('Checkpoint baseline')).toHaveValue('Before :: Baseline\n');
+    expect(screen.getByLabelText('Current source')).toHaveValue('Disk :: Current\n');
+    const restore = screen.getByRole('button', { name: 'Restore as unsaved changes' });
+    restore.focus();
+    expect(restore).toHaveFocus();
+    fireEvent.keyDown(restore, { key: 'Enter' });
+    fireEvent.click(restore, { detail: 0 });
+    expect(screen.getByLabelText('Flashcard deck source')).toHaveValue('Recovered :: Unsaved\n');
+    expect(screen.getByLabelText('Flashcard deck source')).toHaveFocus();
+    expect(screen.getByText('Unsaved asset changes.')).toBeInTheDocument();
+    expect(vault.saveAsset).not.toHaveBeenCalled();
+    expect(discard).not.toHaveBeenCalled();
+    expect(announce).toHaveBeenCalledWith('Draft restored as unsaved changes. The source file was not changed.');
+  });
+
+  it('discards recovery by revision without writing a source file', async () => {
+    const vault = vaultExtensions();
+    vault.readAsset.mockResolvedValue({ path: 'Plan.cards.md', type: 'flashcards', content: 'Disk :: Current\n' });
+    const discard = vi.fn(async () => undefined);
+    let discarded = false;
+    discard.mockImplementation(async () => {
+      discarded = true;
+    });
+    window.a11yNotebook = {
+      vault: {
+        ...vault,
+        readAssetDraft: vi.fn(async () => ({
+          enabled: true,
+          token: 'session',
+          draft: discarded
+            ? null
+            : {
+                path: 'Plan.cards.md',
+                type: 'flashcards',
+                revision: 'revision',
+                updatedAt: '2026-10-10T00:00:00.000Z',
+                expiresAt: '2026-10-17T00:00:00.000Z',
+                baselineHash: 'hash',
+                baselineContent: 'Disk :: Current\n',
+                content: 'Recovered :: Unsaved\n',
+              },
+        })),
+        discardAssetDraft: discard,
+      },
+    } as unknown as NotebookBridge;
+    render(
+      <AssetsWorkspace
+        paths={['Plan.cards.md']}
+        initialPath="Plan.cards.md"
+        refresh={async () => undefined}
+        announce={vi.fn()}
+        onDirty={vi.fn()}
+        onBusy={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Recover unsaved asset changes' });
+    fireEvent.click(screen.getByRole('button', { name: 'Discard recovered draft' }));
+    await waitFor(() =>
+      expect(screen.queryByRole('heading', { name: 'Recover unsaved asset changes' })).not.toBeInTheDocument(),
+    );
+    expect(discard).toHaveBeenCalledWith('Plan.cards.md', 'revision', 'session');
+    await waitFor(() => expect(screen.getByLabelText('Flashcard deck source')).toHaveFocus());
+    expect(vault.saveAsset).not.toHaveBeenCalled();
+  });
+
   it('loads a newly requested asset instead of retaining the previous file', async () => {
     const { props, rerender } = setup();
     await screen.findByText('Alpha');

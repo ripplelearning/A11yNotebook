@@ -1,5 +1,5 @@
-export type SnoozeDuration = 5 | 15 | 60 | 'tomorrow';
-export type ReminderStatus = 'pending' | 'fired' | 'dismissed';
+export type SnoozeDuration = 5 | 15 | 30 | 60 | 1440 | 'tomorrow';
+export type ReminderStatus = 'pending' | 'fired' | 'dismissed' | 'completed';
 
 export interface Reminder {
   id: string;
@@ -12,6 +12,7 @@ export interface Reminder {
   status: ReminderStatus;
   privacy?: 'show-title' | 'hide-title';
   notification?: boolean;
+  revision?: string;
 }
 
 export interface CreateReminderInput {
@@ -102,7 +103,7 @@ export function snoozeUntil(now: Date, duration: SnoozeDuration): Date {
     next.setDate(next.getDate() + 1);
     return next;
   }
-  if (duration !== 5 && duration !== 15 && duration !== 60) throw new Error('Invalid snooze duration.');
+  if (![5, 15, 30, 60, 1440].includes(duration)) throw new Error('Invalid snooze duration.');
   return new Date(now.getTime() + duration * 60_000);
 }
 
@@ -115,7 +116,7 @@ export function groupReminders(reminders: Reminder[], now = new Date()) {
     thisWeek: [],
   };
   for (const reminder of reminders) {
-    if (reminder.status === 'dismissed') continue;
+    if (reminder.status === 'dismissed' || reminder.status === 'completed') continue;
     const at = parseReminderDate(reminder.scheduledAt);
     if (!at) continue;
     if (at < now) result.overdue.push(reminder);

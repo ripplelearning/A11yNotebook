@@ -8,6 +8,8 @@ import {
   usePdfReadingPreferences,
 } from '../../hooks/usePdfReadingPreferences';
 import type { PdfReadingPreferences } from '../../../shared/pdf-reading-preferences';
+import type { MetadataProtectionStatus } from '../../../shared/metadata-protection';
+import { playReminderSound, stopReminderSound } from '../reminders/reminderSound';
 
 interface Props {
   settings: NotebookSettings;
@@ -58,6 +60,28 @@ export default function SettingsDialog({
   const [pdfLoading, setPdfLoading] = useState(true);
   const [pdfSaving, setPdfSaving] = useState(false);
   const [pdfConfirmation, setPdfConfirmation] = useState('');
+  const [soundNotice, setSoundNotice] = useState('');
+  const [metadataProtection, setMetadataProtection] = useState<MetadataProtectionStatus>();
+  const [metadataConsent, setMetadataConsent] = useState(false);
+  const [metadataSaving, setMetadataSaving] = useState(false);
+  const metadataGeneration = useRef(0);
+  useEffect(() => {
+    const generation = ++metadataGeneration.current;
+    const load = window.a11yNotebook?.vault.getMetadataProtectionStatus;
+    if (load) {
+      void load()
+        .then((value) => {
+          if (metadataGeneration.current === generation) setMetadataProtection(value);
+        })
+        .catch(() => {
+          if (metadataGeneration.current === generation) setError('Could not load metadata protection status.');
+        });
+    }
+    return () => {
+      metadataGeneration.current += 1;
+    };
+  }, [securityEnabled, recoveryAvailable]);
+  useEffect(() => stopReminderSound, []);
   useEffect(() => {
     let cancelled = false;
     void refreshPdfReadingPreferences()
@@ -163,6 +187,60 @@ export default function SettingsDialog({
             onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
           />
         </label>
+        <fieldset>
+          <legend>Reminder alerts</legend>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.reminderAlerts ?? false}
+              onChange={(event) => setDraft({ ...draft, reminderAlerts: event.target.checked })}
+            />
+            Enable in-app reminder alerts
+          </label>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.reminderSound ?? false}
+              onChange={(event) => setDraft({ ...draft, reminderSound: event.target.checked })}
+            />
+            Enable reminder sound
+          </label>
+          <label>
+            Reminder sound
+            <select
+              value={draft.reminderSoundChoice ?? 'gentle-chime'}
+              onChange={() => setDraft({ ...draft, reminderSoundChoice: 'gentle-chime' })}
+            >
+              <option value="gentle-chime">Gentle chime</option>
+            </select>
+          </label>
+          <label>
+            Reminder volume (percent)
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={draft.reminderVolume ?? 50}
+              onChange={(event) => setDraft({ ...draft, reminderVolume: Number(event.target.value) })}
+            />
+            <output>{draft.reminderVolume ?? 50}%</output>
+          </label>
+          <button
+            type="button"
+            onClick={() => {
+              void playReminderSound({ ...DEFAULT_SETTINGS, reminderVolume: draft.reminderVolume ?? 50 })
+                .then(() => setSoundNotice('Test sound played.'))
+                .catch(() => setError('Could not play test sound.'));
+            }}
+          >
+            Test sound
+          </button>
+          <p>
+            Sound and in-app alerts are independent of native notification consent. Background alerts wait for window
+            focus.
+          </p>
+          <p role="status">{soundNotice}</p>
+        </fieldset>
         <fieldset aria-describedby="pdf-reading-help" disabled={pdfLoading || pdfSaving}>
           <legend>PDF Reading</legend>
           <p id="pdf-reading-help">
@@ -436,6 +514,77 @@ export default function SettingsDialog({
             </>
           ) : null}
         </fieldset>
+        {metadataProtection ? (
+          <fieldset disabled={metadataSaving}>
+            <legend>Scoped metadata encryption</legend>
+            <p>
+              This is not whole-vault encryption. It encrypts Markdown, HTML and PDF annotations and recovery drafts for
+              outlines, mindmaps, grids and flashcards. DOCX annotations do not exist in this build. Ordinary notes,
+              attachments, saved cognitive asset files (including saved flashcards), filenames, reminders, reminder
+              defaults, milestones, settings (both vault and global copies), flashcard schedules, global preferences,
+              image descriptions, bookmarks, search/link indexes and the audit log remain plaintext. Notes, source
+              attachments, exports and backups remain plaintext, not whole-vault encrypted. Flashcard drafts are
+              encrypted, but their saved source files remain plaintext. Unlocked application memory is not protected.
+              Plaintext cleanup is not secure erasure. A stable version 3 vault recovery envelope is required.
+            </p>
+            {metadataProtection.enabled ? (
+              <p role="status">
+                {metadataProtection.cleanupRequired
+                  ? 'Metadata encryption is enabled, but plaintext cleanup must finish. Reopen and unlock the vault to retry.'
+                  : 'Annotations and cognitive checkpoints are encrypted at rest.'}
+              </p>
+            ) : (
+              <>
+                <p>
+                  {metadataProtection.eligible && !metadataProtection.locked
+                    ? 'Enabling this protection migrates existing annotations and enables new encrypted checkpoints. It is opt-in.'
+                    : 'First enable recovery and unlock a version-3 vault to enable scoped metadata encryption.'}
+                </p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={metadataConsent}
+                    disabled={!metadataProtection.eligible || metadataProtection.locked}
+                    onChange={(event) => setMetadataConsent(event.target.checked)}
+                  />
+                  I consent to encrypting only Markdown, HTML and PDF annotations and outline, mindmap, grid and
+                  flashcard recovery drafts; I understand the listed data remains plaintext, not whole-vault encrypted
+                </label>
+                <button
+                  type="button"
+                  disabled={!metadataConsent || !metadataProtection.eligible || metadataProtection.locked}
+                  onClick={() => {
+                    const enable = window.a11yNotebook?.vault.enableMetadataProtection;
+                    if (!enable) {
+                      setError('Metadata encryption is unavailable.');
+                      return;
+                    }
+                    const generation = metadataGeneration.current;
+                    setMetadataSaving(true);
+                    void enable({ acknowledgeExclusions: true })
+                      .then((value) => {
+                        if (metadataGeneration.current !== generation) return;
+                        setMetadataProtection(value);
+                        setMetadataConsent(false);
+                        setSecurityNotice('Scoped metadata encryption enabled.');
+                      })
+                      .catch(() => {
+                        if (metadataGeneration.current === generation)
+                          setError(
+                            'Could not enable metadata encryption. No success is assumed; check status and retry.',
+                          );
+                      })
+                      .finally(() => {
+                        if (metadataGeneration.current === generation) setMetadataSaving(false);
+                      });
+                  }}
+                >
+                  {metadataSaving ? 'Enabling metadata encryption…' : 'Enable scoped metadata encryption'}
+                </button>
+              </>
+            )}
+          </fieldset>
+        ) : null}
         {error ? <p role="alert">{error}</p> : null}
         {securityNotice ? <p role="status">{securityNotice}</p> : null}
         <button type="submit" disabled={saving}>

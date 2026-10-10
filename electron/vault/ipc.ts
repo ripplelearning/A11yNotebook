@@ -7,6 +7,13 @@ import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService } from './service';
 import { createAnnotationStore } from './annotations';
 import { createMetadataStore } from './metadata';
+import {
+  createProtectedMetadataStore,
+  readBoundedMetadata,
+  writeProtectedSecurityConfig,
+  type ProtectedMetadataAccess,
+} from './metadata-protection';
+import type { MetadataProtectionStatus } from '../../src/shared/metadata-protection';
 import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
@@ -17,11 +24,12 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
-import { createReminderService } from './reminders';
+import { createReminderService, parseTaskReminders } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
 import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
+import { createAssetDraftStore } from './asset-drafts';
 import { createAuditStore, runAudited, type AuditAttempt, type AuditOperation } from './audit';
 import {
   createVaultSecurityConfig,
@@ -53,6 +61,7 @@ const recentFile = () => path.join(app.getPath('userData'), 'recent-vault.json')
 let service: VaultService | null = null;
 let metadata: ReturnType<typeof createMetadataStore> | null = null;
 let annotations: ReturnType<typeof createAnnotationStore> | null = null;
+let protectedMetadata: ReturnType<typeof createProtectedMetadataStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
 let assets: ReturnType<typeof createAssetStore> | null = null;
@@ -60,6 +69,7 @@ let milestones: ReturnType<typeof createMilestoneStore> | null = null;
 let securityConfig: VaultSecurityConfig | null = null;
 let masterKey: Buffer | null = null;
 let securityGeneration = 0;
+let assetDraftGeneration = 0;
 const noteKeys = new Map<string, Buffer>();
 let pendingRecovery: { config: VaultSecurityConfig; key: Buffer | null; vault: VaultService } | null = null;
 let idleLockTimer: NodeJS.Timeout | undefined;
@@ -142,6 +152,25 @@ function captureVaultAccess(event: IpcMainInvokeEvent, isTrustedSender: TrustedS
     },
   };
 }
+
+function draftStore(assertCurrent: () => void) {
+  const store = protectedMetadata;
+  if (!store?.enabled()) throw new Error('Encrypted cognitive recovery requires opted-in metadata protection.');
+  return createAssetDraftStore({
+    read: async () => {
+      assertCurrent();
+      const value = await store.read('checkpoints');
+      assertCurrent();
+      return value;
+    },
+    write: async (value) => {
+      assertCurrent();
+      await store.write('checkpoints', value, assertCurrent);
+      assertCurrent();
+    },
+  });
+}
+const draftToken = () => `${securityGeneration}:${assetDraftGeneration}`;
 
 function lockVault() {
   securityGeneration += 1;
@@ -255,6 +284,39 @@ async function openVaultNow(vaultPath: string) {
   service = nextService;
   securityConfig = nextSecurity;
   metadata = createMetadataStore(nextService);
+  protectedMetadata = createProtectedMetadataStore({
+    resolver: nextService,
+    getConfig: () => {
+      if (service !== nextService) throw new Error('The open vault changed.');
+      return securityConfig;
+    },
+    access: () => captureProtectedMetadataAccess(nextService),
+    commitConfig: async (config, access) => {
+      access.assertCurrent();
+      await writeProtectedSecurityConfig(nextService, config, access);
+      securityConfig = config;
+      access.assertCurrent();
+    },
+    readLegacy: async () => {
+      const filename = await nextService.resolveMetadata('annotations.json', true);
+      const stat = await lstat(filename).catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return null;
+        throw error;
+      });
+      if (!stat) return null;
+      if (!stat.isFile() || stat.size > 16 * 1024 * 1024) throw new Error('Invalid annotation metadata size.');
+      const raw = JSON.parse(await readBoundedMetadata(filename, 16 * 1024 * 1024));
+      const validator = createAnnotationStore({
+        read: async () => raw,
+        write: async () => {
+          throw new Error('Migration validation is read-only.');
+        },
+        validateNote: async () => undefined,
+      });
+      return validator.snapshot();
+    },
+  });
+  const nextProtectedMetadata = protectedMetadata;
   assets = createAssetStore(nextService, metadata);
   milestones = createMilestoneStore({
     readStore: () => metadataFor(nextService).read('milestones.json'),
@@ -274,11 +336,28 @@ async function openVaultNow(vaultPath: string) {
   annotations = createAnnotationStore({
     read: () => {
       if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
-      return metadataFor(nextService).read('annotations.json');
+      return nextProtectedMetadata.enabled()
+        ? nextProtectedMetadata.read('annotations')
+        : metadataFor(nextService).read('annotations.json');
     },
     write: (value) => {
       if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
-      return metadataFor(nextService).write('annotations.json', value);
+      return nextProtectedMetadata.enabled()
+        ? nextProtectedMetadata.write('annotations', value)
+        : metadataFor(nextService).write('annotations.json', value);
+    },
+    captureAuthorization: () => {
+      const key = masterKey;
+      const generation = securityGeneration;
+      return () => {
+        if (
+          service !== nextService ||
+          generation !== securityGeneration ||
+          masterKey !== key ||
+          (securityConfig && !key)
+        )
+          throw new Error('The open vault or lock state changed.');
+      };
     },
     validateNote: async (relative) => {
       await nextService.resolveEntry(relative);
@@ -315,7 +394,21 @@ async function openVaultNow(vaultPath: string) {
 function makeReminders(nextService: VaultService, vault: VaultInfo) {
   return createReminderService({
     readStore: () => metadataFor(nextService).read('reminders.json'),
-    writeStore: (value) => metadataFor(nextService).write('reminders.json', value),
+    writeStore: (value) => {
+      const key = masterKey;
+      const generation = securityGeneration;
+      const assertCurrent = () => {
+        if (
+          service !== nextService ||
+          masterKey !== key ||
+          securityGeneration !== generation ||
+          (securityConfig && !key)
+        )
+          throw new Error('The open vault or lock state changed.');
+      };
+      assertCurrent();
+      return metadataFor(nextService).write('reminders.json', value, assertCurrent);
+    },
     validateNote: async (relative) => {
       await nextService.readNote(relative);
     },
@@ -343,11 +436,12 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       const preferences =
         reminder.source === 'task' ? await createReminderDefaultsStore(metadataFor(nextService)).get() : null;
       if (service !== nextService || (securityConfig && !masterKey)) return;
-      if ((reminder.notification ?? preferences?.notification.reminders) === false) return;
       const visible =
-        (reminder.privacy ?? preferences?.privacy) === 'hide-title' ? { ...reminder, title: 'Reminder' } : reminder;
+        (reminder.privacy ?? preferences?.privacy) === 'hide-title'
+          ? { ...reminder, title: 'Reminder', privacy: 'hide-title' as const }
+          : reminder;
       sendReminder({ type: 'fired', vaultPath: vault.path, reminder: visible });
-      if (Notification.isSupported()) {
+      if ((reminder.notification ?? preferences?.notification.reminders) !== false && Notification.isSupported()) {
         const notification = new Notification({ title: 'A11y Notebook reminder', body: visible.title });
         const target = { path: reminder.path };
         notificationTargets.set(notification, target);
@@ -420,13 +514,47 @@ function readVaultEncryptedNote(record: ReturnType<typeof encryptRecord>) {
   }
 }
 
-async function relocate(relative: string, destination: string) {
+function captureProtectedMetadataAccess(vault: VaultService): ProtectedMetadataAccess {
+  const key = masterKey;
+  const generation = securityGeneration;
+  if (!key || securityConfig?.version !== 3) throw new Error('Unlock a version-3 vault first.');
+  return {
+    key,
+    assertCurrent: () => {
+      if (service !== vault || masterKey !== key || generation !== securityGeneration)
+        throw new Error('The open vault or lock state changed.');
+    },
+  };
+}
+
+function metadataProtectionStatus(): MetadataProtectionStatus {
+  const pointer = securityConfig?.version === 3 ? securityConfig.metadataProtection : undefined;
+  return {
+    enabled: pointer !== undefined,
+    eligible: securityConfig?.version === 3 && masterKey !== null,
+    locked: securityConfig !== null && masterKey === null,
+    cleanupRequired: pointer !== undefined && Object.values(pointer.stores).some((store) => store.cleanupRequired),
+  };
+}
+
+async function finishProtectedMetadataCleanup() {
+  try {
+    await protectedMetadata?.finishCleanup();
+  } catch {
+    lockVault();
+    throw new Error('Protected metadata cleanup is incomplete. The vault remains locked; unlock to retry.');
+  }
+}
+
+async function relocate(relative: string, destination: string, assertCurrent: () => void = () => undefined) {
   if (relative === destination || relative.includes('\\') || destination.includes('\\'))
     throw new Error('Choose a different, vault-relative destination using forward slashes.');
   const vault = requireService();
   const currentAnnotations = annotations;
   const currentReminders = reminderService;
   const currentMilestones = milestones;
+  const currentProtected = protectedMetadata;
+  assertCurrent();
   const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
   const sourceExtension = path.posix.extname(relative).toLowerCase();
@@ -457,13 +585,16 @@ async function relocate(relative: string, destination: string) {
     noLink: true,
   });
   if (answer.response !== 1) return vault.getVault();
+  assertCurrent();
+  assetDraftGeneration += 1;
   metadataFor(vault);
   for (const item of repairs) {
     if ((await vault.readNote(item.path)) !== item.before)
       throw new Error('A note changed while confirming. Please retry.');
   }
   const store = metadataFor(vault);
-  const annotationSnapshot = await store.read('annotations.json');
+  const annotationSnapshot = await currentAnnotations?.snapshot();
+  const checkpointSnapshot = currentProtected?.enabled() ? await currentProtected.read('checkpoints') : null;
   const flashcards = await store.read('flashcards.json');
   const imageAlts = await store.read('image-alts.json');
   const bookmarksSnapshot = await store.read('bookmarks.json');
@@ -478,7 +609,8 @@ async function relocate(relative: string, destination: string) {
     for (const item of written.reverse())
       await vault.saveNote(item.nextPath, item.before, item.after).catch(() => undefined);
     await vault.moveEntry(destination, relative).catch(() => undefined);
-    await store.write('annotations.json', annotationSnapshot).catch(() => undefined);
+    if (annotationSnapshot) await currentAnnotations?.restore(annotationSnapshot).catch(() => undefined);
+    if (checkpointSnapshot) await currentProtected?.write('checkpoints', checkpointSnapshot).catch(() => undefined);
     await store.write('flashcards.json', flashcards).catch(() => undefined);
     await store.write('image-alts.json', imageAlts).catch(() => undefined);
     await store.write('reminders.json', reminderSnapshot).catch(() => undefined);
@@ -492,6 +624,7 @@ async function relocate(relative: string, destination: string) {
       reminderSnapshot = await store.read('reminders.json');
       milestoneSnapshot = await store.read('milestones.json');
       try {
+        assertCurrent();
         await vault.moveEntry(relative, destination);
         moved = true;
       } catch (error) {
@@ -514,6 +647,7 @@ async function relocate(relative: string, destination: string) {
       }
       await currentAnnotations?.migratePaths(relative, destination);
       await currentMilestones?.migratePaths(relative, destination);
+      if (currentProtected?.enabled()) await draftStore(assertCurrent).migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
         ['image-alts.json', imageAlts],
@@ -627,6 +761,46 @@ export function setupVaultIpc(
         (securityConfig?.version === 3 && securityConfig.recoveryWrappedDataKey !== null),
     };
   });
+  ipcMain.handle(IPC_CHANNELS.vaultMetadataProtectionStatus, async (event) => {
+    assertTrusted(event, isTrustedSender, true);
+    requireService();
+    return metadataProtectionStatus();
+  });
+  handleAudited(
+    IPC_CHANNELS.vaultMetadataProtectionEnable,
+    'metadata-protection.enable',
+    async (audit, event, input: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        if (
+          !input ||
+          typeof input !== 'object' ||
+          Array.isArray(input) ||
+          Object.keys(input).join(',') !== 'acknowledgeExclusions' ||
+          (input as { acknowledgeExclusions?: unknown }).acknowledgeExclusions !== true
+        )
+          throw new Error('Explicit acknowledgement of protection exclusions is required.');
+        if (!protectedMetadata || !metadataProtectionStatus().eligible)
+          throw new Error('Unlock a version-3 vault first.');
+        pendingRecovery?.key?.fill(0);
+        pendingRecovery = null;
+        try {
+          await protectedMetadata.enable();
+          audit.committed();
+          access.assertCurrent();
+          return metadataProtectionStatus();
+        } catch (error) {
+          if (protectedMetadata.enabled()) {
+            audit.committed();
+            lockVault();
+          }
+          throw error;
+        }
+      });
+    },
+  );
   handleAudited(IPC_CHANNELS.vaultSecuritySetup, 'protection.setup', async (audit, event, password: unknown) => {
     assertTrusted(event, isTrustedSender);
     const access = captureVaultAccess(event, isTrustedSender);
@@ -646,6 +820,7 @@ export function setupVaultIpc(
       }
       securityConfig = config;
       masterKey = key;
+      await finishProtectedMetadataCleanup();
       resetIdleLock();
     });
   });
@@ -770,6 +945,9 @@ export function setupVaultIpc(
         const committedConfig = updateRecoverableCredentialText(
           {
             ...pending.config,
+            ...(securityConfig?.version === 3 && securityConfig.metadataProtection
+              ? { metadataProtection: securityConfig.metadataProtection }
+              : {}),
             legacyCredentialsCleanupRequired:
               pending.config.legacyCredentialsCleanupRequired ||
               (securityConfig?.version !== 3 && credentialsText !== null),
@@ -839,6 +1017,7 @@ export function setupVaultIpc(
         securityConfig = recovered.config;
         masterKey = recovered.key;
         await finishLegacyCredentialCleanup(requireService(), recovered.key);
+        await finishProtectedMetadataCleanup();
         resetIdleLock();
         const vault = await requireService().getVault();
         await startReminders(requireService(), vault);
@@ -1178,14 +1357,90 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultAssetRead, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !assets) throw new Error('Invalid asset request.');
-    return assets.read(relative);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const result = await assets.read(relative);
+    access.assertCurrent();
+    return result;
   });
+  ipcMain.handle(IPC_CHANNELS.vaultAssetDraftRead, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !assets) throw new Error('Invalid draft request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      if (!protectedMetadata?.enabled()) return { enabled: false, token: draftToken(), draft: null };
+      const draft = await draftStore(access.assertCurrent).read(relative);
+      access.assertCurrent();
+      return { enabled: true, token: draftToken(), draft };
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultAssetDraftCheckpoint, async (event, input: unknown, token: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const currentAssets = assets;
+    const assertDraftCurrent = () => {
+      access.assertCurrent();
+      if (typeof token !== 'string' || token !== draftToken())
+        throw new Error('Asset recovery session changed. Reopen the asset.');
+    };
+    assertDraftCurrent();
+    return serializeVaultOperation(async () => {
+      assertDraftCurrent();
+      const data = input as { path?: unknown; baselineContent?: unknown };
+      if (!data || typeof data.path !== 'string' || !currentAssets) throw new Error('Invalid draft request.');
+      await currentAssets.read(data.path);
+      assertDraftCurrent();
+      return draftStore(assertDraftCurrent).checkpoint(input);
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultAssetDraftDiscard,
+    async (event, relative: unknown, revision: unknown, token: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || typeof revision !== 'string') throw new Error('Invalid draft discard.');
+      const access = captureVaultAccess(event, isTrustedSender);
+      const assertDraftCurrent = () => {
+        access.assertCurrent();
+        if (typeof token !== 'string' || token !== draftToken())
+          throw new Error('Asset recovery session changed. Reopen the asset.');
+      };
+      assertDraftCurrent();
+      assetDraftGeneration += 1;
+      const discardGeneration = assetDraftGeneration;
+      return serializeVaultOperation(async () => {
+        const assertDiscardCurrent = () => {
+          access.assertCurrent();
+          if (assetDraftGeneration !== discardGeneration)
+            throw new Error('Asset recovery session changed. Reopen the asset.');
+        };
+        assertDiscardCurrent();
+        await draftStore(assertDiscardCurrent).discard(relative, revision);
+      });
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultAssetSave, async (event, relative: unknown, content: unknown, expected: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || typeof content !== 'string' || typeof expected !== 'string' || !assets)
       throw new Error('Invalid asset save.');
-    await assets.save(relative, content, expected);
-    await requireService().refreshSearchIndex();
+    const access = captureVaultAccess(event, isTrustedSender);
+    const currentAssets = assets;
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const recoveryStore = protectedMetadata?.enabled() ? draftStore(access.assertCurrent) : null;
+      const savedDraft = await recoveryStore?.read(relative);
+      await currentAssets.save(relative, content, expected, access.assertCurrent);
+      access.assertCurrent();
+      try {
+        if (savedDraft) await recoveryStore?.discard(relative, savedDraft.revision);
+        await access.vault.refreshSearchIndex();
+      } catch {
+        throw new Error(
+          'Asset saved, but checkpoint cleanup or index refresh failed. Reopen the asset; do not repeat the save.',
+        );
+      }
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultAssetCreate, async (event, relative: unknown, content: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -1239,11 +1494,49 @@ export function setupVaultIpc(
     if (
       typeof id !== 'string' ||
       id.length > 8192 ||
-      ![5, 15, 60, 'tomorrow'].includes(duration as SnoozeDuration) ||
+      ![5, 15, 30, 60, 1440, 'tomorrow'].includes(duration as SnoozeDuration) ||
       !reminderService
     )
       throw new Error('Invalid snooze request.');
     return reminderService.snoozeReminder(id, duration as SnoozeDuration);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReminderComplete, async (event, id: unknown, revision: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const scheduler = reminderService;
+    if (typeof id !== 'string' || id.length > 8192 || !scheduler) throw new Error('Invalid reminder.');
+    return serializeVaultOperation(async () => {
+      const assertCurrent = () => {
+        access.assertCurrent();
+        if (reminderService !== scheduler) throw new Error('Vault access changed.');
+      };
+      assertCurrent();
+      const reminders = await scheduler.getReminders();
+      assertCurrent();
+      const reminder = reminders.find((item) => item.id === id);
+      if (!reminder) throw new Error('Reminder no longer exists.');
+      if (reminder.source === 'standalone') {
+        const completed = await scheduler.completeStandaloneReminder(id);
+        assertCurrent();
+        return completed;
+      }
+      if (typeof revision !== 'string' || !/^[\da-f]{64}$/i.test(revision)) {
+        throw new Error('Refresh this reminder before completing the task.');
+      }
+      const content = await access.vault.readNote(reminder.path);
+      assertCurrent();
+      const task = parseTaskReminders(content, reminder.path).find((item) => item.id === id);
+      if (!task || task.revision !== revision) {
+        throw new Error('Note changed on disk. Refresh the reminder before completing.');
+      }
+      const htmlId = /^task:.*:html:([\w-]{8,80}):/.exec(id)?.[1];
+      assertCurrent();
+      await access.vault.toggleTask(reminder.path, htmlId ?? task.line!, true, revision, assertCurrent);
+      assertCurrent();
+      const completed = await scheduler.getReminders();
+      assertCurrent();
+      return completed;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsGet, async (event) => {
     assertTrusted(event, isTrustedSender);
@@ -1421,14 +1714,18 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string' || typeof name !== 'string') throw new Error('Invalid rename request.');
     if (!name || name === '.' || name === '..' || /[\\/:]/.test(name)) throw new Error('Invalid item name.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    assetDraftGeneration += 1;
     return serializeVaultOperation(() =>
-      relocate(relativePath, path.posix.join(path.posix.dirname(relativePath), name)),
+      relocate(relativePath, path.posix.join(path.posix.dirname(relativePath), name), access.assertCurrent),
     );
   });
   ipcMain.handle(IPC_CHANNELS.vaultMove, async (event, relative: unknown, destination: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || typeof destination !== 'string') throw new Error('Invalid move request.');
-    return serializeVaultOperation(() => relocate(relative, destination));
+    const access = captureVaultAccess(event, isTrustedSender);
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(() => relocate(relative, destination, access.assertCurrent));
   });
   ipcMain.handle(IPC_CHANNELS.vaultSearch, async (event, query: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -1441,19 +1738,38 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultAnnotations, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !annotations) throw new Error('Invalid annotation request.');
-    return annotations.list(relative);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const current = annotations;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.list(relative);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotations, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !annotations) throw new Error('Invalid PDF annotation request.');
     const current = annotations;
-    return serializeVaultOperation(() => current.pdf.list(relative));
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.pdf.list(relative);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotationAdd, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!annotations) throw new Error('Open a vault first.');
     const current = annotations;
-    return serializeVaultOperation(() => current.pdf.add(value as NewPdfAnnotation));
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.pdf.add(value as NewPdfAnnotation);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultPdfAnnotationUpdate,
@@ -1462,7 +1778,13 @@ export function setupVaultIpc(
       if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
         throw new Error('Invalid PDF annotation request.');
       const current = annotations;
-      return serializeVaultOperation(() => current.pdf.update(relative, id, update as PdfAnnotationUpdate));
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const result = await current.pdf.update(relative, id, update as PdfAnnotationUpdate);
+        access.assertCurrent();
+        return result;
+      });
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotationDelete, async (event, relative: unknown, id: unknown) => {
@@ -1470,24 +1792,49 @@ export function setupVaultIpc(
     if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
       throw new Error('Invalid PDF annotation request.');
     const current = annotations;
-    return serializeVaultOperation(() => current.pdf.delete(relative, id));
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      await current.pdf.delete(relative, id);
+      access.assertCurrent();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotationAdd, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!annotations) throw new Error('Open a vault first.');
-    return annotations.add(value as NewAnnotation);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const current = annotations;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.add(value as NewAnnotation);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotationUpdate, async (event, relative: unknown, id: unknown, update: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
       throw new Error('Invalid annotation request.');
-    return annotations.update(relative, id, update as AnnotationUpdate);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const current = annotations;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.update(relative, id, update as AnnotationUpdate);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotationDelete, async (event, relative: unknown, id: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
       throw new Error('Invalid annotation request.');
-    return annotations.delete(relative, id);
+    const access = captureVaultAccess(event, isTrustedSender);
+    const current = annotations;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      await current.delete(relative, id);
+      access.assertCurrent();
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadAttachment, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -1614,6 +1961,7 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Path must be text.');
     const vault = requireService();
+    const access = captureVaultAccess(event, isTrustedSender);
     const target = await vault.resolveEntry(relativePath);
     if (target === vaultPathOf(await vault.getVault())) throw new Error('The vault itself cannot be deleted here.');
     const answer = await dialog.showMessageBox({
@@ -1626,9 +1974,25 @@ export function setupVaultIpc(
       noLink: true,
     });
     if (answer.response !== 1) return vault.getVault();
-    await shell.trashItem(target);
-    await vault.refreshSearchIndex();
-    return vault.getVault();
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const drafts = protectedMetadata?.enabled() ? draftStore(access.assertCurrent) : null;
+      if (drafts) await drafts.read(relativePath);
+      access.assertCurrent();
+      assetDraftGeneration += 1;
+      await shell.trashItem(target);
+      try {
+        access.assertCurrent();
+        await drafts?.deletePaths(relativePath);
+        await vault.refreshSearchIndex();
+        return vault.getVault();
+      } catch {
+        throw new Error(
+          'Item deleted, but recovery cleanup or index refresh failed. Reopen the vault; do not repeat deletion.',
+        );
+      }
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetTasks, async (event) => {
     assertTrusted(event, isTrustedSender);

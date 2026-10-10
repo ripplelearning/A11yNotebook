@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import Modal from '../../components/Modal';
-import { parseReminderDate, type CreateReminderInput } from '../../../shared/reminders';
+import { parseReminderDate, type CreateReminderInput, type SnoozeDuration } from '../../../shared/reminders';
 import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../shared/reminder-defaults';
 
 export interface CreateReminderDialogProps {
@@ -108,11 +108,13 @@ export default function CreateReminderDialog({
           id={`${id}-snooze`}
           value={snooze}
           onChange={(event) =>
-            setSnooze(event.target.value === 'tomorrow' ? 'tomorrow' : (Number(event.target.value) as 5 | 15 | 60))
+            setSnooze(event.target.value === 'tomorrow' ? 'tomorrow' : (Number(event.target.value) as SnoozeDuration))
           }
         >
           <option value="5">5 minutes</option>
           <option value="15">15 minutes</option>
+          <option value="30">30 minutes</option>
+          <option value="1440">1 day (24 hours)</option>
           <option value="60">60 minutes</option>
           <option value="tomorrow">Tomorrow</option>
         </select>

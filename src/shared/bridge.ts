@@ -10,6 +10,7 @@ import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent 
 import type { ReminderDefaults } from './reminder-defaults';
 import type { Milestone, MilestoneUpdate, NewMilestone } from './milestones';
 import type { VaultAsset } from './asset-bridge';
+import type { AssetDraft, AssetDraftInput, AssetDraftRecovery } from './asset-drafts';
 import type { CardSchedule } from './assets';
 import type { PdfReadingPreferences } from './pdf-reading-preferences';
 import type { DocxStructure } from './docx';
@@ -44,6 +45,7 @@ export interface VaultBridge {
   getReminders(): Promise<Reminder[]>;
   createReminder(input: CreateReminderInput): Promise<Reminder[]>;
   dismissReminder(id: string): Promise<Reminder[]>;
+  completeReminder?(id: string, revision?: string): Promise<Reminder[]>;
   snoozeReminder(id: string, duration: SnoozeDuration): Promise<Reminder[]>;
   getReminderDefaults?(): Promise<ReminderDefaults>;
   setReminderDefaults?(defaults: ReminderDefaults): Promise<ReminderDefaults>;
@@ -52,12 +54,20 @@ export interface VaultBridge {
   updateMilestone?(id: string, update: MilestoneUpdate): Promise<Milestone>;
   deleteMilestone?(id: string): Promise<void>;
   onReminder(callback: (event: VaultReminderEvent) => void): () => void;
+  reminderAlertsReady?(): Promise<VaultReminderEvent[]>;
   readAsset(path: string): Promise<VaultAsset>;
+  readAssetDraft?(path: string): Promise<AssetDraftRecovery>;
+  checkpointAssetDraft?(input: AssetDraftInput, token: string): Promise<AssetDraft>;
+  discardAssetDraft?(path: string, revision: string, token: string): Promise<void>;
   saveAsset(path: string, content: string, expectedContent: string): Promise<void>;
   createAsset(path: string, content: string): Promise<VaultInfo>;
   getFlashcardSchedules(path: string): Promise<Record<string, CardSchedule>>;
   saveFlashcardSchedule(path: string, id: string, schedule: CardSchedule, expectedContent: string): Promise<void>;
   getSecurityStatus?(): Promise<{ enabled: boolean; locked: boolean; recoveryAvailable: boolean }>;
+  getMetadataProtectionStatus?(): Promise<import('./metadata-protection').MetadataProtectionStatus>;
+  enableMetadataProtection?(
+    input: import('./metadata-protection').EnableMetadataProtectionInput,
+  ): Promise<import('./metadata-protection').MetadataProtectionStatus>;
   setupVaultPassword?(password: string): Promise<void>;
   unlockVault?(password: string): Promise<VaultInfo>;
   lockVault?(): Promise<void>;
