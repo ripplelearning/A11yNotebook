@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   isReminderPath,
   parseReminderDate,
@@ -38,6 +38,7 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
           originalScheduledAt: scheduledAt,
           status: 'pending' as const,
           complete: task.complete,
+          revision: createHash('sha256').update(content, 'utf8').digest('hex'),
         },
       ];
     });
@@ -73,6 +74,7 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
         originalScheduledAt: scheduledAt,
         status: 'pending' as const,
         complete: task[1].toLowerCase() === 'x',
+        revision: createHash('sha256').update(content, 'utf8').digest('hex'),
       },
     ];
   });
@@ -117,7 +119,7 @@ function state(value: unknown): value is ReminderState {
     typeof value.scheduledAt === 'string' &&
     !!parseReminderDate(value.scheduledAt) &&
     typeof value.status === 'string' &&
-    ['pending', 'fired', 'dismissed'].includes(value.status)
+    ['pending', 'fired', 'dismissed', 'completed'].includes(value.status)
   );
 }
 
@@ -273,6 +275,7 @@ export function createReminderService(options: ReminderServiceOptions) {
           scheduledAt: parsed.scheduledAt,
           originalScheduledAt: parsed.originalScheduledAt,
           status: parsed.status,
+          revision: parsed.revision,
         };
         const saved = store.states[task.id];
         return saved?.originalScheduledAt === task.originalScheduledAt ? { ...task, ...saved } : task;
@@ -454,6 +457,11 @@ export function createReminderService(options: ReminderServiceOptions) {
         return reminders.map((entry) => ({ ...entry }));
       }),
     dismissReminder: (id: string) => serial(() => mutate(id, { status: 'dismissed' })),
+    completeStandaloneReminder: (id: string) =>
+      serial(() => {
+        if (!id.startsWith('standalone:')) throw new Error('Invalid standalone reminder.');
+        return mutate(id, { status: 'completed' });
+      }),
     snoozeReminder: (id: string, duration: SnoozeDuration) =>
       serial(() =>
         mutate(id, {

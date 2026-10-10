@@ -378,6 +378,9 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         throw new Error('Invalid task location.');
       }
       const lines = original.split(/\r?\n/);
+      if (revision !== undefined && createHash('sha256').update(original, 'utf8').digest('hex') !== revision) {
+        throw new Error('Note changed on disk. Refresh tasks before toggling.');
+      }
       const index = taskLocation - 1;
       const line = lines[index];
       if (line === undefined || !/^\s*[-*+]\s+\[[ xX]\]\s+/.test(line)) {

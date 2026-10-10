@@ -7,6 +7,10 @@ export interface NotebookSettings {
   shortcuts: Partial<Record<CommandId, string>>;
   vaultLockMinutes?: number;
   noteEditLockMinutes?: number;
+  reminderAlerts?: boolean;
+  reminderSound?: boolean;
+  reminderSoundChoice?: 'gentle-chime';
+  reminderVolume?: number;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -16,6 +20,10 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   shortcuts: {},
   vaultLockMinutes: 15,
   noteEditLockMinutes: 0,
+  reminderAlerts: false,
+  reminderSound: false,
+  reminderSoundChoice: 'gentle-chime',
+  reminderVolume: 50,
 };
 
 const RESERVED_SHORTCUTS = [
@@ -72,6 +80,11 @@ export function validateSettings(value: unknown): NotebookSettings {
   const settings = value as NotebookSettings;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
   const noteEditLockMinutes = settings.noteEditLockMinutes ?? DEFAULT_SETTINGS.noteEditLockMinutes!;
+  const reminderAlerts = settings.reminderAlerts === undefined ? false : settings.reminderAlerts;
+  const reminderSound = settings.reminderSound === undefined ? false : settings.reminderSound;
+  const reminderSoundChoice =
+    settings.reminderSoundChoice === undefined ? 'gentle-chime' : settings.reminderSoundChoice;
+  const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -86,6 +99,12 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(noteEditLockMinutes) ||
     noteEditLockMinutes < 0 ||
     noteEditLockMinutes > 240 ||
+    typeof reminderAlerts !== 'boolean' ||
+    typeof reminderSound !== 'boolean' ||
+    reminderSoundChoice !== 'gentle-chime' ||
+    !Number.isInteger(reminderVolume) ||
+    reminderVolume < 0 ||
+    reminderVolume > 100 ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -107,5 +126,9 @@ export function validateSettings(value: unknown): NotebookSettings {
     shortcuts,
     vaultLockMinutes,
     noteEditLockMinutes,
+    reminderAlerts,
+    reminderSound,
+    reminderSoundChoice,
+    reminderVolume,
   };
 }

@@ -37,7 +37,7 @@ export default function RemindersView({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const visible = reminders
-    .filter((item) => item.status !== 'dismissed')
+    .filter((item) => item.status !== 'dismissed' && item.status !== 'completed')
     .slice()
     .sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
   const groups = groupReminders(visible, now);
@@ -76,13 +76,15 @@ export default function RemindersView({
         onChange={(event) => {
           const value = event.target.value;
           if (!value) return;
-          const duration: SnoozeDuration = value === 'tomorrow' ? 'tomorrow' : (Number(value) as 5 | 15 | 60);
+          const duration: SnoozeDuration = value === 'tomorrow' ? 'tomorrow' : (Number(value) as SnoozeDuration);
           void run(() => onSnooze(item.id, duration));
         }}
       >
         <option value="">Snooze…</option>
         <option value="5">5 minutes{defaults.snooze === 5 ? ' (default)' : ''}</option>
         <option value="15">15 minutes{defaults.snooze === 15 ? ' (default)' : ''}</option>
+        <option value="30">30 minutes{defaults.snooze === 30 ? ' (default)' : ''}</option>
+        <option value="1440">1 day (24 hours){defaults.snooze === 1440 ? ' (default)' : ''}</option>
         <option value="60">60 minutes{defaults.snooze === 60 ? ' (default)' : ''}</option>
         <option value="tomorrow">Tomorrow{defaults.snooze === 'tomorrow' ? ' (default)' : ''}</option>
       </select>

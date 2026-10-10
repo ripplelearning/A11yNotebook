@@ -46,7 +46,7 @@ describe('reminder defaults', () => {
     { ...DEFAULT_REMINDER_DEFAULTS, version: 2 },
     { ...DEFAULT_REMINDER_DEFAULTS, time: '24:00' },
     { ...DEFAULT_REMINDER_DEFAULTS, time: '9:00' },
-    { ...DEFAULT_REMINDER_DEFAULTS, snooze: 30 },
+    { ...DEFAULT_REMINDER_DEFAULTS, snooze: 45 },
     { ...DEFAULT_REMINDER_DEFAULTS, privacy: 'secret' },
     { ...DEFAULT_REMINDER_DEFAULTS, notification: { reminders: true } },
     { ...DEFAULT_REMINDER_DEFAULTS, notification: { reminders: 'true', flashcards: false } },

@@ -29,7 +29,7 @@ export function validateReminderDefaults(value: unknown): ReminderDefaults {
     defaults.version !== 1 ||
     typeof defaults.time !== 'string' ||
     !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(defaults.time) ||
-    ![5, 15, 60, 'tomorrow'].includes(defaults.snooze as SnoozeDuration) ||
+    ![5, 15, 30, 60, 1440, 'tomorrow'].includes(defaults.snooze as SnoozeDuration) ||
     !['show-title', 'hide-title'].includes(defaults.privacy ?? '') ||
     !defaults.notification ||
     typeof defaults.notification !== 'object' ||
