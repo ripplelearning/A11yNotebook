@@ -141,6 +141,38 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('queues reminders behind the independent note conflict dialog', async () => {
+    vi.spyOn(document, 'hasFocus').mockReturnValue(true);
+    try {
+      const { external, reminder, vault } = setup(false, undefined, { reminderAlerts: true });
+      const editor = await editNote();
+      fireEvent.change(editor, { target: { value: 'mine' } });
+      act(() => external('disk version'));
+      const conflict = await screen.findByRole('dialog', { name: 'Note changed on disk' });
+      act(() =>
+        reminder({
+          type: 'fired',
+          vaultPath: vault.path,
+          reminder: {
+            id: 'standalone:conflict',
+            source: 'standalone',
+            title: 'Queued reminder',
+            path: 'Note.md',
+            status: 'fired',
+            scheduledAt: '2020-01-01T12:00:00Z',
+            originalScheduledAt: '2020-01-01T12:00:00Z',
+          },
+        }),
+      );
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      expect(within(conflict).getByRole('button', { name: 'Keep mine' })).toHaveFocus();
+      fireEvent.click(within(conflict).getByRole('button', { name: 'Load disk version' }));
+      await waitFor(() => expect(conflict).not.toBeInTheDocument());
+      expect(await screen.findByRole('alertdialog')).toHaveTextContent('Queued reminder');
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
   it('clears an already queued private reminder alert on lock and never exposes it on refocus', async () => {
     let focused = false;
     const focus = vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);

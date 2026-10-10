@@ -63,6 +63,45 @@ function alerts(settings = DEFAULT_SETTINGS, blocked = false) {
   );
 }
 describe('in-app reminder alerts', () => {
+  it.each([false, true])('refreshes queued task revisions while preserving hidden titles (%s)', async (hidden) => {
+    const complete = vi.fn().mockResolvedValue(undefined);
+    render(
+      <ReminderAlerts
+        vaultPath="/vault"
+        settings={DEFAULT_SETTINGS}
+        blocked={false}
+        onComplete={complete}
+        announce={vi.fn()}
+      />,
+    );
+    await act(async () => {});
+    const original: Reminder = {
+      ...item,
+      source: 'task',
+      revision: 'a'.repeat(64),
+      ...(hidden ? { privacy: 'hide-title' as const, title: 'Reminder' } : {}),
+    };
+    emit(original);
+    const updated: Reminder = {
+      ...item,
+      source: 'task',
+      revision: 'b'.repeat(64),
+      title: 'Updated private task',
+    };
+    act(() => listener({ type: 'changed', vaultPath: '/vault', reminders: [updated] }));
+    if (hidden) {
+      expect(screen.queryByText(updated.title)).not.toBeInTheDocument();
+      expect(screen.getByRole('alertdialog')).toHaveTextContent('A reminder is due.');
+    } else {
+      expect(screen.getByRole('alertdialog')).toHaveTextContent(updated.title);
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Mark Complete' }));
+    await waitFor(() =>
+      expect(complete).toHaveBeenCalledWith(
+        hidden ? { ...updated, privacy: 'hide-title', title: 'Reminder' } : updated,
+      ),
+    );
+  });
   it('replays buffered startup deliveries through the same sound/dialog flow and deduplicates the snapshot', async () => {
     getReminders.mockResolvedValue([item]);
     window.a11yNotebook!.vault.reminderAlertsReady = vi

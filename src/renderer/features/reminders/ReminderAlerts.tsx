@@ -81,11 +81,17 @@ export default function ReminderAlerts({ vaultPath, settings, blocked, onComplet
       }
       if (event.type === 'changed') {
         setQueue((items) =>
-          items.filter((item) =>
-            event.reminders.some(
+          items.flatMap((item) => {
+            const next = event.reminders.find(
               (next) => next.id === item.id && next.status === 'fired' && next.scheduledAt === item.scheduledAt,
-            ),
-          ),
+            );
+            if (!next) return [];
+            return [
+              item.privacy === 'hide-title' || next.privacy === 'hide-title'
+                ? { ...next, privacy: 'hide-title' as const, title: 'Reminder' }
+                : next,
+            ];
+          }),
         );
       }
     });

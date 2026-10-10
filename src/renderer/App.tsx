@@ -2494,7 +2494,7 @@ export default function App() {
           key={vault.path}
           vaultPath={vault.path}
           settings={settings}
-          blocked={!!activeDialog || !!itemDialog || !!notePasswordDialog || switchingRef.current}
+          blocked={!!activeDialog || !!itemDialog || !!notePasswordDialog || !!activeConflict || switchingRef.current}
           onComplete={completeReminder}
           announce={setStatusMessage}
         />

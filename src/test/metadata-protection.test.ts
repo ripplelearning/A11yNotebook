@@ -31,11 +31,13 @@ async function fixture() {
   let locked = false;
   let failCommit = false;
   let failCleanup = false;
+  let failStage = false;
   let lockOnResolve: string | null = null;
   const content = { version: 2, annotations: [{ quote: 'private annotation words' }], pdfAnnotations: [] };
   await writeFile(path.join(folder, 'annotations.json'), JSON.stringify(content));
   const resolver = {
     resolveMetadata: async (name: string) => {
+      if (failStage && name.startsWith('protected-annotations-')) throw new Error('stage failed');
       if (lockOnResolve && name.startsWith(lockOnResolve)) locked = true;
       if (name === 'annotations.json' && failCleanup) throw new Error('cleanup failed');
       return path.join(folder, name);
@@ -71,6 +73,9 @@ async function fixture() {
     },
     failCommit: () => {
       failCommit = true;
+    },
+    failStage: () => {
+      failStage = true;
     },
     failCleanup: (value: boolean) => {
       failCleanup = value;
@@ -112,6 +117,15 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.enable()).rejects.toThrow('commit failed');
     expect(f.store.enabled()).toBe(false);
     expect(JSON.parse(await readFile(path.join(f.folder, 'annotations.json'), 'utf8'))).toEqual(f.content);
+    f.key.fill(0);
+  });
+  it('preserves plaintext before the first encrypted container can be staged', async () => {
+    const f = await fixture();
+    f.failStage();
+    await expect(f.store.enable()).rejects.toThrow('stage failed');
+    expect(f.store.enabled()).toBe(false);
+    expect(JSON.parse(await readFile(path.join(f.folder, 'annotations.json'), 'utf8'))).toEqual(f.content);
+    expect((await readdir(f.folder)).some((name) => name.startsWith('protected-'))).toBe(false);
     f.key.fill(0);
   });
   it('blocks access after interrupted cleanup and durably retries it', async () => {

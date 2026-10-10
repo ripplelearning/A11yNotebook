@@ -268,16 +268,23 @@ function pdfRecord(value: unknown): PdfAnnotation {
 /** Callbacks must securely read/write vault-local metadata and reject notes outside the vault, including symlinks. */
 export function createAnnotationStore({
   read,
-  write,
+  write: persist,
   validateNote,
   validatePdf,
   captureAuthorization,
 }: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
+  let activeAuthorization: (() => void) | undefined;
+  async function write(value: AnnotationMetadata) {
+    activeAuthorization?.();
+    await persist(value);
+    activeAuthorization?.();
+  }
   function serial<T>(operation: () => Promise<T>): Promise<T> {
     const authorize = captureAuthorization?.();
     const result = queue.then(async () => {
       authorize?.();
+      activeAuthorization = authorize;
       const value = await operation();
       authorize?.();
       return value;
@@ -287,6 +294,7 @@ export function createAnnotationStore({
   }
   async function load(): Promise<AnnotationMetadata> {
     const raw = await read();
+    activeAuthorization?.();
     if (raw === undefined || raw === null) return { version: 2, annotations: [], pdfAnnotations: [] };
     const data = object(raw);
     if (
