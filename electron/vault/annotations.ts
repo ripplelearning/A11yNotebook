@@ -23,6 +23,7 @@ export interface AnnotationStoreOptions {
   write: (value: AnnotationMetadata) => Promise<void>;
   validateNote: (path: string) => Promise<void>;
   validatePdf?: (path: string) => Promise<void>;
+  captureAuthorization?: () => () => void;
 }
 
 export interface AnnotationMetadata {
@@ -265,10 +266,22 @@ function pdfRecord(value: unknown): PdfAnnotation {
 }
 
 /** Callbacks must securely read/write vault-local metadata and reject notes outside the vault, including symlinks. */
-export function createAnnotationStore({ read, write, validateNote, validatePdf }: AnnotationStoreOptions) {
+export function createAnnotationStore({
+  read,
+  write,
+  validateNote,
+  validatePdf,
+  captureAuthorization,
+}: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
   function serial<T>(operation: () => Promise<T>): Promise<T> {
-    const result = queue.then(operation);
+    const authorize = captureAuthorization?.();
+    const result = queue.then(async () => {
+      authorize?.();
+      const value = await operation();
+      authorize?.();
+      return value;
+    });
     queue = result.catch(() => undefined);
     return result;
   }
@@ -375,6 +388,8 @@ export function createAnnotationStore({ read, write, validateNote, validatePdf }
   };
   return {
     pdf,
+    snapshot: () => serial(load),
+    restore: (value: AnnotationMetadata) => serial(() => write(value)),
     list(path: string): Promise<NoteAnnotation[]> {
       return serial(async () => {
         const safe = await validate(path);
