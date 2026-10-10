@@ -151,7 +151,7 @@ Anyone who can act as the OS user can alter/delete the log, change the clock, re
 validation. The log is plaintext, and operation times themselves reveal activity. It cannot establish authenticity,
 prevent OS-user tampering, guarantee secure erasure or record an abruptly killed process's unfinished requests.
 
-## Investigation milestone — 2026-10-08, live main `91482f1`
+## Investigation milestone — 2026-10-08, live main `91482f1` (historical design input)
 
 The prior research task's findings were not retrievable: its completed Actions log reports a final response but
 does not include its text, and the session-store lookup returned no report. This investigation was completed
@@ -215,7 +215,8 @@ titles. No task will be registered on this runner. The manual matrix in `continu
 
 ## Encrypted metadata and drafts: inventory
 
-Do not infer metadata protection from password gating, note encryption or recovery. The current stores are:
+Do not infer metadata protection from password gating, note encryption or recovery. The following inventory records
+the verified **pre-implementation main baseline**; scoped changes are documented separately below.
 
 | Location                                               | Owner / writers                                  | Sensitive content and encryption status                                                                                                       |
 | ------------------------------------------------------ | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -242,7 +243,7 @@ database or persisted recovery-key plaintext store. Existing metadata staging `p
 for in any migration. Filesystem watchers and direct service/index writers make replacing only `metadata.write`
 insufficient.
 
-The **proposed**, not shipped, threat model is offline disclosure or modification of opted-in metadata when the data
+The investigation's **proposed** threat model is offline disclosure or modification of opted-in metadata when the data
 key is unavailable. It excludes a compromised running app, renderer plaintext while unlocked, malicious OS-user
 processes, filenames, ordinary note/asset/attachment files, exported documents and external-editor copies. This is
 not whole-vault encryption. Existing plaintext copies, OS backups/snapshots and deletion remnants cannot be securely
@@ -263,11 +264,67 @@ snapshot validated sources, encrypt **before** staging, and publish the complete
 choose only a fully committed generation; discard/roll back uncommitted ciphertext without silently selecting a
 plaintext fallback. Persist cleanup intent and refuse to expose a partially protected vault until cleanup can finish.
 After opt-in, absent, malformed or unauthenticated protected stores must fail closed while locked or on tampering;
-all protected memory/index/renderer caches must clear on lock/switch. Direct startup/index/settings writers must
-obey that policy before opening files. No migration or encryption toggle is exposed in this increment.
+all protected memory/index/renderer caches must clear on lock/switch. Direct startup/index/settings writers would
+need to obey that policy before opening files for broader index encryption. Those stores remain excluded from the
+scoped implementation below.
 
 Remaining tests/implementation gates: cancellation before commit, interruption at every stage and restart,
 rollback without key loss, post-commit cleanup failures, cross-store/generation substitution, nonce/bounds/tamper
 rejection, recovery/password reset/rotation/revocation, data-key rotation with two-generation rollback, legacy notes,
 independent note passwords, concurrent watcher/scheduler/write/lock/switch races, and absence of plaintext staging,
 caches or drafts. Data-key rotation is distinct from recovery-key rotation and has no implementation yet.
+
+## Scoped annotation and cognitive-checkpoint protection
+
+This is **opt-in, not whole-vault encryption**. Only an unlocked vault with the stable version-3 security config is
+eligible. Enable vault recovery first when using an older config. Explicit consent names the protected stores:
+Markdown/HTML annotation quotes, context, labels and comments; PDF annotations in the same annotation store; and
+cognitive checkpoints for outlines, mind maps, flashcards and CSV/Markdown grids. DOCX annotations do not exist.
+
+**Unprotected:** search index and snippets, link index, bookmarks, reminders and defaults, settings (both copies),
+flashcard schedules, milestones, image descriptions, audit history, recent-vault/global preferences, filenames,
+ordinary notes/asset sources, attachments, exports and backups remain plaintext. Independently password-encrypted
+notes keep their independent passwords. Do not infer confidentiality for excluded data from this toggle.
+
+Encryption and filesystem access remain in the main process behind explicit typed, sender-validated IPC.
+Versioned authenticated AES-GCM records use separate annotation/checkpoint domains and fresh nonces. The authenticated
+`security.json` pointer binds vault/store/generation identities and a SHA-256 digest to the selected ciphertext
+container. Altered bytes fail authentication even before decryption. Reads do not
+silently fall back to `annotations.json` after opt-in. Missing, malformed, oversized or tampered protected data fails
+closed; protected plaintext is not cached by the main-process store.
+
+Migration stages ciphertext, atomically commits the security pointer with durable cleanup intent, then removes
+legacy plaintext. Before the pointer commit, legacy annotations remain authoritative. After commit, cleanup is retried
+on unlock and protected access is blocked until it succeeds. Subsequent updates stage a new encrypted generation
+before replacing its pointer. Lock/switch generation checks reject stale queued operations and returning decrypted
+content. Password recovery/reset and recovery-key rotation/revocation preserve the stable data key and protected pointer.
+The enable/migration audit records only the allowlisted operation, outcome and time.
+
+Migration refuses unexpected plaintext checkpoint files and legacy `pending-UUID.json` or `pending-annotations*.json`
+staging remnants rather than silently declaring protection complete. Preserve a backup and resolve such leftovers
+before retrying; they may contain plaintext from interrupted earlier metadata operations.
+
+Deleted plaintext, backups and filesystem snapshots **may persist on disk**. No secure-erasure claim is made.
+Uncommitted or old ciphertext may remain after a crash; rollback by an attacker controlling the entire filesystem
+is outside this protection. Atomic rename is a crash commit boundary, not a guarantee against every power or
+filesystem failure. Unlocked renderer memory, compromised applications and OS-user attackers remain outside scope.
+
+Cognitive drafts have a versioned bounded schema, per-asset path/type, revision, timestamps/expiry and baseline hash.
+They are never stored as plaintext when protection is unavailable: persistent recovery is disabled until explicit
+scoped protection consent. Restore loads unsaved editor content; it does not write the source file. External baseline
+changes are flagged for explicit comparison. A crash inside the checkpoint debounce window can lose the latest edits.
+
+## In-app reminder privacy and background audio
+
+Reminders remain an excluded plaintext store. The in-app dialog hides titles when privacy requests it.
+Locking stops scheduling and clears pending alerts/audio; it does not expose protected titles. **The requested
+generic alert/sound while locked is not implemented**; scheduling catches up on unlock.
+Vault switching cancels the previous vault's queued alerts; native notifications and in-app alerts share
+the existing scheduler rather than independently scheduling delivery.
+
+The trusted renderer uses `backgroundThrottling: false` and permits bundled reminder audio without a prior playback
+gesture so sound events can be handled while unfocused/minimized. This increases background activity; it does not
+disable sandboxing, context isolation, web security or navigation restrictions. App sound/volume settings and system
+mute still apply. No focus is taken from another application; dialogs wait until A11y Notebook is focused.
+Real Windows minimized audio/focus and JAWS/NVDA/Narrator behavior require manual validation and were not verified
+on this runner. Alerts do not fire after the app exits.

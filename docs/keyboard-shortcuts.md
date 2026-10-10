@@ -2,6 +2,10 @@
 
 Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 
+Reminder alerts and cognitive recovery prompts use labelled native buttons and controls with Tab/Shift+Tab.
+Reminder modal focus is contained and returns to the previous connected control when the dialog closes. These
+workflows have no new global shortcut; reminder Escape/Later closes without dismissing the pending reminder.
+
 | Shortcut     | Command                    |
 | ------------ | -------------------------- |
 | Ctrl+Alt+S   | Settings                   |

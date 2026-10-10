@@ -1,8 +1,8 @@
 # Dependency-ordered continuation
 
 This document is an implementation queue, not a completion claim. The recovery foundation already exists on main.
-This increment adds scoped sensitive-action auditing and milestone planning UI; it does not deliver metadata
-encryption, cognitive draft recovery, DOCX or exited-process reminders. Remaining phases require focused implementations, tests, reviews, and accessibility
+Main includes scoped sensitive-action auditing, milestone planning UI, and local DOCX reading.
+Remaining phases require focused implementations, tests, reviews, and accessibility
 validation. Do not combine unrelated data migrations or infer that a feature is complete from roadmap scaffolding.
 
 ## Delivered here — opt-in vault recovery ✅
@@ -33,14 +33,14 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
    See `security.md` for exact coverage/exclusions, crash/durability and OS-user tampering limits. Native warning
    speech/focus still needs Windows AT verification; an audit viewer and comprehensive automatic-lock/event history
    are not implemented.
-2. **Encrypted indexes and metadata — open, depends on stable key handling.** Inventory annotations (including PDF),
-   reminders, flashcard schedules, settings, image descriptions, link/search indexes, and any recovery/crash drafts.
-   Specify per-store domains and versioned authenticated envelopes in the main process. Migrate explicitly and
-   backward-compatibly; reject protected reads while locked. Test interruption/restart, rollback, key rotation,
-   malformed/tampered records, and ensure no plaintext temporary file, index, or draft is produced.
-   The verified store inventory, proposed domain/key ownership and generation-commit policy are in `security.md`.
-   Direct `service.ts` link/bookmark writers, `search.ts` cache/startup/watch writers, both settings copies and global
-   preferences must be addressed; do not silently add encryption to only the generic metadata writer.
+2. **Scoped annotation/checkpoint protection — implemented; broader indexes/metadata remain open.** Explicit consent
+   in an unlocked version-3 vault enables main-process authenticated per-store ciphertext and security-pointer
+   migration, with cleanup retry and no protected plaintext fallback. Markdown/HTML/PDF annotations and cognitive
+   checkpoints are included; DOCX annotations do not exist. Search/link indexes, bookmarks, reminders/defaults,
+   schedules, settings, milestones, descriptions, source files, filenames and exports remain plaintext.
+   The verified baseline inventory and scoped threat model are in `security.md`. Broader protection still requires
+   direct `service.ts` link/bookmark writers, `search.ts` cache/startup/watch writers, both settings copies and global
+   preferences to be addressed. Actual data-key rotation (not recovery-key rotation) remains open.
 3. **Whole-vault encryption — open design and implementation.** This is a separate opt-in storage mode, not password
    gating. Before implementation, specify threat model and behavior for ordinary-file interoperability, filenames and
    attachments, external editors/watchers, search, export, lock, migration, and recovery. Require a bounded authenticated
@@ -56,6 +56,18 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
   identity must be safe across edits.
 - Already implemented in-process: shared main-process scheduler, due summaries, consent/privacy choices, deduplication, and switch/lock
   behavior across reminders and due flashcard reviews. Explicitly distinguish a closed window from an exited process.
+- In-app alerts use this scheduler with persisted Settings choices, bundled sound, focused-only accessible dialogs,
+  queued reminders, Mark Complete/Dismiss/Snooze actions, all requested snooze intervals, privacy and vault cancellation.
+  Native notifications are independent. Escape/Later closes without reminder dismissal.
+- **Partial — exact remaining acceptance criterion:** retain a privacy-safe due-event snapshot in the existing
+  scheduler while locked, play configured sound and queue a generic “A reminder is due. Unlock the vault to view it.”
+  alert without reading/revealing titles. Current locking stops the scheduler, clears alerts/audio and catches up
+  only after unlock. Add locked+unfocused sound/dialog and lock-during-delivery race tests before claiming this complete.
+- **Manual validation needed:** real Windows unfocused/minimized audio, queue focus transfer/return and
+  JAWS/NVDA/Narrator speech. Automated mocks are not proof of these behaviors.
+- Startup readiness replay buffers the latest 100 fired events for once-only sound delivery before the renderer
+  subscribes. Older overflow items remain in persisted Reminders and load into the visual queue silently; audible
+  catch-up for an overflow beyond 100 simultaneous startup deliveries is not guaranteed.
 - **Exited-process reminders/reviews remain open.** Design an opt-in Windows integration (Task Scheduler/helper or
   supported equivalent) with explicit consent, uninstall/disable cleanup, no shell injection, secrets, or plaintext
   titles in command lines, and duplicate/restart/race prevention. Specify lock/privacy behavior and missed-reminder
@@ -63,17 +75,15 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 
 ## Phase 6 — cognitive assets and templates — open
 
-1. **Unsaved-edit recovery first.** Add bounded, versioned crash-recovery records for outlines, mind maps, flashcards,
-   and grids; offer accessible explicit restore/discard; validate vault scope and external-edit baselines/conflicts;
-   clean stale drafts. Protected data must not create plaintext drafts. Depends on encrypted metadata/draft policy.
-   Still no draft store, checkpoint hook or restore/discard dialog exists. After the metadata commit policy ships,
-   define a versioned vault/asset-scoped encrypted draft envelope with asset type, content, saved baseline/hash,
-   revision and expiry; validate type and size before parsing. Checkpoint on debounce/explicit save boundaries,
-   never automatically overwrite a file. Offer restore/discard with keyboard focus and announcements and an explicit
-   conflict path when the file changed externally, moved or was deleted. Save success removes only the matching draft
-   revision; save failure retains it. Moves must preserve identity; delete/switch/lock must cancel stale writes and
-   clear memory. Test partial writes/restart, stale cleanup, races, external conflict, discard cancellation and no
-   plaintext protected content. Disabling persistent drafts is safer than a plaintext fallback while policy is open.
+1. **Encrypted unsaved-edit recovery — implemented with opt-in scope.** Outlines, mind maps, flashcards and grids
+   checkpoint after a 750 ms debounce only after scoped protection consent. Records bind asset path/type, revision,
+   baseline content/hash and seven-day expiry; size/count limits apply. Reopening offers explicit Restore/Discard/Compare,
+   with conflict warnings for changed source baselines. Restore is unsaved editor content, never an automatic disk write.
+   Successful saves retire matching checkpoints, moves/renames migrate paths and deletes/discard clear drafts.
+   Lock/switch invalidates queued operations and clears editors. No plaintext fallback exists; the debounce window
+   can lose recent edits. Real Windows keyboard/screen-reader validation remains unrun.
+   **Partial:** malformed outline/mind-map/grid checkpoint content is available for compare/copy, but structured
+   restore requires valid content. A general source-edit recovery mode for malformed structured drafts remains open.
 2. **General Markdown-to-outline conversion.** Preserve heading hierarchy and meaningful content; deliberately handle
    front matter, fenced code, and lists; preview content-loss warnings; create a sibling asset without overwriting the
    source.
@@ -100,8 +110,10 @@ Implement adapters in this order after the shared contract and safe lifecycle ar
 2. **ePub — partial.** Paginated epub.js rendering, nested navigation-document TOC, chapter sanitization, bounded text
    search, and cleanup are implemented. Validate remote-resource and hostile-archive handling; add document annotations
    and persisted reading position.
-3. **DOCX — open.** Extract supported semantic structures for accessible reading/navigation; reject external resources,
-   macros, unsafe ZIP expansion, and oversized/hostile documents. Never execute Office automation/macros or upload
+3. **DOCX — local reading implemented in PR #27.** The bounded main-process ZIP/XML parser extracts semantic
+   paragraphs, headings, lists, tables, links and raster images; the reader provides navigation and search.
+   Hostile-archive tests cover external resources, macros and unsafe expansion. DOCX annotations are not implemented.
+   Real Windows assistive-technology validation remains unrun. Never execute Office automation/macros or upload
    private documents to third-party services.
 4. **Legacy `.doc` — unsupported/open pending a vetted local strategy.** `.doc` is not renamed `.docx`. If no secure,
    feasible local parser/converter is identified, show an explicit unsupported state and propose a vetted local
@@ -121,6 +133,9 @@ screen-reader compatibility. Record app/build, OS, assistive-technology version,
 | Locked recovery, password reset, error recovery, and focus return               | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
 | Common reader navigation, search, annotations, and bidirectional focus          | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
 | ePub/DOCX reflow, TOC/structure, and annotation workflows                       | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
+| Scoped annotation consent/migration, lock and recovery reset                    | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
+| Cognitive checkpoint Restore/Discard/Compare and external conflicts             | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
+| Reminder queue, focus return, actions, privacy and minimized sound              | ⛔ Not run | ⛔ Not run | ⛔ Not run | ⛔ Not run            |
 
 Also verify keyboard-only operation, visible focus, 200–400% reflow/zoom without loss of reading order, reduced motion,
 high contrast and Windows forced colors, semantic headings/landmarks, and no duplicate decorative SVG announcements.
@@ -161,17 +176,10 @@ Manual matrix (all **not run**, no Windows runner in this session):
 | Portable/dev/moved binary                            | Explicit supported/unsupported status; no silent registration            |
 | JAWS/NVDA/Narrator/keyboard/forced colors            | Consent, errors/status and notification action accessible                |
 
-## DOCX implementation gates — unsupported in this increment
+## DOCX follow-ups
 
-No local DOCX parser/dependency was added or vetted in this session. A parser choice must be checked against dependency
-advisories, maintained local parsing behavior and license, and tested before exposing typed document IPC. A semantic
-adapter must preserve paragraphs, headings, ordered/unordered lists, table headers/cells, safe links and image
-descriptions; add keyboard navigation and bounded search using the reader architecture rather than altering PDF or
-epub.js semantics. Original bytes remain unchanged and all filesystem/archive processing stays in the main process.
-
-Preflight ZIP structure **before** parser expansion: bound compressed and expanded totals, each entry, entry count,
-compression ratio and nesting/XML depth; reject duplicate/traversal/absolute/backslash paths, unsupported compression,
-malformed central/local headers, encrypted archives, macros, ActiveX/OLE/embedded packages, DTD/entities, active content
-and unsafe external relationships/resources. Never fetch resources, use Office automation or upload files. Add hostile
-fixtures (including forged size fields and expansion bombs), time/resource bounds, sender/path/cancellation/race tests
-and semantic/keyboard/focus tests. Legacy binary `.doc` remains explicitly unsupported, not guessed as ZIP/DOCX.
+Local parsing, typed IPC, reader navigation/search and hostile fixtures already ship on main. Preserve the 40 MiB
+archive, 50 MiB expanded-total and 10,000-entry bounds and rejection of encrypted archives, macros, OLE, unsafe
+relationships and traversal. Original bytes remain unchanged; archive processing stays in the main process.
+DOCX annotations and manual JAWS/NVDA/Narrator validation remain open. Legacy binary `.doc` remains explicitly
+unsupported, not guessed as ZIP/DOCX.
