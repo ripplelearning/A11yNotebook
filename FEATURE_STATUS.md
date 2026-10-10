@@ -257,8 +257,11 @@ Validation results for this increment are reported on the implementation PR. Ear
 are not evidence for new changes. No version bump, release, signing setup or repository-protection change is included.
 
 Current local validation: `npm run typecheck`, `npm run lint`, `npm test` (**671 tests, 65 files**) and
-`npm run build` passed. The build reports Vite chunk-size warnings. `npm run format:check` failed on five unchanged
+`npm run build` passed. After review fixes, the final full suite passed **677 tests across 65 files**;
+typecheck, lint and build passed again. The build reports Vite chunk-size warnings. `npm run format:check` failed on five unchanged
 files: `electron/vault/docx-parser.ts`, `electron/vault/search.ts`,
 `src/renderer/features/previews/DocxReader.tsx`, `src/test/docx-parser.test.ts` and `src/test/docx-reader.test.tsx`.
 Changed-file formatting passed. Secret scanning found no secrets. CI initially required approval and ran no jobs;
 it is not reported as passed. Real Windows sound/focus and JAWS/NVDA/Narrator checks were not run.
+CodeQL found zero JavaScript alerts. The automated code-review service failed with a model-registry error;
+a separate read-only reviewer identified two reminder issues that were fixed and confirmed in follow-up review.
