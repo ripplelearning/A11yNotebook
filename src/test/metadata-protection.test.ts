@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, open, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createProtectedMetadataStore, writeProtectedSecurityConfig } from '../../electron/vault/metadata-protection';
@@ -19,9 +20,8 @@ afterEach(async () => {
   await Promise.all(folders.splice(0).map((folder) => rm(folder, { recursive: true, force: true })));
 });
 async function fixture() {
-  const folder = path.resolve(`.metadata-protection-test-${randomUUID()}`);
+  const folder = await mkdtemp(path.join(tmpdir(), 'a11y-metadata-protection-'));
   folders.push(folder);
-  await mkdir(folder);
   const password = 'correct horse battery';
   const legacy = await createVaultSecurityConfig(password);
   const recovery = generateVaultRecoveryKey();
@@ -181,6 +181,27 @@ describe('scoped encrypted metadata storage', () => {
     await unlink(destination);
     await symlink(moved, destination);
     await expect(f.store.read('annotations')).rejects.toThrow();
+    f.key.fill(0);
+  });
+  it('rejects stale cross-generation ciphertext, truncation and oversized containers', async () => {
+    const f = await fixture();
+    await f.store.enable();
+    const previousName = (await readdir(f.folder)).find((item) => item.startsWith('protected-annotations'))!;
+    const previous = await readFile(path.join(f.folder, previousName));
+    await f.store.write('annotations', { version: 2, annotations: [], pdfAnnotations: [] });
+    const currentName = (await readdir(f.folder)).find((item) => item.startsWith('protected-annotations'))!;
+    const current = path.join(f.folder, currentName);
+    await writeFile(current, previous);
+    await expect(f.store.read('annotations')).rejects.toThrow('digest');
+    await writeFile(current, '{"version":');
+    await expect(f.store.read('annotations')).rejects.toThrow();
+    const handle = await open(current, 'r+');
+    try {
+      await handle.truncate(24 * 1024 * 1024);
+    } finally {
+      await handle.close();
+    }
+    await expect(f.store.read('annotations')).rejects.toThrow('container');
     f.key.fill(0);
   });
   it('rejects locked reads and publication and authenticates the pointer across recovery changes', async () => {

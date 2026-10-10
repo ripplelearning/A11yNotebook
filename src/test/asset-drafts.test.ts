@@ -26,6 +26,22 @@ function setup() {
 const input = { path: 'Plan.outline.md', type: 'outline', baselineContent: '- Original\n', content: '- Unsaved\n' };
 
 describe('bounded encrypted-store cognitive drafts', () => {
+  it('uses one timestamp for the exact retention period even when the clock advances', async () => {
+    let time = Date.parse('2026-10-10T00:00:00.000Z');
+    let value: unknown = null;
+    const store = createAssetDraftStore(
+      {
+        read: async () => value,
+        write: async (next) => {
+          value = next;
+        },
+      },
+      () => time++,
+    );
+    const draft = await store.checkpoint(input);
+    expect(Date.parse(draft.expiresAt) - Date.parse(draft.updatedAt)).toBe(ASSET_DRAFT_RETENTION_MS);
+    expect(await store.read(input.path)).toEqual(draft);
+  });
   it('retains baseline, revisions and incomplete source without touching the source', async () => {
     const { store } = setup();
     const first = await store.checkpoint(input);

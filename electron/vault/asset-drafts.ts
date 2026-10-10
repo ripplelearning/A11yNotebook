@@ -110,11 +110,12 @@ export function createAssetDraftStore(storage: ProtectedDraftStorage, now = () =
     checkpoint: async (value: unknown) => {
       const input = validateInput(value);
       const all = (await records()).filter((draft) => draft.path !== input.path);
+      const timestamp = now();
       const draft: AssetDraft = {
         ...input,
         revision: randomUUID(),
-        updatedAt: new Date(now()).toISOString(),
-        expiresAt: new Date(now() + ASSET_DRAFT_RETENTION_MS).toISOString(),
+        updatedAt: new Date(timestamp).toISOString(),
+        expiresAt: new Date(timestamp + ASSET_DRAFT_RETENTION_MS).toISOString(),
         baselineHash: hash(input.baselineContent),
       };
       if (all.length >= ASSET_DRAFT_MAX_RECORDS)

@@ -225,7 +225,12 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return readFile(target, 'utf8');
   }
 
-  async function replaceNote(relativePath: string, content: string, expectedContent?: string) {
+  async function replaceNote(
+    relativePath: string,
+    content: string,
+    expectedContent?: string,
+    assertCurrent?: () => void,
+  ) {
     const target = await resolveEntry(relativePath);
     const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
     try {
@@ -235,6 +240,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       await resolveEntry(relativePath);
       if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
         throw new Error('Note changed on disk. Resolve the conflict before saving.');
+      assertCurrent?.();
       await rename(temporary, target);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
@@ -350,10 +356,19 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return taskGroups.flat();
   }
 
-  function toggleTask(relativePath: string, taskLocation: string | number, complete: boolean, revision?: string) {
+  function toggleTask(
+    relativePath: string,
+    taskLocation: string | number,
+    complete: boolean,
+    revision?: string,
+    assertCurrent?: () => void,
+  ) {
     return serializeNoteWrite(async () => {
+      assertCurrent?.();
       const target = await resolveEntry(relativePath);
+      assertCurrent?.();
       const original = await readFile(target, 'utf8');
+      assertCurrent?.();
       if (path.extname(target).toLowerCase() === '.html') {
         if (
           typeof taskLocation !== 'string' ||
@@ -365,9 +380,13 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
         const currentRevision = createHash('sha256').update(original, 'utf8').digest('hex');
         if (currentRevision !== revision) throw new Error('Note changed on disk. Refresh tasks before toggling.');
-        await replaceNote(relativePath, toggleHtmlTask(original, taskLocation, complete), original);
+        await replaceNote(relativePath, toggleHtmlTask(original, taskLocation, complete), original, assertCurrent);
+        assertCurrent?.();
         await refreshSearchIndex();
-        return getTasks();
+        assertCurrent?.();
+        const tasks = await getTasks();
+        assertCurrent?.();
+        return tasks;
       }
       if (
         path.extname(target).toLowerCase() !== '.md' ||
@@ -387,9 +406,13 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         throw new Error('The task no longer exists at this location.');
       }
       lines[index] = line.replace(/^(\s*[-*+]\s+\[)[ xX](\]\s+)/, `$1${complete ? 'x' : ' '}$2`);
-      await replaceNote(relativePath, lines.join('\n'), original);
+      await replaceNote(relativePath, lines.join('\n'), original, assertCurrent);
+      assertCurrent?.();
       await refreshSearchIndex();
-      return getTasks();
+      assertCurrent?.();
+      const tasks = await getTasks();
+      assertCurrent?.();
+      return tasks;
     });
   }
 

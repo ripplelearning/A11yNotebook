@@ -1,5 +1,6 @@
 // @vitest-environment node
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -27,9 +28,8 @@ afterEach(async () => {
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function setup() {
-  const root = path.resolve(`.asset-test-${randomUUID()}`);
+  const root = await mkdtemp(path.join(tmpdir(), 'a11y-asset-test-'));
   roots.push(root);
-  await mkdir(root);
   await writeFile(path.join(root, 'Plan.outline.md'), '- Before\n');
   const store = createAssetStore(
     { resolveEntry: async (relative) => path.join(root, relative) },

@@ -19,13 +19,14 @@ function setup(
     noteEditLockMinutes?: number;
     protectedVault?: boolean;
     failSettingsAfterUnlock?: boolean;
+    reminderAlerts?: boolean;
   } = {},
 ) {
   let content = note?.content ?? '# Note\n\ntext';
   let unlocked = !options.protectedVault;
   let listener: (event: VaultChangedEvent) => void = () => undefined;
   let lock: () => void = () => undefined;
-  let reminderListener: (event: VaultReminderEvent) => void = () => undefined;
+  const reminderListeners = new Set<(event: VaultReminderEvent) => void>();
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
@@ -66,6 +67,7 @@ function setup(
         return {
           ...DEFAULT_SETTINGS,
           autosaveDelay: 0,
+          reminderAlerts: options.reminderAlerts ?? false,
           noteEditLockMinutes: options.noteEditLockMinutes ?? 0,
           theme: options.protectedVault ? ('dark' as const) : DEFAULT_SETTINGS.theme,
           shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
@@ -85,8 +87,10 @@ function setup(
         return () => undefined;
       },
       onReminder: (callback) => {
-        reminderListener = callback;
-        return () => undefined;
+        reminderListeners.add(callback);
+        return () => {
+          reminderListeners.delete(callback);
+        };
       },
       onChanged: (callback) => {
         listener = callback;
@@ -120,7 +124,7 @@ function setup(
     bridge,
     vault,
     lock: () => lock(),
-    reminder: (event: VaultReminderEvent) => reminderListener(event),
+    reminder: (event: VaultReminderEvent) => reminderListeners.forEach((callback) => callback(event)),
     external: (disk: string) => {
       content = disk;
       listener({ vaultPath: vault.path, paths: ['Note.md'] });
@@ -137,6 +141,56 @@ async function editNote() {
 }
 
 describe('feature wiring in the application shell', () => {
+  it('clears an already queued private reminder alert on lock and never exposes it on refocus', async () => {
+    let focused = false;
+    const focus = vi.spyOn(document, 'hasFocus').mockImplementation(() => focused);
+    try {
+      const { lock, reminder, vault } = setup(false, undefined, { reminderAlerts: true });
+      await screen.findByRole('heading', { name: 'Study' });
+      await act(async () => {});
+      const item = {
+        id: 'private-queued-reminder',
+        title: 'Private queued title',
+        path: 'Note.md',
+        source: 'standalone' as const,
+        status: 'fired' as const,
+        scheduledAt: '2020-01-01T12:00:00Z',
+        originalScheduledAt: '2020-01-01T12:00:00Z',
+      };
+      act(() => reminder({ type: 'fired', vaultPath: vault.path, reminder: item }));
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      act(() => lock());
+      focused = true;
+      fireEvent(window, new Event('focus'));
+      expect(screen.getByRole('dialog', { name: 'Vault locked' })).toBeInTheDocument();
+      expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
+      expect(screen.queryByText(item.title)).not.toBeInTheDocument();
+      act(() => reminder({ type: 'fired', vaultPath: vault.path, reminder: item }));
+      expect(screen.queryByText(item.title)).not.toBeInTheDocument();
+    } finally {
+      focus.mockRestore();
+    }
+  });
+  it('routes DOCX attachments to the existing in-app semantic reader instead of an external application', async () => {
+    const { bridge, vault } = setup();
+    vault.entries.push({ name: 'Guide.docx', path: 'Guide.docx', kind: 'attachment' });
+    bridge.vault.readAttachment = vi.fn(async () => ({ path: 'Guide.docx', kind: '.docx' as const, text: '' }));
+    bridge.vault.readDocxStructure = vi.fn(async () => ({
+      title: 'Accessible DOCX',
+      blocks: [{ kind: 'paragraph' as const, text: 'Document content', runs: [{ text: 'Document content' }] }],
+      headings: [],
+      links: [],
+      sectionCount: 1,
+      unsupportedFeatures: [],
+      truncated: false,
+    }));
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Guide\.docx/ }));
+    expect(await screen.findByRole('region', { name: 'DOCX document reader' })).toBeInTheDocument();
+    expect(await screen.findByText('Document content')).toBeInTheDocument();
+    expect(bridge.vault.readAttachment).toHaveBeenCalledWith('Guide.docx');
+    expect(bridge.vault.readDocxStructure).toHaveBeenCalledWith('Guide.docx');
+    expect(bridge.vault.openExternal).not.toHaveBeenCalled();
+  });
   it('keeps timed-out dirty notes locked across tab switches and failed saves, clearing only after a successful save', async () => {
     const { bridge } = setup(false, undefined, { noteEditLockMinutes: 1 });
     const editor = await editNote();
