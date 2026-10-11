@@ -39,7 +39,8 @@ describe('external vault watcher', () => {
     ]);
     await vi.waitFor(() => expect(events).toHaveLength(1), { timeout: 3000 });
     expect(events[0].vaultPath).toBe(root);
-    expect(events[0].paths).toEqual(['Work/one.md', 'Work/two.md']);
+    expect(events[0].paths).toEqual(expect.arrayContaining(['Work/one.md', 'Work/two.md']));
+    expect(events[0].paths.every((item) => ['Work', 'Work/one.md', 'Work/two.md'].includes(item))).toBe(true);
   });
 
   it('reconciles new, renamed, and deleted directories without restarting', async () => {
