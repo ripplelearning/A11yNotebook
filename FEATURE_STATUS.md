@@ -1,7 +1,7 @@
 # A11y Notebook — Implementation Status
 
 **Last Updated:** 2026-10-10  
-**Current Version:** 0.1.0  
+**Current Version:** 1.1.1
 **Starting main:** ea347f3 (includes PR #26 audit logging, PR #27 DOCX and PR #28 investigation)
 
 Status marks below mean **implemented**, **partial**, **open**, or **externally blocked**. They do not mean
