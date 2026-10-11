@@ -91,7 +91,9 @@ The output goes to `release/`:
 - `release/latest.yml`: the update metadata that `electron-updater` reads.
 
 `npm run package:win` never publishes anything. `npm run release:win` builds **and publishes** to GitHub Releases.
-It needs a `GH_TOKEN` with `repo` scope and is normally run only by the release workflow.
+It is normally run only by the release workflow, which supplies `GH_TOKEN` from the built-in `GITHUB_TOKEN`.
+For manual publishing, use a token with write access to this repository's contents (a classic PAT needs `repo`
+scope). Never commit a token or include one in app assets.
 
 The app icon is `build/icon.ico` (256×256 plus smaller sizes). To use a different icon, replace that file.
 
@@ -114,10 +116,23 @@ See [`docs/updater.md`](docs/updater.md) for the full design.
 `electron-updater` only sees **published GitHub Releases**. A plain `git push` to `main` is invisible to Check
 for Updates, so you must publish a tagged release.
 
-1. Bump `version` in `package.json` (for example, to `0.2.0`). It must be higher than the installed version:
+Prerequisites:
+
+- Enable GitHub Actions and allow the release workflow's `contents: write` permission under repository or
+  organization policy. No separate publishing secret or npm token is needed.
+- Use Node.js 22 and `npm ci`. Wait for **both Ubuntu and Windows CI jobs** on the release commit to pass.
+  Windows CI runs the tests and packages both executables without publishing or requiring signing secrets.
+- For signed releases, configure repository Actions secrets `WINDOWS_CERTIFICATE` (the certificate supported
+  by electron-builder's `CSC_LINK`) and `WINDOWS_CERTIFICATE_PASSWORD`. Without a certificate, builds remain
+  unsigned; see the security notes below.
+- Push tags using a maintainer's credentials. Tags pushed by another workflow using only `GITHUB_TOKEN` do not
+  trigger the tag-push release workflow.
+
+1. On `main`, bump `version` in `package.json` **and `package-lock.json`** (for example, to `0.2.0`) using:
    ```sh
    npm version 0.2.0 --no-git-tag-version
    ```
+   The version must be higher than the installed version.
 2. Commit and push:
    ```sh
    git commit -am "Release v0.2.0"
@@ -129,9 +144,25 @@ for Updates, so you must publish a tagged release.
    git push origin v0.2.0
    ```
 4. The **Release** workflow (`.github/workflows/release.yml`) runs on `windows-latest`. It checks that the tag
-   matches `package.json`, runs the type check and tests, builds, and publishes the installer, portable `.exe`,
-   and `latest.yml` to a GitHub Release named `v0.2.0`.
-5. When the workflow finishes, open the installed app and choose **Help → Check for Updates**.
+   matches `package.json`, runs the type check, lint, and tests, builds, and publishes the installer, its
+   `.blockmap`, portable `.exe`, and `latest.yml` to a GitHub Release named `v0.2.0`. The final step checks that
+   the release is published (not a draft) and all four assets are present and nonempty.
+5. Check the workflow result and release assets, then install the installer and choose **Help → Check for
+   Updates** from an older installed version. Download and install the update to verify the complete flow.
+
+If a release fails, open **Actions → Release → failed run** and inspect the failed step before retrying:
+
+- A tag/version mismatch requires a correctly versioned commit and matching tag.
+- Tests failing only on Windows must be fixed, not skipped. Windows temporary paths can use short names,
+  filesystem watchers can report parent-directory events, and `O_NOFOLLOW` is not enforced there.
+- Publishing errors require checking Actions permissions and signing secrets; do not replace the built-in token
+  unless repository policy requires it.
+- For transient download/upload errors, use **Re-run failed jobs**. A rerun uses the original tagged commit,
+  **not fixes later merged into `main`**. For code fixes, merge them, bump to a new version, and push a new tag;
+  do not move an existing release tag. In particular, rerunning the original failed `v0.1.0` run will not use
+  these fixes.
+- A failed upload can leave a partially populated published release. Inspect its assets and avoid announcing it
+  until the workflow's asset check passes; remove an incomplete release through GitHub if abandoning that version.
 
 To test updates during development: install one release, then publish a newer tag every time you want to pick up
 the latest changes.

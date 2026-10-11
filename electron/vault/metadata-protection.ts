@@ -11,10 +11,22 @@ const MAX_CONTAINER_BYTES = Math.ceil((PROTECTED_METADATA_MAX_BYTES * 4) / 3) + 
 const filename = (store: ProtectedStoreName, generation: string) => `protected-${store}-${generation}.json`;
 
 export async function readBoundedMetadata(source: string, maxBytes = MAX_CONTAINER_BYTES) {
+  const sourceStat = await lstat(source);
+  if (!sourceStat.isFile() || sourceStat.size > maxBytes) throw new Error('Invalid protected metadata container.');
   const handle = await open(source, constants.O_RDONLY | constants.O_NOFOLLOW);
   try {
     const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > maxBytes) throw new Error('Invalid protected metadata container.');
+    const currentStat = await lstat(source);
+    if (
+      !stat.isFile() ||
+      !currentStat.isFile() ||
+      stat.size > maxBytes ||
+      stat.dev !== sourceStat.dev ||
+      stat.ino !== sourceStat.ino ||
+      stat.dev !== currentStat.dev ||
+      stat.ino !== currentStat.ino
+    )
+      throw new Error('Invalid protected metadata container.');
     const buffer = Buffer.alloc(stat.size + 1);
     let length = 0;
     while (length < buffer.length) {

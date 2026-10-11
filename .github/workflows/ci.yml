@@ -10,7 +10,11 @@ permissions:
 
 jobs:
   verify:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,3 +37,7 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Package Windows installer without publishing
+        if: runner.os == 'Windows'
+        run: npm run package:win

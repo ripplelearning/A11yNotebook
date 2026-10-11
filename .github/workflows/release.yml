@@ -40,6 +40,9 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
+      - name: Lint
+        run: npm run lint
+
       - name: Test
         run: npm test
 
@@ -49,3 +52,25 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+
+      - name: Verify published release assets
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $json = gh release view "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" --json isDraft,assets
+          if ($LASTEXITCODE -ne 0) { throw "Could not read the published release." }
+          $release = $json | ConvertFrom-Json
+          if ($release.isDraft) { throw "Release is still a draft; the updater cannot discover it." }
+          $required = @(
+            "A11y-Notebook-Setup-$version.exe",
+            "A11y-Notebook-Setup-$version.exe.blockmap",
+            "A11y-Notebook-Portable-$version.exe",
+            "latest.yml"
+          )
+          foreach ($name in $required) {
+            $asset = $release.assets | Where-Object { $_.name -eq $name }
+            if (!$asset -or $asset.size -le 0) { throw "Release asset missing or empty: $name" }
+            Write-Host "Verified release asset: $name ($($asset.size) bytes)"
+          }

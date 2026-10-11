@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -260,7 +260,7 @@ beforeEach(async () => {
   mock.notificationsSupported = false;
   mock.notifications = [];
   mock.reminderEvents = [];
-  temporary = await mkdtemp(path.join(os.tmpdir(), 'a11y-ipc-'));
+  temporary = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-ipc-')));
   mock.root = path.join(temporary, 'vault');
   mock.userData = path.join(temporary, 'app');
   await mkdir(mock.root);
