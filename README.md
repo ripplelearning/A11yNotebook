@@ -145,7 +145,7 @@ Prerequisites:
    ```
 4. The **Release** workflow (`.github/workflows/release.yml`) runs on `windows-latest`. It checks that the tag
    matches `package.json`, runs the type check, lint, and tests, builds, and publishes the installer, its
-   `.blockmap`, portable `.exe`, and `latest.yml` to a GitHub Release named `v0.2.0`. The final step checks that
+   `.blockmap`, portable `.exe`, and `latest.yml` to a GitHub Release named `v1.1.1`. The final step checks that
    the release is published (not a draft) and all four assets are present and nonempty.
 5. Check the workflow result and release assets, then install the installer and choose **Help → Check for
    Updates** from an older installed version. Download and install the update to verify the complete flow.
