@@ -103,7 +103,11 @@ describe('command registry', () => {
 
   it('lists keyboard shortcuts for commands that have one', () => {
     const shortcuts = getKeyboardShortcuts();
-    expect(shortcuts).toContainEqual({ commandId: 'command-search', label: 'Open command search', shortcut: 'Ctrl+K' });
+    expect(shortcuts).toContainEqual({
+      commandId: 'command-search',
+      label: 'Command Palette',
+      shortcut: 'Ctrl+Shift+P',
+    });
     expect(shortcuts.every((item) => item.shortcut.length > 0)).toBe(true);
   });
 
