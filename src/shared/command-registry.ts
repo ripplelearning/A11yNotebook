@@ -603,16 +603,32 @@ export function toAriaKeyShortcut(shortcut: string): string {
 export function dispatchCommand(commandId: CommandId, context: CommandActionContext): string | undefined {
   switch (commandId) {
     case 'show-contents':
-      context.showContents ? context.showContents() : context.setSelectedTab('contents');
+      if (context.showContents) {
+        context.showContents();
+      } else {
+        context.setSelectedTab('contents');
+      }
       return undefined;
     case 'show-libraries':
-      context.showLibraries ? context.showLibraries() : context.setSelectedTab('libraries');
+      if (context.showLibraries) {
+        context.showLibraries();
+      } else {
+        context.setSelectedTab('libraries');
+      }
       return undefined;
     case 'show-notebooks':
-      context.showNotebooks ? context.showNotebooks() : context.setSelectedTab('notebooks');
+      if (context.showNotebooks) {
+        context.showNotebooks();
+      } else {
+        context.setSelectedTab('notebooks');
+      }
       return undefined;
     case 'show-notes-files':
-      context.showNotesFiles ? context.showNotesFiles() : context.setSelectedTab('notes-files');
+      if (context.showNotesFiles) {
+        context.showNotesFiles();
+      } else {
+        context.setSelectedTab('notes-files');
+      }
       return undefined;
     case 'show-settings':
       context.showSettings?.();
@@ -636,7 +652,11 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       context.showTasks();
       return undefined;
     case 'show-assets':
-      context.showAssets ? context.showAssets() : context.setSelectedTab('assets');
+      if (context.showAssets) {
+        context.showAssets();
+      } else {
+        context.setSelectedTab('assets');
+      }
       return undefined;
     case 'export-current-note':
       if (context.exportCurrentNote) {
