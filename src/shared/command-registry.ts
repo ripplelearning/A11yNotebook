@@ -1,6 +1,10 @@
 import type { AppMode, FocusRegion, FocusTarget } from './types';
 
 export type CommandId =
+  | 'show-contents'
+  | 'show-libraries'
+  | 'show-notebooks'
+  | 'show-notes-files'
   | 'open-vault'
   | 'new-notebook'
   | 'save-current-note'
@@ -95,6 +99,15 @@ export type CommandActionContext = {
   checkForUpdates: () => void;
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
+  showContents?: () => void;
+  showLibraries?: () => void;
+  showNotebooks?: () => void;
+  showNotesFiles?: () => void;
+  showAssets?: () => void;
+  showSettings?: () => void;
+  openVault?: () => void;
+  newNotebook?: () => void;
+  exportCurrentNote?: () => void;
 };
 
 export type CommandDefinition = {
@@ -114,6 +127,34 @@ export type KeyboardShortcutDefinition = {
 
 export const COMMANDS: CommandDefinition[] = [
   {
+    id: 'show-contents',
+    label: 'Contents',
+    description: 'Show the contents overview.',
+    shortcut: 'Ctrl+0',
+    contexts: ['general'],
+  },
+  {
+    id: 'show-libraries',
+    label: 'Libraries',
+    description: 'Show and manage libraries.',
+    shortcut: 'Ctrl+1',
+    contexts: ['general'],
+  },
+  {
+    id: 'show-notebooks',
+    label: 'Notebooks',
+    description: 'Show and manage notebooks in the current library.',
+    shortcut: 'Ctrl+2',
+    contexts: ['general'],
+  },
+  {
+    id: 'show-notes-files',
+    label: 'Notes & Files',
+    description: 'Show and manage notes and files.',
+    shortcut: 'Ctrl+3',
+    contexts: ['general'],
+  },
+  {
     id: 'context-open',
     label: 'Open',
     description: 'Open the focused item.',
@@ -122,25 +163,25 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'context-rename',
     label: 'Rename',
-    description: 'Rename the selected vault item.',
+    description: 'Rename the selected library item.',
     contexts: ['tree-note', 'tree-folder'],
   },
   {
     id: 'context-move',
     label: 'Move',
-    description: 'Move the selected vault item.',
+    description: 'Move the selected library item.',
     contexts: ['tree-note', 'tree-folder'],
   },
   {
     id: 'context-delete',
     label: 'Delete',
-    description: 'Delete the selected vault item.',
+    description: 'Delete the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'annotation', 'reminder'],
   },
   {
     id: 'context-reveal',
     label: 'Reveal in Explorer',
-    description: 'Reveal the selected vault item.',
+    description: 'Reveal the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment'],
   },
   {
@@ -229,7 +270,7 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'insert-attachment',
     label: 'Insert image or attachment',
-    description: 'Insert a labelled reference to a vault attachment.',
+    description: 'Insert a labelled reference to a library attachment.',
   },
   {
     id: 'show-settings',
@@ -240,7 +281,7 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'new-from-template',
     label: 'New note from template',
-    description: 'Choose a built-in or vault template.',
+    description: 'Choose a built-in or library template.',
     shortcut: 'Ctrl+Shift+N',
   },
   {
@@ -275,8 +316,10 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'show-assets',
-    label: 'Cognitive tools',
+    label: 'Cognitive Assets',
     description: 'Edit outlines, mind maps, tables, and review flashcards.',
+    shortcut: 'Ctrl+5',
+    contexts: ['general'],
   },
   {
     id: 'format-bold',
@@ -386,15 +429,15 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'open-vault',
-    label: 'Open vault',
-    description: 'Select and open a vault from local storage.',
+    label: 'Open library',
+    description: 'Select and open a library from local storage.',
     shortcut: 'Ctrl+O',
     contexts: ['general'],
   },
   {
     id: 'new-notebook',
     label: 'New notebook',
-    description: 'Create a new notebook entry within the current vault.',
+    description: 'Create a new notebook entry within the current library.',
     shortcut: 'Ctrl+N',
     contexts: ['general', 'tree-folder'],
   },
@@ -406,8 +449,10 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'show-tasks',
-    label: 'Open Tasks',
-    description: 'Open the accessible task list for this vault.',
+    label: 'Tasks & Reminders',
+    description: 'Show and manage tasks and reminders.',
+    shortcut: 'Ctrl+4',
+    contexts: ['general'],
   },
   {
     id: 'toggle-bookmark',
@@ -432,7 +477,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'focus-search',
     label: 'Focus search',
     description: 'Move focus to the global search box.',
-    shortcut: 'Ctrl+L',
+    shortcut: 'Alt+Q',
     contexts: ['general'],
   },
   {
@@ -455,15 +500,15 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'command-search',
-    label: 'Open command search',
+    label: 'Command Palette',
     description: 'Open the command palette to run key commands.',
-    shortcut: 'Ctrl+K',
+    shortcut: 'Ctrl+Shift+P',
     contexts: ['general'],
   },
   {
     id: 'refresh-links',
     label: 'Refresh links',
-    description: 'Rescan the vault and rebuild local links and backlinks.',
+    description: 'Rescan the library and rebuild local links and backlinks.',
     shortcut: 'F5',
   },
   {
@@ -557,16 +602,48 @@ export function toAriaKeyShortcut(shortcut: string): string {
  */
 export function dispatchCommand(commandId: CommandId, context: CommandActionContext): string | undefined {
   switch (commandId) {
+    case 'show-contents':
+      context.showContents ? context.showContents() : context.setSelectedTab('contents');
+      return undefined;
+    case 'show-libraries':
+      context.showLibraries ? context.showLibraries() : context.setSelectedTab('libraries');
+      return undefined;
+    case 'show-notebooks':
+      context.showNotebooks ? context.showNotebooks() : context.setSelectedTab('notebooks');
+      return undefined;
+    case 'show-notes-files':
+      context.showNotesFiles ? context.showNotesFiles() : context.setSelectedTab('notes-files');
+      return undefined;
+    case 'show-settings':
+      context.showSettings?.();
+      return undefined;
     case 'open-vault':
-      return 'Open vault dialog ready.';
+      if (context.openVault) {
+        context.openVault();
+        return undefined;
+      }
+      return 'Open library dialog ready.';
     case 'new-notebook':
-      return 'New notebook created in the current vault.';
+      if (context.newNotebook) {
+        context.newNotebook();
+        return undefined;
+      }
+      return 'New notebook created in the current library.';
     case 'save-current-note':
       context.saveNote();
       return undefined;
     case 'show-tasks':
       context.showTasks();
       return undefined;
+    case 'show-assets':
+      context.showAssets ? context.showAssets() : context.setSelectedTab('assets');
+      return undefined;
+    case 'export-current-note':
+      if (context.exportCurrentNote) {
+        context.exportCurrentNote();
+        return undefined;
+      }
+      return 'Export current note dialog ready.';
     case 'toggle-bookmark':
       context.toggleBookmark();
       return undefined;
@@ -602,7 +679,7 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       context.setCommandPaletteOpen(true);
       return undefined;
     case 'refresh-links':
-      return 'Vault and links refreshed.';
+      return 'Library and links refreshed.';
     case 'show-keyboard-shortcuts':
       context.showKeyboardShortcuts();
       return undefined;

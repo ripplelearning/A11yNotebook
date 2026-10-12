@@ -72,7 +72,21 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
         commandItem('show-settings'),
       ],
     },
-    { label: '&View', submenu: viewItems },
+    {
+      label: '&View',
+      submenu: [
+        commandItem('show-contents'),
+        commandItem('show-libraries'),
+        commandItem('show-notebooks'),
+        commandItem('show-notes-files'),
+        commandItem('show-tasks'),
+        commandItem('show-assets'),
+        { type: 'separator' },
+        commandItem('toggle-right-pane'),
+        { type: 'separator' },
+        ...viewItems,
+      ],
+    },
     {
       label: '&Help',
       submenu: [

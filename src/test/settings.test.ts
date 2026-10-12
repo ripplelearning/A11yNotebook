@@ -29,7 +29,7 @@ describe('settings and shortcut validation', () => {
   });
   it('canonicalizes shortcuts and detects collisions with defaults', () => {
     expect(normalizeShortcut('shift + ctrl + b')).toBe('Ctrl+Shift+B');
-    expect(shortcutConflicts({ 'save-current-note': 'Ctrl+O' }).join()).toContain('Open vault');
+    expect(shortcutConflicts({ 'save-current-note': 'Ctrl+O' }).join()).toMatch(/Open (library|vault)/);
     expect(shortcutConflicts({ 'save-current-note': 'F6' }).join()).toContain('navigation');
   });
   it('allows disabling a shortcut and resetting to defaults', () => {

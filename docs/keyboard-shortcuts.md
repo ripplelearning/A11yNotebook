@@ -4,25 +4,31 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 
 | Shortcut     | Command                    |
 | ------------ | -------------------------- |
+| Ctrl+0       | Contents                   |
+| Ctrl+1       | Libraries                  |
+| Ctrl+2       | Notebooks                  |
+| Ctrl+3       | Notes & Files              |
 | Ctrl+Alt+S   | Settings                   |
 | Ctrl+Shift+N | New note from template     |
 | Ctrl+Shift+A | Annotate selection         |
 | Ctrl+Shift+R | Open Reminders             |
+| Ctrl+5       | Cognitive Assets           |
 | Ctrl+B       | Bold                       |
 | Ctrl+I       | Italic                     |
 | Ctrl+Shift+L | Insert link                |
-| Ctrl+O       | Open vault                 |
+| Ctrl+O       | Open library               |
 | Ctrl+N       | New notebook               |
 | Ctrl+S       | Save note                  |
+| Ctrl+4       | Tasks & Reminders          |
 | Ctrl+D       | Toggle note bookmark       |
 | Ctrl+W       | Close current tab          |
 | Ctrl+E       | Toggle read-only/edit mode |
 | F9           | Toggle right pane          |
-| Ctrl+L       | Focus search               |
+| Alt+Q        | Focus search               |
 | Alt+1        | Focus navigation           |
 | Alt+2        | Focus main content         |
 | Alt+3        | Focus right pane           |
-| Ctrl+K       | Open command search        |
+| Ctrl+Shift+P | Command Palette            |
 | F5           | Refresh links              |
 | F1           | Keyboard Shortcuts         |
 

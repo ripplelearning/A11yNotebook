@@ -38,7 +38,6 @@ const RESERVED_SHORTCUTS = [
   'Ctrl+Z',
   'Ctrl+Y',
   'Ctrl+Shift+Z',
-  'Ctrl+0',
   'F11',
 ];
 
