@@ -9,6 +9,7 @@ type DialogProps = { onClose: () => void };
 const NAVIGATION_SHORTCUTS = [
   { label: 'Move to the next pane', shortcut: 'F6' },
   { label: 'Move to the previous pane', shortcut: 'Shift+F6' },
+  { label: 'Open command search', shortcut: 'Ctrl+K' },
   { label: 'Move between open tabs', shortcut: 'Left Arrow / Right Arrow, Home, End' },
   { label: 'Close a dialog', shortcut: 'Escape' },
 ];

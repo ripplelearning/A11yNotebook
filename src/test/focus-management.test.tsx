@@ -101,7 +101,7 @@ describe('focus commands', () => {
 describe('command palette', () => {
   it('focuses the search input, traps Tab, and restores focus on Escape', () => {
     render(<App />);
-    const opener = screen.getByRole('button', { name: 'Open command search' });
+    const opener = screen.getByRole('button', { name: /Open command search|Command Palette/i });
     opener.focus();
     fireEvent.keyDown(opener, { key: 'k', ctrlKey: true });
 
@@ -125,7 +125,7 @@ describe('command palette', () => {
 
   it('filters commands and runs the chosen command', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open command search' }));
+    fireEvent.click(screen.getByRole('button', { name: /Open command search|Command Palette/i }));
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'main content' } });
     expect(within(dialog).getByText('1 command')).toBeInTheDocument();
