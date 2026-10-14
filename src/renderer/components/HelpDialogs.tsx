@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { APP_NAME, REPOSITORY_URL } from '../../shared/app-info';
-import { COMMANDS } from '../../shared/command-registry';
+import { getKeyboardShortcuts } from '../../shared/command-registry';
 import type { NotebookSettings } from '../../shared/settings';
 import Modal from './Modal';
 
@@ -17,13 +17,7 @@ export function KeyboardShortcutsDialog({
   onClose,
   shortcuts = {},
 }: DialogProps & { shortcuts?: NotebookSettings['shortcuts'] }) {
-  const rows = [
-    ...NAVIGATION_SHORTCUTS,
-    ...COMMANDS.flatMap((command) => {
-      const shortcut = shortcuts[command.id] ?? command.shortcut;
-      return shortcut ? [{ label: command.label, shortcut }] : [];
-    }),
-  ];
+  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts(shortcuts)];
   return (
     <Modal titleId="shortcuts-dialog-title" title="Keyboard Shortcuts" onClose={onClose} className="wide-modal">
       <div className="modal-body table-scroll">
@@ -36,7 +30,7 @@ export function KeyboardShortcutsDialog({
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.label}>
+              <tr key={`${row.label}-${row.shortcut}`}>
                 <th scope="row">{row.label}</th>
                 <td>{row.shortcut}</td>
               </tr>

@@ -1668,7 +1668,10 @@ export default function App() {
     if (event.defaultPrevented || event.isComposing) return;
     const command = COMMANDS.find((item) => {
       const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
-      return shortcut && matchesShortcut(event, shortcut);
+      return (
+        (shortcut && matchesShortcut(event, shortcut)) ||
+        item.shortcutAliases?.some((alias) => matchesShortcut(event, alias))
+      );
     });
     if (command) {
       event.preventDefault();
@@ -1876,9 +1879,10 @@ export default function App() {
                     className="menu-item"
                     onClick={() => handleCommand(command.id)}
                     aria-keyshortcuts={
-                      (settings.shortcuts[command.id] ?? command.shortcut)
-                        ? toAriaKeyShortcut(settings.shortcuts[command.id] ?? command.shortcut!)
-                        : undefined
+                      [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
+                        .filter((shortcut): shortcut is string => Boolean(shortcut))
+                        .map(toAriaKeyShortcut)
+                        .join(' ') || undefined
                     }
                   >
                     {command.label}

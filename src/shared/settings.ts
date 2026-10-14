@@ -65,10 +65,15 @@ export function shortcutConflicts(shortcuts: NotebookSettings['shortcuts']): str
   const used = new Map(RESERVED_SHORTCUTS.map((shortcut) => [shortcut.toLowerCase(), 'Pane/tab navigation']));
   const conflicts: string[] = [];
   for (const command of COMMANDS) {
+    for (const shortcut of command.shortcutAliases ?? []) {
+      used.set(shortcut.toLowerCase(), command.label);
+    }
+  }
+  for (const command of COMMANDS) {
     const shortcut = normalizeShortcut(shortcuts[command.id] ?? command.shortcut ?? '');
     if (!shortcut) continue;
     const previous = used.get(shortcut.toLowerCase());
-    if (previous) conflicts.push(`${shortcut}: ${previous} and ${command.label}`);
+    if (previous && previous !== command.label) conflicts.push(`${shortcut}: ${previous} and ${command.label}`);
     else used.set(shortcut.toLowerCase(), command.label);
   }
   return conflicts;
