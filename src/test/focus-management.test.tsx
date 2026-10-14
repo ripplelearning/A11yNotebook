@@ -99,9 +99,22 @@ describe('focus commands', () => {
 });
 
 describe('command palette', () => {
+  it('opens with Ctrl+K and finds legacy command names without changing displayed labels', () => {
+    render(<App />);
+    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    const dialog = screen.getByRole('dialog', { name: 'Command palette' });
+    const search = within(dialog).getByRole('searchbox', { name: 'Search commands' });
+
+    fireEvent.change(search, { target: { value: 'Open command search' } });
+    expect(within(dialog).getByRole('button', { name: 'Command Palette' })).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: 'Open vault' } });
+    expect(within(dialog).getByRole('button', { name: 'Open library' })).toBeInTheDocument();
+  });
+
   it('focuses the search input, traps Tab, and restores focus on Escape', () => {
     render(<App />);
-    const opener = screen.getByRole('button', { name: 'Open command search' });
+    const opener = screen.getByRole('button', { name: /^(?:Open command search|Command Palette)$/i });
     opener.focus();
     fireEvent.keyDown(opener, { key: 'k', ctrlKey: true });
 
@@ -125,7 +138,7 @@ describe('command palette', () => {
 
   it('filters commands and runs the chosen command', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Open command search' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(?:Open command search|Command Palette)$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'main content' } });
     expect(within(dialog).getByText('1 command')).toBeInTheDocument();

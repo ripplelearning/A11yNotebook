@@ -63,6 +63,21 @@ describe('command registry', () => {
     expect(new Set(COMMANDS.map((command) => command.label)).size).toBe(COMMANDS.length);
   });
 
+  it('keeps legacy command names searchable and the Ctrl+K palette shortcut active', () => {
+    const openLibrary = getCommandById('open-vault');
+    const commandSearch = getCommandById('command-search');
+
+    expect(openLibrary?.aliases).toContain('Open vault');
+    expect(commandSearch?.aliases).toContain('Open command search');
+    expect(commandSearch?.shortcut).toBe('Ctrl+Shift+P');
+    expect(commandSearch?.shortcutAliases).toContain('Ctrl+K');
+    expect(getKeyboardShortcuts()).toContainEqual({
+      commandId: 'command-search',
+      label: 'Command Palette',
+      shortcut: 'Ctrl+K',
+    });
+  });
+
   it('offers PDF annotation actions only in their matching contexts without conflicting default shortcuts', () => {
     expect(getContextMenuCommands('pdf-selection', true).map(({ id }) => id)).toEqual(['annotate-pdf-selection']);
     expect(getContextMenuCommands('pdf-selection', false)).toEqual([]);

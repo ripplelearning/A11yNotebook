@@ -122,7 +122,7 @@ describe('local vault workflow', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), {
       target: { value: '# Week 1\n\nUnsaved changes.' },
     });
-    const openVault = screen.getByRole('button', { name: 'Open vault' });
+    const openVault = screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i });
     fireEvent.click(openVault);
     expect(screen.getByLabelText('Status bar')).toHaveTextContent(
       'Save or resolve unsaved changes before opening another vault.',

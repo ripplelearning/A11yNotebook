@@ -351,7 +351,7 @@ describe('feature wiring in the application shell', () => {
     fireEvent.change(editor, { target: { value: 'Saved content' } });
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('button', { name: 'Open vault' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i }));
     await screen.findByRole('treeitem', { name: /Other.md/ });
     await act(async () => finish(vault));
     expect(screen.getByRole('treeitem', { name: /Other.md/ })).toBeInTheDocument();
@@ -367,7 +367,7 @@ describe('feature wiring in the application shell', () => {
           finish = resolve;
         }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Open vault' }));
+    fireEvent.click(screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i }));
     await screen.findByRole('dialog', { name: 'Opening vault' });
     expect(editor).toBeDisabled();
     fireEvent.change(editor, { target: { value: 'late edit' } });

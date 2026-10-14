@@ -68,6 +68,10 @@ import NotePasswordDialog from './features/security/NotePasswordDialog';
 import WebCaptureDialog from './features/previews/WebCaptureDialog';
 import ExportNoteDialog from './features/vault/ExportNoteDialog';
 import { usePdfReadingPreferences } from './hooks/usePdfReadingPreferences';
+import ContentsScreen from './features/screens/ContentsScreen';
+import LibrariesScreen from './features/screens/LibrariesScreen';
+import NotebooksScreen from './features/screens/NotebooksScreen';
+import NotesFilesScreen from './features/screens/NotesFilesScreen';
 
 type DialogId =
   'palette' | 'updates' | 'shortcuts' | 'about' | 'settings' | 'template' | 'attachment-insert' | 'web-capture';
@@ -105,6 +109,12 @@ function notebookForTask(task: VaultTask) {
 }
 
 const TAB_PANEL_ID = 'main-tabpanel';
+const NAVIGATION_SCREENS = [
+  { id: 'contents', label: 'Contents' },
+  { id: 'libraries', label: 'Libraries' },
+  { id: 'notebooks', label: 'Notebooks' },
+  { id: 'notes-files', label: 'Notes & Files' },
+] as const;
 const assetRegistry = createAssetRegistry(assetTypes);
 
 const REGION_LABELS: Record<FocusRegion, string> = {
@@ -150,7 +160,19 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
     ],
   },
   { label: 'Tasks', items: ['show-tasks', 'show-reminders', 'show-milestones'] },
-  { label: 'View', items: ['toggle-right-pane', 'toggle-read-only-mode', 'show-settings', 'show-assets'] },
+  {
+    label: 'View',
+    items: [
+      'show-contents',
+      'show-libraries',
+      'show-notebooks',
+      'show-notes-files',
+      'toggle-right-pane',
+      'toggle-read-only-mode',
+      'show-settings',
+      'show-assets',
+    ],
+  },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
 ];
@@ -300,6 +322,7 @@ export default function App() {
   const statusRef = useRef<HTMLElement>(null);
   const tabs = [
     { id: 'welcome', label: 'Welcome' },
+    ...NAVIGATION_SCREENS.filter((tab) => tab.id === selectedTab),
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
     ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
     ...(milestoneTabOpen ? [{ id: 'milestones', label: 'Milestones' }] : []),
@@ -1668,7 +1691,10 @@ export default function App() {
     if (event.defaultPrevented || event.isComposing) return;
     const command = COMMANDS.find((item) => {
       const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
-      return shortcut && matchesShortcut(event, shortcut);
+      return (
+        (shortcut && matchesShortcut(event, shortcut)) ||
+        item.shortcutAliases?.some((alias) => matchesShortcut(event, alias))
+      );
     });
     if (command) {
       event.preventDefault();
@@ -1778,6 +1804,16 @@ export default function App() {
       const rightDate = right.dueDate ?? '9999-12-31';
       return leftDate.localeCompare(rightDate) * (dueAscending ? 1 : -1);
     });
+  const selectedTreeEntry = findEntry(vault?.entries ?? [], treeSelection);
+  const selectedNotebookPath = selectedTreeEntry?.kind === 'notebook' ? selectedTreeEntry.path : undefined;
+  const openDetailsEntry = (entry: VaultEntry) => {
+    if (entry.kind === 'notebook') {
+      setTreeSelection(entry.path);
+      setSelectedTab('notes-files');
+      return;
+    }
+    void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'));
+  };
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
   const contextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection)).map((command) =>
@@ -1876,9 +1912,10 @@ export default function App() {
                     className="menu-item"
                     onClick={() => handleCommand(command.id)}
                     aria-keyshortcuts={
-                      (settings.shortcuts[command.id] ?? command.shortcut)
-                        ? toAriaKeyShortcut(settings.shortcuts[command.id] ?? command.shortcut!)
-                        : undefined
+                      [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
+                        .filter((shortcut): shortcut is string => Boolean(shortcut))
+                        .map(toAriaKeyShortcut)
+                        .join(' ') || undefined
                     }
                   >
                     {command.label}
@@ -2015,7 +2052,7 @@ export default function App() {
                   >
                     {tab.label}
                   </button>
-                  {tab.id !== 'welcome' ? (
+                  {tab.id !== 'welcome' && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id) ? (
                     <button
                       type="button"
                       className="close-tab"
@@ -2095,7 +2132,36 @@ export default function App() {
                 />
               </div>
             ) : null}
-            {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'milestones' ? (
+            {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'contents' ? (
+              <ContentsScreen
+                vault={vault}
+                entries={vault?.entries ?? []}
+                onNavigate={(screen) => setSelectedTab(screen)}
+              />
+            ) : selectedTab === 'libraries' ? (
+              <LibrariesScreen vault={vault} onOpenLibrary={() => handleCommand('open-vault')} />
+            ) : selectedTab === 'notebooks' ? (
+              <NotebooksScreen
+                entries={vault?.entries ?? []}
+                hasLibrary={!!vault}
+                selectedPath={treeSelection}
+                onSelect={(entry) => setTreeSelection(entry.path)}
+                onOpen={openDetailsEntry}
+                onRename={(entry) => renameEntry(entry.path)}
+                onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
+              />
+            ) : selectedTab === 'notes-files' ? (
+              <NotesFilesScreen
+                entries={vault?.entries ?? []}
+                hasLibrary={!!vault}
+                notebookPath={selectedNotebookPath}
+                selectedPath={treeSelection}
+                onSelect={(entry) => setTreeSelection(entry.path)}
+                onOpen={openDetailsEntry}
+                onRename={(entry) => renameEntry(entry.path)}
+                onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
+              />
+            ) : selectedTab === 'milestones' ? (
               vault && !switchingVault ? (
                 <MilestonesView
                   key={`${vault.path}:${vaultGenerationRef.current}`}

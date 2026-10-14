@@ -113,8 +113,10 @@ export type CommandActionContext = {
 export type CommandDefinition = {
   id: CommandId;
   label: string;
+  aliases?: readonly string[];
   description: string;
   shortcut?: string;
+  shortcutAliases?: readonly string[];
   contexts?: readonly MenuContext[];
   requiresSelection?: boolean;
 };
@@ -430,6 +432,7 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'open-vault',
     label: 'Open library',
+    aliases: ['Open vault'],
     description: 'Select and open a library from local storage.',
     shortcut: 'Ctrl+O',
     contexts: ['general'],
@@ -501,8 +504,10 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'command-search',
     label: 'Command Palette',
+    aliases: ['Open command search'],
     description: 'Open the command palette to run key commands.',
     shortcut: 'Ctrl+Shift+P',
+    shortcutAliases: ['Ctrl+K'],
     contexts: ['general'],
   },
   {
@@ -544,12 +549,19 @@ export function getContextMenuCommands(context: MenuContext, hasSelection = fals
   );
 }
 
-export function getKeyboardShortcuts(): KeyboardShortcutDefinition[] {
-  return COMMANDS.filter((command) => command.shortcut).map((command) => ({
-    commandId: command.id,
-    label: command.label,
-    shortcut: command.shortcut as string,
-  }));
+export function getKeyboardShortcuts(shortcuts: Partial<Record<CommandId, string>> = {}): KeyboardShortcutDefinition[] {
+  return COMMANDS.flatMap((command) => {
+    const shortcut = shortcuts[command.id] ?? command.shortcut;
+    if (!shortcut) return [];
+    return [
+      { commandId: command.id, label: command.label, shortcut },
+      ...(command.shortcutAliases ?? []).map((alias) => ({
+        commandId: command.id,
+        label: command.label,
+        shortcut: alias,
+      })),
+    ];
+  });
 }
 
 /**
