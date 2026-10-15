@@ -18,12 +18,12 @@
 - [ ] Update download progress is exposed as a progress bar with its value and announced politely about every 10 percent, never on every tick and never twice.
 - [ ] Update errors are announced as alerts and shown as readable text, never only visually.
 - [ ] The update dialog's buttons (Download, Not now, Hide, Restart and install, Install on exit, Try again, Close) have clear, unique accessible names.
-- [ ] The vault tree exposes tree/treeitem/group roles, expansion and selection state, and a single roving tab stop.
+- [ ] The library tree exposes tree/treeitem/group roles, expansion and selection state, and a single roving tab stop.
 - [ ] The tree supports arrows, Home/End, Enter, F2, Delete, type-ahead, and sibling expansion with `*`.
-- [ ] Vault file operations remain in the main process and reject traversal and symlink paths.
+- [ ] Library file operations remain in the main process and reject traversal and symlink paths.
 - [ ] Markdown reading uses semantic headings, lists, tables, and links; edit mode uses a native textarea.
 - [ ] Open note tabs expose unsaved state, a labelled close action, and confirmation before discarding edits.
-- [ ] Manual JAWS, NVDA, and Narrator validation of the vault tree and Markdown reader/editor is completed on Windows.
+- [ ] Manual JAWS, NVDA, and Narrator validation of the library tree and Markdown reader/editor is completed on Windows.
 - [ ] Tasks are exposed in a labelled table with sortable headers and labelled filters; toggles update their Markdown source.
 - [ ] HTML tasks expose a unique stable identity and state, labelled checkboxes, due/priority sorting and filtering; toggles update only the selected item's state and stale revisions fail without writing.
 - [ ] HTML task status survives source/rich editing, sanitization, save/reload, and supported format conversion; reminder and progress status are announced.
@@ -47,6 +47,7 @@
 - [ ] Outline and mind-map trees expose level/expansion/selection and support indent/reorder/new-item editing without trapping Tab.
 - [ ] Mind-map SVG is hidden from assistive technology; the tree supplies all editing functionality.
 - [ ] Editable grids expose headers, coordinates, one roving cell stop, Enter/Escape editing, aria-sort, and row/column controls.
+- [ ] Details grids navigate between data cells and headers with one tab stop, support keyboard sorting, and retain row open/select/context actions.
 - [ ] Flashcards announce reveal/review progress, focus the current question/answer, and preserve the card after persistence failure.
 - [ ] HTML preview frame is labelled and keyboard reachable; image descriptions, text, and CSV headers read correctly.
 - [ ] Settings labels, validation errors, shortcut conflicts/reset/disable, active-binding help, and all themes work at enlarged font sizes.

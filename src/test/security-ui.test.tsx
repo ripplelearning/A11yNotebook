@@ -39,8 +39,8 @@ describe('security controls', () => {
   it('requires a password to unlock and reports authentication failures', async () => {
     const onUnlock = vi.fn().mockRejectedValue(new Error('wrong password'));
     render(<SecurityGate onUnlock={onUnlock} />);
-    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'wrong password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+    fireEvent.change(screen.getByLabelText('Library password'), { target: { value: 'wrong password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock library' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('incorrect');
     expect(onUnlock).toHaveBeenCalledWith('wrong password');
   });
@@ -49,13 +49,13 @@ describe('security controls', () => {
     const onRecover = vi.fn().mockResolvedValue(undefined);
     render(<SecurityGate onUnlock={vi.fn()} recoveryAvailable onRecover={onRecover} />);
     fireEvent.click(screen.getByRole('button', { name: 'Use recovery key' }));
-    const keyInput = screen.getByLabelText('Vault recovery key');
+    const keyInput = screen.getByLabelText('Library recovery key');
     await waitFor(() => expect(keyInput).toHaveFocus());
     fireEvent.change(keyInput, { target: { value: 'A'.repeat(43) } });
-    fireEvent.change(screen.getByLabelText('New vault password (at least 8 characters)'), {
+    fireEvent.change(screen.getByLabelText('New library password (at least 8 characters)'), {
       target: { value: 'new vault password' },
     });
-    fireEvent.change(screen.getByLabelText('Confirm new vault password'), {
+    fireEvent.change(screen.getByLabelText('Confirm new library password'), {
       target: { value: 'new vault password' },
     });
     fireEvent.click(screen.getByRole('button', { name: 'Reset password and unlock' }));
@@ -75,11 +75,11 @@ describe('security controls', () => {
         onAcknowledgeRecovery={onAcknowledgeRecovery}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Current vault password'), {
+    fireEvent.change(screen.getByLabelText('Current library password'), {
       target: { value: 'correct horse battery' },
     });
-    fireEvent.click(screen.getByRole('button', { name: 'Enable vault recovery' }));
-    const keyInput = await screen.findByLabelText('One-time vault recovery key');
+    fireEvent.click(screen.getByRole('button', { name: 'Enable library recovery' }));
+    const keyInput = await screen.findByLabelText('One-time library recovery key');
     await waitFor(() => expect(keyInput).toHaveValue('A'.repeat(43)));
     await waitFor(() => expect(keyInput).toHaveFocus());
     expect(screen.getByRole('group', { name: 'PDF Reading' })).toBeInTheDocument();
@@ -112,10 +112,10 @@ describe('security controls', () => {
         onAcknowledgeRecovery={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Current vault password'), {
+    fireEvent.change(screen.getByLabelText('Current library password'), {
       target: { value: 'correct horse battery' },
     });
-    const prepare = screen.getByRole('button', { name: 'Enable vault recovery' });
+    const prepare = screen.getByRole('button', { name: 'Enable library recovery' });
     fireEvent.click(prepare);
     expect(prepare).toBeDisabled();
     fireEvent.click(prepare);
@@ -124,7 +124,7 @@ describe('security controls', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Could not prepare recovery');
     await waitFor(() => expect(prepare).toBeEnabled());
     fireEvent.click(prepare);
-    await waitFor(() => expect(screen.getByLabelText('One-time vault recovery key')).toHaveValue('A'.repeat(43)));
+    await waitFor(() => expect(screen.getByLabelText('One-time library recovery key')).toHaveValue('A'.repeat(43)));
     expect(onPrepareRecovery).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: 'Confirm saved recovery key' })).toBeDisabled();
   });
@@ -133,7 +133,7 @@ describe('security controls', () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     const onClose = vi.fn();
     render(<SettingsDialog settings={DEFAULT_SETTINGS} onSave={onSave} onClose={onClose} />);
-    fireEvent.change(screen.getByLabelText(/Vault idle lock in minutes/), { target: { value: '25' } });
+    fireEvent.change(screen.getByLabelText(/Library idle lock in minutes/), { target: { value: '25' } });
     fireEvent.change(screen.getByLabelText(/Lock editing after unsaved changes/), { target: { value: '3' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() =>

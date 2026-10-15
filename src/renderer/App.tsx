@@ -126,7 +126,7 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 };
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
-  { label: 'Vault', items: ['open-vault', 'new-notebook', 'refresh-links'] },
+  { label: 'Library', items: ['open-vault', 'new-notebook', 'refresh-links'] },
   {
     label: 'Note',
     items: [
@@ -342,7 +342,7 @@ export default function App() {
       if (switchingRef.current) return;
       const entry = findEntry(vault?.entries ?? [], relative);
       if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open reminder note.'));
-      else setStatusMessage('The reminder note is no longer available in this vault.');
+      else setStatusMessage('The reminder note is no longer available in this library.');
     },
     setStatusMessage,
   );
@@ -428,7 +428,7 @@ export default function App() {
         .then((latest) => {
           if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
         })
-        .catch(() => setStatusMessage('Could not open the last vault.'));
+        .catch(() => setStatusMessage('Could not open the last library.'));
   }, []);
 
   useEffect(() => {
@@ -444,7 +444,7 @@ export default function App() {
             setRecoveryAvailable(status.recoveryAvailable);
           }
         })
-        .catch(() => setStatusMessage('Could not read vault security status.'));
+        .catch(() => setStatusMessage('Could not read library security status.'));
     }
     return () => {
       cancelled = true;
@@ -474,7 +474,7 @@ export default function App() {
       setAssetDirty(false);
       setMode('read-only');
       setVault((current) => (current ? { ...current, entries: [] } : current));
-      setStatusMessage('Vault locked. Unlock it to continue.');
+      setStatusMessage('Library locked. Unlock it to continue.');
     });
     return unsubscribe;
   }, [clearAllConflicts]);
@@ -541,7 +541,7 @@ export default function App() {
         setLinks(index.links);
         setBookmarks(savedBookmarks);
       })
-      .catch(() => setStatusMessage('Could not refresh vault links and bookmarks.'));
+      .catch(() => setStatusMessage('Could not refresh library links and bookmarks.'));
     return () => {
       cancelled = true;
     };
@@ -756,7 +756,7 @@ export default function App() {
 
   const createNote = async () => {
     if (!vault || !window.a11yNotebook) {
-      setStatusMessage('Open a vault before creating a note.');
+      setStatusMessage('Open a library before creating a note.');
       return;
     }
     setItemDialog({ action: 'new-note' });
@@ -1480,7 +1480,7 @@ export default function App() {
     if (commandId === 'show-milestones') {
       if (activeDialog === 'palette') setActiveDialog(null);
       if (!vault || securityLocked || switchingRef.current) {
-        setStatusMessage('Open and unlock a vault before using milestones.');
+        setStatusMessage('Open and unlock a library before using milestones.');
         return;
       }
       setMilestoneTabOpen(true);
@@ -1490,7 +1490,7 @@ export default function App() {
     }
     if (commandId === 'show-assets') {
       if (!vault) {
-        setStatusMessage('Open a vault before using cognitive tools.');
+        setStatusMessage('Open a library before using cognitive tools.');
         return;
       }
       setAssetTabOpen(true);
@@ -1499,7 +1499,7 @@ export default function App() {
     }
     if (commandId === 'new-from-template') {
       if (!vault) {
-        setStatusMessage('Open a vault before using a template.');
+        setStatusMessage('Open a library before using a template.');
         return;
       }
       const root = vault.path;
@@ -1560,7 +1560,7 @@ export default function App() {
         activeConflict ||
         switchingRef.current
       ) {
-        setStatusMessage('Save or resolve unsaved changes before opening another vault.');
+        setStatusMessage('Save or resolve unsaved changes before opening another library.');
         return;
       }
       switchingRef.current = true;
@@ -1579,10 +1579,10 @@ export default function App() {
             setAssetInitialPath(undefined);
             setAssetDirty(false);
             setSelectedTab('welcome');
-            setStatusMessage(`Opened vault ${opened.name}.`);
+            setStatusMessage(`Opened library ${opened.name}.`);
           }
         })
-        .catch(() => setStatusMessage('Could not open the selected vault.'))
+        .catch(() => setStatusMessage('Could not open the selected library.'))
         .finally(() => {
           switchingRef.current = false;
           setSwitchingVault(false);
@@ -1595,7 +1595,7 @@ export default function App() {
     }
     if (commandId === 'new-notebook') {
       if (!vault || !window.a11yNotebook) {
-        setStatusMessage('Open a vault before creating a notebook.');
+        setStatusMessage('Open a library before creating a notebook.');
         return;
       }
       setItemDialog({ action: 'new-notebook' });
@@ -1603,7 +1603,7 @@ export default function App() {
     }
     if (commandId === 'refresh-links') {
       void refreshVault().then(refreshLinkIndex);
-      setStatusMessage('Vault and links refreshed.');
+      setStatusMessage('Library and links refreshed.');
       return;
     }
     if (commandId === 'close-current-tab') {
@@ -1897,7 +1897,7 @@ export default function App() {
         <div className="title-block">
           <h1>A11y Notebook</h1>
           <span className="current-item">
-            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No vault open'}
+            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
           </span>
         </div>
         <div className="global-search">
@@ -1910,7 +1910,7 @@ export default function App() {
             type="search"
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
-            placeholder="Search vault, notes, tasks, files"
+            placeholder="Search library, notes, tasks, files"
           />
         </div>
         <button
@@ -1963,7 +1963,7 @@ export default function App() {
           aria-label="Navigation pane"
           tabIndex={-1}
         >
-          <h2>{vault?.name ?? 'Vault'}</h2>
+          <h2>{vault?.name ?? 'Library'}</h2>
           <div className="vault-actions">
             <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
               Open Tasks
@@ -2018,7 +2018,7 @@ export default function App() {
               onDelete={(entryPath) => void deleteEntry(entryPath)}
             />
           ) : (
-            <p>Open a folder as a local vault from the Vault menu.</p>
+            <p>Open a folder as a local library from the Library menu.</p>
           )}
           {vault ? (
             <SearchResults
@@ -2208,7 +2208,7 @@ export default function App() {
                   }}
                 />
               ) : (
-                <p>Open and unlock a vault to view milestones.</p>
+                <p>Open and unlock a library to view milestones.</p>
               )
             ) : selectedTab === 'reminders' ? (
               <RemindersView
@@ -2311,7 +2311,7 @@ export default function App() {
                 </div>
                 <div className="table-scroll">
                   <table>
-                    <caption>Markdown and HTML checklist tasks in the open vault</caption>
+                    <caption>Markdown and HTML checklist tasks in the open library</caption>
                     <thead>
                       <tr>
                         <th scope="col">Task</th>
@@ -2462,7 +2462,7 @@ export default function App() {
             ) : (
               <div className="document-body">
                 <h2>Welcome to A11y Notebook</h2>
-                <p>Open or create a local vault to begin organizing Markdown notes and attachments.</p>
+                <p>Open or create a local library to begin organizing Markdown notes and attachments.</p>
                 <p>
                   Use F6 and Shift+F6 to move between panes, Ctrl+K for commands, and Ctrl+E to switch read/edit mode.
                 </p>
@@ -2606,33 +2606,33 @@ export default function App() {
           }}
           onSetVaultPassword={async (password) => {
             const setupPassword = window.a11yNotebook?.vault.setupVaultPassword;
-            if (!setupPassword) throw new Error('Vault security is unavailable.');
+            if (!setupPassword) throw new Error('Library security is unavailable.');
             await setupPassword(password);
             setSecurityEnabled(true);
             setSecurityLocked(false);
             setRecoveryAvailable(false);
-            setStatusMessage('Vault password protection enabled.');
+            setStatusMessage('Library password protection enabled.');
           }}
           onPrepareRecovery={async (password) => {
             const prepare = window.a11yNotebook?.vault.prepareVaultRecovery;
-            if (!prepare) throw new Error('Vault recovery is unavailable.');
+            if (!prepare) throw new Error('Library recovery is unavailable.');
             return prepare(password);
           }}
           onAcknowledgeRecovery={async (acknowledged) => {
             const acknowledge = window.a11yNotebook?.vault.acknowledgeVaultRecovery;
-            if (!acknowledge) throw new Error('Vault recovery is unavailable.');
+            if (!acknowledge) throw new Error('Library recovery is unavailable.');
             await acknowledge(acknowledged);
             if (acknowledged) {
               setRecoveryAvailable(true);
-              setStatusMessage('Vault recovery enabled.');
+              setStatusMessage('Library recovery enabled.');
             }
           }}
           onRevokeRecovery={async (password) => {
             const revoke = window.a11yNotebook?.vault.revokeVaultRecovery;
-            if (!revoke) throw new Error('Vault recovery is unavailable.');
+            if (!revoke) throw new Error('Library recovery is unavailable.');
             await revoke(password);
             setRecoveryAvailable(false);
-            setStatusMessage('Vault recovery revoked.');
+            setStatusMessage('Library recovery revoked.');
           }}
           onLockVault={async () => {
             await window.a11yNotebook?.vault.lockVault?.();
@@ -2681,22 +2681,22 @@ export default function App() {
           recoveryAvailable={recoveryAvailable}
           onUnlock={async (password) => {
             const unlock = window.a11yNotebook?.vault.unlockVault;
-            if (!unlock) throw new Error('Vault security is unavailable.');
+            if (!unlock) throw new Error('Library security is unavailable.');
             const opened = await unlock(password);
             setVault(opened);
             setSecurityLocked(false);
             setSecurityEnabled(true);
-            setStatusMessage('Vault unlocked.');
+            setStatusMessage('Library unlocked.');
           }}
           onRecover={async (recoveryKey, newPassword) => {
             const recover = window.a11yNotebook?.vault.recoverVault;
-            if (!recover) throw new Error('Vault recovery is unavailable.');
+            if (!recover) throw new Error('Library recovery is unavailable.');
             const opened = await recover(recoveryKey, newPassword);
             setVault(opened);
             setSecurityLocked(false);
             setSecurityEnabled(true);
             setRecoveryAvailable(true);
-            setStatusMessage('Vault password reset and vault unlocked.');
+            setStatusMessage('Library password reset and library unlocked.');
           }}
         />
       ) : null}
@@ -2735,7 +2735,7 @@ export default function App() {
       {activeDialog === 'template' ? (
         <NewFromTemplateDialog
           notebooks={[
-            { path: '', name: 'Vault root' },
+            { path: '', name: 'Library root' },
             ...notebooks.map((relative) => ({ path: relative, name: relative })),
           ]}
           templates={userTemplates}
@@ -2796,9 +2796,9 @@ export default function App() {
       ) : null}
       {switchingVault ? (
         <Modal
-          title="Opening vault"
+          title="Opening library"
           titleId="opening-vault-title"
-          onClose={() => setStatusMessage('Wait for the folder selection or vault initialization to finish.')}
+          onClose={() => setStatusMessage('Wait for the folder selection or library initialization to finish.')}
         >
           <p>
             Choose a folder in the native dialog, or wait while it is opened. Editing is paused to protect your notes.

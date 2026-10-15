@@ -46,7 +46,7 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
           <label>
             Destination notebook
             <select data-autofocus value={notebook} onChange={(event) => setNotebook(event.target.value)}>
-              <option value="">Vault root</option>
+              <option value="">Library root</option>
               {notebooks
                 .filter((item) => item !== request.path && !item.startsWith(`${request.path}/`))
                 .map((item) => (

@@ -26,7 +26,7 @@ export default function WebCaptureDialog({ notebooks, onCapture, onClose }: Prop
             .finally(() => setBusy(false));
         }}
       >
-        <p>Captures public HTTPS pages and saves supported images in the selected vault notebook.</p>
+        <p>Captures public HTTPS pages and saves supported images in the selected library notebook.</p>
         <label>
           HTTPS page URL
           <input
@@ -42,7 +42,7 @@ export default function WebCaptureDialog({ notebooks, onCapture, onClose }: Prop
         <label>
           Save in notebook
           <select value={notebookPath} onChange={(event) => setNotebookPath(event.target.value)}>
-            <option value="">Vault root</option>
+            <option value="">Library root</option>
             {notebooks.map((notebook) => (
               <option key={notebook.path} value={notebook.path}>
                 {notebook.name}

@@ -108,7 +108,7 @@ describe('command palette', () => {
     fireEvent.change(search, { target: { value: 'Open command search' } });
     expect(within(dialog).getByRole('button', { name: 'Command Palette' })).toBeInTheDocument();
 
-    fireEvent.change(search, { target: { value: 'Open vault' } });
+    fireEvent.change(search, { target: { value: 'Open library' } });
     expect(within(dialog).getByRole('button', { name: 'Open library' })).toBeInTheDocument();
   });
 

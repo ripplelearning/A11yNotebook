@@ -98,7 +98,7 @@ export default function MilestonesView({
     .sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.title.localeCompare(b.title));
 
   async function mutate(action: () => Promise<Milestone | void>, message: string) {
-    if (!current()) throw new Error('The vault is no longer available.');
+    if (!current()) throw new Error('The library is no longer available.');
     if (operation.current) throw new Error('Wait for the current milestone operation.');
     operation.current = true;
     request.current += 1;

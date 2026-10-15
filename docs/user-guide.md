@@ -1,23 +1,23 @@
 # User guide
 
-## Open a vault
+## Open a library
 
-Choose **Vault → Open vault** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
-as notebooks, `.md` and `.html` files as notes, and other files as attachments. The last opened vault is restored next time.
+Choose **Library → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
+as notebooks, `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
 
 ## Navigate files
 
-Use the **Vault files** tree. Up and Down move between visible items; Right expands a notebook or enters its first
+Use the **Library files** tree. Up and Down move between visible items; Right expands a notebook or enters its first
 child; Left collapses or moves to its parent. Home and End move to the first and last visible item. Enter opens a
 note or a supported preview. Unsupported attachments open externally. F2 opens a rename dialog. Delete asks before moving it
 to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
 
 Use **New note**, **New notebook**, or **Import file** in the navigation pane. Imported files are copied into the
 selected notebook. The tree's filesystem context may be revealed in Explorer or opened in its default external app
-using the corresponding vault actions.
+using the corresponding library actions.
 
 Shift+F10, the Applications key, or right-click opens the global context menu. Its registry-backed commands depend
-on the focused item: vault files, tabs, selected editor text, links, tasks, search results, annotations, reminders,
+on the focused item: library files, tabs, selected editor text, links, tasks, search results, annotations, reminders,
 and attachment previews have different actions. Use Up/Down, Home/End, type-ahead, Enter/Space, or Escape. Disabled
 actions are announced as unavailable, and Escape returns focus to the invoking element. The menu does not replace
 modal-dialog keyboard behavior.
@@ -38,7 +38,7 @@ save after a short idle period. A tab marks unsaved content and asks before disc
 
 The Format menu and formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
-rows and columns. Insert image or attachment chooses an already imported vault file and requires a text description.
+rows and columns. Insert image or attachment chooses an already imported library file and requires a text description.
 Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
 headings, lists, block quotes, code, links, tables, and local images with required descriptions. Format conversion
 creates a warned sibling copy and preserves the original. In an HTML note, **Insert checklist task** adds a semantic
@@ -49,7 +49,7 @@ native undo; fallback programmatic insertion may not retain an undo entry.
 External edits reload clean notes silently. If you have unsaved text, autosave pauses and a conflict dialog offers
 **Keep mine** (explicitly save your version), **Load disk version**, or **Save copy** (a new timestamped note).
 Removed notes offer Save copy. Escape leaves the conflict unresolved and tells you to choose a resolution; it does
-not discard your edits. Switching vaults is blocked until unsaved work is saved or resolved.
+not discard your edits. Switching libraries is blocked until unsaved work is saved or resolved.
 
 ## Search
 
@@ -130,7 +130,7 @@ Put `remind:2026-10-04 09:30` or `⏰ 2026-10-04 09:30` on an open checkbox task
 Completed tasks do not notify. **Open Reminders** (Ctrl+Shift+R) also creates standalone note reminders.
 Switch between the labelled table and Overdue/Today/This week lists. Snooze for 5/15/30/60 minutes, 1 day, or until the
 same local clock time tomorrow; Dismiss removes an item from active views. Clicking a native notification opens
-its note when the vault is still open. Windows notification settings may suppress delivery.
+its note when the library is still open. Windows notification settings may suppress delivery.
 The scheduler runs only while the application is running; missed pending reminders fire on next launch, and
 already-fired reminders remain visible until dismissed. Reminder state persists in `.a11ynotebook/reminders.json`.
 The creation dialog can save time, snooze, title privacy, and notification choices as future defaults in
@@ -158,19 +158,19 @@ a standalone reminder. **Dismiss** and **Snooze** use the existing reminder serv
 next calendar day, which can differ across daylight-saving changes. Tab/Shift+Tab stay within the dialog and focus returns after it closes.
 Outcomes are announced in the status region. **Escape/Later closes the alert without dismissing the reminder**;
 the item remains in Reminders. Hidden-title alerts use generic text.
-Switching vaults cancels the old vault's alert queue. Startup missed reminders use the same queue.
+Switching libraries cancels the old library's alert queue. Startup missed reminders use the same queue.
 The startup sound replay buffer retains the latest 100 deliveries; older overflow reminders remain available in
 the visual queue and Reminders but load silently. Previously fired reminders also reload silently to avoid repeating sound.
 
-**Locked-vault delivery is partial:** locking stops the existing scheduler and cancels queued alerts/sound.
+**Locked-library delivery is partial:** locking stops the existing scheduler and cancels queued alerts/sound.
 No titles are exposed, but reminders due while locked do not sound or produce the requested generic unlock alert.
 Unlocking restarts scheduling and catches up missed reminders. A generic privacy-safe locked-delivery snapshot
-on the same scheduler remains open; do not rely on reminder delivery until the vault is unlocked.
+on the same scheduler remains open; do not rely on reminder delivery until the library is unlocked.
 
 This is not exited-process delivery: **nothing fires after A11y Notebook exits**. Actual Windows background/minimized
 sound and focus, and JAWS/NVDA/Narrator announcements, still need manual verification.
 Tasks also show per-notebook completion counts and native progress elements. Named milestone CRUD and live
-task-progress summaries are available through the typed vault bridge, persisted in `.a11ynotebook/milestones.json`.
+task-progress summaries are available through the typed library bridge, persisted in `.a11ynotebook/milestones.json`.
 Milestone and task identities survive notebook moves; missing tasks remain associated and are counted as missing.
 Use **Tasks → Open Milestones**, **Tools → Open Milestones** in the native menu, or the command palette's
 **Open Milestones** command. The Milestones tab lists plans by due date with a status filter. Activate a title for
@@ -194,8 +194,9 @@ Choose **Cognitive tools** to create/open `.outline.md`, `.mindmap.json`, `.card
 Outline and mind-map trees use arrows for navigation, Enter for a new sibling, Tab/Shift+Tab for indentation,
 and Alt+Up/Down to reorder. Mind-map SVG is decorative; the accessible tree is authoritative. Mind maps export
 to a new Markdown outline without overwriting an existing export.
-Grids use arrows, Enter/F2 to edit, Enter to commit, and Escape to cancel; labelled controls sort and change
-rows/columns. Select the save format matching the file's extension.
+Grids use arrows, Home/End, and Ctrl+Home/End to navigate; Enter/F2 edits, Enter commits, Escape cancels, and
+Shift+Enter inserts a line break. Space sorts a focused header; labelled controls sort and change rows/columns. The save
+format defaults to the current file type; select the matching format before saving.
 Decks use `question :: answer` or `Q:`/`A:` blocks. Reveal the answer, then rate Again/Hard/Good/Easy.
 SM-2-style schedules persist in `.a11ynotebook/flashcards.json` and changes to a question/answer start new history.
 Save before closing cognitive tools or switching files; unsaved data is kept while switching to another tab.
@@ -203,7 +204,7 @@ External asset changes are rejected at save time; preserve your work separately 
 
 ### Encrypted cognitive checkpoints
 
-After explicitly enabling scoped annotation/checkpoint protection in an unlocked version-3 vault, edits to outlines,
+After explicitly enabling scoped annotation/checkpoint protection in an unlocked version-3 library, edits to outlines,
 mind maps, flashcards and CSV/Markdown grids are checkpointed after a 750 ms debounce. Persistent recovery is disabled
 without that consent; there is no plaintext-draft fallback. Source asset files themselves remain ordinary files.
 Records retain the saved baseline and its hash, have a seven-day expiry, and are bounded to 20 records, 2 MiB per
@@ -238,7 +239,7 @@ the captured note is opened and indexed.
 
 ## Attachment previews
 
-Text and CSV have a text view/table. Raster images use a vault-validated custom protocol and have an editable
+Text and CSV have a text view/table. Raster images use a library-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
 for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
 page navigation, in-document search, and persisted PDF notes. ePub uses local epub.js paginated spine rendering,
@@ -255,27 +256,27 @@ rejected. DOCX annotations are not available; legacy binary `.doc` is unsupporte
 
 **Settings** (Ctrl+Alt+S) changes autosave delay (0 disables it), dark/light/high-contrast theme, font size,
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.
-Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the vault's
+Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the library's
 `.a11ynotebook/settings.json` and app userData defaults. Keyboard Shortcuts and the palette display active bindings;
-the generated documentation lists defaults. Vault idle locking is available in Security settings. Reminder defaults
+the generated documentation lists defaults. Library idle locking is available in Security settings. Reminder defaults
 are saved from the reminder creation dialog; in-app alert/sound preferences are available in Settings.
 
 ## Security
 
-Security settings can enable the vault password gate and configure idle locking. Selected notes can use distinct
+Security settings can enable the library password gate and configure idle locking. Selected notes can use distinct
 passwords through **Encrypt note**; the dialog can generate a password and clear it from the clipboard after 30
-seconds if it has not been replaced. To opt in to vault recovery, open Settings → Vault security while the vault is
-unlocked, confirm the current vault password, then save the displayed one-time recovery key separately and check the
-acknowledgment before committing it. The app never copies the recovery key automatically. Recovery can reset the vault
+seconds if it has not been replaced. To opt in to library recovery, open Settings → Library security while the library is
+unlocked, confirm the current library password, then save the displayed one-time recovery key separately and check the
+acknowledgment before committing it. The app never copies the recovery key automatically. Recovery can reset the library
 password and preserves migrated credentials and vault-key-encrypted notes; it cannot recover notes with independent
 passwords. You can rotate the recovery key after saving its replacement or revoke recovery after confirming the current
-password. Losing a note password is unrecoverable. Vault protection gates app access but does not encrypt unmarked
+password. Losing a note password is unrecoverable. Library protection gates app access but does not encrypt unmarked
 files, filenames, search indexes, or most metadata.
 
-Scoped annotation/checkpoint protection requires an unlocked **version-3** vault (enable recovery first for older
+Scoped annotation/checkpoint protection requires an unlocked **version-3** library (enable recovery first for older
 configs) and explicit consent. It protects only Markdown/HTML/PDF annotations and cognitive checkpoints.
 **Search index/snippets, link index, bookmarks, reminders, settings, flashcard schedules, milestones, image
-descriptions, source files, attachments and exports remain plaintext. This is not whole-vault encryption.**
+descriptions, source files, attachments and exports remain plaintext. This is not whole-library encryption.**
 Migration removes the old annotation store after committing authenticated ciphertext; deleted plaintext may still
 persist on disk or in backups. Tampered/missing protected data fails closed, never silently falls back to plaintext.
 Recovery password reset and recovery-key rotation/revocation preserve protected stores; independent note passwords
@@ -298,7 +299,7 @@ editing are not logged. See the security documentation for exact limits.
 
 | Shortcut                                                     | Action                                         |
 | ------------------------------------------------------------ | ---------------------------------------------- |
-| Ctrl+O                                                       | Open vault                                     |
+| Ctrl+O                                                       | Open library                                   |
 | Ctrl+N                                                       | Create notebook                                |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
@@ -308,7 +309,7 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+S                                                       | Save the current note                          |
 | Ctrl+D                                                       | Bookmark or unbookmark the current note        |
 | F1                                                           | Show keyboard shortcuts                        |
-| F5                                                           | Refresh the vault tree                         |
+| F5                                                           | Refresh the library tree                       |
 | F6 / Shift+F6                                                | Move focus to next / previous pane             |
 | Alt+1 / Alt+2 / Alt+3                                        | Focus navigation / main / right pane           |
 | F9                                                           | Show or hide the right pane                    |
@@ -324,7 +325,7 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 
 ## Not available yet
 
-Whole-vault encryption and encryption of excluded indexes/metadata are not available. Cognitive checkpoints require
+Whole-library encryption and encryption of excluded indexes/metadata are not available. Cognitive checkpoints require
 explicit scoped protection consent; save important edits explicitly, including while persistent recovery is disabled.
 DOCX local reading is implemented; DOCX annotations and legacy `.doc` local reading remain unavailable.
 Reminders require the app process to be running: no opt-in Task Scheduler/helper integration ships here, and closing
@@ -332,6 +333,6 @@ a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
-Recent-vault selection, heading and position bookmarks, general YAML
+Recent-library selection, heading and position bookmarks, general YAML
 metadata editing, and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.

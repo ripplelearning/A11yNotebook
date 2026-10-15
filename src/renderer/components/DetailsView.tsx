@@ -38,6 +38,7 @@ export default function DetailsView({
   const [focusedPath, setFocusedPath] = useState<string | null>(items[0]?.path ?? null);
   const [focusedColumn, setFocusedColumn] = useState<Column>('name');
   const cells = useRef(new Map<string, HTMLDivElement>());
+  const headers = useRef(new Map<Column, HTMLDivElement>());
   const grid = useRef<HTMLDivElement>(null);
   const gridHadFocus = useRef(false);
   const previousIndex = useRef(0);
@@ -54,8 +55,9 @@ export default function DetailsView({
     });
   }, [items, sort]);
 
-  const foundIndex = sortedItems.findIndex((item) => item.path === focusedPath);
-  const activeIndex = foundIndex >= 0 ? foundIndex : Math.min(previousIndex.current, sortedItems.length - 1);
+  const foundIndex = focusedPath ? sortedItems.findIndex((item) => item.path === focusedPath) : -1;
+  const activeIndex =
+    focusedPath === null ? -1 : foundIndex >= 0 ? foundIndex : Math.min(previousIndex.current, sortedItems.length - 1);
   const activeItem = activeIndex >= 0 ? sortedItems[activeIndex] : undefined;
   const activePath = activeItem?.path ?? null;
 
@@ -88,6 +90,12 @@ export default function DetailsView({
     cells.current.get(cellKey(item.path, column))?.focus();
   };
 
+  const focusHeader = (column: Column) => {
+    setFocusedPath(null);
+    setFocusedColumn(column);
+    headers.current.get(column)?.focus();
+  };
+
   const select = (item: VaultEntry) => {
     setFocusedPath(item.path);
     onSelect(item);
@@ -108,7 +116,8 @@ export default function DetailsView({
         return;
       case 'ArrowUp':
         event.preventDefault();
-        focusCell(Math.max(index - 1, 0), focusedColumn);
+        if (index === 0) focusHeader(focusedColumn);
+        else focusCell(index - 1, focusedColumn);
         return;
       case 'ArrowRight':
         event.preventDefault();
@@ -153,6 +162,37 @@ export default function DetailsView({
     }
   };
 
+  const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>, column: Column) => {
+    const columnIndex = COLUMNS.indexOf(column);
+    switch (event.key) {
+      case 'ArrowLeft':
+        event.preventDefault();
+        focusHeader(COLUMNS[Math.max(columnIndex - 1, 0)]);
+        break;
+      case 'ArrowRight':
+        event.preventDefault();
+        focusHeader(COLUMNS[Math.min(columnIndex + 1, COLUMNS.length - 1)]);
+        break;
+      case 'ArrowDown':
+        if (sortedItems.length) {
+          event.preventDefault();
+          focusCell(0, column);
+        }
+        break;
+      case 'Home':
+      case 'End':
+        event.preventDefault();
+        focusHeader(COLUMNS[event.key === 'Home' ? 0 : COLUMNS.length - 1]);
+        break;
+      case 'Enter':
+      case ' ':
+        event.preventDefault();
+        toggleSort(column);
+        break;
+      default:
+    }
+  };
+
   const toggleSort = (column: Column) => {
     setSort((current) => ({
       column,
@@ -174,11 +214,22 @@ export default function DetailsView({
         {COLUMNS.map((column) => (
           <div
             key={column}
+            ref={(element) => {
+              if (element) headers.current.set(column, element);
+              else headers.current.delete(column);
+            }}
             role="columnheader"
             aria-colindex={COLUMNS.indexOf(column) + 1}
             aria-sort={sort.column === column ? sort.direction : 'none'}
+            tabIndex={focusedPath === null && focusedColumn === column ? 0 : -1}
+            onFocus={() => {
+              gridHadFocus.current = true;
+              setFocusedPath(null);
+              setFocusedColumn(column);
+            }}
+            onKeyDown={(event) => handleHeaderKeyDown(event, column)}
           >
-            <button type="button" onClick={() => toggleSort(column)}>
+            <button type="button" tabIndex={-1} onClick={() => toggleSort(column)}>
               {column === 'name' ? 'Name' : 'Type'}
             </button>
           </div>
@@ -236,7 +287,7 @@ export default function DetailsView({
         ))
       ) : (
         <div role="row" aria-rowindex={2}>
-          <div role="gridcell" aria-colspan={COLUMNS.length} tabIndex={0}>
+          <div role="gridcell" aria-colspan={COLUMNS.length} tabIndex={-1}>
             {emptyMessage}
           </div>
         </div>

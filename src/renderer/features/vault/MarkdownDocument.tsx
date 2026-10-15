@@ -19,7 +19,7 @@ function createMarkdown(links: VaultLink[], notePath?: string) {
       if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(href)) throw new Error('External image.');
       for (const part of decodeURIComponent(href).split('/')) {
         if (part === '..') {
-          if (!parts.length) throw new Error('Outside vault.');
+          if (!parts.length) throw new Error('Outside library.');
           parts.pop();
         } else if (part && part !== '.') parts.push(part);
       }

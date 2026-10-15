@@ -7,10 +7,10 @@ and a sandboxed reader.
 ## Current scope
 
 - An accessible shell with a header, menu bar, navigation pane, tabs, main content pane, right pane, and status bar.
-- Local vault folders with notebooks as subfolders, Markdown and HTML notes, and attachments. Vault metadata is stored as
+- Local library folders with notebooks as subfolders, Markdown and HTML notes, and attachments. Library metadata is stored as
   readable JSON under `.a11ynotebook/`.
 - Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
-  Explorer reveal, external open, and recent-vault restoration.
+  Explorer reveal, external open, and recent-library restoration.
 - Sanitized semantic Markdown/HTML reading, plain-source editing, and accessible rich-text editing with Ctrl+S and idle autosave.
 - Markdown and HTML note creation; rich-text paste is sanitized. HTML notes support relative links, search, stable-ID checklists, task filters/toggles, and text annotations.
 - Convert a note into a Markdown/HTML sibling copy with a loss warning; the source file is retained.
@@ -27,7 +27,7 @@ and a sandboxed reader.
 - PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub uses a paginated epub.js rendition with a nested TOC, sanitized chapters, and section text search. ePub annotations remain open.
 - Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
-- Wiki and relative Markdown links with a vault-wide forward/backlink index, plus persisted note bookmarks.
+- Wiki and relative Markdown links with a library-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
 - A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
 - One context-aware menu driven by the command registry, available with Shift+F10, the Applications key, and right-click.
@@ -35,7 +35,7 @@ and a sandboxed reader.
 - Switching between read-only and edit mode, with announcements in the status bar.
 - A Help menu with **Check for Updates**, **Keyboard Shortcuts**, and **About A11y Notebook**.
 - A Windows installer (`.exe`), a portable `.exe`, and a secure in-app updater that uses GitHub Releases.
-- Tests for vault path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
+- Tests for library path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
 - Documentation of how HomerDev influenced the design without copying it.
 
 ## Accessibility commitments
@@ -175,7 +175,7 @@ the latest changes.
 - The app embeds no GitHub token. Public releases do not need one.
 - The renderer runs with `contextIsolation`, `sandbox`, and without Node integration. It can reach only a small,
   typed updater and vault APIs. The main process accepts calls only on whitelisted IPC channels, and only from the
-  app's own window. Vault paths are validated against the open vault.
+  app's own window. Library paths are validated against the open library.
 - Release notes are shown as plain text, never as HTML.
 - **Code signing:** the release workflow automatically signs when the `WINDOWS_CERTIFICATE` and
   `WINDOWS_CERTIFICATE_PASSWORD` repository secrets are configured. This branch wires secret-based signing; no
@@ -196,9 +196,9 @@ the latest changes.
 
 ## Roadmap summary
 
-This remains an unfinished development build. Optional recovery keys can reset the vault password while preserving
-credentials and legacy encrypted notes; recovery does not encrypt ordinary vault files or recover independently
-password-encrypted notes. Whole-vault encryption, encrypted indexes, and sensitive-action audit logging remain open.
+This remains an unfinished development build. Optional recovery keys can reset the library password while preserving
+credentials and legacy encrypted notes; recovery does not encrypt ordinary library files or recover independently
+password-encrypted notes. Whole-library encryption, encrypted indexes, and sensitive-action audit logging remain open.
 PDF reading includes a selectable text layer, zoom/rotation, semantic navigation, search, and persisted annotations;
 sidebar/export/lifecycle refinements remain open. epub.js renders paginated book content with a nested navigation TOC and
 retains bounded extracted text for search; ePub annotations remain open. Markdown and HTML notes support text annotations, with HTML anchored

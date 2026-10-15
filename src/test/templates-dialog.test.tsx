@@ -34,7 +34,7 @@ describe('new note from template dialog', () => {
     const onClose = vi.fn();
     const onCreate = vi.fn().mockRejectedValue(new Error('A note with this name already exists.'));
     render(
-      <NewFromTemplateDialog notebooks={[{ path: '', name: 'Vault root' }]} onCreate={onCreate} onClose={onClose} />,
+      <NewFromTemplateDialog notebooks={[{ path: '', name: 'Library root' }]} onCreate={onCreate} onClose={onClose} />,
     );
     fireEvent.change(screen.getByRole('textbox', { name: 'Note title' }), { target: { value: '../escape' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
@@ -88,7 +88,7 @@ describe('new note from template dialog', () => {
   it('sanitizes custom HTML templates and keeps the Markdown default', () => {
     render(
       <NewFromTemplateDialog
-        notebooks={[{ path: '', name: 'Vault root' }]}
+        notebooks={[{ path: '', name: 'Library root' }]}
         templates={[
           {
             id: 'custom-html',

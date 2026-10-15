@@ -47,7 +47,7 @@ export default function ReminderAlertDialog({
     >
       <div id="reminder-alert-description">
         <p>{locked || reminder.privacy === 'hide-title' ? 'A reminder is due.' : reminder.title}</p>
-        {locked ? <p>Unlock the vault to view it.</p> : null}
+        {locked ? <p>Unlock the library to view it.</p> : null}
         <p role="status">
           {count} reminder{count === 1 ? '' : 's'} waiting.
         </p>

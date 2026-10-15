@@ -5,20 +5,30 @@ export interface GridEditorProps {
   value: GridData;
   onChange: (value: GridData) => void;
   onSave?: (source: string, format: 'csv' | 'markdown') => void;
+  format?: 'csv' | 'markdown';
   readOnly?: boolean;
 }
 
-export default function GridEditor({ value, onChange, onSave, readOnly = false }: GridEditorProps) {
+export default function GridEditor({
+  value,
+  onChange,
+  onSave,
+  format: defaultFormat,
+  readOnly = false,
+}: GridEditorProps) {
   const [active, setActive] = useState({ row: 0, column: 0 });
   const [editing, setEditing] = useState<{ row: number; column: number; text: string }>();
   const [sort, setSort] = useState<{ column: number; direction: 'ascending' | 'descending' }>();
-  const [format, setFormat] = useState<'csv' | 'markdown'>('csv');
+  const [format, setFormat] = useState<'csv' | 'markdown'>(defaultFormat ?? 'csv');
   const cells = useRef(new Map<string, HTMLTableCellElement>());
   const ignoreBlur = useRef(false);
   const pendingFocus = useRef(false);
   useEffect(() => {
     if (readOnly) setEditing(undefined);
   }, [readOnly]);
+  useEffect(() => {
+    if (defaultFormat) setFormat(defaultFormat);
+  }, [defaultFormat]);
   const position = moveGridFocus(active.row, active.column, '', value.rows.length + 1, value.columns.length);
   const key = (row: number, column: number) => `${row}:${column}`;
   useEffect(() => {

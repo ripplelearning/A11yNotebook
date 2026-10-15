@@ -131,6 +131,34 @@ describe('accessible details view', () => {
     expect(reportType).toHaveFocus();
   });
 
+  it('keeps one tab stop and includes sortable headers in grid keyboard navigation', () => {
+    renderDetails();
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    const alpha = within(grid).getByRole('gridcell', { name: 'Alpha.md' });
+    const name = within(grid).getByRole('columnheader', { name: 'Name' });
+    const type = within(grid).getByRole('columnheader', { name: 'Type' });
+
+    expect(grid.querySelectorAll('[tabindex="0"]')).toHaveLength(1);
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'ArrowUp' });
+    expect(name).toHaveFocus();
+    fireEvent.keyDown(name, { key: 'ArrowRight' });
+    expect(type).toHaveFocus();
+    fireEvent.keyDown(type, { key: 'ArrowDown' });
+    expect(within(screen.getAllByRole('row')[1]).getByRole('gridcell', { name: 'note' })).toHaveFocus();
+    fireEvent.keyDown(within(screen.getAllByRole('row')[1]).getByRole('gridcell', { name: 'note' }), {
+      key: 'ArrowUp',
+    });
+    expect(type).toHaveFocus();
+    fireEvent.keyDown(type, { key: ' ' });
+    expect(type).toHaveAttribute('aria-sort', 'ascending');
+    expect(
+      within(grid)
+        .getAllByRole('button')
+        .every((button) => button.tabIndex === -1),
+    ).toBe(true);
+  });
+
   it('sorts by name and retains selection by stable item identity', () => {
     renderDetails({ selectedPath: 'Research/Beta.md' });
     const grid = screen.getByRole('grid', { name: 'Notebook items' });
@@ -446,9 +474,9 @@ describe('accessible details view', () => {
     act(() => locked());
     await waitFor(() => expect(screen.queryByText('Items in Research')).not.toBeInTheDocument());
     expect(screen.queryByRole('grid', { name: 'Notes and files' })).not.toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'test-unlock-password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Vault locked' })).not.toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Library password'), { target: { value: 'test-unlock-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock library' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library locked' })).not.toBeInTheDocument());
     navigate('3');
     expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
     expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();

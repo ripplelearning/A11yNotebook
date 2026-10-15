@@ -194,7 +194,7 @@ describe('feature wiring in the application shell', () => {
       act(() => lock());
       focused = true;
       fireEvent(window, new Event('focus'));
-      expect(screen.getByRole('dialog', { name: 'Vault locked' })).toBeInTheDocument();
+      expect(screen.getByRole('dialog', { name: 'Library locked' })).toBeInTheDocument();
       expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument();
       expect(screen.queryByText(item.title)).not.toBeInTheDocument();
       act(() => reminder({ type: 'fired', vaultPath: vault.path, reminder: item }));
@@ -256,12 +256,12 @@ describe('feature wiring in the application shell', () => {
     'reloads settings after unlock without treating a settings failure as an unlock failure (%s)',
     async (failure) => {
       const { bridge } = setup(false, undefined, { protectedVault: true, failSettingsAfterUnlock: failure });
-      await screen.findByRole('dialog', { name: 'Vault locked' });
+      await screen.findByRole('dialog', { name: 'Library locked' });
       const before = vi.mocked(bridge.vault.getSettings).mock.calls.length;
-      fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'correct horse battery' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+      fireEvent.change(screen.getByLabelText('Library password'), { target: { value: 'correct horse battery' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock library' }));
       await waitFor(() => expect(bridge.vault.getSettings).toHaveBeenCalledTimes(before + 1));
-      expect(screen.queryByRole('dialog', { name: 'Vault locked' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('dialog', { name: 'Library locked' })).not.toBeInTheDocument();
       if (!failure) await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
       else await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Could not load settings.'));
     },
@@ -325,7 +325,7 @@ describe('feature wiring in the application shell', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Open Reminders' }));
     expect(screen.getByRole('button', { name: item.title })).toBeInTheDocument();
     act(() => lock());
-    expect(screen.getByRole('dialog', { name: 'Vault locked' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Library locked' })).toBeInTheDocument();
     expect(screen.queryByText(item.title)).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: 'Reminders' })).not.toBeInTheDocument();
     act(() => reminder({ type: 'fired', vaultPath: vault.path, reminder: item }));
@@ -368,7 +368,7 @@ describe('feature wiring in the application shell', () => {
         }),
     );
     fireEvent.click(screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i }));
-    await screen.findByRole('dialog', { name: 'Opening vault' });
+    await screen.findByRole('dialog', { name: 'Opening library' });
     expect(editor).toBeDisabled();
     fireEvent.change(editor, { target: { value: 'late edit' } });
     expect(editor).toHaveValue('# Note\n\ntext');

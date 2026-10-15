@@ -165,8 +165,8 @@ describe('milestone shell wiring', () => {
     expect(screen.queryByRole('textbox', { name: 'Milestone title' })).not.toBeInTheDocument();
     await act(async () => pending.resolve(record));
     expect(screen.getByLabelText('Status bar')).not.toHaveTextContent('Milestone created.');
-    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'password' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+    fireEvent.change(screen.getByLabelText('Library password'), { target: { value: 'password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock library' }));
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create milestone' })).toBeEnabled());
     expect(screen.queryByRole('button', { name: record.title })).not.toBeInTheDocument();
     expect(f.bridge.vault.getMilestones).toHaveBeenCalledTimes(2);
@@ -235,8 +235,8 @@ describe('milestone shell wiring', () => {
       );
       expect(screen.queryByRole('tab', { name: 'Plan' })).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog', { name: /note password/i })).not.toBeInTheDocument();
-      fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'password' } });
-      fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+      fireEvent.change(screen.getByLabelText('Library password'), { target: { value: 'password' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Unlock library' }));
       await waitFor(() => expect(screen.getByRole('button', { name: 'Create milestone' })).toBeEnabled());
       expect(screen.queryByRole('tab', { name: 'Plan' })).not.toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

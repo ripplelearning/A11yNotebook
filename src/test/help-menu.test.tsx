@@ -120,7 +120,7 @@ describe('Help menu', () => {
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notebook created.'));
     expect(navigationAction).toHaveFocus();
 
-    const menuAction = within(screen.getByRole('group', { name: 'Vault' })).getByRole('button', {
+    const menuAction = within(screen.getByRole('group', { name: 'Library' })).getByRole('button', {
       name: 'New notebook',
     });
     menuAction.focus();

@@ -38,7 +38,7 @@ export default function InsertAttachmentDialog({
   const [error, setError] = useState('');
   return (
     <Modal title="Insert image or attachment" titleId="insert-attachment-title" onClose={onClose}>
-      <p>Import new files into a notebook first, then choose one of the vault attachments here.</p>
+      <p>Import new files into a notebook first, then choose one of the library attachments here.</p>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -63,7 +63,7 @@ export default function InsertAttachmentDialog({
         }}
       >
         <label>
-          Vault attachment
+          Library attachment
           <select data-autofocus value={path} onChange={(event) => setPath(event.target.value)}>
             {paths.map((relative) => (
               <option key={relative}>{relative}</option>

@@ -52,7 +52,7 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
         '<table><thead><tr><th scope="col">Column 1</th><th scope="col">Column 2</th></tr></thead><tbody><tr><td></td><td></td></tr></tbody></table>',
       );
     } else if (command === 'image') {
-      const source = window.prompt('Vault image path');
+      const source = window.prompt('Library image path');
       if (source?.trim()) {
         const alt = window.prompt('Image description (required)')?.trim();
         if (alt) {
