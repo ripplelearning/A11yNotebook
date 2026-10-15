@@ -1,12 +1,13 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import DetailsView from '../renderer/components/DetailsView';
 import NotebooksScreen from '../renderer/features/screens/NotebooksScreen';
 import NotesFilesScreen from '../renderer/features/screens/NotesFilesScreen';
+import VaultTree from '../renderer/features/vault/VaultTree';
 import type { NotebookBridge } from '../shared/bridge';
-import type { VaultEntry } from '../shared/types';
+import type { VaultEntry, VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
 
 afterEach(() => {
@@ -37,6 +38,73 @@ function renderDetails(overrides: Partial<ComponentProps<typeof DetailsView>> = 
     />,
   );
   return { onSelect, onOpen, onRename, onContextMenu };
+}
+
+function renderLibrary() {
+  const vault: VaultInfo = {
+    name: 'Study',
+    path: 'C:/Study',
+    entries: [
+      {
+        name: 'Research',
+        path: 'Research',
+        kind: 'notebook',
+        children: [
+          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' },
+          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment' },
+        ],
+      },
+      {
+        name: 'Archive',
+        path: 'Archive',
+        kind: 'notebook',
+        children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note' }],
+      },
+      { name: 'Root.md', path: 'Root.md', kind: 'note' },
+    ],
+  };
+  const bridge = {
+    updater: {
+      check: vi.fn(async () => undefined),
+      download: vi.fn(async () => undefined),
+      installNow: vi.fn(async () => undefined),
+      installOnExit: vi.fn(async () => undefined),
+      onStatus: vi.fn(() => () => undefined),
+    },
+    vault: {
+      ...vaultExtensions(),
+      get: vi.fn(async () => vault),
+      getSecurityStatus: vi.fn(async () => ({ enabled: false, locked: false, recoveryAvailable: false })),
+      getTasks: vi.fn(async () => []),
+      getLinkIndex: vi.fn(async () => ({ links: [] })),
+      getBookmarks: vi.fn(async () => []),
+      isNoteEncrypted: vi.fn(async () => false),
+      readNote: vi.fn(async () => '# Idea'),
+      readAttachment: vi.fn(async () => ({ path: 'Research/Report.txt', text: 'Report', kind: 'text' })),
+      rename: vi.fn(),
+      delete: vi.fn(),
+      open: vi.fn(),
+      onSecurityLocked: vi.fn(() => () => undefined),
+      unlockVault: vi.fn(async () => vault),
+    },
+    onMenuCommand: vi.fn(() => () => undefined),
+  } as unknown as NotebookBridge;
+  window.a11yNotebook = bridge;
+  render(<App />);
+  return { vault, bridge };
+}
+
+function navigate(shortcut: string) {
+  fireEvent.keyDown(document, { key: shortcut, ctrlKey: true });
+}
+
+function expectResearchContext() {
+  expect(screen.getByText('Items in Research')).toBeInTheDocument();
+  const grid = screen.getByRole('grid', { name: 'Notes and files' });
+  expect(within(grid).getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
+  expect(within(grid).getByRole('gridcell', { name: 'Report.txt' })).toBeInTheDocument();
+  expect(within(grid).queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
+  expect(within(grid).queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
 }
 
 describe('accessible details view', () => {
@@ -123,6 +191,45 @@ describe('accessible details view', () => {
     expect(screen.getByRole('gridcell', { name: 'Report.pdf' })).toHaveFocus();
   });
 
+  it('recovers tree focus after removal without stealing focus from another view', () => {
+    const entries: VaultEntry[] = [
+      { name: 'Research', path: 'Research', kind: 'notebook' },
+      { name: 'Archive', path: 'Archive', kind: 'notebook' },
+    ];
+    const props = {
+      selectedPath: null,
+      onSelect: vi.fn(),
+      onOpen: vi.fn(),
+      onRename: vi.fn(),
+      onDelete: vi.fn(),
+    };
+    const { rerender } = render(
+      <>
+        <button>Other view</button>
+        <VaultTree {...props} entries={entries} />
+      </>,
+    );
+    act(() => screen.getByRole('treeitem', { name: /Research/ }).focus());
+    rerender(
+      <>
+        <button>Other view</button>
+        <VaultTree {...props} entries={entries.slice(1)} />
+      </>,
+    );
+    expect(screen.getByRole('treeitem', { name: /Archive/ })).toHaveFocus();
+    const otherView = screen.getByRole('button', { name: 'Other view' });
+    act(() => otherView.focus());
+    props.onSelect.mockClear();
+    rerender(
+      <>
+        <button>Other view</button>
+        <VaultTree {...props} entries={entries.slice(0, 1)} />
+      </>,
+    );
+    expect(otherView).toHaveFocus();
+    expect(props.onSelect).not.toHaveBeenCalled();
+  });
+
   it('wires notebook and notes/files screens to filtered detail grids', () => {
     const entries: VaultEntry[] = [
       {
@@ -151,41 +258,11 @@ describe('accessible details view', () => {
     expect(screen.queryByRole('gridcell', { name: 'Archive' })).not.toBeInTheDocument();
   });
 
-  it('routes View commands through real library screens and opens notes from the details grid', async () => {
-    const vault = {
-      name: 'Study',
-      path: 'C:/Study',
-      entries: [
-        {
-          name: 'Research',
-          path: 'Research',
-          kind: 'notebook' as const,
-          children: [{ name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' as const }],
-        },
-      ],
-    };
-    const bridge = {
-      updater: {
-        check: vi.fn(async () => undefined),
-        download: vi.fn(async () => undefined),
-        installNow: vi.fn(async () => undefined),
-        installOnExit: vi.fn(async () => undefined),
-        onStatus: vi.fn(() => () => undefined),
-      },
-      vault: {
-        ...vaultExtensions(),
-        get: vi.fn(async () => vault),
-        getSecurityStatus: vi.fn(async () => ({ enabled: false, locked: false, recoveryAvailable: false })),
-        getTasks: vi.fn(async () => []),
-        getLinkIndex: vi.fn(async () => ({ links: [] })),
-        getBookmarks: vi.fn(async () => []),
-        isNoteEncrypted: vi.fn(async () => false),
-        readNote: vi.fn(async () => '# Idea'),
-      },
-      onMenuCommand: vi.fn(() => () => undefined),
-    } as unknown as NotebookBridge;
-    window.a11yNotebook = bridge;
-    render(<App />);
+  it.each([
+    { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
+    { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report.txt' },
+  ])('preserves notebook context when selecting and opening $name', async ({ name, path, heading }) => {
+    const { bridge } = renderLibrary();
 
     await screen.findByRole('heading', { name: 'Study', level: 2 });
     const viewMenu = screen.getByRole('group', { name: 'View' });
@@ -205,9 +282,186 @@ describe('accessible details view', () => {
     fireEvent.keyDown(research, { key: 'Enter' });
 
     const notesFiles = await screen.findByRole('grid', { name: 'Notes and files' });
-    const idea = within(notesFiles).getByRole('gridcell', { name: 'Idea.md' });
-    fireEvent.keyDown(idea, { key: 'Enter' });
-    expect(await screen.findByRole('heading', { name: 'Idea', level: 2 })).toBeInTheDocument();
-    expect(bridge.vault.readNote).toHaveBeenCalledWith('Research/Idea.md', undefined);
+    expectResearchContext();
+    const item = within(notesFiles).getByRole('gridcell', { name });
+    item.focus();
+    fireEvent.keyDown(item, { key: ' ' });
+    expectResearchContext();
+    expect(item.closest('[role="row"]')).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(item, { key: 'Enter' });
+    expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument();
+    if (name === 'Idea.md') expect(bridge.vault.readNote).toHaveBeenCalledWith(path, undefined);
+    else expect(bridge.vault.readAttachment).toHaveBeenCalledWith(path);
+
+    navigate('3');
+    expectResearchContext();
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh links' }));
+    await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
+    expectResearchContext();
+    navigate('0');
+    expect(screen.getByRole('heading', { name: 'Contents' })).toBeInTheDocument();
+    navigate('1');
+    expect(screen.getByRole('heading', { name: 'Libraries' })).toBeInTheDocument();
+    navigate('2');
+    expect(screen.getByRole('heading', { name: 'Notebooks' })).toBeInTheDocument();
+    navigate('3');
+    expectResearchContext();
+    navigate('k');
+    const palette = screen.getByRole('dialog', { name: 'Command palette' });
+    expect(within(palette).getByRole('searchbox', { name: 'Search commands' })).toHaveFocus();
+    fireEvent.change(within(palette).getByRole('searchbox'), { target: { value: 'show-notes-files' } });
+    fireEvent.click(within(palette).getByRole('button', { name: 'Notes & Files' }));
+    expectResearchContext();
+
+    navigate('2');
+    const archive = screen.getByRole('gridcell', { name: 'Archive' });
+    archive.focus();
+    fireEvent.keyDown(archive, { key: ' ' });
+    navigate('3');
+    expect(screen.getByText('Items in Archive')).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
+  });
+
+  it.each([
+    { action: 'rename', cancelled: false },
+    { action: 'move', cancelled: false },
+    { action: 'rename', cancelled: true },
+    { action: 'move', cancelled: true },
+  ] as const)('updates notebook context after $action (cancelled: $cancelled)', async ({ action, cancelled }) => {
+    const { vault, bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    navigate('2');
+    const research = screen.getByRole('gridcell', { name: 'Research' });
+    research.focus();
+    const destination = action === 'rename' ? 'Renamed' : 'Archive/Research';
+    const remap = (entry: VaultEntry): VaultEntry => ({
+      ...entry,
+      path: entry.path.replace(/^Research/, destination),
+      name: entry.path === 'Research' && action === 'rename' ? 'Renamed' : entry.name,
+      children: entry.children?.map(remap),
+    });
+    const researchEntry = remap(vault.entries[0]);
+    const updated: VaultInfo = {
+      ...vault,
+      entries: [
+        ...(action === 'rename' ? [researchEntry] : []),
+        {
+          ...vault.entries[1],
+          children: [...(vault.entries[1].children ?? []), ...(action === 'move' ? [researchEntry] : [])],
+        },
+        vault.entries[2],
+      ],
+    };
+    vi.mocked(bridge.vault.rename).mockResolvedValue(cancelled ? vault : updated);
+    vi.mocked(bridge.vault.move).mockResolvedValue(cancelled ? vault : updated);
+    if (action === 'rename') {
+      fireEvent.keyDown(research, { key: 'F2' });
+      fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
+    } else {
+      fireEvent.keyDown(research, { key: 'F10', shiftKey: true });
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Move' }));
+      fireEvent.change(screen.getByRole('combobox', { name: 'Destination notebook' }), {
+        target: { value: 'Archive' },
+      });
+    }
+    const title = action === 'rename' ? 'Rename item' : 'Move item';
+    fireEvent.click(screen.getByRole('button', { name: title }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument());
+    expect(bridge.vault[action]).toHaveBeenCalledWith('Research', action === 'rename' ? 'Renamed' : destination);
+    navigate('3');
+    if (cancelled) expectResearchContext();
+    else {
+      expect(screen.getByText(`Items in ${destination}`)).toBeInTheDocument();
+      expect(screen.getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
+      expect(screen.queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
+    }
+  });
+
+  it.each([false, true])(
+    'cleans up context on deletion without losing it on cancellation (cancelled: %s)',
+    async (cancelled) => {
+      const { vault, bridge } = renderLibrary();
+      await screen.findByRole('heading', { name: 'Study', level: 2 });
+      navigate('2');
+      const research = screen.getByRole('gridcell', { name: 'Research' });
+      research.focus();
+      vi.mocked(bridge.vault.delete).mockResolvedValue(
+        cancelled ? vault : { ...vault, entries: vault.entries.filter((entry) => entry.path !== 'Research') },
+      );
+      fireEvent.keyDown(research, { key: 'ContextMenu' });
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+      await waitFor(() => expect(bridge.vault.delete).toHaveBeenCalledWith('Research'));
+      await waitFor(() => expect(screen.queryByRole('gridcell', { name: 'Research' }) !== null).toBe(cancelled));
+      navigate('3');
+      if (cancelled) expectResearchContext();
+      else {
+        expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
+        expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+      }
+    },
+  );
+
+  it('clears notebook context when opening another library even if it has the same notebook path', async () => {
+    const { vault, bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    navigate('2');
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expectResearchContext();
+    vi.mocked(bridge.vault.open).mockResolvedValue({ ...vault, name: 'Other', path: 'C:/Other' });
+    navigate('o');
+    await screen.findByRole('heading', { name: 'Other', level: 2 });
+    navigate('3');
+    expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+  });
+
+  it('clears notebook context when the library is locked', async () => {
+    const { bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    navigate('2');
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expectResearchContext();
+    const locked = vi.mocked(bridge.vault.onSecurityLocked!).mock.calls[0][0];
+    act(() => locked());
+    await waitFor(() => expect(screen.queryByText('Items in Research')).not.toBeInTheDocument());
+    expect(screen.queryByRole('grid', { name: 'Notes and files' })).not.toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText('Vault password'), { target: { value: 'test-unlock-password' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Unlock vault' }));
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Vault locked' })).not.toBeInTheDocument());
+    navigate('3');
+    expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+  });
+
+  it.each([
+    { change: 'removed', source: 'refresh' },
+    { change: 'replaced by a file', source: 'refresh' },
+    { change: 'removed', source: 'watcher' },
+  ] as const)('clears notebook context when notebook is $change ($source)', async ({ change, source }) => {
+    const { vault, bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    navigate('2');
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expectResearchContext();
+
+    vi.mocked(bridge.vault.get).mockResolvedValue({
+      ...vault,
+      entries: [
+        ...vault.entries.filter((entry) => entry.path !== 'Research'),
+        ...(change === 'replaced by a file'
+          ? [{ name: 'Research', path: 'Research', kind: 'attachment' as const }]
+          : []),
+      ],
+    });
+    if (source === 'refresh') fireEvent.click(screen.getByRole('button', { name: 'Refresh links' }));
+    else {
+      const changed = vi.mocked(bridge.vault.onChanged).mock.calls[0][0];
+      await act(async () => changed({ vaultPath: vault.path, paths: ['Research'] }));
+    }
+    await waitFor(() => expect(screen.queryByText('Items in Research')).not.toBeInTheDocument());
+    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
   });
 });
