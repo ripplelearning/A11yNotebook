@@ -17,7 +17,7 @@ const rows = [...commandList.matchAll(/\{([^{}]*)\}/g)]
   .filter((item) => item.label && item.shortcut)
   .map((item) => `| ${item.shortcut} | ${item.label} |`);
 
-const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the vault tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the vault tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |\n`;
+const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the library tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the library tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |\n`;
 const featureNavigation = `
 ## Feature navigation
 
@@ -29,7 +29,8 @@ Standard text editing and pane/tab navigation are reserved.
 | Global context menu | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape |
 | Rich-text toolbar | One tab stop; Left/Right, Home/End; Tab leaves toolbar |
 | Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder |
-| Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Escape cancel |
+| Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header |
+| Details grid | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames |
 | Flashcards | Tab to Show answer, then Again/Hard/Good/Easy |
 `;
 await writeFile(outputPath, await prettier.format(document + featureNavigation, { parser: 'markdown' }));
