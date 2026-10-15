@@ -220,6 +220,7 @@ export default function App() {
   const [taskSort, setTaskSort] = useState<'due' | 'priority'>('due');
   const [treeSelection, setTreeSelection] = useState<string | null>(null);
   const [selectedNotebookPath, setSelectedNotebookPath] = useState<string>();
+  const [relocatingPath, setRelocatingPath] = useState<string>();
   const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
@@ -371,10 +372,15 @@ export default function App() {
   }, [vault?.path, securityLocked]);
 
   useEffect(() => {
+    if (
+      relocatingPath &&
+      (selectedNotebookPath === relocatingPath || selectedNotebookPath?.startsWith(`${relocatingPath}/`))
+    )
+      return;
     setSelectedNotebookPath((current) =>
       current && findEntry(vault?.entries ?? [], current)?.kind === 'notebook' ? current : undefined,
     );
-  }, [vault]);
+  }, [vault, relocatingPath, selectedNotebookPath]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -915,13 +921,20 @@ export default function App() {
       .filter(Boolean)
       .join('/');
     if (source === destination) throw new Error('Choose a different name or notebook.');
-    const updated =
-      request.action === 'rename' ? await bridge.rename(source, name) : await bridge.move(source, destination);
-    setVault(updated);
-    if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
     const moved = (relative: string) =>
       relative === source || relative.startsWith(`${source}/`) ? destination + relative.slice(source.length) : relative;
-    setSelectedNotebookPath((current) => (current ? moved(current) : current));
+    let updated: VaultInfo;
+    setRelocatingPath(source);
+    try {
+      updated =
+        request.action === 'rename' ? await bridge.rename(source, name) : await bridge.move(source, destination);
+      setVault(updated);
+      if (!findEntry(updated.entries, source))
+        setSelectedNotebookPath((current) => (current ? moved(current) : current));
+    } finally {
+      setRelocatingPath(undefined);
+    }
+    if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
     const refreshed = await Promise.all(
       openNotes.map(async (note) => {
         const nextPath = moved(note.path);

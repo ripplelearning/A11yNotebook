@@ -324,60 +324,79 @@ describe('accessible details view', () => {
   });
 
   it.each([
-    { action: 'rename', cancelled: false },
-    { action: 'move', cancelled: false },
-    { action: 'rename', cancelled: true },
-    { action: 'move', cancelled: true },
-  ] as const)('updates notebook context after $action (cancelled: $cancelled)', async ({ action, cancelled }) => {
-    const { vault, bridge } = renderLibrary();
-    await screen.findByRole('heading', { name: 'Study', level: 2 });
-    navigate('2');
-    const research = screen.getByRole('gridcell', { name: 'Research' });
-    research.focus();
-    const destination = action === 'rename' ? 'Renamed' : 'Archive/Research';
-    const remap = (entry: VaultEntry): VaultEntry => ({
-      ...entry,
-      path: entry.path.replace(/^Research/, destination),
-      name: entry.path === 'Research' && action === 'rename' ? 'Renamed' : entry.name,
-      children: entry.children?.map(remap),
-    });
-    const researchEntry = remap(vault.entries[0]);
-    const updated: VaultInfo = {
-      ...vault,
-      entries: [
-        ...(action === 'rename' ? [researchEntry] : []),
-        {
-          ...vault.entries[1],
-          children: [...(vault.entries[1].children ?? []), ...(action === 'move' ? [researchEntry] : [])],
-        },
-        vault.entries[2],
-      ],
-    };
-    vi.mocked(bridge.vault.rename).mockResolvedValue(cancelled ? vault : updated);
-    vi.mocked(bridge.vault.move).mockResolvedValue(cancelled ? vault : updated);
-    if (action === 'rename') {
-      fireEvent.keyDown(research, { key: 'F2' });
-      fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
-    } else {
-      fireEvent.keyDown(research, { key: 'F10', shiftKey: true });
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Move' }));
-      fireEvent.change(screen.getByRole('combobox', { name: 'Destination notebook' }), {
-        target: { value: 'Archive' },
+    { action: 'rename', cancelled: false, watcherRefresh: false },
+    { action: 'move', cancelled: false, watcherRefresh: false },
+    { action: 'rename', cancelled: true, watcherRefresh: false },
+    { action: 'move', cancelled: true, watcherRefresh: false },
+    { action: 'rename', cancelled: false, watcherRefresh: true },
+    { action: 'move', cancelled: false, watcherRefresh: true },
+  ] as const)(
+    'updates notebook context after $action (cancelled: $cancelled, watcher refresh: $watcherRefresh)',
+    async ({ action, cancelled, watcherRefresh }) => {
+      const { vault, bridge } = renderLibrary();
+      await screen.findByRole('heading', { name: 'Study', level: 2 });
+      navigate('2');
+      const research = screen.getByRole('gridcell', { name: 'Research' });
+      research.focus();
+      const destination = action === 'rename' ? 'Renamed' : 'Archive/Research';
+      const remap = (entry: VaultEntry): VaultEntry => ({
+        ...entry,
+        path: entry.path.replace(/^Research/, destination),
+        name: entry.path === 'Research' && action === 'rename' ? 'Renamed' : entry.name,
+        children: entry.children?.map(remap),
       });
-    }
-    const title = action === 'rename' ? 'Rename item' : 'Move item';
-    fireEvent.click(screen.getByRole('button', { name: title }));
-    await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument());
-    expect(bridge.vault[action]).toHaveBeenCalledWith('Research', action === 'rename' ? 'Renamed' : destination);
-    navigate('3');
-    if (cancelled) expectResearchContext();
-    else {
-      expect(screen.getByText(`Items in ${destination}`)).toBeInTheDocument();
-      expect(screen.getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
-      expect(screen.queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
-      expect(screen.queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
-    }
-  });
+      const researchEntry = remap(vault.entries[0]);
+      const updated: VaultInfo = {
+        ...vault,
+        entries: [
+          ...(action === 'rename' ? [researchEntry] : []),
+          {
+            ...vault.entries[1],
+            children: [...(vault.entries[1].children ?? []), ...(action === 'move' ? [researchEntry] : [])],
+          },
+          vault.entries[2],
+        ],
+      };
+      vi.mocked(bridge.vault.rename).mockResolvedValue(cancelled ? vault : updated);
+      vi.mocked(bridge.vault.move).mockResolvedValue(cancelled ? vault : updated);
+      let finishRelocation!: (value: VaultInfo) => void;
+      if (watcherRefresh)
+        vi.mocked(bridge.vault[action]).mockReturnValue(
+          new Promise<VaultInfo>((resolve) => {
+            finishRelocation = resolve;
+          }),
+        );
+      if (action === 'rename') {
+        fireEvent.keyDown(research, { key: 'F2' });
+        fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
+      } else {
+        fireEvent.keyDown(research, { key: 'F10', shiftKey: true });
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Move' }));
+        fireEvent.change(screen.getByRole('combobox', { name: 'Destination notebook' }), {
+          target: { value: 'Archive' },
+        });
+      }
+      const title = action === 'rename' ? 'Rename item' : 'Move item';
+      fireEvent.click(screen.getByRole('button', { name: title }));
+      if (watcherRefresh) {
+        vi.mocked(bridge.vault.get).mockResolvedValue(updated);
+        const changed = vi.mocked(bridge.vault.onChanged).mock.calls[0][0];
+        await act(async () => changed({ vaultPath: vault.path, paths: ['Research', destination] }));
+        await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
+        await act(async () => finishRelocation(updated));
+      }
+      await waitFor(() => expect(screen.queryByRole('dialog', { name: title })).not.toBeInTheDocument());
+      expect(bridge.vault[action]).toHaveBeenCalledWith('Research', action === 'rename' ? 'Renamed' : destination);
+      navigate('3');
+      if (cancelled) expectResearchContext();
+      else {
+        expect(screen.getByText(`Items in ${destination}`)).toBeInTheDocument();
+        expect(screen.getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
+        expect(screen.queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
+        expect(screen.queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
+      }
+    },
+  );
 
   it.each([false, true])(
     'cleans up context on deletion without losing it on cancellation (cancelled: %s)',
