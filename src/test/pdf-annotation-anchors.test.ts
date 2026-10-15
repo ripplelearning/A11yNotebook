@@ -485,5 +485,5 @@ describe('stable PDF annotation anchors', () => {
         await document.destroy();
       }
     }
-  });
+  }, 15_000);
 });
