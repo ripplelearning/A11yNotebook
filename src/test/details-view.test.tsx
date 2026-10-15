@@ -151,7 +151,10 @@ describe('accessible details view', () => {
     expect(screen.queryByRole('gridcell', { name: 'Archive' })).not.toBeInTheDocument();
   });
 
-  it('routes View commands through real library screens and opens notes from the details grid', async () => {
+  it.each([
+    { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
+    { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report.txt' },
+  ])('keeps the notebook context after opening $name from the details grid', async ({ name, path, heading }) => {
     const vault = {
       name: 'Study',
       path: 'C:/Study',
@@ -160,8 +163,18 @@ describe('accessible details view', () => {
           name: 'Research',
           path: 'Research',
           kind: 'notebook' as const,
-          children: [{ name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' as const }],
+          children: [
+            { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' as const },
+            { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment' as const },
+          ],
         },
+        {
+          name: 'Archive',
+          path: 'Archive',
+          kind: 'notebook' as const,
+          children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note' as const }],
+        },
+        { name: 'Root.md', path: 'Root.md', kind: 'note' as const },
       ],
     };
     const bridge = {
@@ -181,6 +194,7 @@ describe('accessible details view', () => {
         getBookmarks: vi.fn(async () => []),
         isNoteEncrypted: vi.fn(async () => false),
         readNote: vi.fn(async () => '# Idea'),
+        readAttachment: vi.fn(async () => ({ path: 'Research/Report.txt', text: 'Report', kind: 'text' })),
       },
       onMenuCommand: vi.fn(() => () => undefined),
     } as unknown as NotebookBridge;
@@ -205,9 +219,33 @@ describe('accessible details view', () => {
     fireEvent.keyDown(research, { key: 'Enter' });
 
     const notesFiles = await screen.findByRole('grid', { name: 'Notes and files' });
-    const idea = within(notesFiles).getByRole('gridcell', { name: 'Idea.md' });
-    fireEvent.keyDown(idea, { key: 'Enter' });
-    expect(await screen.findByRole('heading', { name: 'Idea', level: 2 })).toBeInTheDocument();
-    expect(bridge.vault.readNote).toHaveBeenCalledWith('Research/Idea.md', undefined);
+    const assertResearchContext = () => {
+      expect(screen.getByText('Items in Research')).toBeInTheDocument();
+      const grid = screen.getByRole('grid', { name: 'Notes and files' });
+      expect(within(grid).getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
+      expect(within(grid).getByRole('gridcell', { name: 'Report.txt' })).toBeInTheDocument();
+      expect(within(grid).queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
+      expect(within(grid).queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
+    };
+    assertResearchContext();
+    const item = within(notesFiles).getByRole('gridcell', { name });
+    fireEvent.click(item);
+    assertResearchContext();
+    expect(screen.getByRole('row', { name: new RegExp(name) })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.keyDown(item, { key: 'Enter' });
+    expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument();
+    if (name === 'Idea.md') expect(bridge.vault.readNote).toHaveBeenCalledWith(path, undefined);
+    else expect(bridge.vault.readAttachment).toHaveBeenCalledWith(path);
+
+    fireEvent.click(within(viewMenu).getByRole('button', { name: 'Notes & Files' }));
+    assertResearchContext();
+
+    fireEvent.click(within(viewMenu).getByRole('button', { name: 'Notebooks' }));
+    fireEvent.click(screen.getByRole('gridcell', { name: 'Archive' }));
+    fireEvent.click(within(viewMenu).getByRole('button', { name: 'Notes & Files' }));
+    expect(screen.getByText('Items in Archive')).toBeInTheDocument();
+    const archiveFiles = screen.getByRole('grid', { name: 'Notes and files' });
+    expect(within(archiveFiles).getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(within(archiveFiles).queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
   });
 });
