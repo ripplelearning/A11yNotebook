@@ -371,6 +371,12 @@ export default function App() {
   }, [vault?.path, securityLocked]);
 
   useEffect(() => {
+    setSelectedNotebookPath((current) =>
+      current && findEntry(vault?.entries ?? [], current)?.kind === 'notebook' ? current : undefined,
+    );
+  }, [vault]);
+
+  useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
     document.documentElement.style.fontSize = `${settings.fontSize}px`;
   }, [settings.theme, settings.fontSize]);

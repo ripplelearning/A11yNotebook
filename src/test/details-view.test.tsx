@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import type { ComponentProps } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
@@ -247,5 +247,14 @@ describe('accessible details view', () => {
     const archiveFiles = screen.getByRole('grid', { name: 'Notes and files' });
     expect(within(archiveFiles).getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
     expect(within(archiveFiles).queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
+
+    vi.mocked(bridge.vault.get).mockResolvedValue({
+      ...vault,
+      entries: vault.entries.filter((entry) => entry.path !== 'Archive'),
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Refresh links' }));
+    await waitFor(() => expect(screen.queryByText('Items in Archive')).not.toBeInTheDocument());
+    expect(screen.getByRole('gridcell', { name: 'Idea.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Archived.md' })).not.toBeInTheDocument();
   });
 });
