@@ -219,6 +219,8 @@ export default function App() {
   const [priorityAscending, setPriorityAscending] = useState(true);
   const [taskSort, setTaskSort] = useState<'due' | 'priority'>('due');
   const [treeSelection, setTreeSelection] = useState<string | null>(null);
+  const [selectedNotebookPath, setSelectedNotebookPath] = useState<string>();
+  const [relocatingPath, setRelocatingPath] = useState<string>();
   const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
@@ -364,6 +366,21 @@ export default function App() {
       cancelled = true;
     };
   }, [vault?.path, securityLocked]);
+
+  useEffect(() => {
+    setSelectedNotebookPath(undefined);
+  }, [vault?.path, securityLocked]);
+
+  useEffect(() => {
+    if (
+      relocatingPath &&
+      (selectedNotebookPath === relocatingPath || selectedNotebookPath?.startsWith(`${relocatingPath}/`))
+    )
+      return;
+    setSelectedNotebookPath((current) =>
+      current && findEntry(vault?.entries ?? [], current)?.kind === 'notebook' ? current : undefined,
+    );
+  }, [vault, relocatingPath, selectedNotebookPath]);
 
   useEffect(() => {
     document.documentElement.dataset.theme = settings.theme;
@@ -656,6 +673,11 @@ export default function App() {
     updater.check();
   };
 
+  const selectEntry = (entry: VaultEntry) => {
+    setTreeSelection(entry.path);
+    if (entry.kind === 'notebook') setSelectedNotebookPath(entry.path);
+  };
+
   const openEntry = async (
     entry: VaultEntry,
     notePassword?: string,
@@ -665,7 +687,7 @@ export default function App() {
     const bridge = window.a11yNotebook;
     if (!bridge || switchingRef.current || !canContinue()) return;
     const root = vaultPathRef.current;
-    setTreeSelection(entry.path);
+    selectEntry(entry);
     if (assetRegistry.resolve(entry.path)) {
       if (assetDirty || assetBusy) {
         setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
@@ -899,12 +921,20 @@ export default function App() {
       .filter(Boolean)
       .join('/');
     if (source === destination) throw new Error('Choose a different name or notebook.');
-    const updated =
-      request.action === 'rename' ? await bridge.rename(source, name) : await bridge.move(source, destination);
-    setVault(updated);
-    if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
     const moved = (relative: string) =>
       relative === source || relative.startsWith(`${source}/`) ? destination + relative.slice(source.length) : relative;
+    let updated: VaultInfo;
+    setRelocatingPath(source);
+    try {
+      updated =
+        request.action === 'rename' ? await bridge.rename(source, name) : await bridge.move(source, destination);
+      setVault(updated);
+      if (!findEntry(updated.entries, source))
+        setSelectedNotebookPath((current) => (current ? moved(current) : current));
+    } finally {
+      setRelocatingPath(undefined);
+    }
+    if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
     const refreshed = await Promise.all(
       openNotes.map(async (note) => {
         const nextPath = moved(note.path);
@@ -930,7 +960,7 @@ export default function App() {
   };
 
   const handleTreeAction = (entry: VaultEntry, action: TreeAction) => {
-    setTreeSelection(entry.path);
+    selectEntry(entry);
     if (action === 'new-note') setItemDialog({ action: 'new-note' });
     else if (action === 'new-template') handleCommand('new-from-template');
     else if (action === 'rename') renameEntry(entry.path);
@@ -1804,11 +1834,9 @@ export default function App() {
       const rightDate = right.dueDate ?? '9999-12-31';
       return leftDate.localeCompare(rightDate) * (dueAscending ? 1 : -1);
     });
-  const selectedTreeEntry = findEntry(vault?.entries ?? [], treeSelection);
-  const selectedNotebookPath = selectedTreeEntry?.kind === 'notebook' ? selectedTreeEntry.path : undefined;
   const openDetailsEntry = (entry: VaultEntry) => {
     if (entry.kind === 'notebook') {
-      setTreeSelection(entry.path);
+      selectEntry(entry);
       setSelectedTab('notes-files');
       return;
     }
@@ -1982,7 +2010,7 @@ export default function App() {
             <VaultTree
               entries={vault.entries}
               selectedPath={treeSelection}
-              onSelect={(entry) => setTreeSelection(entry.path)}
+              onSelect={selectEntry}
               onOpen={(entry) =>
                 void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'))
               }
@@ -2145,7 +2173,7 @@ export default function App() {
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
                 selectedPath={treeSelection}
-                onSelect={(entry) => setTreeSelection(entry.path)}
+                onSelect={selectEntry}
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
@@ -2156,7 +2184,7 @@ export default function App() {
                 hasLibrary={!!vault}
                 notebookPath={selectedNotebookPath}
                 selectedPath={treeSelection}
-                onSelect={(entry) => setTreeSelection(entry.path)}
+                onSelect={selectEntry}
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}

@@ -1,5 +1,5 @@
 // Accessible filesystem tree for vault notebooks, Markdown notes, and attachments.
-import { useEffect, useMemo, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import type { VaultEntry } from '../../../shared/types';
 
 interface VaultTreeProps {
@@ -31,14 +31,26 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
+  const tree = useRef<HTMLDivElement>(null);
+  const treeHadFocus = useRef(false);
   const visible = visibleEntries(entries, expanded);
   const activePath = visible.some(({ entry }) => entry.path === focusedPath)
     ? focusedPath
     : (visible[0]?.entry.path ?? null);
 
   useEffect(() => {
-    if (activePath) itemRefs.get(activePath)?.focus();
+    if (activePath && treeHadFocus.current) itemRefs.get(activePath)?.focus();
   }, [activePath, itemRefs]);
+
+  useEffect(() => {
+    const updateFocus = (event: FocusEvent) => {
+      if (event.target instanceof Node && !tree.current?.contains(event.target)) {
+        treeHadFocus.current = false;
+      }
+    };
+    document.addEventListener('focusin', updateFocus);
+    return () => document.removeEventListener('focusin', updateFocus);
+  }, []);
 
   const focus = (path: string) => {
     setFocusedPath(path);
@@ -143,6 +155,7 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
             aria-selected={selectedPath === entry.path}
             tabIndex={activePath === entry.path ? 0 : -1}
             onFocus={() => {
+              treeHadFocus.current = true;
               setFocusedPath(entry.path);
               onSelect(entry);
             }}
@@ -171,7 +184,7 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
 
   return (
     <>
-      <div role="tree" aria-label="Vault files">
+      <div ref={tree} role="tree" aria-label="Vault files">
         {render(entries)}
         {!entries.length ? <p>No files yet. Create a notebook or note to get started.</p> : null}
       </div>
