@@ -132,12 +132,6 @@ export type KeyboardShortcutDefinition = {
 
 export const COMMANDS: CommandDefinition[] = [
   {
-    id: 'context-import-internal',
-    label: 'Import into A11y Notebook',
-    description: 'Import a separate compatible copy for internal reading or editing.',
-    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
-  },
-  {
     id: 'show-contents',
     label: 'Contents',
     description: 'Show the contents overview.',
@@ -194,6 +188,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Reveal in Explorer',
     description: 'Reveal the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment'],
+  },
+  {
+    id: 'context-import-internal',
+    label: 'Import into A11y Notebook',
+    description: 'Import a separate compatible copy for internal reading or editing.',
+    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'context-bookmark',

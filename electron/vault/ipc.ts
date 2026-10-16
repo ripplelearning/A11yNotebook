@@ -4,7 +4,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
-import { createVaultService } from './service';
+import { createVaultService, NoteReadSizeLimitError } from './service';
 import { openWithChooser } from './open-with';
 import { createAnnotationStore } from './annotations';
 import { createMetadataStore } from './metadata';
@@ -1099,7 +1099,16 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultNoteEncryptionStatus, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid note path.');
-    const content = await requireService().readNote(relative);
+    const access = captureVaultAccess(event, isTrustedSender);
+    let content: string;
+    try {
+      content = await access.vault.readNote(relative, 16 * 1024 * 1024);
+    } catch (error) {
+      access.assertCurrent();
+      if (error instanceof NoteReadSizeLimitError) return false;
+      throw error;
+    }
+    access.assertCurrent();
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
@@ -1677,7 +1686,7 @@ export function setupVaultIpc(
     if (typeof relativePath !== 'string' || (password !== undefined && typeof password !== 'string'))
       throw new Error('Note path or password is invalid.');
     const access = captureVaultAccess(event, isTrustedSender);
-    const content = await access.vault.readNote(relativePath);
+    const content = await access.vault.readNote(relativePath, 16 * 1024 * 1024);
     access.assertCurrent();
     let parsed: unknown;
     try {
@@ -1687,10 +1696,18 @@ export function setupVaultIpc(
     }
     if (isPasswordEncryptedNote(parsed)) {
       const cachedKey = noteKeys.get(parsed.id);
-      if (cachedKey) return decryptPasswordEncryptedNote(cachedKey, parsed);
+      if (cachedKey) {
+        const plaintext = decryptPasswordEncryptedNote(cachedKey, parsed);
+        access.assertCurrent();
+        await access.vault.adoptAuthenticatedNote(relativePath, content, access.assertCurrent);
+        access.assertCurrent();
+        return plaintext;
+      }
       if (typeof password !== 'string') throw new Error('Enter this note’s password to open it.');
       const unlocked = await unlockPasswordEncryptedNote(password, parsed);
       try {
+        access.assertCurrent();
+        await access.vault.adoptAuthenticatedNote(relativePath, content, access.assertCurrent);
         access.assertCurrent();
       } catch (error) {
         unlocked.key.fill(0);
@@ -1702,7 +1719,11 @@ export function setupVaultIpc(
     }
     if (!isEncryptedRecord(parsed)) return content;
     if (!masterKey) throw new Error('Unlock the library before opening this encrypted note.');
-    return readVaultEncryptedNote(parsed);
+    const plaintext = readVaultEncryptedNote(parsed);
+    access.assertCurrent();
+    await access.vault.adoptAuthenticatedNote(relativePath, content, access.assertCurrent);
+    access.assertCurrent();
+    return plaintext;
   });
   ipcMain.handle(
     IPC_CHANNELS.vaultSaveNote,

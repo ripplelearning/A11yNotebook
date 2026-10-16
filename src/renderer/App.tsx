@@ -723,7 +723,22 @@ export default function App() {
     if (!bridge || switchingRef.current || !canContinue()) return;
     const root = vaultPathRef.current;
     selectEntry(entry);
-    if (entry.kind !== 'notebook' && (entry.provenance === 'unknown' || !isInternallySupportedPath(entry.path))) {
+    let legacyEncryptedNote = false;
+    if (entry.kind === 'note' && entry.provenance === 'unknown') {
+      const generation = externalOperationGeneration.current;
+      legacyEncryptedNote = (await bridge.vault.isNoteEncrypted?.(entry.path)) ?? false;
+      if (
+        generation !== externalOperationGeneration.current ||
+        vaultPathRef.current !== root ||
+        switchingRef.current ||
+        !canContinue()
+      )
+        return;
+    }
+    if (
+      entry.kind !== 'notebook' &&
+      ((entry.provenance === 'unknown' && !legacyEncryptedNote) || !isInternallySupportedPath(entry.path))
+    ) {
       setExternalFile(entry);
       return;
     }
@@ -2299,7 +2314,9 @@ export default function App() {
             {assetTabOpen ? (
               <div hidden={selectedTab !== 'assets'}>
                 <AssetsWorkspace
-                  paths={allEntries.filter((entry) => entry.kind !== 'notebook').map((entry) => entry.path)}
+                  paths={allEntries
+                    .filter((entry) => entry.kind !== 'notebook' && entry.provenance !== 'unknown')
+                    .map((entry) => entry.path)}
                   initialPath={assetInitialPath}
                   selectionVersion={assetSelectionVersion}
                   creationRequestVersion={assetCreationVersion}

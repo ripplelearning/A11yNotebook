@@ -57,6 +57,8 @@ It does not make files read-only on disk.
 
 A11y Notebook records whether files were app-created or explicitly imported. Existing files without recorded
 provenance are treated as unknown, not automatically adopted because of their extension or location.
+Legacy A11y Notebook encrypted notes remain available through their normal unlock flow; provenance is recorded
+only after successful authenticated decryption.
 For an unknown file, Enter offers **Open with…** and, for compatible types, **Import into A11y Notebook**.
 The file context menu also offers import. Import makes a separate copy, validates supported formats and size
 limits, and sanitizes HTML; it does not modify the source. Only supported formats can be read or edited internally.
@@ -67,6 +69,25 @@ platforms may not provide this chooser; errors are reported without silently cha
 Keep `.a11ynotebook/` metadata with your library so provenance and other metadata remain available.
 App-managed renames, moves, and saves retain provenance. Ordinary external in-place edits retain it too;
 externally replaced files or files renamed outside the app may become unknown and require explicit import again.
+
+### Windows accessibility and application-chooser checks
+
+Automated tests do not verify spoken output or the real Windows application chooser. With a backed-up test
+library, check both the installed and portable builds:
+
+- With NVDA, JAWS, or Narrator, repeat Ctrl+1 through Ctrl+5, with and without an open library/notebook.
+  Confirm one contextual destination announcement, without competing focus/status speech.
+- Use Ctrl+N in each view; cancel and complete creation. Verify unsaved work and locked libraries remain protected.
+  Create/save/reopen all five cognitive tool types and confirm a new task survives library reopening.
+- Select a different file row and repeat Ctrl+3/Ctrl+N; confirm the selected notebook remains the creation context.
+  Check both visible note/template buttons.
+- Save each default note-open mode and open, switch, close, and reopen notes. Confirm Ctrl+E still works and an
+  editing lock cannot be bypassed.
+- On an unknown file, test Open With with spaces and non-ASCII filenames. Cancel the Windows chooser and verify
+  the existing association is unchanged. If Windows offers a default-app choice, test it only on a disposable
+  file type, verify subsequent OS opening, and restore the original association afterward.
+- Import compatible external files, including HTML with active content. Confirm the copy opens internally,
+  unsafe HTML is removed, the original is unchanged, and rename/move/reopen retain the copy's provenance.
 
 The Format menu and formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses

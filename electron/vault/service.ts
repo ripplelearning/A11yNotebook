@@ -19,6 +19,13 @@ function isNotePath(value: string) {
   return ['.md', '.html'].includes(path.extname(value).toLowerCase());
 }
 
+export class NoteReadSizeLimitError extends Error {
+  constructor() {
+    super('This note exceeds the safe reading size limit.');
+    this.name = 'NoteReadSizeLimitError';
+  }
+}
+
 /** Create an operations facade for one canonical vault folder. */
 export function createVaultService(vaultPath: string, onChanged?: (event: VaultChangedEvent) => void | Promise<void>) {
   let root = '';
@@ -230,10 +237,28 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return { name: path.basename(root), path: root, entries: await scanDirectory(root, '') };
   }
 
-  async function readNote(relativePath: string) {
+  async function readNote(relativePath: string, maximumBytes?: number) {
     const target = await resolveEntry(relativePath);
     if (!isNotePath(target)) throw new Error('Only Markdown and HTML notes can be edited.');
-    return readFile(target, 'utf8');
+    if (maximumBytes === undefined) return readFile(target, 'utf8');
+    const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile()) throw new Error('Notes must be regular files.');
+      if (stat.size > maximumBytes) throw new NoteReadSizeLimitError();
+      const bytes = Buffer.alloc(Math.min(stat.size + 1, maximumBytes + 1));
+      let length = 0;
+      while (length < bytes.length) {
+        const { bytesRead } = await file.read(bytes, length, bytes.length - length, length);
+        if (!bytesRead) break;
+        length += bytesRead;
+      }
+      if (length > maximumBytes) throw new NoteReadSizeLimitError();
+      if (length > stat.size) throw new Error('The note changed while reading. Reopen it.');
+      return bytes.subarray(0, length).toString('utf8');
+    } finally {
+      await file.close();
+    }
   }
 
   async function replaceNote(
@@ -399,6 +424,20 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function recordProvenance(relative: string, origin: NonNullable<VaultEntry['provenance']>) {
     await provenance.record(relative, await resolveEntry(relative), origin);
+  }
+
+  function adoptAuthenticatedNote(relative: string, expectedContent: string, assertCurrent: () => void) {
+    return serializeNoteWrite(async () => {
+      assertCurrent();
+      const target = await resolveEntry(relative);
+      const stat = await lstat(target);
+      if (provenance.get(relative, stat) !== 'unknown') return;
+      if ((await readNote(relative, 16 * 1024 * 1024)) !== expectedContent)
+        throw new Error('The note changed while authenticating its origin. Reopen it.');
+      assertCurrent();
+      await provenance.record(relative, target, 'app-created', stat, assertCurrent);
+      assertCurrent();
+    });
   }
 
   async function renameEntry(relativePath: string, newName: string) {
@@ -622,6 +661,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     importEntry,
     getProvenance,
     recordProvenance,
+    adoptAuthenticatedNote,
     removeProvenance: provenance.remove,
     renameEntry,
     moveEntry,

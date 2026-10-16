@@ -45,13 +45,15 @@ export function createProvenanceStore(resolveMetadata: (name: string, missing?: 
     }
   }
 
-  function persist() {
+  function persist(assertCurrent: () => void = () => undefined) {
     const next = writes.then(async () => {
+      assertCurrent();
       const filename = await resolveMetadata('provenance.json', true);
       const temporary = await resolveMetadata(`provenance-${randomUUID()}.tmp`, true);
       try {
         await writeFile(temporary, JSON.stringify(records), { flag: 'wx', mode: 0o600 });
         await resolveMetadata('provenance.json', true);
+        assertCurrent();
         await rename(temporary, filename);
       } finally {
         await rm(temporary, { force: true }).catch(() => undefined);
@@ -67,11 +69,36 @@ export function createProvenanceStore(resolveMetadata: (name: string, missing?: 
       const record = records[relative];
       return record?.identity === identity(stat) ? record.origin : 'unknown';
     },
-    async record(relative: string, absolute: string, origin: Provenance) {
+    async record(
+      relative: string,
+      absolute: string,
+      origin: Provenance,
+      expected?: Stats,
+      assertCurrent: () => void = () => undefined,
+    ) {
       const stat = await lstat(absolute);
       if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Only regular files have provenance.');
-      records[relative] = { origin, identity: identity(stat) };
-      await persist();
+      if (
+        expected &&
+        (identity(stat) !== identity(expected) ||
+          stat.size !== expected.size ||
+          stat.mtimeMs !== expected.mtimeMs ||
+          stat.ctimeMs !== expected.ctimeMs)
+      )
+        throw new Error('The note changed while authenticating its origin. Reopen it.');
+      assertCurrent();
+      const previous = records[relative];
+      const record = { origin, identity: identity(stat) };
+      records[relative] = record;
+      try {
+        await persist(assertCurrent);
+      } catch (error) {
+        if (records[relative] === record) {
+          if (previous) records[relative] = previous;
+          else delete records[relative];
+        }
+        throw error;
+      }
     },
     async move(source: string, destination: string) {
       for (const key of Object.keys(records)) {

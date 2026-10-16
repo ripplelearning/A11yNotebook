@@ -1,10 +1,11 @@
 // @vitest-environment node
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, truncate, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
 import type { VaultInfo } from '../shared/types';
+import { createVaultSecurityConfig, encryptNoteWithPassword, encryptRecord } from '../../electron/vault/security';
 
 const mock = vi.hoisted(() => ({
   handlers: new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>(),
@@ -15,6 +16,7 @@ const mock = vi.hoisted(() => ({
   importSource: '',
   cancel: false,
   saveGate: undefined as undefined | (() => Promise<void>),
+  noteStatGate: undefined as undefined | (() => Promise<void>),
   failRecent: false,
   chooser: vi.fn(async () => undefined),
 }));
@@ -51,6 +53,21 @@ vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>();
   return {
     ...actual,
+    open: async (...args: Parameters<typeof actual.open>) => {
+      const handle = await actual.open(...args);
+      if (!String(args[0]).endsWith('Huge.md')) return handle;
+      return new Proxy(handle, {
+        get(target, property) {
+          if (property === 'stat')
+            return async () => {
+              await mock.noteStatGate?.();
+              return target.stat();
+            };
+          const value = Reflect.get(target, property, target);
+          return typeof value === 'function' ? value.bind(target) : value;
+        },
+      });
+    },
     writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
       if (mock.failRecent && String(args[0]).endsWith('recent-vault.json')) throw new Error('Recent write failed');
       return actual.writeFile(...args);
@@ -69,6 +86,7 @@ beforeEach(async () => {
   mock.cancel = false;
   mock.failRecent = false;
   mock.saveGate = undefined;
+  mock.noteStatGate = undefined;
   mock.importSource = '';
   mock.chooser.mockClear();
   workspace = path.join(process.cwd(), `.vault-ipc-${randomUUID()}`);
@@ -212,5 +230,91 @@ describe('creation IPC authorization and dialogs', () => {
       [IPC_CHANNELS.vaultOpenWith, 'External.html'],
     ] as const)
       await expect(invoke(channel, input)).rejects.toThrow('Unlock');
+  });
+
+  it('adopts legacy password-encrypted notes only after successful authenticated decryption', async () => {
+    const encrypted = await encryptNoteWithPassword('legacy note password', '# Legacy password note', 'legacy-note');
+    encrypted.key.fill(0);
+    const envelope = JSON.stringify(encrypted.record);
+    await writeFile(path.join(mock.root, 'Legacy.md'), envelope);
+    expect((await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries[0].provenance).toBe('unknown');
+    expect(await invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, 'Legacy.md')).toBe(true);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md', 'wrong password')).rejects.toThrow();
+    expect((await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries[0].provenance).toBe('unknown');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md', 'legacy note password')).toBe(
+      '# Legacy password note',
+    );
+    expect((await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries[0].provenance).toBe('app-created');
+    await writeFile(path.join(mock.root, 'Legacy-copy.md'), envelope);
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy-copy.md')).toBe('# Legacy password note');
+    expect(
+      (await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries.every((entry) => entry.provenance === 'app-created'),
+    ).toBe(true);
+    await invoke(IPC_CHANNELS.vaultOpen);
+    expect(
+      (await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries.every((entry) => entry.provenance === 'app-created'),
+    ).toBe(true);
+  });
+
+  it('adopts legacy vault-encrypted notes only after master-key authentication', async () => {
+    const fixture = await createVaultSecurityConfig('legacy vault password');
+    const record = encryptRecord(fixture.key, 'note', 'legacy-vault-note', '# Legacy vault note');
+    fixture.key.fill(0);
+    await writeFile(path.join(mock.root, '.a11ynotebook/security.json'), JSON.stringify(fixture.config));
+    await writeFile(path.join(mock.root, 'Legacy.md'), JSON.stringify(record));
+    await writeFile(
+      path.join(mock.root, 'Tampered.md'),
+      JSON.stringify({ ...record, tag: Buffer.alloc(16).toString('base64') }),
+    );
+    await invoke(IPC_CHANNELS.vaultOpen);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'legacy vault password');
+    expect((await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries[0].provenance).toBe('unknown');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Tampered.md')).rejects.toThrow();
+    expect(
+      (await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries.find((entry) => entry.path === 'Tampered.md')
+        ?.provenance,
+    ).toBe('unknown');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).toBe('# Legacy vault note');
+    expect(
+      (await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries.find((entry) => entry.path === 'Legacy.md')?.provenance,
+    ).toBe('app-created');
+  });
+
+  it('does not adopt ordinary unknown notes and bounds encryption-envelope reads', async () => {
+    await writeFile(path.join(mock.root, 'Ordinary.md'), '# External ordinary note');
+    expect(await invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, 'Ordinary.md')).toBe(false);
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Ordinary.md')).toBe('# External ordinary note');
+    expect((await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries[0].provenance).toBe('unknown');
+    await writeFile(path.join(mock.root, 'Huge.md'), '');
+    await truncate(path.join(mock.root, 'Huge.md'), 16 * 1024 * 1024 + 1);
+    expect(await invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, 'Huge.md')).toBe(false);
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Huge.md')).rejects.toThrow('safe reading size limit');
+    expect(
+      (await invoke<VaultInfo>(IPC_CHANNELS.vaultGet)).entries.find((entry) => entry.path === 'Huge.md')?.provenance,
+    ).toBe('unknown');
+  });
+
+  it('does not swallow access revocation or invalid paths in encryption-status size preflight', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, '../Outside.md')).rejects.toThrow('not valid');
+    await writeFile(path.join(mock.root, 'Huge.md'), '');
+    await truncate(path.join(mock.root, 'Huge.md'), 16 * 1024 * 1024 + 1);
+    let release!: () => void;
+    let entered!: () => void;
+    const waiting = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    mock.noteStatGate = () => {
+      entered();
+      return gate;
+    };
+    const checking = invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, 'Huge.md');
+    await waiting;
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await expect(checking).rejects.toThrow('lock state changed');
   });
 });

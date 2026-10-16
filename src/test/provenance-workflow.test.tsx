@@ -141,4 +141,42 @@ describe('provenance-aware row activation', () => {
     expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Library locked.');
   });
+
+  it('keeps the password-unlock flow available for a legacy encrypted note without provenance', async () => {
+    const bridge = installBridge();
+    bridge.vault.isNoteEncrypted = vi.fn(async () => true);
+    vi.mocked(bridge.vault.readNote).mockRejectedValueOnce(new Error('Enter this note’s password.'));
+    render(<App />);
+    const grid = await showFiles();
+    fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Outside.md' }), { key: 'Enter' });
+    const dialog = await screen.findByRole('dialog', { name: 'Unlock encrypted note' });
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Note password'), {
+      target: { value: 'test-note-passphrase' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unlock note' }));
+    await screen.findByRole('heading', { name: 'Outside', level: 2 });
+    expect(bridge.vault.readNote).toHaveBeenCalledWith('Research/Outside.md', 'test-note-passphrase');
+    expect(bridge.vault.importEntry).not.toHaveBeenCalled();
+  });
+
+  it('does not expose unknown assets in the direct Cognitive Tools editing selector', async () => {
+    const bridge = installBridge();
+    const assets: VaultInfo = {
+      ...library,
+      entries: [
+        ...library.entries,
+        { name: 'Outside.outline.md', path: 'Outside.outline.md', kind: 'note', provenance: 'unknown' },
+        { name: 'Inside.outline.md', path: 'Inside.outline.md', kind: 'note', provenance: 'app-created' },
+      ],
+    };
+    vi.mocked(bridge.vault.get).mockResolvedValue(assets);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.keyDown(document.body, { key: '5', ctrlKey: true });
+    const selector = await screen.findByRole('combobox', { name: 'Asset file' });
+    expect(within(selector).queryByRole('option', { name: 'Outside.outline.md' })).not.toBeInTheDocument();
+    expect(within(selector).getByRole('option', { name: 'Inside.outline.md' })).toBeInTheDocument();
+    expect(bridge.vault.readAsset).not.toHaveBeenCalled();
+  });
 });

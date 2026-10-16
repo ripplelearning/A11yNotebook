@@ -159,4 +159,17 @@ describe('trusted creation and import workflows', () => {
     await truncate(source, Number(limitMiB) * 1024 * 1024 + 1);
     await expect(service.importEntry(String(filename))).rejects.toThrow('too large');
   });
+
+  it('refuses authenticated-origin adoption if the envelope changed or authorization was revoked', async () => {
+    await writeFile(path.join(root, 'Legacy.md'), 'replacement envelope');
+    await expect(
+      service.adoptAuthenticatedNote('Legacy.md', 'authenticated envelope', () => undefined),
+    ).rejects.toThrow('changed');
+    await expect(
+      service.adoptAuthenticatedNote('Legacy.md', 'replacement envelope', () => {
+        throw new Error('Locked');
+      }),
+    ).rejects.toThrow('Locked');
+    expect(await service.getProvenance('Legacy.md')).toBe('unknown');
+  });
 });
