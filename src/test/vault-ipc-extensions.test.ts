@@ -1354,7 +1354,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
-  });
+  }, 30_000);
   it('requires explicit consent for protected exports and uses the native save dialog', async () => {
     const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');

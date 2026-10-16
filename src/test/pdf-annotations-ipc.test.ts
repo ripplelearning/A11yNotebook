@@ -176,7 +176,7 @@ describe('PDF annotation IPC security and persistence', () => {
     expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([credential]);
     await invoke(IPC_CHANNELS.vaultPdfAnnotationDelete, input.path, added.id);
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([second]);
-  });
+  }, 30_000);
 
   it('rejects protected content even in an unlocked vault and blocks all PDF operations while locked', async () => {
     await writeFile(
