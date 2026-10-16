@@ -170,7 +170,7 @@ describe('PDF annotation IPC security and persistence', () => {
     await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'another-test-password')).rejects.toThrow(
       /not configured/,
     );
-    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, password)).rejects.toThrow(/Incorrect vault password/);
+    await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, password)).rejects.toThrow(/Incorrect library password/);
     await invoke(IPC_CHANNELS.vaultSecurityUnlock, newPassword);
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([updated, second]);
     expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([credential]);

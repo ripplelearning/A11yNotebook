@@ -13,7 +13,7 @@ installer behavior, screen-reader speech, or secure erasure.
 | Feature                               | Evidence-based status                                                                                                                                                                                                                                                                                                          |
 | ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions.                                              |
-| Opt-in encrypted metadata/indexes     | **Scoped implementation:** Markdown/HTML/PDF annotations and cognitive checkpoints only, stable unlocked v3 config, explicit exclusion consent, authenticated per-store containers/pointers and resumable cleanup. Other metadata/indexes remain plaintext/open; not whole-vault encryption.                                   |
+| Opt-in encrypted metadata/indexes     | **Scoped implementation:** Markdown/HTML/PDF annotations and cognitive checkpoints only, stable unlocked v3 config, explicit exclusion consent, authenticated per-store containers/pointers and resumable cleanup. Other metadata/indexes remain plaintext/open; not whole-library encryption.                                 |
 | Cognitive unsaved-edit crash recovery | **Scoped implementation:** bounded encrypted debounced checkpoints, baseline conflict detection and explicit unsaved Restore/Discard/Compare. Malformed structured drafts are compare/copy-only (partial); no plaintext fallback. Debounce-window loss and manual Windows AT checks remain.                                    |
 | Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                                                               |
 | DOCX accessible local reading         | **Implemented on main (PR #27).** Bounded local ZIP/XML parser, semantic reader, navigation/search and hostile fixtures. DOCX annotations remain open; legacy `.doc` remains unsupported.                                                                                                                                      |
@@ -36,9 +36,9 @@ implementation, and mocks are not actual Windows verification.
 - ✅ CI/CD workflow (type check, lint, test, build) and tag-triggered release workflow
 - ✅ Code-signing wiring (WINDOWS_CERTIFICATE secrets)
 
-### Phase 2 — Vault and Notebook Model
+### Phase 2 — Library and Notebook Model
 
-- ✅ Local vault folders with notebooks, Markdown/HTML notes, and attachments
+- ✅ Local library folders with notebooks, Markdown/HTML notes, and attachments
 - ✅ Human-readable hidden `.a11ynotebook/` metadata directory
 - ✅ Filesystem service with path validation and symlink rejection
 - ✅ Accessible tree navigation (roving focus, expansion, Home/End, type-ahead, F2 rename, Delete)
@@ -46,7 +46,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ External-change watching and conflict resolution with autosave pause
 - ✅ Confirmed moves/renames with unambiguous link repair and metadata migration
 - ✅ Registry-backed global context menu (Shift+F10, Applications key, right-click)
-- ✅ Context-menu note encryption when vault protection enabled
+- ✅ Context-menu note encryption when library protection enabled
 
 ### Phase 3 — Reader and Editor Experience
 
@@ -67,7 +67,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Search and index HTML notes; link graph includes relative/wiki references
 - ✅ Markdown/HTML note conversion with explicit format-loss warnings (source preserved)
 - ✅ HTML checklists with stable `data-a11y-task-id`, completion, due-date, priority, and reminder attributes
-- ✅ Built-in and vault HTML/Markdown templates with placeholders, cursor placement, and preview
+- ✅ Built-in and library HTML/Markdown templates with placeholders, cursor placement, and preview
 - ✅ Markdown/HTML export through native save dialog (sanitized standalone HTML with embedded images)
 - ✅ Web capture offers Markdown or HTML format; main-process sanitization preserves semantic structure
 - ✅ HTML and Markdown note annotations with shared quote/context anchor storage
@@ -91,7 +91,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Persisted, validated reminder defaults and creation-dialog preferences
 - ✅ Named milestone service with stable task associations, move preservation, and live progress
 - ✅ Unified reminder and opt-in flashcard scheduler with persistent deduplication
-- ✅ Vault switch and lock cancellation for scheduled tasks
+- ✅ Library switch and lock cancellation for scheduled tasks
 - ✅ Settings-controlled in-app reminder alert queue and bundled sound; independent native notification preference
 - ⏳ **Exited-process notification delivery** — open; design needed for opt-in Windows integration
 - ✅ **Milestone planning UI** — existing-service list/detail/create/edit/delete and associations; manual AT verification open
@@ -115,25 +115,25 @@ implementation, and mocks are not actual Windows verification.
 
 ### Phase 7 — Security and Local Protection
 
-- ✅ Optional vault password gate with configurable idle-lock timeout
+- ✅ Optional library password gate with configurable idle-lock timeout
 - ✅ Unsaved-edit timeout protection with timed-out notes cleared after successful saves
-- ✅ Opt-in versioned vault recovery with separate random recovery key
+- ✅ Opt-in versioned library recovery with separate random recovery key
 - ✅ Authenticated password wrapper and credential-preserving atomic migration
 - ✅ Password reset, rotation, and revocation via recovery
-- ✅ AES-256-GCM encrypted credential storage (main-process vault key)
+- ✅ AES-256-GCM encrypted credential storage (main-process library key)
 - ✅ User-selected AES-256-GCM encrypted individual notes with scrypt-derived passwords
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`
-- ✅ Vault switch/lock detection and race-condition guarding for security operations
+- ✅ Library switch/lock detection and race-condition guarding for security operations
 - ✅ Recovery migration commit race-condition protection against concurrent locks
 - ✅ **Scoped sensitive-action audit logging** — bounded schema/retention, redaction, interruption/error tests; OS-user tampering and coverage limits apply
 - ✅ **Scoped encrypted annotations/checkpoints** — stable v3 keys, per-store authenticated envelopes and pointer migration
 - ⏳ **Excluded indexes and metadata** — search, links, bookmarks, reminders, settings and other documented exclusions remain plaintext/open
-- ⏳ **Whole-vault encryption** — open; separate opt-in mode with streaming/container format design needed
+- ⏳ **Whole-library encryption** — open; separate opt-in mode with streaming/container format design needed
 
 ### Phase 8 — Import and Document Support
 
-- ✅ Attachments stored in vault, listed in tree, reveal/external open available
+- ✅ Attachments stored in library, listed in tree, reveal/external open available
 - ✅ Sanitized sandboxed HTML, plain-text/CSV, and raster-image previews
 - ✅ Saved image descriptions and validated image protocol
 - ✅ Local pdf.js page rendering and text extraction
@@ -171,7 +171,7 @@ implementation, and mocks are not actual Windows verification.
 
 ### Remaining Phase 2 Work
 
-- Recent-vault picker UI (only automatic last-vault restoration currently exists)
+- Recent-library picker UI (only automatic last-library restoration currently exists)
 - Reference-style Markdown link repair
 - Crash-atomic multi-file moves
 
@@ -215,13 +215,13 @@ implementation, and mocks are not actual Windows verification.
 
 - **Audit history follow-ups** — native warning Windows AT validation, viewer/repair UI and broader automatic event coverage remain; scoped logging implemented
 - **Excluded indexes/metadata** — broader migration of direct writers/caches remains open beyond scoped annotation/checkpoint protection
-- **Whole-vault encryption** — requires threat model specification, streaming/container format, and crash/rollback testing
+- **Whole-library encryption** — requires threat model specification, streaming/container format, and crash/rollback testing
 
 ### Other Requested Features
 
 - Tag and metadata suggestions with calendar-like organization
 - Exited-process reminder delivery verification on Windows
-- Whole-vault encryption and encrypted metadata
+- Whole-library encryption and encrypted metadata
 
 ---
 
@@ -241,7 +241,7 @@ implementation, and mocks are not actual Windows verification.
 **Production readiness:** Not established. Implemented functionality still has explicit security/storage limitations and unrun Windows accessibility/packaging gates.  
 **Testable on Windows:** Core app, installer, updater, UI Automation smoke tests, portable `.exe`  
 **Manual AT Validation Needed:** All new security workflows, recovery flows, PDF/ePub navigation, milestone planning  
-**Design & Implementation Open:** Exited-process delivery, excluded indexes/metadata, whole-vault encryption, shared reader contract, DOCX annotations; legacy `.doc` unsupported. Windows sound/focus and new recovery/alert AT workflows require manual validation.
+**Design & Implementation Open:** Exited-process delivery, excluded indexes/metadata, whole-library encryption, shared reader contract, DOCX annotations; legacy `.doc` unsupported. Windows sound/focus and new recovery/alert AT workflows require manual validation.
 
 ---
 

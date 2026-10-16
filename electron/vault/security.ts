@@ -169,7 +169,7 @@ export async function createVaultSecurityConfig(
 
 export async function unlockVault(config: VaultSecurityConfig, password: string): Promise<Buffer> {
   if (!config || typeof config !== 'object' || ![1, 2, 3].includes(config.version)) {
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   }
   if (config.version === 3) {
     validateRecoverableConfig(config);
@@ -186,7 +186,7 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
       );
       if (dataKey.length !== KEY_BYTES) {
         dataKey.fill(0);
-        throw new Error('Vault security metadata is invalid.');
+        throw new Error('Library security metadata is invalid.');
       }
       try {
         verifyRecoverableConfig(config, dataKey);
@@ -196,7 +196,7 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
       }
       return dataKey;
     } catch {
-      throw new Error('Incorrect vault password or damaged security metadata.');
+      throw new Error('Incorrect library password or damaged security metadata.');
     } finally {
       wrappingKey.fill(0);
     }
@@ -207,7 +207,7 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
     typeof config.tag !== 'string' ||
     typeof config.verifier !== 'string'
   )
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   if (
     config.version === 2 &&
     (!config.wrappedKey ||
@@ -215,10 +215,10 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
       typeof config.wrappedKey.tag !== 'string' ||
       typeof config.wrappedKey.ciphertext !== 'string')
   )
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   const salt = Buffer.from(config.salt, 'base64');
   if (salt.length !== SALT_BYTES || salt.toString('base64') !== config.salt)
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   const key = await deriveKey(password, salt);
   try {
     const verifier = decryptBytes(
@@ -230,7 +230,7 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
       config.verifier,
     );
     try {
-      if (!verifier.equals(Buffer.from(VERIFIER))) throw new Error('Incorrect vault password.');
+      if (!verifier.equals(Buffer.from(VERIFIER))) throw new Error('Incorrect library password.');
     } finally {
       verifier.fill(0);
     }
@@ -245,12 +245,12 @@ export async function unlockVault(config: VaultSecurityConfig, password: string)
     );
     if (dataKey.length !== KEY_BYTES) {
       dataKey.fill(0);
-      throw new Error('Invalid vault data key.');
+      throw new Error('Invalid library data key.');
     }
     return dataKey;
   } catch {
     key.fill(0);
-    throw new Error('Incorrect vault password or damaged security metadata.');
+    throw new Error('Incorrect library password or damaged security metadata.');
   }
 }
 
@@ -261,7 +261,7 @@ function decodeBase64(value: string, expectedBytes?: number): Buffer {
     (expectedBytes !== undefined && bytes.length !== expectedBytes) ||
     bytes.length > 1024 * 1024
   )
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   return bytes;
 }
 
@@ -284,7 +284,7 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
       typeof (record as EncryptedRecord).tag !== 'string' ||
       typeof (record as EncryptedRecord).ciphertext !== 'string'
     )
-      throw new Error('Vault security metadata is invalid.');
+      throw new Error('Library security metadata is invalid.');
     decodeBase64((record as EncryptedRecord).nonce, NONCE_BYTES);
     decodeBase64((record as EncryptedRecord).tag, TAG_BYTES);
     decodeBase64((record as EncryptedRecord).ciphertext);
@@ -317,7 +317,7 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
     typeof config.integrity !== 'object' ||
     Buffer.byteLength(JSON.stringify(config), 'utf8') > 2 * 1024 * 1024
   )
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   decodeBase64(config.passwordSalt, SALT_BYTES);
   decodeBase64(config.passwordNonce, NONCE_BYTES);
   decodeBase64(config.passwordTag, TAG_BYTES);
@@ -327,7 +327,7 @@ function validateRecoverableConfig(config: RecoverableVaultSecurityConfig) {
   validateRecord(config.integrity);
   const recoveryFields = [config.recoveryNonce, config.recoveryTag, config.recoveryWrappedDataKey];
   if (recoveryFields.some((value) => value !== null) && recoveryFields.some((value) => typeof value !== 'string'))
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
   if (config.recoveryNonce !== null) decodeBase64(config.recoveryNonce, NONCE_BYTES);
   if (config.recoveryTag !== null) decodeBase64(config.recoveryTag, TAG_BYTES);
   if (config.recoveryWrappedDataKey !== null) decodeBase64(config.recoveryWrappedDataKey, KEY_BYTES);
@@ -424,7 +424,7 @@ function verifyRecoverableConfig(config: RecoverableVaultSecurityConfig, key: Bu
       ),
     )
   )
-    throw new Error('Vault security metadata is invalid.');
+    throw new Error('Library security metadata is invalid.');
 }
 
 export function updateMetadataProtection(
@@ -432,7 +432,7 @@ export function updateMetadataProtection(
   key: Buffer,
   pointer: MetadataProtectionPointer,
 ): RecoverableVaultSecurityConfig {
-  if (config.version !== 3 || key.length !== KEY_BYTES) throw new Error('Unlock a version-3 vault first.');
+  if (config.version !== 3 || key.length !== KEY_BYTES) throw new Error('Unlock a version-3 library first.');
   verifyRecoverableConfig(config, key);
   validateMetadataProtectionPointer(pointer);
   return sealRecoverableConfig({ ...config, metadataProtection: pointer }, key);
@@ -522,7 +522,7 @@ function createRecoveryEnvelope(dataKey: Buffer, recoveryMaterial: Buffer): Reco
 }
 
 export function createVaultRecoveryKey(config: VaultSecurityConfig, dataKey: Buffer) {
-  if (config.version !== 2 || dataKey.length !== KEY_BYTES) throw new Error('This vault cannot use recovery keys.');
+  if (config.version !== 2 || dataKey.length !== KEY_BYTES) throw new Error('This library cannot use recovery keys.');
   const recoveryMaterial = randomBytes(KEY_BYTES);
   try {
     const recoveryKey = recoveryMaterial
@@ -537,7 +537,7 @@ export function createVaultRecoveryKey(config: VaultSecurityConfig, dataKey: Buf
 }
 
 export function revokeVaultRecoveryKey(config: VaultSecurityConfig): VaultSecurityConfig {
-  if (config.version !== 2) throw new Error('This vault cannot use recovery keys.');
+  if (config.version !== 2) throw new Error('This library cannot use recovery keys.');
   const revoked = { ...config };
   delete revoked.recovery;
   return revoked;
@@ -545,7 +545,7 @@ export function revokeVaultRecoveryKey(config: VaultSecurityConfig): VaultSecuri
 
 export function unlockVaultWithRecovery(config: VaultSecurityConfig, recoveryKey: unknown): Buffer {
   if (config.version === 2) {
-    if (!config.recovery) throw new Error('A recovery key is not configured for this vault.');
+    if (!config.recovery) throw new Error('A recovery key is not configured for this library.');
     const material = validateRecoveryKey(recoveryKey);
     try {
       const dataKey = decryptBytes(
@@ -567,10 +567,10 @@ export function unlockVaultWithRecovery(config: VaultSecurityConfig, recoveryKey
       material.fill(0);
     }
   }
-  if (config.version !== 3) throw new Error('A recovery key is not configured for this vault.');
+  if (config.version !== 3) throw new Error('A recovery key is not configured for this library.');
   validateRecoverableConfig(config);
   if (!config.recoveryNonce || !config.recoveryTag || !config.recoveryWrappedDataKey)
-    throw new Error('Recovery is not configured for this vault.');
+    throw new Error('Recovery is not configured for this library.');
   const key = decodeRecoveryKey(recoveryKey);
   try {
     const dataKey = decryptBytes(
@@ -630,7 +630,7 @@ export async function resetVaultPasswordWithRecovery(
       passwordKey.fill(0);
     }
   }
-  if (config.version !== 3) throw new Error('Vault recovery is not configured.');
+  if (config.version !== 3) throw new Error('Library recovery is not configured.');
   const key = await unlockVaultWithRecovery(config, recoveryKey);
   try {
     const passwordFields = await passwordWrap(key, password);
@@ -649,7 +649,7 @@ export function rotateVaultRecoveryKey(
   dataKey: Buffer,
   recoveryKey: string | null,
 ): RecoverableVaultSecurityConfig {
-  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
+  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Library recovery is not configured.');
   validateRecoverableConfig(config);
   if (recoveryKey === null)
     return sealRecoverableConfig(
@@ -678,7 +678,7 @@ export function updateRecoverableCredentials(
   dataKey: Buffer,
   credentials: unknown[] | null,
 ): RecoverableVaultSecurityConfig {
-  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
+  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Library recovery is not configured.');
   return updateRecoverableCredentialText(config, dataKey, credentials === null ? null : JSON.stringify(credentials));
 }
 
@@ -687,7 +687,7 @@ export function updateRecoverableCredentialText(
   dataKey: Buffer,
   credentials: string | null,
 ): RecoverableVaultSecurityConfig {
-  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
+  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Library recovery is not configured.');
   const envelope =
     credentials === null ? null : encryptRecord(dataKey, 'credentials', 'credentials-store', credentials);
   const updated = sealRecoverableConfig({ ...config, credentials: envelope }, dataKey);
@@ -699,7 +699,7 @@ export function completeRecoverableCredentialMigration(
   config: VaultSecurityConfig,
   dataKey: Buffer,
 ): RecoverableVaultSecurityConfig {
-  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Vault recovery is not configured.');
+  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Library recovery is not configured.');
   return sealRecoverableConfig({ ...config, legacyCredentialsCleanupRequired: false }, dataKey);
 }
 

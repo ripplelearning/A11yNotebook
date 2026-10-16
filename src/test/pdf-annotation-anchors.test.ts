@@ -263,7 +263,7 @@ describe('stable PDF annotation anchors', () => {
       orphaned: true,
       classification: 'orphan',
       confidence: 'uncertain',
-      reason: expect.stringContaining('vault path'),
+      reason: expect.stringContaining('library path'),
     });
   });
 
@@ -461,7 +461,7 @@ describe('stable PDF annotation anchors', () => {
     ).toMatchObject({
       orphaned: true,
       classification: 'orphan',
-      reason: expect.stringContaining('vault path'),
+      reason: expect.stringContaining('library path'),
     });
     expect(other.getPage).not.toHaveBeenCalled();
   });

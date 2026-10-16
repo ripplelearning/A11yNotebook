@@ -107,7 +107,7 @@ async function prepareHtmlExport(content: string, notePath: string, vault: Vault
         const decoded = decodeURIComponent(source.split(/[?#]/, 1)[0]);
         relative = path.posix.normalize(path.posix.join(path.posix.dirname(notePath), decoded));
         if (relative === '..' || relative.startsWith('../') || path.posix.isAbsolute(relative))
-          throw new Error('Image path leaves the vault.');
+          throw new Error('Image path leaves the library.');
       }
       if (!IMAGE_TYPES[path.extname(relative).toLowerCase()]) throw new Error('Unsupported image type.');
       const absolute = await vault.resolveEntry(relative);
@@ -134,7 +134,8 @@ async function prepareHtmlExport(content: string, notePath: string, vault: Vault
 
 function assertTrusted(event: IpcMainInvokeEvent, isTrustedSender: TrustedSender, allowLocked = false) {
   if (!isTrustedSender(event)) throw new Error('Untrusted IPC sender.');
-  if (!allowLocked && securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+  if (!allowLocked && securityConfig && !masterKey)
+    throw new Error('Unlock the library before accessing its contents.');
   if (!allowLocked) resetIdleLock();
 }
 
@@ -148,7 +149,7 @@ function captureVaultAccess(event: IpcMainInvokeEvent, isTrustedSender: TrustedS
     assertCurrent: (expectedKey = key) => {
       assertTrusted(event, isTrustedSender, allowLocked);
       if (service !== vault || masterKey !== expectedKey || securityGeneration !== generation)
-        throw new Error('The open vault or lock state changed. Retry the operation.');
+        throw new Error('The open library or lock state changed. Retry the operation.');
     },
   };
 }
@@ -206,7 +207,7 @@ function presentVault(vault: VaultInfo): VaultInfo {
 }
 
 function requireService() {
-  if (!service) throw new Error('Open a vault first.');
+  if (!service) throw new Error('Open a library first.');
   return service;
 }
 
@@ -230,7 +231,7 @@ async function readVaultSecurityMetadata(vault: VaultService): Promise<unknown> 
   });
   if (!stat) return null;
   if (!stat.isFile() || stat.size > 2 * 1024 * 1024 + 16 * 1024)
-    throw new Error('Vault security metadata exceeds the allowed size.');
+    throw new Error('Library security metadata exceeds the allowed size.');
   return JSON.parse(await readFile(filename, 'utf8')) as unknown;
 }
 
@@ -245,7 +246,7 @@ async function startReminders(vaultService: VaultService, vault: VaultInfo) {
     sendReminder({
       type: 'error',
       vaultPath: vault.path,
-      message: 'Could not initialize reminders. Check vault metadata.',
+      message: 'Could not initialize reminders. Check library metadata.',
     }),
   );
 }
@@ -287,7 +288,7 @@ async function openVaultNow(vaultPath: string) {
   protectedMetadata = createProtectedMetadataStore({
     resolver: nextService,
     getConfig: () => {
-      if (service !== nextService) throw new Error('The open vault changed.');
+      if (service !== nextService) throw new Error('The open library changed.');
       return securityConfig;
     },
     access: () => captureProtectedMetadataAccess(nextService),
@@ -335,13 +336,13 @@ async function openVaultNow(vaultPath: string) {
   });
   annotations = createAnnotationStore({
     read: () => {
-      if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
       return nextProtectedMetadata.enabled()
         ? nextProtectedMetadata.read('annotations')
         : metadataFor(nextService).read('annotations.json');
     },
     write: (value) => {
-      if (securityConfig && !masterKey) throw new Error('Unlock the vault before accessing its contents.');
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
       return nextProtectedMetadata.enabled()
         ? nextProtectedMetadata.write('annotations', value)
         : metadataFor(nextService).write('annotations.json', value);
@@ -356,7 +357,7 @@ async function openVaultNow(vaultPath: string) {
           masterKey !== key ||
           (securityConfig && !key)
         )
-          throw new Error('The open vault or lock state changed.');
+          throw new Error('The open library or lock state changed.');
       };
     },
     validateNote: async (relative) => {
@@ -404,7 +405,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
           securityGeneration !== generation ||
           (securityConfig && !key)
         )
-          throw new Error('The open vault or lock state changed.');
+          throw new Error('The open library or lock state changed.');
       };
       assertCurrent();
       return metadataFor(nextService).write('reminders.json', value, assertCurrent);
@@ -481,7 +482,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
 }
 
 function metadataFor(vault: VaultService) {
-  if (vault !== service || !metadata) throw new Error('The open vault has changed. Retry the operation.');
+  if (vault !== service || !metadata) throw new Error('The open library has changed. Retry the operation.');
   return metadata;
 }
 
@@ -494,12 +495,12 @@ async function finishLegacyCredentialCleanup(vault: VaultService, key: Buffer) {
     securityConfig = completed;
   } catch {
     lockVault();
-    throw new Error('Could not finish credential migration cleanup. The vault remains locked.');
+    throw new Error('Could not finish credential migration cleanup. The library remains locked.');
   }
 }
 
 function readVaultEncryptedNote(record: ReturnType<typeof encryptRecord>) {
-  if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
+  if (!masterKey) throw new Error('Unlock the library before opening this encrypted note.');
   try {
     return decryptRecord(masterKey, 'note', record);
   } catch (error) {
@@ -517,12 +518,12 @@ function readVaultEncryptedNote(record: ReturnType<typeof encryptRecord>) {
 function captureProtectedMetadataAccess(vault: VaultService): ProtectedMetadataAccess {
   const key = masterKey;
   const generation = securityGeneration;
-  if (!key || securityConfig?.version !== 3) throw new Error('Unlock a version-3 vault first.');
+  if (!key || securityConfig?.version !== 3) throw new Error('Unlock a version-3 library first.');
   return {
     key,
     assertCurrent: () => {
       if (service !== vault || masterKey !== key || generation !== securityGeneration)
-        throw new Error('The open vault or lock state changed.');
+        throw new Error('The open library or lock state changed.');
     },
   };
 }
@@ -542,13 +543,13 @@ async function finishProtectedMetadataCleanup() {
     await protectedMetadata?.finishCleanup();
   } catch {
     lockVault();
-    throw new Error('Protected metadata cleanup is incomplete. The vault remains locked; unlock to retry.');
+    throw new Error('Protected metadata cleanup is incomplete. The library remains locked; unlock to retry.');
   }
 }
 
 async function relocate(relative: string, destination: string, assertCurrent: () => void = () => undefined) {
   if (relative === destination || relative.includes('\\') || destination.includes('\\'))
-    throw new Error('Choose a different, vault-relative destination using forward slashes.');
+    throw new Error('Choose a different, library-relative destination using forward slashes.');
   const vault = requireService();
   const currentAnnotations = annotations;
   const currentReminders = reminderService;
@@ -689,7 +690,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
         sendReminder({
           type: 'error',
           vaultPath: vaultInfo.path,
-          message: 'Could not restart reminders after a failed move. Reopen the vault.',
+          message: 'Could not restart reminders after a failed move. Reopen the library.',
         }),
       );
     }
@@ -732,7 +733,7 @@ export function setupVaultIpc(
             title: 'Audit entry not recorded',
             message,
             detail:
-              'Check available disk space and vault metadata permissions. The local audit log may be damaged. No secret or document content is logged.',
+              'Check available disk space and library metadata permissions. The local audit log may be damaged. No secret or document content is logged.',
             buttons: ['OK'],
             noLink: true,
           });
@@ -743,7 +744,7 @@ export function setupVaultIpc(
       ) {
         if (service !== vault || securityGeneration !== generation)
           throw new Error(
-            'The operation completed, but the vault or lock state changed. Its response was withheld; check the current vault state before repeating it.',
+            'The operation completed, but the library or lock state changed. Its response was withheld; check the current library state before repeating it.',
           );
         assertTrusted(event, isTrustedSender);
       }
@@ -783,7 +784,7 @@ export function setupVaultIpc(
         )
           throw new Error('Explicit acknowledgement of protection exclusions is required.');
         if (!protectedMetadata || !metadataProtectionStatus().eligible)
-          throw new Error('Unlock a version-3 vault first.');
+          throw new Error('Unlock a version-3 library first.');
         pendingRecovery?.key?.fill(0);
         pendingRecovery = null;
         try {
@@ -806,8 +807,8 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      if (securityConfig) throw new Error('Vault password protection is already configured.');
-      if (typeof password !== 'string') throw new Error('Invalid vault password.');
+      if (securityConfig) throw new Error('Library password protection is already configured.');
+      if (typeof password !== 'string') throw new Error('Invalid library password.');
       const { config, key } = await createVaultSecurityConfig(password);
       try {
         access.assertCurrent();
@@ -830,9 +831,9 @@ export function setupVaultIpc(
     const requestedConfig = securityConfig;
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      if (securityConfig !== requestedConfig) throw new Error('The vault security configuration changed.');
+      if (securityConfig !== requestedConfig) throw new Error('The library security configuration changed.');
       if (!securityConfig || typeof password !== 'string')
-        throw new Error('Vault password protection is not configured.');
+        throw new Error('Library password protection is not configured.');
       const key = await unlockVault(securityConfig, password);
       try {
         access.assertCurrent();
@@ -856,13 +857,13 @@ export function setupVaultIpc(
   });
   handleAudited(IPC_CHANNELS.vaultSecurityLock, 'protection.lock', async (audit, event) => {
     assertTrusted(event, isTrustedSender, true);
-    if (!securityConfig) throw new Error('Vault password protection is not configured.');
+    if (!securityConfig) throw new Error('Library password protection is not configured.');
     const vault = requireService();
     securityGeneration += 1;
     return serializeVaultOperation(async () => {
       assertTrusted(event, isTrustedSender, true);
-      if (service !== vault) throw new Error('The open vault changed. Retry the operation.');
-      if (!securityConfig) throw new Error('Vault password protection is not configured.');
+      if (service !== vault) throw new Error('The open library changed. Retry the operation.');
+      if (!securityConfig) throw new Error('Library password protection is not configured.');
       lockVault();
       audit.committed();
     });
@@ -876,7 +877,7 @@ export function setupVaultIpc(
       return serializeVaultOperation(async () => {
         access.assertCurrent();
         if (!securityConfig || !masterKey || typeof password !== 'string')
-          throw new Error('Unlock the vault and confirm its password before changing recovery.');
+          throw new Error('Unlock the library and confirm its password before changing recovery.');
         pendingRecovery?.key?.fill(0);
         pendingRecovery = null;
         const recoveryKey = generateVaultRecoveryKey();
@@ -896,7 +897,7 @@ export function setupVaultIpc(
           const authenticatedKey = await unlockVault(securityConfig, password);
           try {
             access.assertCurrent();
-            if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect vault password.');
+            if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect library password.');
           } finally {
             authenticatedKey.fill(0);
           }
@@ -977,7 +978,7 @@ export function setupVaultIpc(
           } catch {
             lockVault();
             throw new Error(
-              'Recovery was committed, but old credential cleanup is incomplete. Reopen the vault to retry.',
+              'Recovery was committed, but old credential cleanup is incomplete. Reopen the library to retry.',
             );
           }
         }
@@ -994,7 +995,7 @@ export function setupVaultIpc(
       const requestedConfig = securityConfig;
       return serializeVaultOperation(async () => {
         access.assertCurrent();
-        if (securityConfig !== requestedConfig) throw new Error('The vault security configuration changed.');
+        if (securityConfig !== requestedConfig) throw new Error('The library security configuration changed.');
         if (
           !securityConfig ||
           ![2, 3].includes(securityConfig.version) ||
@@ -1002,7 +1003,7 @@ export function setupVaultIpc(
           typeof recoveryKey !== 'string' ||
           typeof newPassword !== 'string'
         )
-          throw new Error('Vault recovery is unavailable or the recovery request is invalid.');
+          throw new Error('Library recovery is unavailable or the recovery request is invalid.');
         const recovered = await resetVaultPasswordWithRecovery(securityConfig, recoveryKey, newPassword);
         try {
           access.assertCurrent();
@@ -1034,11 +1035,11 @@ export function setupVaultIpc(
       return serializeVaultOperation(async () => {
         access.assertCurrent();
         if (!securityConfig || ![2, 3].includes(securityConfig.version) || !masterKey || typeof password !== 'string')
-          throw new Error('Vault recovery is not configured.');
+          throw new Error('Library recovery is not configured.');
         const authenticatedKey = await unlockVault(securityConfig, password);
         try {
           access.assertCurrent();
-          if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect vault password.');
+          if (!authenticatedKey.equals(masterKey)) throw new Error('Incorrect library password.');
         } finally {
           authenticatedKey.fill(0);
         }
@@ -1107,7 +1108,7 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      if (!access.key) throw new Error('Unlock the vault first.');
+      if (!access.key) throw new Error('Unlock the library first.');
       const saved =
         securityConfig?.version === 3
           ? securityConfig.credentials
@@ -1313,7 +1314,7 @@ export function setupVaultIpc(
         decryptPasswordEncryptedNote(key, stored);
       } else if (isEncryptedRecord(stored)) {
         protectedNote = true;
-        if (!masterKey) throw new Error('Unlock the vault before exporting this note.');
+        if (!masterKey) throw new Error('Unlock the library before exporting this note.');
         readVaultEncryptedNote(stored);
       }
       if (protectedNote && !protectedConsent) {
@@ -1472,12 +1473,12 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminders, async (event) => {
     assertTrusted(event, isTrustedSender);
-    if (!reminderService) throw new Error('Open a vault first.');
+    if (!reminderService) throw new Error('Open a library first.');
     return reminderService.getReminders();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (!reminderService) throw new Error('Open a vault first.');
+    if (!reminderService) throw new Error('Open a library first.');
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid reminder.');
     const defaults = await createReminderDefaultsStore(metadataFor(requireService())).get();
     const request = input as CreateReminderInput;
@@ -1508,7 +1509,7 @@ export function setupVaultIpc(
     return serializeVaultOperation(async () => {
       const assertCurrent = () => {
         access.assertCurrent();
-        if (reminderService !== scheduler) throw new Error('Vault access changed.');
+        if (reminderService !== scheduler) throw new Error('Library access changed.');
       };
       assertCurrent();
       const reminders = await scheduler.getReminders();
@@ -1551,7 +1552,7 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultMilestonesGet, async (event) => {
     assertTrusted(event, isTrustedSender);
     const vault = requireService();
-    if (!milestones) throw new Error('Open a vault first.');
+    if (!milestones) throw new Error('Open a library first.');
     const current = milestones;
     return serializeVaultOperation(() => {
       assertTrusted(event, isTrustedSender);
@@ -1562,7 +1563,7 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultMilestoneCreate, async (event, input: unknown) => {
     assertTrusted(event, isTrustedSender);
     const vault = requireService();
-    if (!milestones) throw new Error('Open a vault first.');
+    if (!milestones) throw new Error('Open a library first.');
     const current = milestones;
     return serializeVaultOperation(() => {
       assertTrusted(event, isTrustedSender);
@@ -1594,7 +1595,7 @@ export function setupVaultIpc(
   });
   protocol.handle('vault-file', async (request) => {
     try {
-      if (securityConfig && !masterKey) return new Response('Vault is locked.', { status: 423 });
+      if (securityConfig && !masterKey) return new Response('Library is locked.', { status: 423 });
       const vault = requireService();
       const generation = securityGeneration;
       const relative = protocolPath(request.url);
@@ -1606,7 +1607,7 @@ export function setupVaultIpc(
       if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return new Response('Attachment too large.', { status: 413 });
       const bytes = await readFile(target);
       if (service !== vault || securityGeneration !== generation || (securityConfig && !masterKey))
-        return new Response('Vault access changed.', { status: 423 });
+        return new Response('Library access changed.', { status: 423 });
       return new Response(new Uint8Array(bytes), {
         headers: { 'Content-Type': mime, 'X-Content-Type-Options': 'nosniff', 'Cache-Control': 'no-store' },
       });
@@ -1659,7 +1660,7 @@ export function setupVaultIpc(
       return unlocked.plaintext;
     }
     if (!isEncryptedRecord(parsed)) return content;
-    if (!masterKey) throw new Error('Unlock the vault before opening this encrypted note.');
+    if (!masterKey) throw new Error('Unlock the library before opening this encrypted note.');
     return readVaultEncryptedNote(parsed);
   });
   ipcMain.handle(
@@ -1686,7 +1687,7 @@ export function setupVaultIpc(
           throw new Error('Note changed on disk. Resolve the conflict before saving.');
         await vault.saveNote(relativePath, JSON.stringify(reencryptPasswordNote(key, parsed, content)), onDisk);
       } else if (isEncryptedRecord(parsed)) {
-        if (!masterKey) throw new Error('Unlock the vault before editing this encrypted note.');
+        if (!masterKey) throw new Error('Unlock the library before editing this encrypted note.');
         if (expectedContent !== undefined && readVaultEncryptedNote(parsed) !== expectedContent)
           throw new Error('Note changed on disk. Resolve the conflict before saving.');
         await vault.saveNote(
@@ -1761,7 +1762,7 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultPdfAnnotationAdd, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (!annotations) throw new Error('Open a vault first.');
+    if (!annotations) throw new Error('Open a library first.');
     const current = annotations;
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
@@ -1801,7 +1802,7 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotationAdd, async (event, value: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (!annotations) throw new Error('Open a vault first.');
+    if (!annotations) throw new Error('Open a library first.');
     const access = captureVaultAccess(event, isTrustedSender);
     const current = annotations;
     return serializeVaultOperation(async () => {
@@ -1963,7 +1964,7 @@ export function setupVaultIpc(
     const vault = requireService();
     const access = captureVaultAccess(event, isTrustedSender);
     const target = await vault.resolveEntry(relativePath);
-    if (target === vaultPathOf(await vault.getVault())) throw new Error('The vault itself cannot be deleted here.');
+    if (target === vaultPathOf(await vault.getVault())) throw new Error('The library itself cannot be deleted here.');
     const answer = await dialog.showMessageBox({
       type: 'warning',
       title: 'Delete item',
@@ -1989,7 +1990,7 @@ export function setupVaultIpc(
         return vault.getVault();
       } catch {
         throw new Error(
-          'Item deleted, but recovery cleanup or index refresh failed. Reopen the vault; do not repeat deletion.',
+          'Item deleted, but recovery cleanup or index refresh failed. Reopen the library; do not repeat deletion.',
         );
       }
     });

@@ -34,10 +34,10 @@ window.a11yNotebook.onMenuCommand(callback): () => void      // native Help menu
 There is no generic `invoke`/`send`, the renderer never provides a channel name, and none of the methods take
 arguments. Callbacks receive only the payload, never the raw `IpcRendererEvent`.
 
-The renderer also receives a separate fixed vault API for selecting/reading/writing vault resources. Its channels
+The renderer also receives a separate fixed library API for selecting/reading/writing library resources. Its channels
 are registered by `electron/vault/ipc.ts`; it accepts relative paths only and resolves them against the active
-vault. It does not expose generic IPC or Node filesystem methods. See [architecture](architecture.md) for the
-vault-specific operations and their data model.
+library. It does not expose generic IPC or Node filesystem methods. See [architecture](architecture.md) for the
+library-specific operations and their data model. Internal `vault` identifiers remain compatible.
 
 | Channel                   | Direction       | Payload                                                            |
 | ------------------------- | --------------- | ------------------------------------------------------------------ |
@@ -135,3 +135,71 @@ Sign production releases.
 - The version in `package.json` must be higher than the installed version, and the tag must match it (the
   release workflow enforces this).
 - Only the Windows NSIS installer supports in-app updates. macOS and Linux targets are not set up yet.
+
+## Preparing a downloadable Windows release candidate
+
+The next candidate is **1.1.2-rc.1**, following the existing stable `v1.1.1`.
+It is not a final production release. Do not retag or replace the existing `1.1.1` or `v1.1.1` releases.
+Manual screen-reader validation is a **promotion** gate, not a prerequisite for providing a test executable.
+Signing happens during the build; it does not require installation on the tester's PC.
+
+After this PR is reviewed and merged through normal branch protection:
+
+1. Check out the merged source, run `npm ci`, and confirm `package.json` and `package-lock.json` both say
+   `1.1.2-rc.1`. Ensure the chosen tag and release do not already exist.
+2. An authorized maintainer creates and pushes the **new** tag on that merged commit:
+
+   ```sh
+   git tag -a v1.1.2-rc.1 <merged-commit-sha> -m "Windows release candidate 1.1.2-rc.1"
+   git push origin refs/tags/v1.1.2-rc.1
+   ```
+
+3. The Release workflow checks out `refs/tags/v1.1.2-rc.1` explicitly, verifies its commit and package version,
+   requires ancestry in `main`, and refuses to overwrite an existing release.
+   If tag-triggered execution needs to be retried **before publication**, an authorized maintainer can run:
+
+   ```sh
+   gh workflow run release.yml --ref main -f tag=v1.1.2-rc.1
+   ```
+
+   The dispatch ref selects the reviewed workflow; its checkout still uses the exact release tag.
+   Do not retry publication over a partial/existing release: inspect it and use a new version/tag if needed.
+
+4. The Windows job runs typecheck, lint, tests, release-tool formatting, generated-document drift checks, build and packaging
+   without publishing. It requires nonempty installer, portable, blockmap and channel metadata; verifies the
+   metadata's version, installer name, size and SHA-512; and rejects cross-channel metadata.
+   RC builds produce `rc.yml`, **not `latest.yml`**, and publish with `--prerelease --latest=false`.
+   Existing stable installations retain `allowPrerelease = false`; they will not offer this RC.
+5. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
+   requires signing and verifies Authenticode on the installer, portable and unpacked app.
+   Without the certificate, an RC is explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
+   Stable releases require signing credentials and valid signatures. Never send credentials in chat.
+6. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
+   are attached as `desktop-validation.json`, including failures (hosted runners may lack a usable desktop).
+   An RC remains downloadable if these desktop checks fail; stable promotion does not.
+   These are not JAWS/NVDA/Narrator tests, and installer-over-install is **not** full updater E2E.
+7. The workflow retains downloadable Actions artifacts, then creates a new GitHub prerelease with installer,
+   portable executable, update metadata, `SHA256SUMS.txt`, `signatures.json`, `desktop-validation.json` and
+   `provenance.json` (exact commit/tag and run URL). Use the release page and verify the attached checksums
+   before running downloaded executables. Publication verifies asset sizes against the local build.
+
+No candidate assets have been produced merely by preparing this PR. The new workflow must first be merged
+and run by an authorized maintainer; do not mistake the old stable downloads for this candidate.
+For testing before merge, approve this PR's Windows CI run and download its `windows-test-build` Actions artifact.
+That artifact records the actual tested commit (which can be a PR merge commit), not a release tag; it is explicitly
+a CI test build rather than evidence that the exact-tag release flow passed.
+The actual download page, once successfully published, will be
+`https://github.com/ripplelearning/A11yNotebook/releases/tag/v1.1.2-rc.1`.
+
+### Remaining production-promotion checks
+
+- Test the downloaded candidate with JAWS, NVDA, Narrator, forced colors and normal Windows desktop workflows.
+- Inspect signing results and publisher identity. An unsigned RC is not a signed production release.
+- Exercise a real **consented updater** transition from a prior signed installed version to a higher signed
+  stable release, including download, restart/install, persistence and same-publisher enforcement.
+  The RC cannot be offered to stable users without changing the prerelease policy, which this work deliberately
+  does not do. Unit tests of consent and signature settings, or running an installer over an existing install,
+  do not prove this full updater path. Do not disable signature verification or use real user libraries.
+- Review any failed Windows desktop checks recorded in the release artifacts before production promotion.
+
+Whole-library encryption and unrelated roadmap features are not requirements for distributing this test candidate.

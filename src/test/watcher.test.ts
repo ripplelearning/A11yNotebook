@@ -138,7 +138,7 @@ describe('external vault watcher', () => {
     await vi.waitFor(() => expect(events.at(-1)?.matches).toEqual([]), { timeout: 4000 });
     expect(events.every(({ event }) => event.vaultPath === root)).toBe(true);
     await service.dispose();
-    await expect(service.startWatcher(() => undefined)).rejects.toThrow('Open a vault');
+    await expect(service.startWatcher(() => undefined)).rejects.toThrow('Open a library');
   });
 
   it.skipIf(process.platform === 'win32')(

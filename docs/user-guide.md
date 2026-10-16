@@ -268,7 +268,7 @@ passwords through **Encrypt note**; the dialog can generate a password and clear
 seconds if it has not been replaced. To opt in to library recovery, open Settings → Library security while the library is
 unlocked, confirm the current library password, then save the displayed one-time recovery key separately and check the
 acknowledgment before committing it. The app never copies the recovery key automatically. Recovery can reset the library
-password and preserves migrated credentials and vault-key-encrypted notes; it cannot recover notes with independent
+password and preserves migrated credentials and library-key-encrypted notes; it cannot recover notes with independent
 passwords. You can rotate the recovery key after saving its replacement or revoke recovery after confirming the current
 password. Losing a note password is unrecoverable. Library protection gates app access but does not encrypt unmarked
 files, filenames, search indexes, or most metadata.
@@ -303,7 +303,7 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+N                                                       | Create notebook                                |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
-| Ctrl+L                                                       | Focus global search                            |
+| Alt+Q                                                        | Focus global search                            |
 | Ctrl+K                                                       | Open command palette                           |
 | Ctrl+Tab / Ctrl+Shift+Tab                                    | Switch to next / previous open tab             |
 | Ctrl+S                                                       | Save the current note                          |

@@ -32,7 +32,7 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 
 - Smoke-test the Electron shell startup path.
 - Confirm the browser window loads the renderer and displays the expected app shell.
-- Confirm the preload bridge is enabled without exposing Node to the renderer. `window.a11yNotebook` exposes only typed updater, vault, and menu-command operations; `require` and `process` are undefined.
+- Confirm the preload bridge is enabled without exposing Node to the renderer. `window.a11yNotebook` exposes only typed updater, library, and menu-command operations; `require` and `process` are undefined.
 - Confirm the packaged build loads `dist/index.html` from the asar archive with the Content Security Policy in place.
 - Updater state machine unit tests (`src/test/updater-controller.test.ts`): development and portable builds never contact GitHub, nothing downloads without consent, and errors are reported once.
 
@@ -53,7 +53,7 @@ Recommended manual checks:
 - NVDA on Windows 11
 - Narrator on Windows 11
 - Keyboard-only navigation of menu bar, panes, tabs, search, and command palette
-- Vault tree arrow navigation, expansion, selection, rename, and delete confirmation
+- Library tree arrow navigation, expansion, selection, rename, and delete confirmation
 - Opening notes in tabs, unsaved state, saving, and Markdown browse-mode navigation
 - Global Markdown search and opening a result
 - Task filters, sortable table metadata, and task toggles reflected in the source note
@@ -113,9 +113,9 @@ Vitest covers persisted index build/update/filters/tags/snippets (including HTML
 sender/path/protocol validation, repaired links and migrated metadata, annotation re-anchoring and selection,
 formatting transforms/dialog keyboard flow, template expansion/cursor placement, scheduler startup/snooze/move
 races, SM-2 scheduling, outline/mind-map serialization, grid keyboard editing, and shortcut conflict detection.
-Encryption, wrong-password and opt-in recovery regression tests exist for the current vault/selected-note implementation.
+Encryption, wrong-password and opt-in recovery regression tests exist for the current library/selected-note implementation.
 Audit tests cover redaction, retention, interruption, malformed metadata and storage failures independently of operation
-commit outcomes. They do not prove whole-vault encryption, encrypted metadata/indexes, secure erasure, comprehensive
+commit outcomes. They do not prove whole-library encryption, encrypted metadata/indexes, secure erasure, comprehensive
 forensic history, or actual screen-reader speech. Metadata encryption and cognitive draft recovery remain unimplemented.
 
 ## New-widget manual matrix (not yet executed)
@@ -134,7 +134,7 @@ Windows forced colors, and enlarged font settings. Record screen-reader version 
 | Formatting toolbar/dialogs        | Arrow between tools, format a keyboard selection, insert wiki link/table/image                                       | One toolbar tab stop; selection preserved; fields and validation named; result announced once; test Undo in packaged Electron                    |
 | Annotations                       | Select in browse mode, Ctrl+Shift+A, label/comment, Jump/Edit/Delete                                                 | Reader-supported selection captured; color plus label exposed; changed/overlapping text reported; mark jump and edit/delete focus understandable |
 | Templates                         | Choose each built-in and user template, read preview, create                                                         | Select/preview/title/notebook labels readable; errors announced; cursor reaches expanded marker                                                  |
-| Reminder table/agenda             | Create/snooze/dismiss, restart after due time, click notification                                                    | Group headings/table headers/status read correctly; completed tasks do not notify; missed reminders visible; click opens correct vault note      |
+| Reminder table/agenda             | Create/snooze/dismiss, restart after due time, click notification                                                    | Group headings/table headers/status read correctly; completed tasks do not notify; missed reminders visible; click opens correct library note    |
 | Task project progress             | Inspect empty/partial/completed notebook summaries                                                                   | Counts and native progress values match tasks; no division-by-zero or color-only state                                                           |
 | Outline/mind-map trees            | Enter, indent/outdent, Alt+Up/Down, rename/delete/export                                                             | Levels/expansion/focus remain consistent; root protection understood; SVG absent from accessibility tree; export result announced                |
 | Grids                             | Arrow/Home/End, Enter/F2 edit, Escape cancel, sort, add/remove                                                       | Coordinates and headers readable; single cell tab stop; sort state announced; focus survives deletion and commit                                 |
@@ -142,7 +142,7 @@ Windows forced colors, and enlarged font settings. Record screen-reader version 
 | HTML/image/text/CSV preview       | Browse HTML note and text/CSV/image previews; edit image description                                                 | Scripts/forms/remote images do not run; image alt is announced; CSV headers are readable; external-open works                                    |
 | Settings and active shortcut help | Assign conflicting/disabled/custom binding, reset, change theme/font                                                 | Conflicts read as errors; typing/navigation keys preserved; palette/help match active bindings; focus and content contrast maintained            |
 
-Also exercise vault switching while saves/watch callbacks/notifications are pending, ignored metadata writes,
+Also exercise library switching while saves/watch callbacks/notifications are pending, ignored metadata writes,
 real external file edits in newly created notebooks, long reminder timers, and packaged protocol URLs under asar.
 Windows native notification delivery, speech timing, installer behavior, and real filesystem watchers cannot be
 certified by jsdom/unit tests.

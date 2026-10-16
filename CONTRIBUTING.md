@@ -9,7 +9,7 @@ and `npm run build`.
 
 Keep renderer code free of Node and Electron imports. Place filesystem and operating-system operations in the main
 process and expose only explicit, typed IPC methods. Validate renderer inputs at the IPC boundary and constrain all
-vault paths to the currently open vault. Prefer small feature modules and native semantic controls.
+library paths to the currently open library. Prefer small feature modules and native semantic controls.
 
 ## Accessibility
 

@@ -28,7 +28,7 @@ describe('vault security primitives', () => {
     expect(unlocked.equals(key)).toBe(true);
     key.fill(0);
     unlocked.fill(0);
-    await expect(unlockVault(config, 'incorrect password')).rejects.toThrow(/Incorrect vault password/);
+    await expect(unlockVault(config, 'incorrect password')).rejects.toThrow(/Incorrect library password/);
   });
 
   it('supports legacy vault metadata and independently wrapped random vault keys', async () => {
@@ -69,7 +69,7 @@ describe('vault security primitives', () => {
     const reset = await resetVaultPasswordWithRecovery(rotated, rotatedRecoveryKey, 'new vault password');
     expect(reset.key.equals(key)).toBe(true);
     expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
-    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect vault password/);
+    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect library password/);
     const revoked = rotateVaultRecoveryKey(reset.config, reset.key, null);
     expect(() => unlockVaultWithRecovery(revoked, rotatedRecoveryKey)).toThrow(/not configured/);
     for (const item of [legacyKey, key, recovered, reset.key]) item.fill(0);
@@ -108,7 +108,7 @@ describe('vault security primitives', () => {
     const reset = await resetVaultPasswordWithRecovery(rotated.config, rotated.recoveryKey, 'new vault password');
     expect(reset.key.equals(key)).toBe(true);
     expect((await unlockVault(reset.config, 'new vault password')).equals(key)).toBe(true);
-    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect vault password/);
+    await expect(unlockVault(reset.config, 'old vault password')).rejects.toThrow(/Incorrect library password/);
     const revoked = revokeVaultRecoveryKey(reset.config);
     expect(() => unlockVaultWithRecovery(revoked, rotated.recoveryKey)).toThrow(/not configured/);
     for (const item of [key, recovered, reset.key]) item.fill(0);
@@ -191,7 +191,7 @@ describe('vault security primitives', () => {
     const oldRecoveryKey = generateVaultRecoveryKey();
     const migrated = await prepareVaultRecovery(legacy.config, 'correct horse battery', oldRecoveryKey, null);
     const reset = await resetVaultPasswordWithRecovery(migrated.config, oldRecoveryKey, 'new vault password');
-    await expect(unlockVault(reset.config, 'correct horse battery')).rejects.toThrow(/Incorrect vault password/);
+    await expect(unlockVault(reset.config, 'correct horse battery')).rejects.toThrow(/Incorrect library password/);
     expect((await unlockVault(reset.config, 'new vault password')).equals(reset.key)).toBe(true);
     const newRecoveryKey = generateVaultRecoveryKey();
     const rotated = rotateVaultRecoveryKey(reset.config, reset.key, newRecoveryKey);

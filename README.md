@@ -174,7 +174,7 @@ the latest changes.
   page inside the app cannot change it.
 - The app embeds no GitHub token. Public releases do not need one.
 - The renderer runs with `contextIsolation`, `sandbox`, and without Node integration. It can reach only a small,
-  typed updater and vault APIs. The main process accepts calls only on whitelisted IPC channels, and only from the
+  typed updater and library APIs. The main process accepts calls only on whitelisted IPC channels, and only from the
   app's own window. Library paths are validated against the open library.
 - Release notes are shown as plain text, never as HTML.
 - **Code signing:** the release workflow automatically signs when the `WINDOWS_CERTIFICATE` and

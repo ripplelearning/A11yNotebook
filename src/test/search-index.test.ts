@@ -251,7 +251,7 @@ describe('persistent vault search', () => {
     const cache = JSON.parse(await readFile(path.join(root, '.a11ynotebook', 'search-index.json'), 'utf8'));
     expect(cache.documents).toHaveLength(12);
     await service.dispose();
-    await expect(service.search({ text: '' })).rejects.toThrow('Open a vault');
+    await expect(service.search({ text: '' })).rejects.toThrow('Open a library');
   });
 
   it('rejects invalid renderer query objects and paths before searching', async () => {
@@ -490,6 +490,6 @@ describe('persistent vault search', () => {
     expect(await service.getTags()).not.toContain('tag-000');
     expect(await service.getTags()).toContain('new-tag');
     await service.dispose();
-    await expect(service.getTags()).rejects.toThrow('Open a vault first.');
+    await expect(service.getTags()).rejects.toThrow('Open a library first.');
   });
 });
