@@ -17,7 +17,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+I       | Italic                     |
 | Ctrl+Shift+L | Insert link                |
 | Ctrl+O       | Open library               |
-| Ctrl+N       | New notebook               |
+| Ctrl+N       | New item                   |
 | Ctrl+S       | Save note                  |
 | Ctrl+4       | Tasks & Reminders          |
 | Ctrl+D       | Toggle note bookmark       |

@@ -7,6 +7,8 @@ import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 
 interface Resolver {
   resolveEntry(relative: string, missing?: boolean): Promise<string>;
+  getProvenance?(relative: string): Promise<'app-created' | 'imported' | 'unknown'>;
+  recordProvenance?(relative: string, origin: 'app-created' | 'imported' | 'unknown'): Promise<void>;
 }
 
 export function validateSchedule(value: unknown): CardSchedule {
@@ -85,6 +87,7 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
         const target = await vault.resolveEntry(relative);
         if ((await read(relative)).content !== expected)
           throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
+        const origin = (await vault.getProvenance?.(relative)) ?? 'unknown';
         const temporary = path.join(path.dirname(target), `.asset-${randomUUID()}.tmp`);
         try {
           const stat = await lstat(target);
@@ -94,18 +97,22 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
             throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
           assertCurrent();
           await rename(temporary, target);
+          await vault.recordProvenance?.(relative, origin);
         } finally {
           await rm(temporary, { force: true }).catch(() => undefined);
         }
       }),
-    create: (relative: string, content: string) =>
+    create: (relative: string, content: string, assertCurrent: () => void = () => undefined) =>
       serial(async () => {
+        assertCurrent();
         const type = assetType(relative);
         if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024)
           throw new Error('Invalid asset content.');
         type.parse(content);
         const target = await vault.resolveEntry(relative, true);
+        assertCurrent();
         await writeFile(target, content, { flag: 'wx' });
+        await vault.recordProvenance?.(relative, 'app-created');
       }),
     getSchedules: async (relative: string): Promise<Record<string, CardSchedule>> => {
       if (assetType(relative).id !== 'flashcards') throw new Error('Choose a flashcard deck.');

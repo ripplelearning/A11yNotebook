@@ -27,6 +27,7 @@ interface Props {
   onDirty: (dirty: boolean) => void;
   onBusy: (busy: boolean) => void;
   selectionVersion?: number;
+  creationRequestVersion?: number;
 }
 
 const registry = createAssetRegistry(assetTypes);
@@ -46,6 +47,7 @@ export default function AssetsWorkspace({
   onDirty,
   onBusy,
   selectionVersion,
+  creationRequestVersion = 0,
 }: Props) {
   const [path, setPath] = useState(initialPath ?? '');
   const [asset, setAsset] = useState<VaultAsset | null>(null);
@@ -69,6 +71,10 @@ export default function AssetsWorkspace({
   const editor = useRef<HTMLDivElement>(null);
   const discoveredDraft = useRef('');
   const returnToEditor = useRef(false);
+  const newTypeRef = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (creationRequestVersion) newTypeRef.current?.focus();
+  }, [creationRequestVersion]);
   useEffect(() => {
     if (busy) return;
     if (recovery?.draft) {
@@ -369,7 +375,12 @@ export default function AssetsWorkspace({
       >
         <label>
           New asset type
-          <select disabled={busy || dirty} value={newType} onChange={(event) => setNewType(event.target.value)}>
+          <select
+            ref={newTypeRef}
+            disabled={busy || dirty}
+            value={newType}
+            onChange={(event) => setNewType(event.target.value)}
+          >
             {assetTypes.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.label}

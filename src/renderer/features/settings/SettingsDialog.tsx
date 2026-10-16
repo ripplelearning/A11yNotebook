@@ -168,6 +168,18 @@ export default function SettingsDialog({
           />
         </label>
         <label>
+          Default note open mode
+          <select
+            value={draft.defaultNoteOpenMode ?? 'read-only'}
+            onChange={(event) =>
+              setDraft({ ...draft, defaultNoteOpenMode: event.target.value as NotebookSettings['defaultNoteOpenMode'] })
+            }
+          >
+            <option value="read-only">Read mode</option>
+            <option value="edit">Edit mode</option>
+          </select>
+        </label>
+        <label>
           Library idle lock in minutes (0 disables; maximum 240)
           <input
             type="number"
