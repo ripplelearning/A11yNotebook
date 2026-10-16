@@ -9,12 +9,25 @@ as notebooks, `.md` and `.html` files as notes, and other files as attachments. 
 
 Use the **Library files** tree. Up and Down move between visible items; Right expands a notebook or enters its first
 child; Left collapses or moves to its parent. Home and End move to the first and last visible item. Enter opens a
-note or a supported preview. Unsupported attachments open externally. F2 opens a rename dialog. Delete asks before moving it
+managed note or a supported imported preview. Files of unknown origin offer an external application chooser or
+an explicit compatible import instead of silently treating every Markdown file as an app-managed note.
+F2 opens a rename dialog. Delete asks before moving it
 to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
 
 Use **New note**, **New notebook**, or **Import file** in the navigation pane. Imported files are copied into the
 selected notebook. The tree's filesystem context may be revealed in Explorer or opened in its default external app
 using the corresponding library actions.
+
+The installed and portable builds use the same navigation and creation workflows. Ctrl+1 announces **Libraries**
+or the open library's name; Ctrl+2 announces **Notebooks** or **Notebooks in [library name]**; Ctrl+3 announces
+**Notes and Files in [notebook name]** when a notebook is selected. Repeating a shortcut announces the view again.
+Notebook context remains selected when you select a file row.
+
+Ctrl+N creates an item for the active view: a new local library folder in Libraries, a notebook in Notebooks,
+a note in Notes & Files, a task in Tasks, or a cognitive tool through its type chooser in Cognitive Tools.
+Explicit **New notebook** and **New note** actions keep their original meanings. Notes & Files also has
+**New note from template**. Open and unlock a library before creating its contents; save or resolve unsaved work
+before creating or opening another library. Cancelling a creation dialog leaves existing work unchanged.
 
 Shift+F10, the Applications key, or right-click opens the global context menu. Its registry-backed commands depend
 on the focused item: library files, tabs, selected editor text, links, tasks, search results, annotations, reminders,
@@ -35,6 +48,25 @@ unsafe URL schemes are not allowed. HTML images must have alternative text and u
 Toggle **Read-only/edit mode** with Ctrl+E. **Plain source** edits Markdown or HTML source in a native text area;
 **Rich text** exposes an accessible formatting toolbar and multiline textbox. Ctrl+S saves immediately; edits also
 save after a short idle period. A tab marks unsaved content and asks before discarding it when closed.
+
+**Settings → Default note open mode** chooses **Read mode** (the default) or **Edit mode**.
+The preference applies when opening, reopening, or switching to a note; editing locks still take precedence.
+It does not make files read-only on disk.
+
+### External files and import
+
+A11y Notebook records whether files were app-created or explicitly imported. Existing files without recorded
+provenance are treated as unknown, not automatically adopted because of their extension or location.
+For an unknown file, Enter offers **Open with…** and, for compatible types, **Import into A11y Notebook**.
+The file context menu also offers import. Import makes a separate copy, validates supported formats and size
+limits, and sanitizes HTML; it does not modify the source. Only supported formats can be read or edited internally.
+
+On Windows, **Open with…** uses the system application chooser. Any available default-application choice belongs
+to Windows; the app does not rewrite associations itself. Cancelling leaves associations unchanged. Other
+platforms may not provide this chooser; errors are reported without silently changing associations.
+Keep `.a11ynotebook/` metadata with your library so provenance and other metadata remain available.
+App-managed renames, moves, and saves retain provenance. Ordinary external in-place edits retain it too;
+externally replaced files or files renamed outside the app may become unknown and require explicit import again.
 
 The Format menu and formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
@@ -300,7 +332,7 @@ editing are not logged. See the security documentation for exact limits.
 | Shortcut                                                     | Action                                         |
 | ------------------------------------------------------------ | ---------------------------------------------- |
 | Ctrl+O                                                       | Open library                                   |
-| Ctrl+N                                                       | Create notebook                                |
+| Ctrl+N                                                       | Create an item in the active view              |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
 | Alt+Q                                                        | Focus global search                            |

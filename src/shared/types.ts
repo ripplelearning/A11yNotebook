@@ -36,6 +36,7 @@ export interface VaultEntry {
   path: string;
   kind: 'notebook' | 'note' | 'attachment';
   children?: VaultEntry[];
+  provenance?: 'app-created' | 'imported' | 'unknown';
 }
 
 /** Public view of the currently open local vault. */

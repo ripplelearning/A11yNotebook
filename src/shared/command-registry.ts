@@ -6,6 +6,7 @@ export type CommandId =
   | 'show-notebooks'
   | 'show-notes-files'
   | 'open-vault'
+  | 'new-contextual'
   | 'new-notebook'
   | 'save-current-note'
   | 'show-tasks'
@@ -60,6 +61,7 @@ export type CommandId =
   | 'context-copy'
   | 'context-paste'
   | 'context-open-external'
+  | 'context-import-internal'
   | 'context-copy-link'
   | 'context-toggle-task'
   | 'context-set-due-date'
@@ -107,6 +109,7 @@ export type CommandActionContext = {
   showSettings?: () => void;
   openVault?: () => void;
   newNotebook?: () => void;
+  newContextual?: () => void;
   exportCurrentNote?: () => void;
 };
 
@@ -128,6 +131,12 @@ export type KeyboardShortcutDefinition = {
 };
 
 export const COMMANDS: CommandDefinition[] = [
+  {
+    id: 'context-import-internal',
+    label: 'Import into A11y Notebook',
+    description: 'Import a separate compatible copy for internal reading or editing.',
+    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
+  },
   {
     id: 'show-contents',
     label: 'Contents',
@@ -438,10 +447,16 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
+    id: 'new-contextual',
+    label: 'New item',
+    description: 'Create a library, notebook, note, task, or cognitive asset in the current view.',
+    shortcut: 'Ctrl+N',
+    contexts: ['general'],
+  },
+  {
     id: 'new-notebook',
     label: 'New notebook',
     description: 'Create a new notebook entry within the current library.',
-    shortcut: 'Ctrl+N',
     contexts: ['general', 'tree-folder'],
   },
   {
@@ -657,6 +672,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
         return undefined;
       }
       return 'New notebook created in the current library.';
+    case 'new-contextual':
+      context.newContextual?.();
+      return undefined;
     case 'save-current-note':
       context.saveNote();
       return undefined;

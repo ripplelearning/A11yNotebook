@@ -7,6 +7,7 @@ export interface NotebookSettings {
   shortcuts: Partial<Record<CommandId, string>>;
   vaultLockMinutes?: number;
   noteEditLockMinutes?: number;
+  defaultNoteOpenMode?: 'read-only' | 'edit';
   reminderAlerts?: boolean;
   reminderSound?: boolean;
   reminderSoundChoice?: 'gentle-chime';
@@ -20,6 +21,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   shortcuts: {},
   vaultLockMinutes: 15,
   noteEditLockMinutes: 0,
+  defaultNoteOpenMode: 'read-only',
   reminderAlerts: false,
   reminderSound: false,
   reminderSoundChoice: 'gentle-chime',
@@ -84,6 +86,7 @@ export function validateSettings(value: unknown): NotebookSettings {
   const settings = value as NotebookSettings;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
   const noteEditLockMinutes = settings.noteEditLockMinutes ?? DEFAULT_SETTINGS.noteEditLockMinutes!;
+  const defaultNoteOpenMode = settings.defaultNoteOpenMode === undefined ? 'read-only' : settings.defaultNoteOpenMode;
   const reminderAlerts = settings.reminderAlerts === undefined ? false : settings.reminderAlerts;
   const reminderSound = settings.reminderSound === undefined ? false : settings.reminderSound;
   const reminderSoundChoice =
@@ -103,6 +106,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(noteEditLockMinutes) ||
     noteEditLockMinutes < 0 ||
     noteEditLockMinutes > 240 ||
+    (defaultNoteOpenMode !== 'read-only' && defaultNoteOpenMode !== 'edit') ||
     typeof reminderAlerts !== 'boolean' ||
     typeof reminderSound !== 'boolean' ||
     reminderSoundChoice !== 'gentle-chime' ||
@@ -130,6 +134,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     shortcuts,
     vaultLockMinutes,
     noteEditLockMinutes,
+    defaultNoteOpenMode,
     reminderAlerts,
     reminderSound,
     reminderSoundChoice,

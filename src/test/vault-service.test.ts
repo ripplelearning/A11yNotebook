@@ -36,7 +36,7 @@ describe('vault filesystem service', () => {
     await service.saveNote('Research.html', '<h1>Updated</h1>');
     expect(await service.readNote('Research.html')).toBe('<h1>Updated</h1>');
     expect((await service.getVault()).entries).toEqual([
-      { name: 'Research.html', path: 'Research.html', kind: 'note' },
+      { name: 'Research.html', path: 'Research.html', kind: 'note', provenance: 'app-created' },
     ]);
   });
 
@@ -52,7 +52,8 @@ describe('vault filesystem service', () => {
         name: 'Research',
         path: 'Research',
         kind: 'notebook',
-        children: [{ name: 'Ideas.md', path: 'Research/Ideas.md', kind: 'note' }],
+        provenance: 'unknown',
+        children: [{ name: 'Ideas.md', path: 'Research/Ideas.md', kind: 'note', provenance: 'app-created' }],
       },
     ]);
     await expect(access(path.join(temporaryDirectory, '.a11ynotebook'))).resolves.toBeUndefined();

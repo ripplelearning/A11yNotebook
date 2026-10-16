@@ -12,6 +12,8 @@ import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDa
 import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
+import { createProvenanceStore } from './provenance';
+import { readImport } from './import';
 
 function isNotePath(value: string) {
   return ['.md', '.html'].includes(path.extname(value).toLowerCase());
@@ -26,6 +28,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   let disposed = false;
   let initialization: Promise<VaultInfo> | undefined;
   let noteWrites: Promise<unknown> = Promise.resolve();
+  const provenance = createProvenanceStore(resolveMetadata);
 
   function serializeNoteWrite<T>(operation: () => Promise<T>): Promise<T> {
     const result = noteWrites.then(operation);
@@ -41,6 +44,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       const stat = await lstat(root);
       if (!stat.isDirectory()) throw new Error('Library must be a folder.');
       await ensureMetadataDirectory(root);
+      await provenance.initialize();
       searchIndex = createSearchIndex(root);
       await searchIndex.initialize();
       if (onChanged) await startWatcher(onChanged);
@@ -101,6 +105,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     await watcherStart;
     await watcher?.dispose();
     await noteWrites;
+    await provenance.flush();
     await searchIndex?.dispose();
     root = '';
   }
@@ -204,11 +209,17 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
           name: entry.name,
           path: childRelative,
           kind: 'notebook',
+          provenance: 'unknown',
           children: await scanDirectory(childPath, childRelative),
         });
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
-        result.push({ name: entry.name, path: childRelative, kind: isNote ? 'note' : 'attachment' });
+        result.push({
+          name: entry.name,
+          path: childRelative,
+          kind: isNote ? 'note' : 'attachment',
+          provenance: provenance.get(childRelative, await lstat(childPath)),
+        });
       }
     }
     return result;
@@ -240,8 +251,10 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       await resolveEntry(relativePath);
       if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
         throw new Error('Note changed on disk. Resolve the conflict before saving.');
+      const origin = provenance.get(relativePath, await lstat(target));
       assertCurrent?.();
       await rename(temporary, target);
+      await provenance.record(relativePath, target, origin);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
     }
@@ -278,8 +291,13 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return getVault();
   }
 
-  function createNote(relativePath: string, content?: string): Promise<VaultInfo> {
+  function createNote(
+    relativePath: string,
+    content?: string,
+    assertCurrent: () => void = () => undefined,
+  ): Promise<VaultInfo> {
     return serializeNoteWrite(async () => {
+      assertCurrent();
       if (content !== undefined && typeof content !== 'string') throw new Error('Note content must be text.');
       const target = await resolveEntry(relativePath, true);
       if (!isNotePath(target)) throw new Error('Notes must use the .md or .html extension.');
@@ -289,10 +307,98 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         (path.extname(target).toLowerCase() === '.html'
           ? `<h1>${path.basename(target, path.extname(target))}</h1>\n<p></p>\n`
           : `# ${path.basename(target, '.md')}\n\n`);
+      await resolveEntry(relativePath, true);
+      assertCurrent();
       await writeFile(target, initialContent, { flag: 'wx' });
+      await provenance.record(relativePath, target, 'app-created');
       await refreshSearchIndex();
-      return getVault();
+      const vault = await getVault();
+      assertCurrent();
+      return vault;
     });
+  }
+
+  async function createTask(input: unknown, assertCurrent: () => void = () => undefined) {
+    if (!input || typeof input !== 'object') throw new Error('Invalid task creation request.');
+    const { text, notebookPath = '' } = input as { text?: unknown; notebookPath?: unknown };
+    if (
+      typeof text !== 'string' ||
+      !text.trim() ||
+      text.length > 1000 ||
+      [...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
+      /[\u2028\u2029]/.test(text) ||
+      typeof notebookPath !== 'string'
+    )
+      throw new Error('Enter a single-line task of 1 to 1000 characters.');
+    assertCurrent();
+    const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
+    if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
+    await createNote(
+      path.posix.join(notebookPath, `Tasks-${randomUUID()}.md`),
+      `- [ ] ${text.trim()}\n`,
+      assertCurrent,
+    );
+    assertCurrent();
+    const tasks = await getTasks();
+    assertCurrent();
+    return tasks;
+  }
+
+  function importFileCopy(
+    source: string,
+    notebookPath = '',
+    assertCurrent: () => void = () => undefined,
+    unique = false,
+    allowUnsupported = false,
+  ) {
+    return serializeNoteWrite(async () => {
+      assertCurrent();
+      const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
+      if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
+      const imported = await readImport(source, assertCurrent, allowUnsupported);
+      const originalName = path.basename(source);
+      const originalExtension = path.extname(originalName);
+      const filename = originalExtension
+        ? originalName.slice(0, -originalExtension.length) + imported.extension
+        : originalName;
+      const relative = path.posix.join(notebookPath, unique ? `Imported-${randomUUID()}-${filename}` : filename);
+      const destination = await resolveEntry(relative, true);
+      assertCurrent();
+      await writeFile(destination, imported.bytes, { flag: 'wx', mode: 0o600 });
+      try {
+        await provenance.record(relative, destination, 'imported');
+        await refreshSearchIndex();
+        const vault = await getVault();
+        assertCurrent();
+        return { vault, path: relative };
+      } catch {
+        throw new Error(
+          `File copied as “${relative}”, but metadata, indexing, or library access changed. Refresh the library before retrying; the original was not changed.`,
+        );
+      }
+    });
+  }
+
+  async function importFile(source: string, notebookPath = '', assertCurrent: () => void = () => undefined) {
+    return (await importFileCopy(source, notebookPath, assertCurrent, false, true)).vault;
+  }
+
+  async function importEntry(relative: string, assertCurrent: () => void = () => undefined) {
+    const source = await resolveEntry(relative);
+    return importFileCopy(
+      source,
+      path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative),
+      assertCurrent,
+      true,
+    );
+  }
+
+  async function getProvenance(relative: string) {
+    return provenance.get(relative, await lstat(await resolveEntry(relative)));
+  }
+
+  async function recordProvenance(relative: string, origin: NonNullable<VaultEntry['provenance']>) {
+    await provenance.record(relative, await resolveEntry(relative), origin);
   }
 
   async function renameEntry(relativePath: string, newName: string) {
@@ -319,6 +425,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     const newName = path.basename(destination);
     const bookmarks = await getBookmarks();
     await rename(source, destination);
+    await provenance.move(sourceRelative, nextRelative);
     await refreshSearchIndex();
     const updatedBookmarks = bookmarks.map((bookmark) =>
       bookmark.path === sourceRelative || bookmark.path.startsWith(`${sourceRelative}/`)
@@ -510,6 +617,12 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     saveNote,
     createFolder,
     createNote,
+    createTask,
+    importFile,
+    importEntry,
+    getProvenance,
+    recordProvenance,
+    removeProvenance: provenance.remove,
     renameEntry,
     moveEntry,
     getTasks,

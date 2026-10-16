@@ -3,6 +3,10 @@ import { DEFAULT_SETTINGS } from '../shared/settings';
 
 export function vaultExtensions() {
   return {
+    createLibrary: vi.fn(async () => null),
+    createTask: vi.fn(async () => []),
+    importEntry: vi.fn(),
+    openWith: vi.fn(async () => undefined),
     move: vi.fn(),
     search: vi.fn(async () => []),
     getTags: vi.fn(async () => []),

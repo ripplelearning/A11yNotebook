@@ -25,6 +25,7 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
       label: '&File',
       submenu: [
         commandItem('open-vault'),
+        commandItem('new-contextual'),
         commandItem('new-notebook'),
         commandItem('new-from-template'),
         commandItem('save-current-note'),

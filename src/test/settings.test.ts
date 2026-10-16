@@ -2,6 +2,24 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, normalizeShortcut, shortcutConflicts, validateSettings } from '../shared/settings';
 
 describe('settings and shortcut validation', () => {
+  it('defaults legacy note-open preferences to read-only', () => {
+    expect(DEFAULT_SETTINGS.defaultNoteOpenMode).toBe('read-only');
+    expect(
+      validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} }).defaultNoteOpenMode,
+    ).toBe('read-only');
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: undefined }).defaultNoteOpenMode).toBe(
+      'read-only',
+    );
+  });
+  it.each(['read-only', 'edit'] as const)('preserves the %s note-open preference through serialization', (mode) => {
+    const saved = validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: mode });
+    expect(validateSettings(JSON.parse(JSON.stringify(saved))).defaultNoteOpenMode).toBe(mode);
+  });
+  it.each(['read', 'Edit', '', null, false, 0, {}, []])('rejects invalid note-open preference %j', (mode) => {
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: mode })).toThrow(
+      'Invalid settings values.',
+    );
+  });
   it('persists reminder preferences, migrates legacy settings and rejects invalid sound values', () => {
     const choices = {
       reminderAlerts: false,
