@@ -50,17 +50,17 @@ function renderLibrary() {
         path: 'Research',
         kind: 'notebook',
         children: [
-          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' },
-          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment' },
+          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note', provenance: 'created' },
+          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment', provenance: 'imported' },
         ],
       },
       {
         name: 'Archive',
         path: 'Archive',
         kind: 'notebook',
-        children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note' }],
+        children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note', provenance: 'created' }],
       },
-      { name: 'Root.md', path: 'Root.md', kind: 'note' },
+      { name: 'Root.md', path: 'Root.md', kind: 'note', provenance: 'created' },
     ],
   };
   const bridge = {

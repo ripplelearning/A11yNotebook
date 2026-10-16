@@ -5,20 +5,42 @@ type NotesFilesScreenProps = Omit<DetailsViewProps, 'label' | 'items' | 'emptyMe
   entries: readonly VaultEntry[];
   hasLibrary: boolean;
   notebookPath?: string;
+  title?: string;
+  onNewNote?: () => void;
+  onNewFromTemplate?: () => void;
 };
 
 function flatten(entries: readonly VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flatten(entry.children ?? [])]);
 }
 
-export default function NotesFilesScreen({ entries, hasLibrary, notebookPath, ...details }: NotesFilesScreenProps) {
+export default function NotesFilesScreen({
+  entries,
+  hasLibrary,
+  notebookPath,
+  title = 'Notes and Files',
+  onNewNote,
+  onNewFromTemplate,
+  ...details
+}: NotesFilesScreenProps) {
   const prefix = notebookPath ? `${notebookPath}/` : undefined;
   const notesAndFiles = flatten(entries).filter(
     (entry) => entry.kind !== 'notebook' && (!prefix || entry.path.startsWith(prefix)),
   );
   return (
     <section aria-labelledby="notes-files-heading">
-      <h2 id="notes-files-heading">Notes &amp; Files</h2>
+      <h2 id="notes-files-heading">{title}</h2>
+      <button type="button" disabled={!hasLibrary || !notebookPath || !onNewNote} onClick={onNewNote}>
+        New note
+      </button>
+      <button type="button" disabled={!hasLibrary || !notebookPath || !onNewFromTemplate} onClick={onNewFromTemplate}>
+        New note from template
+      </button>
+      {!hasLibrary ? (
+        <p>Open a library and select a notebook to create notes.</p>
+      ) : !notebookPath ? (
+        <p>Select a notebook to create notes. Showing all notes and files in this library.</p>
+      ) : null}
       {notebookPath ? <p>Items in {notebookPath}</p> : null}
       <DetailsView
         {...details}

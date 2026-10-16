@@ -920,8 +920,16 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
   };
 }
 
-export function parseDocxStructure(bytes: Buffer): DocxStructure {
+export function parseDocxStructure(bytes: Buffer, options?: { forImport?: boolean }): DocxStructure {
   const entries = readZipEntries(bytes);
+  if (options?.forImport) {
+    const settings = parseXml(entries, 'word/settings.xml', false);
+    if (
+      settings &&
+      (descendants(settings, 'documentProtection').length || descendants(settings, 'writeProtection').length)
+    )
+      invalid('Protected DOCX documents cannot be imported. Export an authorized unprotected copy first.');
+  }
   return parseDocx(entries);
 }
 

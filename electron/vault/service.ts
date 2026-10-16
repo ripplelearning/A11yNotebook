@@ -1,6 +1,6 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
-import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
@@ -12,9 +12,15 @@ import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDa
 import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
+import { createProvenanceStore, type Provenance } from './provenance';
 
 function isNotePath(value: string) {
   return ['.md', '.html'].includes(path.extname(value).toLowerCase());
+}
+
+function assertVisibleCreationPath(relative: string) {
+  if (relative.split(/[\\/]/).some((part) => part.startsWith('.')))
+    throw new Error('New library items cannot use hidden names beginning with a dot.');
 }
 
 /** Create an operations facade for one canonical vault folder. */
@@ -26,6 +32,29 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   let disposed = false;
   let initialization: Promise<VaultInfo> | undefined;
   let noteWrites: Promise<unknown> = Promise.resolve();
+  const provenance = createProvenanceStore({ resolveMetadata }, liveProvenanceIdentities);
+
+  async function liveProvenanceIdentities() {
+    const identities = new Set<string>();
+    async function collect(directory: string, prefix = '') {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isSymbolicLink() || (prefix === '' && entry.name.toLowerCase() === '.a11ynotebook')) continue;
+        const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+        try {
+          const absolute = await resolveEntry(relative);
+          if (entry.isDirectory()) await collect(absolute, relative);
+          else if (entry.isFile()) {
+            const identity = await provenance.identity(absolute);
+            if (identity) identities.add(identity);
+          }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+    }
+    await collect(root);
+    return identities;
+  }
 
   function serializeNoteWrite<T>(operation: () => Promise<T>): Promise<T> {
     const result = noteWrites.then(operation);
@@ -191,7 +220,11 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     }
   }
 
-  async function scanDirectory(absolutePath: string, relativePath: string): Promise<VaultEntry[]> {
+  async function scanDirectory(
+    absolutePath: string,
+    relativePath: string,
+    origins: Awaited<ReturnType<typeof provenance.snapshot>>,
+  ): Promise<VaultEntry[]> {
     const entries = await readdir(absolutePath, { withFileTypes: true });
     const result: VaultEntry[] = [];
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
@@ -204,11 +237,17 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
           name: entry.name,
           path: childRelative,
           kind: 'notebook',
-          children: await scanDirectory(childPath, childRelative),
+          children: await scanDirectory(childPath, childRelative, origins),
         });
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
-        result.push({ name: entry.name, path: childRelative, kind: isNote ? 'note' : 'attachment' });
+        const origin = await provenance.get(childPath, origins);
+        result.push({
+          name: entry.name,
+          path: childRelative,
+          kind: isNote ? 'note' : 'attachment',
+          ...(origin ? { provenance: origin } : {}),
+        });
       }
     }
     return result;
@@ -216,7 +255,11 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function getVault(): Promise<VaultInfo> {
     if (!root || disposed) throw new Error('Open a library first.');
-    return { name: path.basename(root), path: root, entries: await scanDirectory(root, '') };
+    return {
+      name: path.basename(root),
+      path: root,
+      entries: await scanDirectory(root, '', await provenance.snapshot()),
+    };
   }
 
   async function readNote(relativePath: string) {
@@ -240,14 +283,21 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       await resolveEntry(relativePath);
       if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
         throw new Error('Note changed on disk. Resolve the conflict before saving.');
+      const retirePrevious = await preserveProvenance(relativePath, temporary, assertCurrent);
       assertCurrent?.();
       await rename(temporary, target);
+      await retirePrevious().catch(() => undefined);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
     }
   }
 
-  function saveNote(relativePath: string, content: string, expectedContent?: string): Promise<void> {
+  function saveNote(
+    relativePath: string,
+    content: string,
+    expectedContent?: string,
+    assertCurrent?: () => void,
+  ): Promise<void> {
     return serializeNoteWrite(async () => {
       if (typeof content !== 'string') throw new Error('Note content must be text.');
       if (expectedContent !== undefined && typeof expectedContent !== 'string')
@@ -266,21 +316,118 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         }
         throw error;
       }
-      await replaceNote(relativePath, content, expectedContent);
+      await replaceNote(relativePath, content, expectedContent, assertCurrent);
       await refreshSearchIndex();
     });
   }
 
   async function createFolder(relativePath: string) {
+    assertVisibleCreationPath(relativePath);
     const target = await resolveEntry(relativePath, true);
     await mkdir(target);
     await refreshSearchIndex();
     return getVault();
   }
 
-  function createNote(relativePath: string, content?: string): Promise<VaultInfo> {
+  async function preserveProvenance(relativePath: string, staging: string, assertCurrent?: () => void) {
+    const original = await resolveEntry(relativePath);
+    const previousIdentity = await provenance.identity(original);
+    const sharedIdentity = (await lstat(original)).nlink > 1;
+    const origin = await provenance.get(original, undefined, true);
+    await resolveEntry(path.relative(root, staging));
+    if (origin) await provenance.record(staging, origin, assertCurrent);
+    return async () => {
+      if (sharedIdentity) await provenance.prune(assertCurrent);
+      else if (previousIdentity) await provenance.forget([previousIdentity], assertCurrent);
+    };
+  }
+
+  async function createDocument(
+    relativePath: string,
+    content: string | Buffer,
+    origin: Provenance,
+    assertCurrent?: () => void,
+    onCommitted?: (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => void,
+  ) {
+    assertCurrent?.();
+    assertVisibleCreationPath(relativePath);
+    const target = await resolveEntry(relativePath, true);
+    const staging = path.join(path.dirname(target), `.import-${randomUUID()}.tmp`);
+    let committed = false;
+    let stagingKey: string | null = null;
+    let targetKey: string | null = null;
+    let stagedIdentity: Awaited<ReturnType<typeof lstat>> | undefined;
+    try {
+      await writeFile(staging, content, { flag: 'wx', mode: 0o600 });
+      stagedIdentity = await lstat(staging);
+      stagingKey = await provenance.identity(staging);
+      await provenance.record(staging, origin, assertCurrent);
+      await resolveEntry(relativePath, true);
+      assertCurrent?.();
+      // Linking a staged file is atomic and exclusive, unlike rename on POSIX.
+      try {
+        await link(staging, target);
+        committed = true;
+        targetKey = stagingKey;
+        onCommitted?.(target, stagedIdentity);
+      } catch (error) {
+        if (
+          !['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')
+        )
+          throw error;
+        // FAT and some network folders cannot hard-link. Exclusive creation
+        // still prevents overwrites; any incomplete file is removed on failure.
+        assertCurrent?.();
+        const handle = await open(
+          target,
+          constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW,
+          0o600,
+        );
+        try {
+          stagedIdentity = await handle.stat();
+          committed = true;
+          onCommitted?.(target, stagedIdentity);
+          await handle.writeFile(content);
+        } finally {
+          await handle.close();
+        }
+        targetKey = await provenance.identity(target);
+        await provenance.record(target, origin, assertCurrent);
+      }
+      await refreshSearchIndex();
+      assertCurrent?.();
+      const view = await getVault();
+      assertCurrent?.();
+      return view;
+    } catch (error) {
+      if (committed && stagedIdentity) {
+        const current = await lstat(target).catch(() => null);
+        if (current?.ino === stagedIdentity.ino && current?.dev === stagedIdentity.dev)
+          await rm(target, { force: true });
+        committed = false;
+        await refreshSearchIndex().catch(() => undefined);
+      }
+      throw error;
+    } finally {
+      await rm(staging, { force: true }).catch(() => undefined);
+      const retired = [stagingKey, ...(!committed ? [targetKey] : [])].filter(
+        (key): key is string => key !== null && (!committed || key !== targetKey),
+      );
+      await provenance.forget(retired, assertCurrent).catch(() => undefined);
+      if (committed) assertCurrent?.();
+    }
+  }
+
+  function createNote(
+    relativePath: string,
+    content?: string,
+    origin: Provenance = 'created',
+    assertCurrent?: () => void,
+    onCommitted?: (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => void,
+  ): Promise<VaultInfo> {
     return serializeNoteWrite(async () => {
       if (content !== undefined && typeof content !== 'string') throw new Error('Note content must be text.');
+      assertVisibleCreationPath(relativePath);
       const target = await resolveEntry(relativePath, true);
       if (!isNotePath(target)) throw new Error('Notes must use the .md or .html extension.');
       await mkdir(path.dirname(target), { recursive: true });
@@ -289,9 +436,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         (path.extname(target).toLowerCase() === '.html'
           ? `<h1>${path.basename(target, path.extname(target))}</h1>\n<p></p>\n`
           : `# ${path.basename(target, '.md')}\n\n`);
-      await writeFile(target, initialContent, { flag: 'wx' });
-      await refreshSearchIndex();
-      return getVault();
+      return createDocument(relativePath, initialContent, origin, assertCurrent, onCommitted);
     });
   }
 
@@ -303,6 +448,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   async function moveEntry(relativePath: string, destinationRelative: string): Promise<VaultInfo> {
+    assertVisibleCreationPath(destinationRelative);
     const source = await resolveEntry(relativePath);
     const destination = await resolveEntry(destinationRelative, true);
     if (destination.startsWith(`${source}${path.sep}`)) throw new Error('An item cannot be moved inside itself.');
@@ -510,6 +656,9 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     saveNote,
     createFolder,
     createNote,
+    createDocument,
+    preserveProvenance,
+    pruneProvenance: (assertCurrent?: () => void) => provenance.prune(assertCurrent),
     renameEntry,
     moveEntry,
     getTasks,

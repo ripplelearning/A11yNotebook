@@ -24,8 +24,11 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     {
       label: '&File',
       submenu: [
+        commandItem('new-contextual'),
+        commandItem('new-library'),
         commandItem('open-vault'),
         commandItem('new-notebook'),
+        commandItem('new-note'),
         commandItem('new-from-template'),
         commandItem('save-current-note'),
         { type: 'separator' },
@@ -66,6 +69,8 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     {
       label: '&Tools',
       submenu: [
+        commandItem('new-task'),
+        commandItem('new-asset'),
         commandItem('show-reminders'),
         commandItem('show-milestones'),
         commandItem('show-assets'),

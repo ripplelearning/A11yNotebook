@@ -18,6 +18,7 @@ import type { DocxStructure } from './docx';
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
+  createLibrary?(): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;
   readNote(path: string, password?: string): Promise<string>;
   saveNote(path: string, content: string, expectedContent?: string): Promise<void>;
@@ -93,8 +94,14 @@ export interface VaultBridge {
   onSecurityLocked?(callback: () => void): () => void;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
+  openWith?(
+    path: string,
+    options?: { makeDefault?: boolean },
+  ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;
+  importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
+  importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
   toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;

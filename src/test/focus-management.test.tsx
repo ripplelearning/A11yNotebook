@@ -166,7 +166,7 @@ describe('tabs', () => {
     const vault: VaultInfo = {
       name: 'Study',
       path: '/study',
-      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note' }],
+      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' }],
     };
     window.a11yNotebook = {
       updater: { onStatus: () => () => undefined },

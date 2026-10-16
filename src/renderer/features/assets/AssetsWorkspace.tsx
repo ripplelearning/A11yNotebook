@@ -20,6 +20,7 @@ import type { AssetDraft, AssetDraftRecovery } from '../../../shared/asset-draft
 import { OutlineEditor, MindMapEditor, GridEditor, FlashcardReview } from './index';
 
 interface Props {
+  title?: string;
   paths: string[];
   initialPath?: string;
   refresh: () => Promise<void>;
@@ -27,6 +28,7 @@ interface Props {
   onDirty: (dirty: boolean) => void;
   onBusy: (busy: boolean) => void;
   selectionVersion?: number;
+  createVersion?: number;
 }
 
 const registry = createAssetRegistry(assetTypes);
@@ -39,6 +41,7 @@ const STARTERS: Record<string, { extension: string; source: string }> = {
 };
 
 export default function AssetsWorkspace({
+  title = 'Cognitive tools',
   paths,
   initialPath,
   refresh,
@@ -46,6 +49,7 @@ export default function AssetsWorkspace({
   onDirty,
   onBusy,
   selectionVersion,
+  createVersion,
 }: Props) {
   const [path, setPath] = useState(initialPath ?? '');
   const [asset, setAsset] = useState<VaultAsset | null>(null);
@@ -69,6 +73,10 @@ export default function AssetsWorkspace({
   const editor = useRef<HTMLDivElement>(null);
   const discoveredDraft = useRef('');
   const returnToEditor = useRef(false);
+  const typeChooser = useRef<HTMLSelectElement>(null);
+  useEffect(() => {
+    if (createVersion) typeChooser.current?.focus();
+  }, [createVersion]);
   useEffect(() => {
     if (busy) return;
     if (recovery?.draft) {
@@ -268,7 +276,7 @@ export default function AssetsWorkspace({
   };
   return (
     <section aria-labelledby="assets-heading">
-      <h2 id="assets-heading">Cognitive tools</h2>
+      <h2 id="assets-heading">{title}</h2>
       <p>
         Save changes before switching files or closing this view. Encrypted checkpoints require opted-in metadata
         protection; the latest edits within 750 milliseconds may be lost.
@@ -369,7 +377,12 @@ export default function AssetsWorkspace({
       >
         <label>
           New asset type
-          <select disabled={busy || dirty} value={newType} onChange={(event) => setNewType(event.target.value)}>
+          <select
+            ref={typeChooser}
+            disabled={busy || dirty}
+            value={newType}
+            onChange={(event) => setNewType(event.target.value)}
+          >
             {assetTypes.map((type) => (
               <option key={type.id} value={type.id}>
                 {type.label}

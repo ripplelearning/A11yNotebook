@@ -7,9 +7,10 @@ type CommandPaletteProps = {
   onRun: (commandId: CommandId) => void;
   onClose: () => void;
   shortcuts?: NotebookSettings['shortcuts'];
+  isDisabled?: (commandId: CommandId) => boolean;
 };
 
-export default function CommandPalette({ onRun, onClose, shortcuts = {} }: CommandPaletteProps) {
+export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisabled }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
 
   const filteredCommands = useMemo(() => {
@@ -49,6 +50,7 @@ export default function CommandPalette({ onRun, onClose, shortcuts = {} }: Comma
           <li key={command.id}>
             <button
               type="button"
+              disabled={isDisabled?.(command.id)}
               onClick={() => onRun(command.id)}
               aria-describedby={`command-${command.id}-description`}
             >

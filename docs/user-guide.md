@@ -3,13 +3,33 @@
 ## Open a library
 
 Choose **Library → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
-as notebooks, `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
+as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
+
+## Create in the current view
+
+**New** (Ctrl+N by default) creates the kind of item appropriate to the active view:
+
+| Active view                                                       | New workflow                                                                                                                          |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Libraries                                                         | Create a **new local library**, choosing a parent folder and a new name in the native dialog; an existing folder is never overwritten |
+| Notebooks                                                         | Create a notebook in the open library                                                                                                 |
+| Notes and Files                                                   | Create a note in the selected notebook                                                                                                |
+| Tasks                                                             | Choose an associated note and add a persisted checkbox task, with optional due date and priority                                      |
+| Cognitive Tools                                                   | Choose Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, then name and create the tool at the library root                   |
+| Note tabs, Contents, Reminders, Milestones, previews, and Welcome | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
+
+The explicit **New notebook** command still creates a notebook; it has not been redefined to mean contextual New.
+Settings can change or disable New's shortcut, with conflict validation. Menus and the command palette expose the
+same commands. Cancel leaves existing files and unsaved edits intact; save or resolve pending edits when requested.
+New notes use Markdown by default; the creation dialog also offers HTML. Views that need an open library explain
+that prerequisite rather than silently creating a different kind of item.
 
 ## Navigate files
 
 Use the **Library files** tree. Up and Down move between visible items; Right expands a notebook or enters its first
 child; Left collapses or moves to its parent. Home and End move to the first and last visible item. Enter opens a
-note or a supported preview. Unsupported attachments open externally. F2 opens a rename dialog. Delete asks before moving it
+managed note or a supported managed preview. External or unknown-origin documents use Open With rather than being
+silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving it
 to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
 
 Use **New note**, **New notebook**, or **Import file** in the navigation pane. Imported files are copied into the
@@ -21,6 +41,31 @@ on the focused item: library files, tabs, selected editor text, links, tasks, se
 and attachment previews have different actions. Use Up/Down, Home/End, type-ahead, Enter/Space, or Escape. Disabled
 actions are announced as unavailable, and Escape returns focus to the invoking element. The menu does not replace
 modal-dialog keyboard behavior.
+
+### Managed documents and older libraries
+
+App creation and explicit import record provenance separately in `.a11ynotebook/provenance.json`; the original
+document does not acquire an embedded app marker. File extensions and notebook membership alone do not establish
+origin. Existing libraries without these records remain readable on disk and are not automatically relabelled as
+app-created: legacy/unknown files require explicit import before opening internally.
+
+For a compatible external file, use **Import into A11y Notebook** from its context menu to create a managed copy.
+The original is preserved. Markdown and HTML notes support reading and editing; supported text, image, PDF, ePub
+and DOCX previews are read-only unless a dedicated tool editor is provided (for example, a CSV grid).
+Unsupported or invalid formats are not offered as editable imports; oversized, unsafe, or malformed input is
+rejected. Cancelling an import does not modify the original. Keep the metadata folder when copying a whole library;
+missing records are handled conservatively, not reconstructed from timestamps or filenames.
+
+On Windows, **Open With** asks Windows to choose an application for a document; **Open externally** uses the
+existing default association. Choosing an application once does not silently change defaults. To change the default,
+use the **Choose default application…** context action and confirm the Windows Default Apps settings option. In Windows 11, search Settings → Apps →
+Default apps for the extension (for example `.txt`) and choose the default there; Windows 10 offers
+**Choose default apps by file type**. Windows owns and confirms that choice: A11y Notebook does not edit registry
+associations or claim a default changed merely because Settings opened. The chooser is Windows-only; on other
+platforms use the existing default application or the operating system's own file-type settings.
+Microsoft documents that [SHOpenWithDialog cannot change defaults on Windows 10 and later](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shopenwithdialog).
+Executable programs, scripts, and shortcuts are not document imports or supported external document actions.
+
 **Move** chooses a destination notebook. Save all open edits before a rename/move; the native confirmation
 lists notes whose links will change. Cancelling leaves the files untouched. Bookmarks, annotations, image
 descriptions, flashcard schedules, and reminders follow app-managed moves. Ambiguous title links are not repaired;
@@ -29,6 +74,13 @@ use qualified wiki paths such as `[[Notebook/Title]]`. Reference-style Markdown 
 ## Read and edit notes
 
 Notes open in tabs. Create either Markdown (`.md`) or HTML (`.html`) notes using the **Note format** selector.
+Opening the same note again reuses its tab; opening another note keeps existing notes and their unsaved edits.
+Navigation views do not close note tabs. Ctrl+Tab cycles open tabs, and arrow keys navigate the tab strip.
+Closing an active tab returns to Welcome and focuses the tab strip; cancelling an unsaved-change confirmation
+keeps the note open. Reopening a closed note reloads its saved content and reapplies the default mode.
+In **Settings → Default Open behavior for notes**, choose **Read mode** (the default, including older settings)
+or **Edit mode**. This preference applies to managed notes when opened or activated; it does not make read-only
+document previews editable or bypass an encrypted-note or editing lock. Ctrl+E remains the explicit editing toggle.
 The read view contains semantic content; Markdown renders with unsafe raw HTML removed, and HTML notes are sanitized
 on load, edit, paste, save, and render. Scripts, forms, active embedded content, event handlers, remote images, and
 unsafe URL schemes are not allowed. HTML images must have alternative text and use local raster files.
@@ -300,7 +352,7 @@ editing are not logged. See the security documentation for exact limits.
 | Shortcut                                                     | Action                                         |
 | ------------------------------------------------------------ | ---------------------------------------------- |
 | Ctrl+O                                                       | Open library                                   |
-| Ctrl+N                                                       | Create notebook                                |
+| Ctrl+N                                                       | New item in the current view                   |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
 | Alt+Q                                                        | Focus global search                            |

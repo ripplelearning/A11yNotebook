@@ -26,7 +26,7 @@ export default function ContentsScreen({ vault, entries, onNavigate }: ContentsS
 
   return (
     <section aria-labelledby="contents-heading">
-      <h2 id="contents-heading">Contents</h2>
+      <h2 id="contents-heading">{vault ? `Contents in ${vault.name}` : 'Contents'}</h2>
       <p>{vault ? `Current library: ${vault.name}` : 'No library is open.'}</p>
       <ul>
         {sections.map((section) => (

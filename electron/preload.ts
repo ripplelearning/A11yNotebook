@@ -20,6 +20,8 @@ const CHANNELS: typeof SharedChannels = {
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
   vaultOpen: 'vault:open',
+  vaultCreateLibrary: 'vault:create-library',
+  vaultOpenWith: 'vault:open-with',
   vaultGet: 'vault:get',
   vaultReadNote: 'vault:read-note',
   vaultSaveNote: 'vault:save-note',
@@ -30,6 +32,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenExternal: 'vault:open-external',
   vaultOpenUrl: 'vault:open-url',
   vaultImport: 'vault:import',
+  vaultImportAsNote: 'vault:import-as-note',
+  vaultImportEntry: 'vault:import-entry',
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
@@ -128,6 +132,8 @@ const bridge: NotebookBridge = {
   },
   vault: {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
+    createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
+    openWith: (relativePath, options) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath, options),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
     readNote: (relativePath, password) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath, password),
     saveNote: (relativePath, content, expectedContent) =>
@@ -206,6 +212,8 @@ const bridge: NotebookBridge = {
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
     openUrl: (url) => ipcRenderer.invoke(CHANNELS.vaultOpenUrl, url),
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
+    importAsNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportAsNote, relativePath),
+    importEntry: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportEntry, relativePath),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
     toggleTask: (relativePath, location, complete, revision) =>

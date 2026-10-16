@@ -15,7 +15,7 @@ function setup(withNote = false) {
   const vault: VaultInfo = {
     path: '/vault',
     name: 'Planning',
-    entries: withNote ? [{ path: 'Plan.md', name: 'Plan.md', kind: 'note' }] : [],
+    entries: withNote ? [{ path: 'Plan.md', name: 'Plan.md', kind: 'note', provenance: 'created' }] : [],
   };
   let menu: (command: MenuCommand) => void = () => undefined;
   const locks = new Set<() => void>();

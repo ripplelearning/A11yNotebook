@@ -22,6 +22,7 @@ export interface NewFromTemplateDialogProps {
   /** Additional templates read by the host; built-ins are always available. IDs must be unique. */
   templates?: NoteTemplate[];
   now?: Date;
+  initialNotebookPath?: string;
 }
 
 export default function NewFromTemplateDialog({
@@ -30,11 +31,12 @@ export default function NewFromTemplateDialog({
   onClose,
   templates = [],
   now,
+  initialNotebookPath,
 }: NewFromTemplateDialogProps) {
   const id = useId();
   const availableTemplates = [...BUILT_IN_TEMPLATES, ...templates];
   const [templateId, setTemplateId] = useState(availableTemplates[0].id);
-  const [notebookPath, setNotebookPath] = useState(notebooks[0]?.path ?? '');
+  const [notebookPath, setNotebookPath] = useState(initialNotebookPath ?? notebooks[0]?.path ?? '');
   const [title, setTitle] = useState('');
   const [format, setFormat] = useState<'markdown' | 'html'>('markdown');
   const [error, setError] = useState('');

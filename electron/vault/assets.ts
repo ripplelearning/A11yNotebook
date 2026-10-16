@@ -7,6 +7,8 @@ import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 
 interface Resolver {
   resolveEntry(relative: string, missing?: boolean): Promise<string>;
+  createDocument?(relative: string, content: string, origin: 'created', assertCurrent?: () => void): Promise<unknown>;
+  preserveProvenance?(relative: string, staging: string, assertCurrent?: () => void): Promise<() => Promise<void>>;
 }
 
 export function validateSchedule(value: unknown): CardSchedule {
@@ -92,19 +94,26 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
           await vault.resolveEntry(relative);
           if ((await read(relative)).content !== expected)
             throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
+          const retirePrevious = await vault.preserveProvenance?.(relative, temporary, assertCurrent);
           assertCurrent();
           await rename(temporary, target);
+          await retirePrevious?.().catch(() => undefined);
         } finally {
           await rm(temporary, { force: true }).catch(() => undefined);
         }
       }),
-    create: (relative: string, content: string) =>
+    create: (relative: string, content: string, assertCurrent: () => void = () => undefined) =>
       serial(async () => {
         const type = assetType(relative);
         if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024)
           throw new Error('Invalid asset content.');
         type.parse(content);
+        if (vault.createDocument) {
+          await vault.createDocument(relative, content, 'created', assertCurrent);
+          return;
+        }
         const target = await vault.resolveEntry(relative, true);
+        assertCurrent();
         await writeFile(target, content, { flag: 'wx' });
       }),
     getSchedules: async (relative: string): Promise<Record<string, CardSchedule>> => {

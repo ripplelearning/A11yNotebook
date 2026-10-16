@@ -13,7 +13,7 @@ const vault: VaultInfo = {
       name: 'Class notes',
       path: 'Class notes',
       kind: 'notebook',
-      children: [{ name: 'Week 1.md', path: 'Class notes/Week 1.md', kind: 'note' }],
+      children: [{ name: 'Week 1.md', path: 'Class notes/Week 1.md', kind: 'note', provenance: 'created' }],
     },
   ],
 };
@@ -121,6 +121,7 @@ describe('local vault workflow', () => {
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task marked complete.');
 
     fireEvent.click(within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }));
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), {
       target: { value: '# Week 1\n\nUnsaved changes.' },
     });

@@ -30,7 +30,14 @@ function setup(
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
-    entries: [{ name: note?.path.split('/').at(-1) ?? 'Note.md', path: note?.path ?? 'Note.md', kind: 'note' }],
+    entries: [
+      {
+        name: note?.path.split('/').at(-1) ?? 'Note.md',
+        path: note?.path ?? 'Note.md',
+        kind: 'note',
+        provenance: 'created',
+      },
+    ],
   };
   const bridge: NotebookBridge = {
     vault: {
@@ -101,6 +108,7 @@ function setup(
           path: 'Note.md',
           title: 'Note',
           kind: 'note' as const,
+          provenance: 'created' as const,
           notebook: '',
           tags: [],
           modified: '2026-10-03',
@@ -205,7 +213,7 @@ describe('feature wiring in the application shell', () => {
   });
   it('routes DOCX attachments to the existing in-app semantic reader instead of an external application', async () => {
     const { bridge, vault } = setup();
-    vault.entries.push({ name: 'Guide.docx', path: 'Guide.docx', kind: 'attachment' });
+    vault.entries.push({ name: 'Guide.docx', path: 'Guide.docx', kind: 'attachment', provenance: 'imported' });
     bridge.vault.readAttachment = vi.fn(async () => ({ path: 'Guide.docx', kind: '.docx' as const, text: '' }));
     bridge.vault.readDocxStructure = vi.fn(async () => ({
       title: 'Accessible DOCX',
@@ -270,7 +278,7 @@ describe('feature wiring in the application shell', () => {
   it('creates HTML notes from the format picker', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    fireEvent.click(within(screen.getByLabelText('Navigation pane')).getByRole('button', { name: 'New note' }));
     const dialog = await screen.findByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Briefing' } });
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'html' } });
@@ -337,7 +345,7 @@ describe('feature wiring in the application shell', () => {
     const next: VaultInfo = {
       name: 'Next',
       path: '/next',
-      entries: [{ name: 'Other.md', path: 'Other.md', kind: 'note' }],
+      entries: [{ name: 'Other.md', path: 'Other.md', kind: 'note', provenance: 'created' }],
     };
     let finish: (value: VaultInfo) => void = () => undefined;
     vi.mocked(bridge.vault.get)
@@ -379,7 +387,7 @@ describe('feature wiring in the application shell', () => {
   it('opens a labelled creation dialog instead of a browser prompt', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('button', { name: 'New note' }));
+    fireEvent.click(within(screen.getByLabelText('Navigation pane')).getByRole('button', { name: 'New note' }));
     const dialog = screen.getByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'New' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));

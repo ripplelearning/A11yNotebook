@@ -7,6 +7,14 @@ export type CommandId =
   | 'show-notes-files'
   | 'open-vault'
   | 'new-notebook'
+  | 'new-contextual'
+  | 'new-library'
+  | 'new-note'
+  | 'new-task'
+  | 'new-asset'
+  | 'context-import-note'
+  | 'context-open-with'
+  | 'context-open-with-default'
   | 'save-current-note'
   | 'show-tasks'
   | 'toggle-bookmark'
@@ -107,6 +115,11 @@ export type CommandActionContext = {
   showSettings?: () => void;
   openVault?: () => void;
   newNotebook?: () => void;
+  newContextual?: () => void;
+  newLibrary?: () => void;
+  newNote?: () => void;
+  newTask?: () => void;
+  newAsset?: () => void;
   exportCurrentNote?: () => void;
 };
 
@@ -128,6 +141,27 @@ export type KeyboardShortcutDefinition = {
 };
 
 export const COMMANDS: CommandDefinition[] = [
+  {
+    id: 'new-contextual',
+    label: 'New',
+    description: 'Create an item in the current view.',
+    shortcut: 'Ctrl+N',
+    contexts: ['general'],
+  },
+  { id: 'new-library', label: 'New library', description: 'Create a new local library.', contexts: ['general'] },
+  { id: 'new-note', label: 'New note', description: 'Create a note in the selected notebook.', contexts: ['general'] },
+  {
+    id: 'new-task',
+    label: 'New task',
+    description: 'Add a persisted task to an associated note.',
+    contexts: ['general'],
+  },
+  {
+    id: 'new-asset',
+    label: 'New cognitive tool',
+    description: 'Choose a cognitive tool type and create it.',
+    contexts: ['general'],
+  },
   {
     id: 'show-contents',
     label: 'Contents',
@@ -163,6 +197,25 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
   },
   {
+    id: 'context-import-note',
+    label: 'Import into A11y Notebook…',
+    description:
+      'Import a managed copy. Markdown and HTML notes are editable; documents and images use read-only previews, and cognitive assets use their dedicated editors.',
+    contexts: ['tree-note', 'attachment'],
+  },
+  {
+    id: 'context-open-with',
+    label: 'Open With…',
+    description: 'Choose an external application for this file.',
+    contexts: ['tree-note', 'attachment'],
+  },
+  {
+    id: 'context-open-with-default',
+    label: 'Choose default application…',
+    description: 'Choose the Windows default application for this file type.',
+    contexts: ['tree-note', 'attachment'],
+  },
+  {
     id: 'context-rename',
     label: 'Rename',
     description: 'Rename the selected library item.',
@@ -194,7 +247,7 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'context-new-note',
-    label: 'New note',
+    label: 'New note in notebook',
     description: 'Create a note in this notebook.',
     contexts: ['tree-folder'],
   },
@@ -318,7 +371,8 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'show-assets',
-    label: 'Cognitive Assets',
+    label: 'Cognitive tools',
+    aliases: ['Cognitive Assets'],
     description: 'Edit outlines, mind maps, tables, and review flashcards.',
     shortcut: 'Ctrl+5',
     contexts: ['general'],
@@ -441,7 +495,6 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'new-notebook',
     label: 'New notebook',
     description: 'Create a new notebook entry within the current library.',
-    shortcut: 'Ctrl+N',
     contexts: ['general', 'tree-folder'],
   },
   {
@@ -452,8 +505,8 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'show-tasks',
-    label: 'Tasks & Reminders',
-    description: 'Show and manage tasks and reminders.',
+    label: 'Tasks',
+    description: 'Show and manage note-associated tasks.',
     shortcut: 'Ctrl+4',
     contexts: ['general'],
   },
@@ -614,6 +667,21 @@ export function toAriaKeyShortcut(shortcut: string): string {
  */
 export function dispatchCommand(commandId: CommandId, context: CommandActionContext): string | undefined {
   switch (commandId) {
+    case 'new-contextual':
+      context.newContextual?.();
+      return undefined;
+    case 'new-library':
+      context.newLibrary?.();
+      return undefined;
+    case 'new-note':
+      context.newNote?.();
+      return undefined;
+    case 'new-task':
+      context.newTask?.();
+      return undefined;
+    case 'new-asset':
+      context.newAsset?.();
+      return undefined;
     case 'show-contents':
       if (context.showContents) {
         context.showContents();
