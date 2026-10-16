@@ -14,7 +14,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-function setup(defaultNoteOpenMode: 'read-only' | 'edit' = 'read-only') {
+function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
   const vault: VaultInfo = {
     name: 'Study library',
     path: '/study',
@@ -24,11 +24,11 @@ function setup(defaultNoteOpenMode: 'read-only' | 'edit' = 'read-only') {
         path: 'Research',
         kind: 'notebook',
         children: [
-          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' },
-          { name: 'Other.md', path: 'Research/Other.md', kind: 'note' },
+          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note', provenance: 'created' },
+          { name: 'Other.md', path: 'Research/Other.md', kind: 'note', provenance: 'created' },
         ],
       },
-      { name: 'Root.md', path: 'Root.md', kind: 'note' },
+      { name: 'Root.md', path: 'Root.md', kind: 'note', provenance: 'created' },
     ],
   };
   const bridge = {
@@ -104,7 +104,6 @@ describe('contextual navigation and creation', () => {
       shortcut(key);
       await waitFor(() => expect(status()).toHaveTextContent(message));
     }
-    // The selected notebook survives selecting a note and visiting other screens.
     shortcut('3');
     fireEvent.click(screen.getByRole('gridcell', { name: 'Other.md' }));
     await waitFor(() => expect(status()).toHaveTextContent('Notes and Files in Research'));
@@ -280,7 +279,7 @@ describe('contextual navigation and creation', () => {
 });
 
 describe('default note opening mode', () => {
-  it.each(['read-only', 'edit'] as const)('applies %s on open, switch, and reopening an existing tab', async (mode) => {
+  it.each(['read', 'edit'] as const)('applies %s on open, switch, and reopening an existing tab', async (mode) => {
     setup(mode);
     await expandResearch();
     const first = await screen.findByRole('treeitem', { name: /Idea.md/ });

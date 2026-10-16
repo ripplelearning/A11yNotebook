@@ -7,8 +7,8 @@ import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 
 interface Resolver {
   resolveEntry(relative: string, missing?: boolean): Promise<string>;
-  getProvenance?(relative: string): Promise<'app-created' | 'imported' | 'unknown'>;
-  recordProvenance?(relative: string, origin: 'app-created' | 'imported' | 'unknown'): Promise<void>;
+  createDocument?(relative: string, content: string, origin: 'created', assertCurrent?: () => void): Promise<unknown>;
+  preserveProvenance?(relative: string, staging: string, assertCurrent?: () => void): Promise<() => Promise<void>>;
 }
 
 export function validateSchedule(value: unknown): CardSchedule {
@@ -87,7 +87,6 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
         const target = await vault.resolveEntry(relative);
         if ((await read(relative)).content !== expected)
           throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
-        const origin = (await vault.getProvenance?.(relative)) ?? 'unknown';
         const temporary = path.join(path.dirname(target), `.asset-${randomUUID()}.tmp`);
         try {
           const stat = await lstat(target);
@@ -95,9 +94,10 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
           await vault.resolveEntry(relative);
           if ((await read(relative)).content !== expected)
             throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');
+          const retirePrevious = await vault.preserveProvenance?.(relative, temporary, assertCurrent);
           assertCurrent();
           await rename(temporary, target);
-          await vault.recordProvenance?.(relative, origin);
+          await retirePrevious?.().catch(() => undefined);
         } finally {
           await rm(temporary, { force: true }).catch(() => undefined);
         }
@@ -109,10 +109,13 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
         if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024)
           throw new Error('Invalid asset content.');
         type.parse(content);
+        if (vault.createDocument) {
+          await vault.createDocument(relative, content, 'created', assertCurrent);
+          return;
+        }
         const target = await vault.resolveEntry(relative, true);
         assertCurrent();
         await writeFile(target, content, { flag: 'wx' });
-        await vault.recordProvenance?.(relative, 'app-created');
       }),
     getSchedules: async (relative: string): Promise<Record<string, CardSchedule>> => {
       if (assetType(relative).id !== 'flashcards') throw new Error('Choose a flashcard deck.');

@@ -8,6 +8,8 @@ directories:
   output: release
   buildResources: build
 
+beforePack: ./scripts/build-open-with.mjs
+
 files:
   - dist/**
   - dist-electron/**
@@ -15,6 +17,9 @@ files:
   - '!**/*.map'
 
 win:
+  extraResources:
+    - from: out/native/A11yNotebook.OpenWith.exe
+      to: native/A11yNotebook.OpenWith.exe
   icon: build/icon.ico
   target:
     - target: nsis

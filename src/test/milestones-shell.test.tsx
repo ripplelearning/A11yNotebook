@@ -15,7 +15,7 @@ function setup(withNote = false) {
   const vault: VaultInfo = {
     path: '/vault',
     name: 'Planning',
-    entries: withNote ? [{ path: 'Plan.md', name: 'Plan.md', kind: 'note' }] : [],
+    entries: withNote ? [{ path: 'Plan.md', name: 'Plan.md', kind: 'note', provenance: 'created' }] : [],
   };
   let menu: (command: MenuCommand) => void = () => undefined;
   const locks = new Set<() => void>();
@@ -106,7 +106,7 @@ describe('milestone shell wiring', () => {
     f.menu('show-milestones');
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create milestone' })).toBeEnabled());
     expect(screen.getByRole('tab', { name: 'Milestones' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByRole('tabpanel', { name: 'Milestones' })).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: 'Milestones in Planning' })).toHaveFocus();
     fireEvent.keyDown(document.body, { key: 'w', ctrlKey: true });
     expect(screen.queryByRole('tab', { name: 'Milestones' })).not.toBeInTheDocument();
     expect(screen.getByRole('tab', { name: 'Welcome' })).toHaveAttribute('aria-selected', 'true');
@@ -124,7 +124,7 @@ describe('milestone shell wiring', () => {
     );
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create milestone' })).toBeEnabled());
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('tabpanel', { name: 'Milestones' })).toHaveFocus();
+    expect(screen.getByRole('tabpanel', { name: 'Milestones in Planning' })).toHaveFocus();
     fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'w', ctrlKey: true });
     expect(screen.getByRole('tab', { name: 'Milestones' })).toBeInTheDocument();
@@ -204,7 +204,7 @@ describe('milestone shell wiring', () => {
     expect(
       screen.getAllByRole('status').filter((element) => element.textContent?.includes('Milestone created.')),
     ).toEqual([appStatus]);
-    const milestoneView = screen.getByRole('region', { name: 'Milestones' });
+    const milestoneView = screen.getByRole('region', { name: 'Milestones in Planning' });
     expect(within(milestoneView).getByText('Milestone created.').closest('[role="status"], [aria-live]')).toBeNull();
     const progress = within(milestoneView).getByText('0 of 0 tasks complete (0%); 0 unavailable tasks.');
     expect(progress.closest('[role="status"], [aria-live]')).toBeNull();

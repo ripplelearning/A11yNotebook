@@ -1,6 +1,7 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { openWithChooser } from '../../electron/vault/open-with';
+import path from 'node:path';
+import { openWithWindows } from '../../electron/vault/open-with';
 
 const mock = vi.hoisted(() => ({ execute: vi.fn(), fail: false }));
 vi.mock('node:child_process', () => ({
@@ -18,33 +19,31 @@ afterEach(() => {
 });
 
 describe('OS Open With chooser', () => {
-  it('uses a fixed executable and encoded constant command; treats metacharacters only as data', async () => {
+  it('uses the bundled native executable and treats metacharacters only as argument data', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
-    vi.stubEnv('SystemRoot', 'C:\\Windows');
     const filename = 'C:\\Notes\\evil"; Start-Process calc; &%.md';
-    await openWithChooser(filename);
+    await expect(openWithWindows(filename)).resolves.toEqual({ cancelled: false });
     const [executable, args, options] = mock.execute.mock.calls[0];
-    expect(executable).toBe('C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe');
+    expect(path.isAbsolute(executable)).toBe(true);
+    expect(path.basename(executable)).toBe('A11yNotebook.OpenWith.exe');
+    expect(path.basename(path.dirname(executable))).toBe('native');
     expect(options.shell).toBe(false);
-    expect(options.env.A11Y_NOTEBOOK_OPEN_WITH_PATH).toBe(filename);
-    expect(args).toContain('-STA');
-    expect(args).not.toContain(filename);
-    const command = Buffer.from(args.at(-1), 'base64').toString('utf16le');
-    expect(command).toContain('SHOpenWithDialog');
-    expect(command).not.toContain(filename);
-    expect(command).not.toMatch(/rundll32|Invoke-Expression|Set-ItemProperty/i);
+    expect(options.windowsHide).toBe(true);
+    expect(args).toEqual([filename]);
+    expect(executable).not.toContain(filename);
+    expect(executable).not.toMatch(/powershell|cmd\.exe|rundll32|wscript/i);
   });
 
   it('reports unavailable on non-Windows instead of falsely claiming a chooser opened', async () => {
     Object.defineProperty(process, 'platform', { value: 'linux' });
-    await expect(openWithChooser('/notes/Topic.md')).rejects.toThrow('unavailable on this platform');
+    await expect(openWithWindows('/notes/Topic.md')).rejects.toThrow('only on Windows');
     expect(mock.execute).not.toHaveBeenCalled();
   });
 
   it('reports native chooser failures', async () => {
     Object.defineProperty(process, 'platform', { value: 'win32' });
-    vi.stubEnv('SystemRoot', 'C:\\Windows');
     mock.fail = true;
-    await expect(openWithChooser('C:\\Notes\\Topic.md')).rejects.toThrow('could not display');
+    await expect(openWithWindows('C:\\Notes\\Topic.md')).rejects.toThrow('could not open the application chooser');
+    expect(mock.execute).toHaveBeenCalledTimes(1);
   });
 });

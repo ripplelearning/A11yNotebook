@@ -50,17 +50,17 @@ function renderLibrary() {
         path: 'Research',
         kind: 'notebook',
         children: [
-          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' },
-          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment' },
+          { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note', provenance: 'created' },
+          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment', provenance: 'imported' },
         ],
       },
       {
         name: 'Archive',
         path: 'Archive',
         kind: 'notebook',
-        children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note' }],
+        children: [{ name: 'Archived.md', path: 'Archive/Archived.md', kind: 'note', provenance: 'created' }],
       },
-      { name: 'Root.md', path: 'Root.md', kind: 'note' },
+      { name: 'Root.md', path: 'Root.md', kind: 'note', provenance: 'created' },
     ],
   };
   const bridge = {
@@ -295,9 +295,9 @@ describe('accessible details view', () => {
     await screen.findByRole('heading', { name: 'Study', level: 2 });
     const viewMenu = screen.getByRole('group', { name: 'View' });
     fireEvent.click(within(viewMenu).getByRole('button', { name: 'Contents' }));
-    expect(screen.getByRole('heading', { name: 'Contents' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Contents in Study' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Libraries (1)' }));
-    expect(screen.getByRole('heading', { name: 'Libraries' })).toBeInTheDocument();
+    expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: 'Study' })).toBeInTheDocument();
     expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Open library' })).toBeInTheDocument();
 
     fireEvent.click(within(viewMenu).getByRole('button', { name: 'Notebooks' }));
@@ -327,11 +327,11 @@ describe('accessible details view', () => {
     await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
     expectResearchContext();
     navigate('0');
-    expect(screen.getByRole('heading', { name: 'Contents' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Contents in Study' })).toBeInTheDocument();
     navigate('1');
-    expect(screen.getByRole('heading', { name: 'Libraries' })).toBeInTheDocument();
+    expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: 'Study' })).toBeInTheDocument();
     navigate('2');
-    expect(screen.getByRole('heading', { name: 'Notebooks' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Notebooks in Study' })).toBeInTheDocument();
     navigate('3');
     expectResearchContext();
     navigate('k');

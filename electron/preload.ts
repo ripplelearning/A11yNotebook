@@ -22,7 +22,6 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpen: 'vault:open',
   vaultCreateLibrary: 'vault:create-library',
   vaultCreateTask: 'vault:create-task',
-  vaultImportEntry: 'vault:import-entry',
   vaultOpenWith: 'vault:open-with',
   vaultGet: 'vault:get',
   vaultReadNote: 'vault:read-note',
@@ -34,6 +33,9 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenExternal: 'vault:open-external',
   vaultOpenUrl: 'vault:open-url',
   vaultImport: 'vault:import',
+  vaultImportAsNote: 'vault:import-as-note',
+  vaultImportEntry: 'vault:import-entry',
+  vaultAdoptEncrypted: 'vault:adopt-encrypted',
   vaultDelete: 'vault:delete',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
@@ -134,8 +136,7 @@ const bridge: NotebookBridge = {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
     createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
     createTask: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateTask, input),
-    importEntry: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportEntry, relativePath),
-    openWith: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath),
+    openWith: (relativePath, options) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath, options),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
     readNote: (relativePath, password) => ipcRenderer.invoke(CHANNELS.vaultReadNote, relativePath, password),
     saveNote: (relativePath, content, expectedContent) =>
@@ -214,6 +215,10 @@ const bridge: NotebookBridge = {
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
     openUrl: (url) => ipcRenderer.invoke(CHANNELS.vaultOpenUrl, url),
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
+    importAsNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportAsNote, relativePath),
+    importEntry: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportEntry, relativePath),
+    adoptEncrypted: (relativePath, password) =>
+      ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
     toggleTask: (relativePath, location, complete, revision) =>

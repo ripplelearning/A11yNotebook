@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { lstat, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -53,28 +53,32 @@ describe('durable provenance resilience', () => {
     const target = path.join(root, 'Topic.md');
     await writeFile(target, '# Topic');
     const resolve = async (name: string) => path.join(root, name);
-    const original = createProvenanceStore(resolve);
-    await original.record('Topic.md', target, 'app-created');
+    const original = createProvenanceStore({ resolveMetadata: resolve });
+    await original.record(target, 'created');
     mock.shortReads = true;
-    const reopened = createProvenanceStore(resolve);
-    await reopened.initialize();
+    const reopened = createProvenanceStore({ resolveMetadata: resolve });
+    const records = await reopened.snapshot();
     expect(mock.reads).toBeGreaterThan(2);
-    expect(reopened.get('Topic.md', await lstat(target))).toBe('app-created');
+    expect(await reopened.get(target, records)).toBe('created');
   });
 
-  it('explains partial import success and fails closed after failed provenance persistence', async () => {
+  it('rolls back an import and fails closed after failed provenance persistence', async () => {
     service = createVaultService(root);
     await service.initialize();
     await writeFile(path.join(root, 'Source.md'), '# Source');
     mock.failPersist = true;
-    await expect(service.importEntry('Source.md')).rejects.toThrow('File copied as');
-    const copy = (await service.getVault()).entries.find((entry) => entry.path.startsWith('Imported-'))!;
-    expect(await readFile(path.join(root, copy.path), 'utf8')).toBe('# Source');
+    await expect(service.importEntry('Source.md')).rejects.toThrow('Disk full');
+    expect((await service.getVault()).entries.some((entry) => entry.path.startsWith('Imported-'))).toBe(false);
+    expect((await readdir(root)).some((name) => name.endsWith('.tmp'))).toBe(false);
     expect(await readFile(path.join(root, 'Source.md'), 'utf8')).toBe('# Source');
     await service.dispose();
     mock.failPersist = false;
     service = createVaultService(root);
     await service.initialize();
-    expect(await service.getProvenance(copy.path)).toBe('unknown');
+    expect(await service.getProvenance('Source.md')).toBe('unknown');
+    expect((await service.getVault()).entries.some((entry) => entry.path.startsWith('Imported-'))).toBe(false);
+    const copy = await service.importEntry('Source.md');
+    expect(await service.getProvenance(copy.path)).toBe('imported');
+    expect(await service.getProvenance('Source.md')).toBe('unknown');
   });
 });

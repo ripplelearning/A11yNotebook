@@ -15,10 +15,28 @@ describe('settings and shortcut validation', () => {
     const saved = validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: mode });
     expect(validateSettings(JSON.parse(JSON.stringify(saved))).defaultNoteOpenMode).toBe(mode);
   });
-  it.each(['read', 'Edit', '', null, false, 0, {}, []])('rejects invalid note-open preference %j', (mode) => {
+  it.each(['Edit', '', null, false, 0, {}, []])('rejects invalid note-open preference %j', (mode) => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: mode })).toThrow(
       'Invalid settings values.',
     );
+  });
+  it('defaults legacy note opening to Read mode and persists only supported opening modes', () => {
+    expect(validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} })).toHaveProperty(
+      'defaultNoteOpenMode',
+      'read-only',
+    );
+    for (const defaultNoteOpenMode of ['read-only', 'edit']) {
+      expect(validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode })).toHaveProperty(
+        'defaultNoteOpenMode',
+        defaultNoteOpenMode,
+      );
+    }
+    expect(validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: 'read' }).defaultNoteOpenMode).toBe(
+      'read-only',
+    );
+    for (const defaultNoteOpenMode of [null, '', 'preview', true, 1]) {
+      expect(() => validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode })).toThrow();
+    }
   });
   it('persists reminder preferences, migrates legacy settings and rejects invalid sound values', () => {
     const choices = {
@@ -56,6 +74,14 @@ describe('settings and shortcut validation', () => {
       'save-current-note': '',
     });
     expect(validateSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
+  });
+  it('detects contextual New conflicts while preserving explicitly rebound New notebook', () => {
+    expect(shortcutConflicts({ 'new-notebook': 'Ctrl+N' }).join()).toContain('New notebook');
+    const shortcuts = { 'new-contextual': '', 'new-notebook': 'Ctrl+N' };
+    expect(validateSettings({ ...DEFAULT_SETTINGS, shortcuts }).shortcuts).toEqual(shortcuts);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'new-contextual': 'Ctrl+Alt+N' } }).shortcuts).toEqual({
+      'new-contextual': 'Ctrl+Alt+N',
+    });
   });
   it('rejects invalid settings, typing keys and unknown commands', () => {
     expect(() => normalizeShortcut('b')).toThrow();

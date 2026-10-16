@@ -73,12 +73,12 @@ describe('trusted creation and import workflows', () => {
     expect(await service.getProvenance('Archive/Plan.outline.md')).toBe('unknown');
   });
 
-  it('returns explicit unknown provenance for existing files and folders', async () => {
+  it('leaves provenance unspecified for existing files and folders', async () => {
     await mkdir(path.join(root, 'External'));
     await writeFile(path.join(root, 'External/Old.md'), '# Old');
     const entry = (await service.getVault()).entries[0];
-    expect(entry.provenance).toBe('unknown');
-    expect(entry.children?.[0].provenance).toBe('unknown');
+    expect(entry.provenance).toBeUndefined();
+    expect(entry.children?.[0].provenance).toBeUndefined();
   });
 
   it('imports a sanitized copy without changing the source, including after reopen', async () => {

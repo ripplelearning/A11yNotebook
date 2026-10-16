@@ -6,6 +6,7 @@ type NotesFilesScreenProps = Omit<DetailsViewProps, 'label' | 'items' | 'emptyMe
   hasLibrary: boolean;
   notebookPath?: string;
   creationDisabled?: boolean;
+  title?: string;
   onNewNote?: () => void;
   onNewFromTemplate?: () => void;
 };
@@ -19,6 +20,7 @@ export default function NotesFilesScreen({
   hasLibrary,
   notebookPath,
   creationDisabled,
+  title = 'Notes and Files',
   onNewNote,
   onNewFromTemplate,
   ...details
@@ -29,16 +31,27 @@ export default function NotesFilesScreen({
   );
   return (
     <section aria-labelledby="notes-files-heading">
-      <h2 id="notes-files-heading">Notes &amp; Files</h2>
+      <h2 id="notes-files-heading">{title}</h2>
+      <button
+        type="button"
+        disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewNote}
+        onClick={onNewNote}
+      >
+        New note
+      </button>
+      <button
+        type="button"
+        disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewFromTemplate}
+        onClick={onNewFromTemplate}
+      >
+        New note from template
+      </button>
+      {!hasLibrary ? (
+        <p>Open a library and select a notebook to create notes.</p>
+      ) : !notebookPath ? (
+        <p>Select a notebook to create notes. Showing all notes and files in this library.</p>
+      ) : null}
       {notebookPath ? <p>Items in {notebookPath}</p> : null}
-      <div>
-        <button disabled={!hasLibrary || creationDisabled || !onNewNote} onClick={onNewNote}>
-          New note
-        </button>
-        <button disabled={!hasLibrary || creationDisabled || !onNewFromTemplate} onClick={onNewFromTemplate}>
-          New note from template
-        </button>
-      </div>
       <DetailsView
         {...details}
         label="Notes and files"

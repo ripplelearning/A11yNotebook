@@ -99,6 +99,8 @@ export default function GlobalContextMenu({ commands, label, x, y, invoker, disa
             tabIndex={index === activeIndex ? 0 : -1}
             onFocus={() => setActiveIndex(index)}
             aria-disabled={isDisabled}
+            aria-description={command.description}
+            title={command.description}
             onClick={() => {
               if (isDisabled) return;
               onSelect(command.id);

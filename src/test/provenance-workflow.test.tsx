@@ -14,7 +14,7 @@ const library: VaultInfo = {
       path: 'Research',
       kind: 'notebook',
       children: [
-        { name: 'Managed.md', path: 'Research/Managed.md', kind: 'note', provenance: 'app-created' },
+        { name: 'Managed.md', path: 'Research/Managed.md', kind: 'note', provenance: 'created' },
         { name: 'Imported.md', path: 'Research/Imported.md', kind: 'note', provenance: 'imported' },
         { name: 'Outside.md', path: 'Research/Outside.md', kind: 'note', provenance: 'unknown' },
       ],
@@ -114,7 +114,7 @@ describe('provenance-aware row activation', () => {
     const grid = await showFiles();
     const row = within(grid).getByRole('gridcell', { name: 'Outside.md' });
     fireEvent.contextMenu(row);
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import into A11y Notebook' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import into A11y Notebook…' }));
     await screen.findByRole('heading', { name: 'Outside imported', level: 2 });
     expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/Outside.md');
     expect(bridge.vault.readNote).toHaveBeenCalledWith(copy.path, undefined);
@@ -145,6 +145,17 @@ describe('provenance-aware row activation', () => {
   it('keeps the password-unlock flow available for a legacy encrypted note without provenance', async () => {
     const bridge = installBridge();
     bridge.vault.isNoteEncrypted = vi.fn(async () => true);
+    bridge.vault.adoptEncrypted = vi.fn(async () => ({
+      ...library,
+      entries: [
+        {
+          ...library.entries[0],
+          children: library.entries[0].children!.map((entry) =>
+            entry.path === 'Research/Outside.md' ? { ...entry, provenance: 'imported' as const } : entry,
+          ),
+        },
+      ],
+    }));
     vi.mocked(bridge.vault.readNote).mockRejectedValueOnce(new Error('Enter this note’s password.'));
     render(<App />);
     const grid = await showFiles();
@@ -167,7 +178,7 @@ describe('provenance-aware row activation', () => {
       entries: [
         ...library.entries,
         { name: 'Outside.outline.md', path: 'Outside.outline.md', kind: 'note', provenance: 'unknown' },
-        { name: 'Inside.outline.md', path: 'Inside.outline.md', kind: 'note', provenance: 'app-created' },
+        { name: 'Inside.outline.md', path: 'Inside.outline.md', kind: 'note', provenance: 'created' },
       ],
     };
     vi.mocked(bridge.vault.get).mockResolvedValue(assets);

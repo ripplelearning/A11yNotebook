@@ -215,6 +215,12 @@ titles. No task will be registered on this runner. The manual matrix in `continu
 
 ## Encrypted metadata and drafts: inventory
 
+The portable-app workflow additions also store the note-opening preference in both settings copies and explicit
+created/imported document classifications in library `.a11ynotebook/provenance.json`. These are **plaintext metadata
+exclusions**, not part of scoped annotation/checkpoint encryption. Provenance is local bookkeeping, not an
+authenticated author identity, trusted signature, or permission to execute file contents. Missing or invalid
+classification must not be inferred from a document extension or its presence in a library.
+
 Do not infer metadata protection from password gating, note encryption or recovery. The following inventory records
 the verified **pre-implementation main baseline**; scoped changes are documented separately below.
 

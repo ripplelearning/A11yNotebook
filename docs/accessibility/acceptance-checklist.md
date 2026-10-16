@@ -61,3 +61,41 @@ PDF/ePub accessibility validation are open; see the [document reader and annotat
       announced once, and preserve understandable native-dialog focus with JAWS, NVDA and Narrator.
 - [ ] Milestone list/detail/create/edit/association/delete workflows expose dates/status/progress, trap modal focus,
       return it predictably on cancel/save/delete, announce results once and clear content on lock/switch.
+
+## Portable-app workflow regression checks (Windows, manual)
+
+Use a disposable copy of a library, the packaged portable executable, and each of JAWS, NVDA, and Narrator.
+Record the Windows build, app commit, screen-reader version, observed speech, and pass/fail for each step.
+DOM focus assertions and mocked OS calls do **not** verify speech or real Windows dialogs.
+
+- [ ] With no library, press Ctrl+1 and Ctrl+2 twice each: hear “Libraries” and “Notebooks” on each activation.
+      Open a library named Study: Ctrl+1 announces “Study”; Ctrl+2 announces “Notebooks in Study”.
+      Select Research and press Ctrl+3 twice: hear “Notes and Files in Research”, once per activation.
+      Check Tasks and Cognitive Tools have similarly truthful context, including when no notebook is selected.
+- [ ] Navigate grid rows with arrows and Space, open with Enter, return to Notes and Files, then rename/move
+      Research and modify its files externally. Notebook context must survive selection and watcher refreshes.
+      Delete Research: the view must no longer announce a notebook that does not exist.
+- [ ] Open a modal, press navigation/New shortcuts, then Escape: no background navigation or creation occurs,
+      Tab remains trapped until closing, and focus returns to the invoker. Repeat with a locked library,
+      during IME composition, and while typing in a text field.
+- [ ] Use Ctrl+N from Libraries, Notebooks, Notes and Files, Tasks, and Cognitive Tools. Complete each flow,
+      restart the app, and verify the library/notebook/note/task/tool persists in the chosen destination.
+      Repeat with cancellation, an existing name, an invalid name, and a simulated unwritable destination.
+      Unsaved notes and tool edits must remain intact. Test every offered tool type, including both grid formats.
+- [ ] In Notes and Files, invoke New note and New note from template using only the keyboard. Verify
+      no-library/no-notebook guidance, template selection and destination, creation errors, and focus return.
+      Customize/disable contextual New in Settings; verify menus, palette, and effective shortcut agree.
+- [ ] Create Markdown and HTML notes, enable editing, then reopen and switch tabs. Default Read mode must
+      not inherit the previous note's Edit mode. Save the Edit-mode opening preference, restart, and repeat.
+      Test Ctrl+E, encrypted-note unlock, edit locks, and PDF/DOCX previews without implying binary editing.
+- [ ] Place externally authored compatible and unsupported files beside app-created notes. Opening unknown
+      files must not execute their contents or silently treat them as app-created. Explicitly import a supported
+      file and verify a new internal copy opens; the original bytes remain unchanged. Cancel and retry.
+      Rename/move the managed copy, externally modify it, and verify conservative provenance behavior.
+- [ ] On Windows, open an external file and exercise Open With: cancel the chooser, select an application,
+      and inspect the existing file-type association before and after. Use the offered Windows default-app
+      settings to change an association only with explicit consent; verify Windows, not renderer code, owns
+      the choice. Record any OS-version restrictions, chooser failures, and default-app settings limitations.
+- [ ] Inspect the packaged executable's UI Automation tree for contextual headings/panels, creation dialogs,
+      disabled states, and Read/Edit controls. Repeat with high contrast and enlarged text. Do not mark this
+      complete merely because packaging or automated tests passed.

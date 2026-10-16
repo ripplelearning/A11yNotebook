@@ -86,7 +86,11 @@ export function validateSettings(value: unknown): NotebookSettings {
   const settings = value as NotebookSettings;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
   const noteEditLockMinutes = settings.noteEditLockMinutes ?? DEFAULT_SETTINGS.noteEditLockMinutes!;
-  const defaultNoteOpenMode = settings.defaultNoteOpenMode === undefined ? 'read-only' : settings.defaultNoteOpenMode;
+  const defaultNoteOpenMode =
+    settings.defaultNoteOpenMode === undefined ||
+    (value as { defaultNoteOpenMode?: unknown }).defaultNoteOpenMode === 'read'
+      ? 'read-only'
+      : settings.defaultNoteOpenMode;
   const reminderAlerts = settings.reminderAlerts === undefined ? false : settings.reminderAlerts;
   const reminderSound = settings.reminderSound === undefined ? false : settings.reminderSound;
   const reminderSoundChoice =

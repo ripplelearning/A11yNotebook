@@ -75,8 +75,8 @@ npm run test:ui-smoke # Windows only; run after npm run package:win
 
 ## Build the Windows `.exe`
 
-Run this on Windows. On macOS or Linux, electron-builder also needs [Wine](https://www.winehq.org/) to build the
-NSIS installer.
+Run this on Windows. The packaging hook uses the Windows .NET Framework C# compiler to build and bundle the native
+Open With helper; Windows packaging from macOS or Linux is not supported.
 
 ```sh
 npm install

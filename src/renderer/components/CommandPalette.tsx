@@ -7,22 +7,24 @@ type CommandPaletteProps = {
   onRun: (commandId: CommandId) => void;
   onClose: () => void;
   shortcuts?: NotebookSettings['shortcuts'];
+  isDisabled?: (commandId: CommandId) => boolean;
 };
 
-export default function CommandPalette({ onRun, onClose, shortcuts = {} }: CommandPaletteProps) {
+export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisabled }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
 
   const filteredCommands = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
-      return COMMANDS;
+      return COMMANDS.filter((command) => command.id !== 'context-import-internal');
     }
     return COMMANDS.filter(
       (command) =>
-        command.label.toLowerCase().includes(normalized) ||
-        command.aliases?.some((alias) => alias.toLowerCase().includes(normalized)) ||
-        command.description.toLowerCase().includes(normalized) ||
-        command.id.toLowerCase().includes(normalized),
+        command.id !== 'context-import-internal' &&
+        (command.label.toLowerCase().includes(normalized) ||
+          command.aliases?.some((alias) => alias.toLowerCase().includes(normalized)) ||
+          command.description.toLowerCase().includes(normalized) ||
+          command.id.toLowerCase().includes(normalized)),
     );
   }, [query]);
 
@@ -49,6 +51,7 @@ export default function CommandPalette({ onRun, onClose, shortcuts = {} }: Comma
           <li key={command.id}>
             <button
               type="button"
+              disabled={isDisabled?.(command.id)}
               onClick={() => onRun(command.id)}
               aria-describedby={`command-${command.id}-description`}
             >

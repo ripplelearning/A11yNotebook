@@ -36,7 +36,8 @@ export interface VaultEntry {
   path: string;
   kind: 'notebook' | 'note' | 'attachment';
   children?: VaultEntry[];
-  provenance?: 'app-created' | 'imported' | 'unknown';
+  /** Missing metadata and externally replaced files are conservatively unknown. */
+  provenance?: 'created' | 'imported' | 'unknown';
 }
 
 /** Public view of the currently open local vault. */
