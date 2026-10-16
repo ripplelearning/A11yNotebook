@@ -80,7 +80,7 @@ describe('native Open With packaging contract', () => {
       expect(extensions).not.toContain(extension);
       expect(isExternalDocumentPath(`Original${extension}`)).toBe(false);
     }
-    expect(source).toContain('default:\n                return false;');
+    expect(source.replace(/\r\n/g, '\n')).toContain('default:\n                return false;');
     expect(source).toContain("file.ReadByte() == 'M' && file.ReadByte() == 'Z'");
   });
 
