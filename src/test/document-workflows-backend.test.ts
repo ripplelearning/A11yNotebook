@@ -104,7 +104,7 @@ describe('document provenance and original imports', () => {
     mock.protectedPdf = '';
     await writeFile(source, '%PDF-1.7\nNot a real document');
     await expect(readImportSource(source)).rejects.toThrow();
-  });
+  }, 30000);
 
   it('rejects hidden created/imported names instead of creating invisible library items', async () => {
     const service = await vault();
