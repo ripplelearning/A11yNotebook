@@ -1332,7 +1332,9 @@ export function setupVaultIpc(
         for (const [index, image] of capture.images.entries()) {
           access.assertCurrent();
           const imagePath = path.posix.join(captureFolder, `image-${index + 1}${image.extension}`);
-          await vault.createDocument(imagePath, image.bytes, 'imported', access.assertCurrent, rememberCreated);
+          await vault.createDocument(imagePath, image.bytes, 'imported', access.assertCurrent, rememberCreated, {
+            deferRefresh: true,
+          });
         }
         const safeTitle =
           [...capture.title]
@@ -1351,9 +1353,8 @@ export function setupVaultIpc(
         const content =
           format === 'html' ? capture.html : `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
         access.assertCurrent();
-        await vault.createNote(notePath, content, 'imported', access.assertCurrent, rememberCreated);
+        const opened = await vault.createNote(notePath, content, 'imported', access.assertCurrent, rememberCreated);
         noteCreated = true;
-        const opened = await vault.getVault();
         access.assertCurrent();
         return { vault: opened, notePath, omittedImages: capture.omittedImages };
       });
@@ -2258,7 +2259,7 @@ export function setupVaultIpc(
             derivedKey = unlocked.key;
           }
         } else {
-          if (!masterKey) throw new Error('Unlock the original library before recovering this vault-encrypted note.');
+          if (!masterKey) throw new Error('Unlock the original library before recovering this library-encrypted note.');
           readVaultEncryptedNote(envelope);
         }
         access.assertCurrent();

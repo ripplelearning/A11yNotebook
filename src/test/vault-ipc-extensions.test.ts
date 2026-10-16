@@ -250,6 +250,15 @@ let temporary = '';
 const trusted = {};
 const invoke = (channel: string, ...args: unknown[]) => mock.handlers.get(channel)!(trusted, ...args);
 
+async function reopenWithoutWatcher() {
+  mock.disableWatcher = true;
+  try {
+    await invoke(IPC_CHANNELS.vaultOpen);
+  } finally {
+    mock.disableWatcher = false;
+  }
+}
+
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>((done) => {
@@ -644,12 +653,30 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, image!.path))).toEqual(bytes);
   });
 
+  it('refreshes the index only once when capturing multiple images and their note', async () => {
+    await reopenWithoutWatcher();
+    const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
+    mock.captureImages = Array.from({ length: 3 }, () => ({ extension: '.png', bytes }));
+    const before = mock.refreshCount;
+    const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')) as {
+      vault: import('../shared/types').VaultInfo;
+      notePath: string;
+    };
+    expect(mock.refreshCount - before).toBe(1);
+    const folder = result.vault.entries.find((entry) => entry.path === 'Folder')!;
+    const images = folder.children?.find((entry) => entry.name === 'Attachments')?.children?.[0].children;
+    expect(images).toHaveLength(3);
+    expect(images?.every((entry) => entry.provenance === 'imported')).toBe(true);
+    expect(folder.children?.find((entry) => entry.path === result.notePath)?.provenance).toBe('imported');
+  });
+
   it('rolls back captured images and their origin records when note creation fails', async () => {
+    await reopenWithoutWatcher();
     mock.captureImages = [{ extension: '.png', bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) }];
     const parent = path.join(mock.root, 'Folder', 'Attachments');
     await mkdir(parent);
     await writeFile(path.join(parent, 'Keep.txt'), 'Existing user file');
-    mock.failIndexRefreshAt = mock.refreshCount + 2;
+    mock.failIndexRefreshAt = mock.refreshCount + 1;
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')).rejects.toThrow(
       'Index write failed',
     );
@@ -662,9 +689,10 @@ describe('extended vault IPC integration', () => {
   });
 
   it('does not recursively delete concurrent user files during capture rollback', async () => {
+    await reopenWithoutWatcher();
     mock.captureImages = [{ extension: '.png', bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) }];
     mock.captureExtraUserFile = true;
-    mock.failIndexRefreshAt = mock.refreshCount + 2;
+    mock.failIndexRefreshAt = mock.refreshCount + 1;
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')).rejects.toThrow(
       'Index write failed',
     );

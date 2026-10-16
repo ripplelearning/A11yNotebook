@@ -1,5 +1,7 @@
 import { lstat, readFile } from 'node:fs/promises';
 import { inflateRawSync, inflateSync } from 'node:zlib';
+import path from 'node:path';
+import { DOMParser, type Element as XmlElement, type Node as XmlNode } from '@xmldom/xmldom';
 import { decodeHtmlEntities } from './html-entities';
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
@@ -192,16 +194,207 @@ function readZipEntries(bytes: Buffer): Map<string, Buffer> {
   return entries;
 }
 
+function protectedEpub(): never {
+  throw new Error('Protected ePub archives cannot be imported. Use an authorized unprotected copy.');
+}
+
+function parseEpubProtectionXml(bytes: Buffer) {
+  if (bytes.length > 512 * 1024) protectedEpub();
+  let text: string;
+  try {
+    const encoding =
+      bytes[0] === 0xff && bytes[1] === 0xfe
+        ? 'utf-16le'
+        : bytes[0] === 0xfe && bytes[1] === 0xff
+          ? 'utf-16be'
+          : 'utf-8';
+    text = new TextDecoder(encoding, { fatal: true }).decode(bytes);
+  } catch {
+    return protectedEpub();
+  }
+  if (/<!\s*(?:DOCTYPE|ENTITY)\b/i.test(text)) protectedEpub();
+  let depth = 0;
+  let elements = 0;
+  for (let index = 0; index < text.length;) {
+    const start = text.indexOf('<', index);
+    if (start < 0) break;
+    const specialEnd = text.startsWith('<!--', start)
+      ? '-->'
+      : text.startsWith('<?', start)
+        ? '?>'
+        : text.startsWith('<![CDATA[', start)
+          ? ']]>'
+          : undefined;
+    if (specialEnd) {
+      const end = text.indexOf(specialEnd, start + 2);
+      if (end < 0) protectedEpub();
+      index = end + specialEnd.length;
+      continue;
+    }
+    if (text.startsWith('<!', start)) protectedEpub();
+    let end = start + 1;
+    let quote = '';
+    for (; end < text.length; end += 1) {
+      const character = text[end];
+      if (quote) {
+        if (character === quote) quote = '';
+      } else if (character === '"' || character === "'") quote = character;
+      else if (character === '>') break;
+    }
+    if (end >= text.length) protectedEpub();
+    const tag = text.slice(start + 1, end).trim();
+    if (tag.startsWith('/')) depth -= 1;
+    else {
+      elements += 1;
+      if (!tag.endsWith('/')) depth += 1;
+    }
+    if (depth < 0 || depth > 64 || elements > 10_000) protectedEpub();
+    index = end + 1;
+  }
+  if (depth !== 0) protectedEpub();
+  try {
+    let malformed = false;
+    const document = new DOMParser({
+      onError: () => {
+        malformed = true;
+      },
+    }).parseFromString(text, 'application/xml');
+    if (malformed || !document.documentElement || document.documentElement.nodeName === 'parsererror') protectedEpub();
+    return document;
+  } catch {
+    return protectedEpub();
+  }
+}
+
+function xmlChildren(node: XmlNode) {
+  return Array.from(node.childNodes).filter((child) => child.nodeType === 1) as XmlElement[];
+}
+
+function fontObfuscationReferences(bytes: Buffer) {
+  const root = parseEpubProtectionXml(bytes).documentElement;
+  if (
+    !root ||
+    root.localName !== 'encryption' ||
+    root.namespaceURI !== 'urn:oasis:names:tc:opendocument:xmlns:container'
+  )
+    protectedEpub();
+  const encryptionNamespace = 'http://www.w3.org/2001/04/xmlenc#';
+  const records = xmlChildren(root);
+  if (!records.length) protectedEpub();
+  return records.map((record) => {
+    if (record.localName !== 'EncryptedData' || record.namespaceURI !== encryptionNamespace) protectedEpub();
+    const children = xmlChildren(record);
+    const method = children.find((child) => child.localName === 'EncryptionMethod');
+    const cipher = children.find((child) => child.localName === 'CipherData');
+    if (
+      children.length !== 2 ||
+      children.some((child) => child.namespaceURI !== encryptionNamespace) ||
+      !method ||
+      xmlChildren(method).length ||
+      !['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC'].includes(
+        method.getAttribute('Algorithm') ?? '',
+      ) ||
+      !cipher
+    )
+      protectedEpub();
+    const references = xmlChildren(cipher);
+    if (
+      references.length !== 1 ||
+      references[0].localName !== 'CipherReference' ||
+      references[0].namespaceURI !== encryptionNamespace ||
+      xmlChildren(references[0]).length
+    )
+      protectedEpub();
+    return references[0].getAttribute('URI') || protectedEpub();
+  });
+}
+
+function epubResourcePath(uri: string, directory = '') {
+  let decoded: string;
+  try {
+    decoded = decodeURIComponent(uri);
+  } catch {
+    return protectedEpub();
+  }
+  if (
+    !decoded ||
+    /^[a-z][a-z\d+.-]*:/i.test(decoded) ||
+    path.posix.isAbsolute(decoded) ||
+    /[\\?#]/.test(decoded) ||
+    [...decoded].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127)
+  )
+    protectedEpub();
+  const relative = path.posix.normalize(path.posix.join(directory, decoded));
+  if (relative === '..' || relative.startsWith('../')) protectedEpub();
+  return relative;
+}
+
+function validateObfuscatedFonts(
+  entries: Map<string, Buffer>,
+  packagePath: string,
+  packageXml: Buffer,
+  references: string[],
+) {
+  const root = parseEpubProtectionXml(packageXml).documentElement;
+  if (!root || root.localName !== 'package' || root.namespaceURI !== 'http://www.idpf.org/2007/opf') protectedEpub();
+  const manifest = xmlChildren(root).filter(
+    (child) => child.localName === 'manifest' && child.namespaceURI === root.namespaceURI,
+  );
+  const spine = xmlChildren(root).filter(
+    (child) => child.localName === 'spine' && child.namespaceURI === root.namespaceURI,
+  );
+  if (manifest.length !== 1 || spine.length !== 1) protectedEpub();
+  const paths = new Map<string, string>();
+  const fonts = new Set<string>();
+  const otherResources = new Set<string>();
+  const fontTypes = new Set([
+    'font/otf',
+    'font/ttf',
+    'font/woff',
+    'font/woff2',
+    'application/vnd.ms-opentype',
+    'application/x-font-ttf',
+    'application/x-font-truetype',
+    'application/x-font-otf',
+    'application/x-font-opentype',
+    'application/font-sfnt',
+    'application/font-woff',
+    'application/x-font-woff',
+  ]);
+  for (const item of xmlChildren(manifest[0])) {
+    const id = item.getAttribute('id');
+    const href = item.getAttribute('href');
+    if (item.localName !== 'item' || item.namespaceURI !== root.namespaceURI || !id || !href || paths.has(id))
+      protectedEpub();
+    const resource = epubResourcePath(href, path.posix.dirname(packagePath));
+    paths.set(id, resource);
+    const font =
+      /\.(?:otf|ttf|woff2?)$/i.test(resource) && fontTypes.has((item.getAttribute('media-type') ?? '').toLowerCase());
+    (font ? fonts : otherResources).add(resource);
+  }
+  for (const item of xmlChildren(spine[0])) {
+    if (item.localName !== 'itemref' || item.namespaceURI !== root.namespaceURI) protectedEpub();
+    const resource = paths.get(item.getAttribute('idref') ?? '');
+    if (!resource) protectedEpub();
+    otherResources.add(resource);
+  }
+  for (const reference of references) {
+    const resource = epubResourcePath(reference);
+    if (!fonts.has(resource) || otherResources.has(resource) || !entries.get(resource)?.length) protectedEpub();
+  }
+}
+
 export function extractEpubPages(bytes: Buffer, options?: { forImport?: boolean }): string[] {
   if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error('This ePub is too large to preview.');
   const entries = readZipEntries(bytes);
-  if (options?.forImport && entries.has('META-INF/encryption.xml'))
-    throw new Error('Protected ePub archives cannot be imported. Use an authorized unprotected copy.');
+  const encryption = options?.forImport ? entries.get('META-INF/encryption.xml') : undefined;
+  const obfuscatedFonts = encryption ? fontObfuscationReferences(encryption) : undefined;
   const container = entries.get('META-INF/container.xml')?.toString('utf8') ?? '';
   const packagePath = /<rootfile\b[^>]*full-path=["']([^"']+)["']/i.exec(container)?.[1];
   if (!packagePath) throw new Error('The ePub package document is missing.');
   const packageXml = entries.get(packagePath)?.toString('utf8');
   if (!packageXml) throw new Error('The ePub package document is invalid.');
+  if (obfuscatedFonts) validateObfuscatedFonts(entries, packagePath, entries.get(packagePath)!, obfuscatedFonts);
   const packageDirectory = packagePath.split('/').slice(0, -1).join('/');
   const manifest = new Map<string, string>();
   for (const item of packageXml.matchAll(/<item\b([^>]+)>/gi)) {

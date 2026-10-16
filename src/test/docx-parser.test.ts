@@ -86,7 +86,8 @@ function validEntries(
     'word/numbering.xml': `<w:numbering xmlns:w="${wordNs}"><w:abstractNum w:abstractNumId="1"><w:lvl w:ilvl="0"><w:numFmt w:val="bullet"/></w:lvl><w:lvl w:ilvl="1"><w:numFmt w:val="decimal"/></w:lvl></w:abstractNum><w:num w:numId="7"><w:abstractNumId w:val="1"/></w:num></w:numbering>`,
     'word/_rels/document.xml.rels': `<Relationships xmlns="${relNs}"><Relationship Id="link" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="https://example.org/read" TargetMode="External"/><Relationship Id="image" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="media/image.png"/></Relationships>`,
     'word/media/image.png': Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-    'docProps/core.xml': '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"><dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Guide</dc:title><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Author</dc:creator><dcterms:created xmlns:dcterms="http://purl.org/dc/terms/">2026-01-01T00:00:00Z</dcterms:created></cp:coreProperties>',
+    'docProps/core.xml':
+      '<cp:coreProperties xmlns:cp="http://schemas.openxmlformats.org/package/2006/metadata/core-properties"><dc:title xmlns:dc="http://purl.org/dc/elements/1.1/">Guide</dc:title><dc:creator xmlns:dc="http://purl.org/dc/elements/1.1/">Author</dc:creator><dcterms:created xmlns:dcterms="http://purl.org/dc/terms/">2026-01-01T00:00:00Z</dcterms:created></cp:coreProperties>',
   };
 }
 
@@ -115,7 +116,10 @@ describe('bounded local DOCX parser', () => {
     expect(structure.blocks[0]).toMatchObject({
       kind: 'paragraph',
       text: 'A11y Notebook',
-      runs: [{ text: 'A11y ', bold: true }, { text: 'Notebook', italic: true }],
+      runs: [
+        { text: 'A11y ', bold: true },
+        { text: 'Notebook', italic: true },
+      ],
     });
     expect(structure.blocks[1]).toMatchObject({
       kind: 'paragraph',
@@ -124,7 +128,10 @@ describe('bounded local DOCX parser', () => {
       breaks: ['page'],
     });
     expect(structure.blocks[2]).toMatchObject({
-      runs: [{ text: 'Accessible link', link: 'https://example.org/read' }, { image: { altText: 'Helpful image description', mediaType: 'image/png' } }],
+      runs: [
+        { text: 'Accessible link', link: 'https://example.org/read' },
+        { image: { altText: 'Helpful image description', mediaType: 'image/png' } },
+      ],
     });
     expect(structure.blocks[3]).toMatchObject({
       kind: 'table',
@@ -140,11 +147,15 @@ describe('bounded local DOCX parser', () => {
     ['nested archive', { 'word/embeddings/inner.docx': 'payload' }],
   ])('rejects %s archive entries', (label, extra) => {
     const entries = { ...validEntries(), ...extra };
-    expect(() => parseDocxStructure(zip(entries, label === 'symlink' ? { symlink: 'word/document.xml' } : {}))).toThrow();
+    expect(() =>
+      parseDocxStructure(zip(entries, label === 'symlink' ? { symlink: 'word/document.xml' } : {})),
+    ).toThrow();
   });
 
   it('rejects malformed, truncated, over-deep, and DTD-bearing XML', () => {
-    expect(() => parseDocxStructure(zip({ ...validEntries(), '[Content_Types].xml': '<Types>' }))).toThrow(/malformed|nesting/i);
+    expect(() => parseDocxStructure(zip({ ...validEntries(), '[Content_Types].xml': '<Types>' }))).toThrow(
+      /malformed|nesting/i,
+    );
     const truncated = zip(validEntries()).subarray(0, zip(validEntries()).length - 8);
     expect(() => parseDocxStructure(truncated)).toThrow(/malformed or truncated/i);
     const deeplyNested = `<w:document xmlns:w="${wordNs}"><w:body>${'<x>'.repeat(130)}${'</x>'.repeat(130)}<w:sectPr/></w:body></w:document>`;
@@ -155,12 +166,14 @@ describe('bounded local DOCX parser', () => {
 
   it('rejects external resources and unsafe hyperlink protocols', () => {
     const external = validEntries();
-    external['word/_rels/document.xml.rels'] = `<Relationships xmlns="${relNs}"><Relationship Id="remote" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="https://example.org/image.png" TargetMode="External"/></Relationships>`;
+    external['word/_rels/document.xml.rels'] =
+      `<Relationships xmlns="${relNs}"><Relationship Id="remote" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" Target="https://example.org/image.png" TargetMode="External"/></Relationships>`;
     expect(() => parseDocxStructure(zip(external))).toThrow(/External data|resources/i);
     const command = validEntries(
       `<w:document xmlns:w="${wordNs}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><w:body><w:p><w:hyperlink r:id="link"><w:r><w:t>Run</w:t></w:r></w:hyperlink></w:p></w:body></w:document>`,
     );
-    command['word/_rels/document.xml.rels'] = `<Relationships xmlns="${relNs}"><Relationship Id="link" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="javascript:alert(1)" TargetMode="External"/></Relationships>`;
+    command['word/_rels/document.xml.rels'] =
+      `<Relationships xmlns="${relNs}"><Relationship Id="link" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/hyperlink" Target="javascript:alert(1)" TargetMode="External"/></Relationships>`;
     expect(() => parseDocxStructure(zip(command))).toThrow(/unsupported|command-like/i);
   });
 
@@ -174,7 +187,9 @@ describe('bounded local DOCX parser', () => {
       ),
     ]);
     expect(parseDocxStructure(zip(entries)).blocks[0]).toMatchObject({ text: 'Mixed encoding' });
-    expect(() => parseDocxStructure(zip({ ...validEntries(), 'word/large.xml': Buffer.alloc(21 * 1024 * 1024) }))).toThrow();
+    expect(() =>
+      parseDocxStructure(zip({ ...validEntries(), 'word/large.xml': Buffer.alloc(21 * 1024 * 1024) })),
+    ).toThrow();
   });
 
   it('enforces the archive entry-count and aggregate expansion limits before extraction', () => {
@@ -200,7 +215,11 @@ describe('bounded local DOCX parser', () => {
     unsupported['word/comments.xml'] = '<w:comments xmlns:w="' + wordNs + '"/>';
     unsupported['word/fontTable.xml'] = '<w:fonts xmlns:w="' + wordNs + '"/>';
     expect(parseDocxStructure(zip(unsupported)).unsupportedFeatures).toEqual(
-      expect.arrayContaining(['comments (content not included)', 'embedded fonts (content not included)', 'form fields or content controls (content not included)']),
+      expect.arrayContaining([
+        'comments (content not included)',
+        'embedded fonts (content not included)',
+        'form fields or content controls (content not included)',
+      ]),
     );
   });
 
@@ -209,7 +228,9 @@ describe('bounded local DOCX parser', () => {
   });
 
   it('truncates paragraph extraction at the documented limit', () => {
-    const paragraphs = Array.from({ length: 10_001 }, (_, index) => `<w:p><w:r><w:t>${index}</w:t></w:r></w:p>`).join('');
+    const paragraphs = Array.from({ length: 10_001 }, (_, index) => `<w:p><w:r><w:t>${index}</w:t></w:r></w:p>`).join(
+      '',
+    );
     const document = `<w:document xmlns:w="${wordNs}"><w:body>${paragraphs}</w:body></w:document>`;
     const structure = parseDocxStructure(zip(validEntries(document)));
     expect(structure.blocks).toHaveLength(10_000);

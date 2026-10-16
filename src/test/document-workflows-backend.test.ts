@@ -378,6 +378,7 @@ describe('new local library lifecycle', () => {
     );
     expect(result.name).toBe('New library');
     expect(result.entries).toEqual([]);
+    if (process.platform !== 'win32') expect((await lstat(destination)).mode & 0o077).toBe(0);
     await expect(
       createLocalLibrary(
         destination,

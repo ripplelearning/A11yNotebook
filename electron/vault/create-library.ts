@@ -22,7 +22,7 @@ export async function createLocalLibrary<T>(
   if (!(await lstat(parent)).isDirectory()) throw new Error('Choose an existing parent folder.');
   const root = path.join(parent, name);
   assertCurrent();
-  await mkdir(root); // Exclusive: never initialize or overwrite an existing folder.
+  await mkdir(root, { mode: 0o700 }); // Exclusive: never initialize or overwrite an existing folder.
   const identity = await lstat(root);
   try {
     assertCurrent();

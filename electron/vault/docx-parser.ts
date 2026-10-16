@@ -56,7 +56,10 @@ function collectPackageUnsupported(entries: Map<string, ZipEntry>, unsupported: 
     if (/(?:^|\/)comments(?:extended)?\.xml$/i.test(path)) unsupported.add('comments');
     if (/^word\/(?:header|footer)[^/]*\.xml$/i.test(path)) {
       const document = parseXml(entries, entry.path, false);
-      if (document && (descendants(document, 'watermark').length || /PowerPlusWaterMarkObject/i.test(entry.bytes.toString('utf8')))) {
+      if (
+        document &&
+        (descendants(document, 'watermark').length || /PowerPlusWaterMarkObject/i.test(entry.bytes.toString('utf8')))
+      ) {
         unsupported.add('watermarks');
       }
     }
@@ -94,14 +97,12 @@ function decodeEntryName(bytes: Buffer, utf8: boolean) {
 }
 
 function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
-  if (!bytes.length || bytes.length > MAX_ARCHIVE_BYTES) invalid('This DOCX is invalid or exceeds the 40 MiB archive limit.');
+  if (!bytes.length || bytes.length > MAX_ARCHIVE_BYTES)
+    invalid('This DOCX is invalid or exceeds the 40 MiB archive limit.');
   const minEnd = Math.max(0, bytes.length - 65_557);
   let end = -1;
   for (let index = bytes.length - 22; index >= minEnd; index -= 1) {
-    if (
-      bytes.readUInt32LE(index) === 0x06054b50 &&
-      index + 22 + bytes.readUInt16LE(index + 20) === bytes.length
-    ) {
+    if (bytes.readUInt32LE(index) === 0x06054b50 && index + 22 + bytes.readUInt16LE(index + 20) === bytes.length) {
       end = index;
       break;
     }
@@ -215,7 +216,10 @@ function readZipEntries(bytes: Buffer): Map<string, ZipEntry> {
     const localExtraLength = bytes.readUInt16LE(offset + 28);
     const dataStart = offset + 30 + localNameLength + localExtraLength;
     const dataEnd = dataStart + item.compressedSize;
-    const localName = decodeEntryName(bytes.subarray(offset + 30, offset + 30 + localNameLength), Boolean(flags & 0x800));
+    const localName = decodeEntryName(
+      bytes.subarray(offset + 30, offset + 30 + localNameLength),
+      Boolean(flags & 0x800),
+    );
     if (
       flags !== item.flags ||
       method !== item.method ||
@@ -267,7 +271,9 @@ function decodeXml(bytes: Buffer, name: string) {
     } else if (bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff) {
       text = new TextDecoder('utf-16be', { fatal: true }).decode(bytes.subarray(2));
     } else {
-      text = new TextDecoder('utf-8', { fatal: true }).decode(bytes[0] === 0xef && bytes[1] === 0xbb ? bytes.subarray(3) : bytes);
+      text = new TextDecoder('utf-8', { fatal: true }).decode(
+        bytes[0] === 0xef && bytes[1] === 0xbb ? bytes.subarray(3) : bytes,
+      );
     }
   } catch {
     return invalid(`The DOCX XML part ${name} has an unsupported or malformed encoding.`);
@@ -279,7 +285,7 @@ function decodeXml(bytes: Buffer, name: string) {
 function validateXmlNesting(xml: string, name: string) {
   let depth = 0;
   let elements = 0;
-  for (let index = 0; index < xml.length; ) {
+  for (let index = 0; index < xml.length;) {
     const start = xml.indexOf('<', index);
     if (start < 0) break;
     if (xml.startsWith('<!--', start)) {
@@ -400,9 +406,7 @@ function resolvePart(source: string, target: string) {
   } catch {
     return invalid('A DOCX relationship target has invalid URL encoding.');
   }
-  const resolved = path.posix.normalize(
-    path.posix.join(path.posix.dirname(source), decodedTarget),
-  );
+  const resolved = path.posix.normalize(path.posix.join(path.posix.dirname(source), decodedTarget));
   if (resolved === '..' || resolved.startsWith('../') || resolved.startsWith('/')) {
     invalid('A DOCX relationship target leaves the document package.');
   }
@@ -426,7 +430,10 @@ function safeHyperlink(target: string) {
   } catch {
     invalid('A DOCX hyperlink is not a valid URL.');
   }
-  if (!['http:', 'https:', 'mailto:'].includes(url.protocol) || (url.protocol !== 'mailto:' && (url.username || url.password))) {
+  if (
+    !['http:', 'https:', 'mailto:'].includes(url.protocol) ||
+    (url.protocol !== 'mailto:' && (url.username || url.password))
+  ) {
     invalid('A DOCX hyperlink uses an unsupported or command-like protocol.');
   }
   return url.href;
@@ -455,7 +462,8 @@ function relationships(entries: Map<string, ZipEntry>, source: string) {
     if (!id || !type || !target || result.has(id)) invalid(`The DOCX relationships part ${part} is invalid.`);
     if (type.includes('digital-signature')) invalid('Digitally signed DOCX files are not supported.');
     if (external) {
-      if (!type.endsWith('/hyperlink')) invalid('External data and resource relationships are not supported in DOCX files.');
+      if (!type.endsWith('/hyperlink'))
+        invalid('External data and resource relationships are not supported in DOCX files.');
       result.set(id, { type, target: safeHyperlink(target), external: true });
     } else {
       result.set(id, { type, target: resolvePart(source, target), external: false });
@@ -468,7 +476,9 @@ function checkRejectedParts(entries: Map<string, ZipEntry>) {
   for (const entry of entries.values()) {
     const name = entry.path.toLowerCase();
     if (
-      /(?:^|\/)(?:vbaproject\.bin|activeX|embeddings|oleobjects|externallinks|printersettings)(?:\/|\.|$)/i.test(name) ||
+      /(?:^|\/)(?:vbaproject\.bin|activeX|embeddings|oleobjects|externallinks|printersettings)(?:\/|\.|$)/i.test(
+        name,
+      ) ||
       name.startsWith('_xmlsignatures/') ||
       /(?:^|\/)(?:connections|querytables|externaldata)(?:\/|\.|$)/i.test(name)
     ) {
@@ -502,7 +512,8 @@ function parseContentTypes(entries: Map<string, ZipEntry>) {
       localName === 'Default'
         ? `.${(element.getAttribute('Extension') || '').toLowerCase()}`
         : (element.getAttribute('PartName') || '').replace(/^\/+/, '');
-    if (!contentType || !key || types.has(key)) invalid('The DOCX [Content_Types].xml part contains invalid or duplicate types.');
+    if (!contentType || !key || types.has(key))
+      invalid('The DOCX [Content_Types].xml part contains invalid or duplicate types.');
     types.set(key, contentType.toLowerCase());
   }
   if (![...types.values()].some((type) => type.includes('wordprocessingml.document.main+xml'))) {
@@ -536,9 +547,16 @@ function contentTypeFor(types: Map<string, string>, part: string) {
 }
 
 function validRasterSignature(type: string, bytes: Buffer) {
-  if (type === 'image/png') return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  if (type === 'image/png')
+    return bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
   if (type === 'image/jpeg') return bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff;
-  if (type === 'image/gif') return bytes.subarray(0, 6).toString('ascii').match(/^GIF8[79]a$/) !== null;
+  if (type === 'image/gif')
+    return (
+      bytes
+        .subarray(0, 6)
+        .toString('ascii')
+        .match(/^GIF8[79]a$/) !== null
+    );
   if (type === 'image/bmp') return bytes.subarray(0, 2).toString('ascii') === 'BM';
   if (type === 'image/tiff') {
     return (
@@ -548,7 +566,11 @@ function validRasterSignature(type: string, bytes: Buffer) {
     );
   }
   if (type === 'image/webp') {
-    return bytes.length >= 12 && bytes.subarray(0, 4).toString('ascii') === 'RIFF' && bytes.subarray(8, 12).toString('ascii') === 'WEBP';
+    return (
+      bytes.length >= 12 &&
+      bytes.subarray(0, 4).toString('ascii') === 'RIFF' &&
+      bytes.subarray(8, 12).toString('ascii') === 'WEBP'
+    );
   }
   return false;
 }
@@ -750,7 +772,11 @@ function parseParagraph(
           invalid('Externally linked DOCX images are not supported.');
         }
       }
-    } else if (child.localName === 'bookmarkStart' || child.localName === 'bookmarkEnd' || child.localName === 'proofErr') {
+    } else if (
+      child.localName === 'bookmarkStart' ||
+      child.localName === 'bookmarkEnd' ||
+      child.localName === 'proofErr'
+    ) {
       continue;
     } else if (child.localName === 'sdt') {
       unsupported.add('form fields or content controls');
@@ -783,7 +809,8 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
   }
   const rootRels = relationships(entries, '');
   const officeDocument = findRelationshipByType(rootRels, 'officeDocument');
-  if (!officeDocument || officeDocument[1].external) invalid('The DOCX main document relationship is missing or external.');
+  if (!officeDocument || officeDocument[1].external)
+    invalid('The DOCX main document relationship is missing or external.');
   const documentPath = officeDocument[1].target;
   if (!contentTypeFor(declaredTypes, documentPath).includes('wordprocessingml.document.main+xml')) {
     invalid('The DOCX main document content type is invalid.');
@@ -815,10 +842,7 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
       if (!RASTER_TYPES[extension] || !type.startsWith('image/') || type.includes('svg')) {
         continue;
       }
-      if (
-        entry.bytes.length > MAX_MEDIA_BYTES ||
-        !validRasterSignature(RASTER_TYPES[extension], entry.bytes)
-      ) {
+      if (entry.bytes.length > MAX_MEDIA_BYTES || !validRasterSignature(RASTER_TYPES[extension], entry.bytes)) {
         invalid('A DOCX raster image exceeds size limits or has an invalid image signature.');
       }
     }
@@ -856,7 +880,8 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
         if (semanticRuns > MAX_SEMANTIC_RUNS) invalid('The DOCX contains too many text runs.');
       },
     );
-    if (current.headingLevel) headingItems.push({ level: current.headingLevel, text: current.text, blockIndex: blocks.length });
+    if (current.headingLevel)
+      headingItems.push({ level: current.headingLevel, text: current.text, blockIndex: blocks.length });
     return current;
   };
   const parseTable = (tableElement: XmlElement, depth: number): DocxTable => {
@@ -865,18 +890,17 @@ function parseDocx(entries: Map<string, ZipEntry>): DocxStructure {
     if (tableCount > 10_000) invalid('The DOCX contains too many tables.');
     const rows = childElements(tableElement, 'tr').map((row) => ({
       cells: childElements(row, 'tc').map((cell) => ({
-        paragraphs: childElements(cell)
-          .flatMap((item) => {
-            if (item.localName === 'p') {
-              const parsed = paragraph(item);
-              return parsed ? [parsed] : [];
-            }
-            if (item.localName === 'tbl') {
-              const nested = parseTable(item, depth + 1);
-              return nested.rows.flatMap((nestedRow) => nestedRow.cells.flatMap((nestedCell) => nestedCell.paragraphs));
-            }
-            return [];
-          }),
+        paragraphs: childElements(cell).flatMap((item) => {
+          if (item.localName === 'p') {
+            const parsed = paragraph(item);
+            return parsed ? [parsed] : [];
+          }
+          if (item.localName === 'tbl') {
+            const nested = parseTable(item, depth + 1);
+            return nested.rows.flatMap((nestedRow) => nestedRow.cells.flatMap((nestedCell) => nestedCell.paragraphs));
+          }
+          return [];
+        }),
       })),
     }));
     return { kind: 'table', rows };

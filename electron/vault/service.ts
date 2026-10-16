@@ -386,13 +386,32 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return view;
   }
 
+  type DocumentCommitted = (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => void;
+
+  function createDocument(
+    relativePath: string,
+    content: string | Buffer,
+    origin: Provenance,
+    assertCurrent: (() => void) | undefined,
+    onCommitted: DocumentCommitted | undefined,
+    options: { deferRefresh: true },
+  ): Promise<void>;
+  function createDocument(
+    relativePath: string,
+    content: string | Buffer,
+    origin: Provenance,
+    assertCurrent?: () => void,
+    onCommitted?: DocumentCommitted,
+    options?: { deferRefresh?: false },
+  ): Promise<VaultInfo>;
   async function createDocument(
     relativePath: string,
     content: string | Buffer,
     origin: Provenance,
     assertCurrent?: () => void,
-    onCommitted?: (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => void,
-  ) {
+    onCommitted?: DocumentCommitted,
+    options?: { deferRefresh?: boolean },
+  ): Promise<VaultInfo | void> {
     assertCurrent?.();
     assertVisibleCreationPath(relativePath);
     const target = await resolveEntry(relativePath, true);
@@ -437,6 +456,10 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         }
         targetKey = await provenance.identity(target);
         await provenance.record(target, origin, assertCurrent);
+      }
+      if (options?.deferRefresh) {
+        assertCurrent?.();
+        return;
       }
       await refreshSearchIndex();
       assertCurrent?.();

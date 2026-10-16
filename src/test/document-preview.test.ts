@@ -3,8 +3,10 @@ import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { deflateSync } from 'node:zlib';
+import { randomUUID } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { extractEpubPages, extractPdfPages, readDocumentAttachment } from '../../electron/vault/document-preview';
+import { readImportSource } from '../../electron/vault/import';
 
 function storedZip(entries: Record<string, string>) {
   const local: Buffer[] = [];
@@ -43,10 +45,75 @@ function storedZip(entries: Record<string, string>) {
   return Buffer.concat([...local, directory, end]);
 }
 
+function fontEncryption(algorithm = 'http://www.idpf.org/2008/embedding', uri = 'OPS/Fonts/Regular.otf') {
+  return `<encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container" xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="${algorithm}"/><enc:CipherData><enc:CipherReference URI="${uri}"/></enc:CipherData></enc:EncryptedData></encryption>`;
+}
+
+function fontEpubEntries() {
+  return {
+    'META-INF/container.xml': '<container><rootfile full-path="OPS/book.opf"/></container>',
+    'META-INF/encryption.xml': fontEncryption(),
+    'OPS/book.opf':
+      '<package xmlns="http://www.idpf.org/2007/opf"><manifest><item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/><item id="font" href="Fonts/Regular.otf" media-type="font/otf"/></manifest><spine><itemref idref="chapter"/></spine></package>',
+    'OPS/chapter.xhtml': '<html><body><p>Readable book with an obfuscated font.</p></body></html>',
+    'OPS/Fonts/Regular.otf': 'Obfuscated font resource',
+  };
+}
+
 describe('PDF and ePub extraction', () => {
   it('rejects encrypted ePub package metadata before an explicit managed import', () => {
     const bytes = storedZip({ 'META-INF/encryption.xml': '<encryption/>' });
     expect(() => extractEpubPages(bytes, { forImport: true })).toThrow('Protected ePub');
+  });
+
+  it.each(['http://www.idpf.org/2008/embedding', 'http://ns.adobe.com/pdf/enc#RC'])(
+    'imports standard font obfuscation without treating %s as DRM',
+    async (algorithm) => {
+      const entries = fontEpubEntries();
+      entries['META-INF/encryption.xml'] = fontEncryption(algorithm);
+      const bytes = storedZip(entries);
+      expect(extractEpubPages(bytes, { forImport: true })).toEqual(['Readable book with an obfuscated font.']);
+      const root = path.resolve(`.test-font-epub-${randomUUID()}`);
+      await mkdir(root);
+      try {
+        const filename = path.join(root, 'Book.epub');
+        await writeFile(filename, bytes);
+        expect(await readImportSource(filename)).toEqual(bytes);
+      } finally {
+        await rm(root, { recursive: true, force: true });
+      }
+    },
+  );
+
+  it.each([
+    ['unknown encryption', fontEncryption('http://www.w3.org/2001/04/xmlenc#aes256-cbc')],
+    ['content rather than a font', fontEncryption(undefined, 'OPS/chapter.xhtml')],
+    ['a missing font', fontEncryption(undefined, 'OPS/Fonts/Missing.otf')],
+    ['an escaping resource', fontEncryption(undefined, '../Regular.otf')],
+    ['encoded traversal', fontEncryption(undefined, '%2e%2e/Regular.otf')],
+    ['external resources', fontEncryption(undefined, 'https://example.test/Regular.otf')],
+    ['malformed XML', fontEncryption().replace('</enc:CipherData>', '')],
+    ['wrong namespaces', fontEncryption().replace('http://www.w3.org/2001/04/xmlenc#', 'urn:untrusted')],
+    ['DTD declarations', '<!DOCTYPE encryption [<!ENTITY font "OPS/Fonts/Regular.otf">]>' + fontEncryption()],
+    ['undeclared entities', fontEncryption(undefined, '&font;')],
+    ['over-deep XML', '<a>'.repeat(65) + fontEncryption() + '</a>'.repeat(65)],
+  ])('rejects %s during a managed ePub import', (_label, encryption) => {
+    const entries = fontEpubEntries();
+    entries['META-INF/encryption.xml'] = encryption;
+    expect(() => extractEpubPages(storedZip(entries), { forImport: true })).toThrow('Protected ePub');
+  });
+
+  it('requires font media types and excludes resources used as reading content', () => {
+    const entries = fontEpubEntries();
+    entries['OPS/book.opf'] = entries['OPS/book.opf'].replace('media-type="font/otf"', 'media-type="text/html"');
+    expect(() => extractEpubPages(storedZip(entries), { forImport: true })).toThrow('Protected ePub');
+    entries['OPS/book.opf'] = fontEpubEntries()['OPS/book.opf'].replace('</spine>', '<itemref idref="font"/></spine>');
+    expect(() => extractEpubPages(storedZip(entries), { forImport: true })).toThrow('Protected ePub');
+    entries['OPS/book.opf'] = fontEpubEntries()['OPS/book.opf'].replace(
+      'http://www.idpf.org/2007/opf',
+      'urn:untrusted',
+    );
+    expect(() => extractEpubPages(storedZip(entries), { forImport: true })).toThrow('Protected ePub');
   });
 
   it('extracts literal and hex PDF text operators', () => {
