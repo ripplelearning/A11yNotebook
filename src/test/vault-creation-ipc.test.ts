@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { mkdir, readFile, rm, truncate, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rm, symlink, truncate, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -297,6 +297,11 @@ describe('creation IPC authorization and dialogs', () => {
 
   it('does not swallow access revocation or invalid paths in encryption-status size preflight', async () => {
     await expect(invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, '../Outside.md')).rejects.toThrow('not valid');
+    if (process.platform !== 'win32') {
+      await symlink(path.join(mock.root, 'Missing.md'), path.join(mock.root, 'Link.md'));
+      await expect(invoke(IPC_CHANNELS.vaultNoteEncryptionStatus, 'Link.md')).rejects.toThrow('Symbolic');
+    }
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'status preflight password');
     await writeFile(path.join(mock.root, 'Huge.md'), '');
     await truncate(path.join(mock.root, 'Huge.md'), 16 * 1024 * 1024 + 1);
     let release!: () => void;
@@ -315,6 +320,6 @@ describe('creation IPC authorization and dialogs', () => {
     await waiting;
     await invoke(IPC_CHANNELS.vaultSecurityLock);
     release();
-    await expect(checking).rejects.toThrow('lock state changed');
+    await expect(checking).rejects.toThrow('Unlock');
   });
 });
