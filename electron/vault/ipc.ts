@@ -2184,20 +2184,30 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      const ciphertext = await access.vault.readNote(relativePath);
+      if (!/\.(?:md|html)$/i.test(relativePath)) throw new Error('Legacy recovery requires a Markdown or HTML note.');
+      const absolute = await access.vault.resolveEntry(relativePath);
+      const ciphertext = await readBoundedMetadata(absolute, 40 * 1024 * 1024);
       let envelope: unknown;
-      try { envelope = JSON.parse(ciphertext); } catch {
+      try {
+        envelope = JSON.parse(ciphertext);
+      } catch {
         throw new Error('Only valid app-encrypted notes can use legacy recovery.');
       }
       if (!isEncryptedRecord(envelope) && !isPasswordEncryptedNote(envelope))
-        throw new Error('Only valid app-encrypted notes can use legacy recovery. Plaintext originals must be explicitly imported.');
+        throw new Error(
+          'Only valid app-encrypted notes can use legacy recovery. Plaintext originals must be explicitly imported.',
+        );
       access.assertCurrent();
       const consent = await dialog.showMessageBox({
         type: 'question',
         title: 'Recover legacy encrypted note',
         message: `Open “${relativePath}” as a managed encrypted note?`,
-        detail: 'The existing library key or note password must authenticate this app-encrypted note. Its ciphertext and encryption rules will remain unchanged; only an explicit imported-origin record is added.',
-        buttons: ['Cancel', 'Authenticate and recover'], defaultId: 0, cancelId: 0, noLink: true,
+        detail:
+          'The existing library key or note password must authenticate this app-encrypted note. Its ciphertext and encryption rules will remain unchanged; only an explicit imported-origin record is added.',
+        buttons: ['Cancel', 'Authenticate and recover'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
       });
       access.assertCurrent();
       if (consent.response !== 1) return null;

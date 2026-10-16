@@ -13,6 +13,7 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
 import { createVaultWatcher } from './watcher';
 import { createProvenanceStore, type Provenance } from './provenance';
+import { readBoundedMetadata } from './metadata-protection';
 
 function isNotePath(value: string) {
   return ['.md', '.html'].includes(path.extname(value).toLowerCase());
@@ -349,7 +350,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     if (!isNotePath(relativePath)) throw new Error('Only encrypted Markdown and HTML notes can be recovered.');
     const identity = await provenance.identity(absolute);
     if (!identity) throw new Error('This filesystem cannot reliably identify the encrypted note for managed recovery.');
-    if ((await readNote(relativePath)) !== expectedCiphertext)
+    if ((await readBoundedMetadata(absolute, 40 * 1024 * 1024)) !== expectedCiphertext)
       throw new Error('The encrypted note changed. Retry recovery.');
     assertCurrent();
     await provenance.record(absolute, 'imported', assertCurrent, identity);

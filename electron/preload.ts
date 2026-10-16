@@ -215,7 +215,8 @@ const bridge: NotebookBridge = {
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
     importAsNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportAsNote, relativePath),
     importEntry: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportEntry, relativePath),
-    adoptEncrypted: (relativePath, password) => ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
+    adoptEncrypted: (relativePath, password) =>
+      ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
     toggleTask: (relativePath, location, complete, revision) =>

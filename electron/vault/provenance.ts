@@ -65,7 +65,8 @@ export function createProvenanceStore(resolver: MetadataResolver, liveIdentities
     return serialize(async () => {
       if (origin !== 'created' && origin !== 'imported') throw new Error('Invalid document origin.');
       const key = await identity(absolute);
-      if (expectedIdentity && key !== expectedIdentity) throw new Error('The selected file changed. Retry the operation.');
+      if (expectedIdentity && key !== expectedIdentity)
+        throw new Error('The selected file changed. Retry the operation.');
       if (!key) return;
       let records = await snapshot(true);
       if (liveIdentities && Object.keys(records).length >= nextPruneAt) {

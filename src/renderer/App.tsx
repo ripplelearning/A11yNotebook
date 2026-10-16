@@ -774,13 +774,30 @@ export default function App() {
         (await bridge.vault.isNoteEncrypted?.(entry.path));
       if (!canOpen()) return;
       if (encryptedLegacy) {
-        if (
-          !notePassword &&
-          !window.confirm(
-            'Open this legacy encrypted note using A11y Notebook’s existing unlock workflow? Its origin is unknown; decryption must authenticate successfully before any content is shown.',
-          )
-        )
+        if (!bridge.vault.adoptEncrypted) {
+          setStatusMessage(
+            'Legacy encrypted-note recovery is unavailable. Keep the original encrypted file unchanged.',
+          );
           return;
+        }
+        let adopted: VaultInfo | null;
+        try {
+          adopted = await bridge.vault.adoptEncrypted(entry.path, notePassword);
+        } catch (failure) {
+          if (!canOpen()) return;
+          if (!notePassword && failure instanceof Error && /note’s password/i.test(failure.message)) {
+            setNotePasswordDialog({ action: 'unlock', entry });
+            return;
+          }
+          throw failure;
+        }
+        if (!canOpen() || !adopted) return;
+        const recovered = findEntry(adopted.entries, entry.path);
+        if (!recovered || recovered.kind !== 'note' || !isManagedEntry(recovered))
+          throw new Error('Encrypted-note authentication did not establish a managed recovery entry.');
+        setVault(adopted);
+        await openEntry(recovered, notePassword, canContinue, onOpened);
+        return;
       } else {
         if (!bridge.vault.openWith) {
           setStatusMessage('Use Open With to choose an application for this external file.');

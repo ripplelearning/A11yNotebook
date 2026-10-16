@@ -2,7 +2,7 @@ import path from 'node:path';
 
 // OS applications can handle more document formats than the internal parsers.
 // Never admit executable, script, installer, or shortcut extensions to this list.
-const EXTERNAL_DOCUMENT_EXTENSIONS = new Set([
+export const EXTERNAL_DOCUMENT_EXTENSIONS: ReadonlySet<string> = new Set([
   '.md',
   '.markdown',
   '.html',

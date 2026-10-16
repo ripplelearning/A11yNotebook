@@ -62,6 +62,7 @@ function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settin
       createNotebook: vi.fn(async () => vault),
       openWith: vi.fn(async () => ({ cancelled: false })),
       importEntry: vi.fn(),
+      adoptEncrypted: vi.fn<(_: string, password?: string) => Promise<VaultInfo | null>>(),
     },
   };
   window.a11yNotebook = bridge as unknown as NotebookBridge;
@@ -87,11 +88,24 @@ describe('contextual shell workflows', () => {
     shortcut(key);
     await within(screen.getByRole('tabpanel')).findByRole('heading', { name: heading });
     await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveFocus());
-    screen.getByRole('searchbox', { name: 'Global search' }).focus();
+    const panel = screen.getByRole('tabpanel', { name: heading });
+    const focused = vi.fn();
+    const blurred = vi.fn();
+    panel.addEventListener('focus', focused);
+    panel.addEventListener('blur', blurred);
     const status = screen.getByLabelText('Status bar').textContent;
     shortcut(key);
-    await waitFor(() => expect(screen.getByRole('tabpanel')).toHaveFocus());
+    await waitFor(() => expect(focused).toHaveBeenCalledOnce());
+    expect(blurred).toHaveBeenCalledOnce();
+    expect(screen.getByRole('tabpanel')).toBe(panel);
+    expect(panel).toHaveFocus();
     expect(screen.getByLabelText('Status bar').textContent).toBe(status);
+    screen.getByRole('searchbox', { name: 'Global search' }).focus();
+    shortcut(key);
+    await waitFor(() => expect(focused).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('Status bar').textContent).toBe(status);
+    panel.removeEventListener('focus', focused);
+    panel.removeEventListener('blur', blurred);
   });
 
   it('does not intercept IME events or shortcuts while a dialog is open', async () => {
@@ -316,6 +330,19 @@ describe('contextual shell workflows', () => {
     fireEvent.click(screen.getByRole('treeitem', { name: /Map\.outline\.md/ }));
     const input = await screen.findByRole('textbox', { name: /Item text/ });
     fireEvent.change(input, { target: { value: 'Unsaved idea' } });
+    const panel = screen.getByRole('tabpanel');
+    panel.focus();
+    const focused = vi.fn();
+    panel.addEventListener('focus', focused);
+    const status = screen.getByLabelText('Status bar').textContent;
+    shortcut('5');
+    await waitFor(() => expect(focused).toHaveBeenCalledOnce());
+    expect(screen.getByRole('tabpanel')).toBe(panel);
+    expect(screen.getByRole('textbox', { name: /Item text/ })).toBe(input);
+    expect(input).toHaveValue('Unsaved idea');
+    expect(bridge.vault.readAsset).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText('Status bar').textContent).toBe(status);
+    panel.removeEventListener('focus', focused);
     shortcut('n');
     expect(input).toHaveValue('Unsaved idea');
     expect(screen.getByRole('combobox', { name: 'New asset type' })).toBeDisabled();
@@ -383,6 +410,102 @@ describe('contextual shell workflows', () => {
     expect(bridge.vault.readAsset).not.toHaveBeenCalled();
     shortcut('5');
     expect(within(screen.getByRole('combobox', { name: 'Asset file' })).getAllByRole('option')).toHaveLength(1);
+  });
+
+  it('authenticates legacy encrypted recovery before reading or internally opening its note', async () => {
+    const path = 'Legacy.md';
+    const { bridge, vault } = setup({ entries: [{ name: path, path, kind: 'note' }] });
+    bridge.vault.isNoteEncrypted.mockResolvedValue(true);
+    let resolveAdoption!: (value: VaultInfo | null) => void;
+    bridge.vault.adoptEncrypted.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAdoption = resolve;
+        }),
+    );
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    await waitFor(() => expect(bridge.vault.adoptEncrypted).toHaveBeenCalledWith(path, undefined));
+    expect(bridge.vault.readNote).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
+    await act(async () =>
+      resolveAdoption({
+        ...vault,
+        entries: [{ name: path, path, kind: 'note', provenance: 'imported' }],
+      }),
+    );
+    await screen.findByRole('tab', { name: 'Legacy' });
+    expect(bridge.vault.readNote).toHaveBeenCalledWith(path, undefined);
+    expect(bridge.vault.openWith).not.toHaveBeenCalled();
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
+  });
+
+  it('leaves legacy ciphertext unopened when native recovery consent is cancelled', async () => {
+    const { bridge } = setup({ entries: [{ name: 'Legacy.md', path: 'Legacy.md', kind: 'note' }] });
+    bridge.vault.isNoteEncrypted.mockResolvedValue(true);
+    bridge.vault.adoptEncrypted.mockResolvedValue(null);
+    await screen.findByRole('heading', { name: 'Study' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    });
+    expect(bridge.vault.adoptEncrypted).toHaveBeenCalledOnce();
+    expect(bridge.vault.readNote).not.toHaveBeenCalled();
+    expect(bridge.vault.openWith).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
+  });
+
+  it('uses the existing note-password dialog for authenticated legacy recovery', async () => {
+    const path = 'Legacy.md';
+    const { bridge, vault } = setup({ entries: [{ name: path, path, kind: 'note' }] });
+    bridge.vault.isNoteEncrypted.mockResolvedValue(true);
+    bridge.vault.adoptEncrypted.mockRejectedValueOnce(new Error('Enter this note’s password to recover it.'));
+    bridge.vault.adoptEncrypted.mockResolvedValueOnce({
+      ...vault,
+      entries: [{ name: path, path, kind: 'note', provenance: 'imported' }],
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Unlock encrypted note' });
+    expect(bridge.vault.readNote).not.toHaveBeenCalled();
+    fireEvent.change(within(dialog).getByLabelText('Note password'), { target: { value: 'local-test-password' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Unlock note' }));
+    await screen.findByRole('tab', { name: 'Legacy' });
+    expect(bridge.vault.adoptEncrypted).toHaveBeenLastCalledWith(path, 'local-test-password');
+    expect(bridge.vault.readNote).toHaveBeenCalledWith(path, 'local-test-password');
+  });
+
+  it('does not read a legacy note if recovery fails to establish managed provenance', async () => {
+    const { bridge, vault } = setup({ entries: [{ name: 'Legacy.md', path: 'Legacy.md', kind: 'note' }] });
+    bridge.vault.isNoteEncrypted.mockResolvedValue(true);
+    bridge.vault.adoptEncrypted.mockResolvedValue(vault);
+    await screen.findByRole('heading', { name: 'Study' });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    });
+    expect(bridge.vault.readNote).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
+  });
+
+  it('ignores authenticated recovery completion after the library locks', async () => {
+    const path = 'Legacy.md';
+    const { bridge, vault } = setup({ entries: [{ name: path, path, kind: 'note' }] });
+    bridge.vault.isNoteEncrypted.mockResolvedValue(true);
+    let resolveAdoption!: (value: VaultInfo | null) => void;
+    bridge.vault.adoptEncrypted.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveAdoption = resolve;
+        }),
+    );
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    await waitFor(() => expect(bridge.vault.adoptEncrypted).toHaveBeenCalledOnce());
+    await act(async () => {
+      bridge.vault.onSecurityLocked.mock.calls[0][0]();
+      resolveAdoption({ ...vault, entries: [{ name: path, path, kind: 'note', provenance: 'imported' }] });
+    });
+    expect(bridge.vault.readNote).not.toHaveBeenCalled();
+    expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
   });
 
   it('offers explicit Open With and Windows default application context actions', async () => {

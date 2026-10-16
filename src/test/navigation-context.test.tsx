@@ -143,13 +143,23 @@ describe('contextual navigation names and repeated focus', () => {
     const vault = window.a11yNotebook!.vault;
     vault.isNoteEncrypted = vi.fn(async () => true);
     vault.readNote = vi.fn(async () => '# Recovered');
-    const consent = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    const original = (await vault.get())!;
+    const consent = vi.fn<NonNullable<typeof vault.adoptEncrypted>>();
+    consent.mockResolvedValueOnce(null).mockResolvedValueOnce({
+      ...original,
+      entries: [
+        {
+          ...original.entries[0],
+          children: [{ name: 'Legacy.md', path: 'Research/Legacy.md', kind: 'note', provenance: 'imported' }],
+        },
+      ],
+    });
+    vault.adoptEncrypted = consent;
     navigate('3');
     const file = screen.getByRole('gridcell', { name: 'Legacy.md' });
     fireEvent.keyDown(file, { key: 'Enter' });
     await waitFor(() => expect(consent).toHaveBeenCalledOnce());
     expect(vault.readNote).not.toHaveBeenCalled();
-    consent.mockReturnValue(true);
     fireEvent.keyDown(file, { key: 'Enter' });
     await screen.findByRole('heading', { name: 'Legacy', level: 2 });
     expect(vault.readNote).toHaveBeenCalledWith('Research/Legacy.md', undefined);

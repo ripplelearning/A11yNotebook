@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
-import { encryptRecord, unlockVault } from '../../electron/vault/security';
+import { encryptNoteWithPassword, encryptRecord, unlockVault } from '../../electron/vault/security';
 import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { Milestone } from '../shared/milestones';
@@ -39,6 +39,7 @@ const mock = vi.hoisted(() => ({
   openCanceled: false,
   importConsentGate: undefined as undefined | (() => Promise<void>),
   failAuditWrite: false,
+  failProvenanceWrite: false,
   auditWriteGate: undefined as undefined | (() => Promise<void>),
   messages: [] as { title?: string; message?: string }[],
   savePath: '',
@@ -79,6 +80,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       return actual.writeFile(...args);
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
+      if (mock.failProvenanceWrite && String(args[1]).endsWith('provenance.json'))
+        throw new Error('Origin metadata write failed');
       if (String(args[1]).endsWith('audit.json')) {
         if (mock.failAuditWrite) throw new Error('Audit storage unavailable.');
         await mock.auditWriteGate?.();
@@ -283,6 +286,7 @@ beforeEach(async () => {
   mock.openCanceled = false;
   mock.importConsentGate = undefined;
   mock.failAuditWrite = false;
+  mock.failProvenanceWrite = false;
   mock.auditWriteGate = undefined;
   mock.messages = [];
   mock.saveCanceled = false;
@@ -671,6 +675,112 @@ describe('extended vault IPC integration', () => {
     expect(
       JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8')).records,
     ).toEqual({});
+  });
+
+  it('explicitly recovers a legacy vault-encrypted note without modifying ciphertext or requiring export', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const config = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
+    const key = await unlockVault(config, 'vault password 123');
+    const ciphertext = JSON.stringify(encryptRecord(key, 'note', 'legacy-vault-note', '# Legacy secret'));
+    key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.md'), ciphertext);
+    const before = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(before.entries.find((entry) => entry.path === 'Legacy.md')?.provenance).toBeUndefined();
+    const recovered = (await invoke(
+      IPC_CHANNELS.vaultAdoptEncrypted,
+      'Legacy.md',
+    )) as import('../shared/types').VaultInfo;
+    expect(recovered.entries.find((entry) => entry.path === 'Legacy.md')?.provenance).toBe('imported');
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).toBe('# Legacy secret');
+    const origin = await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8');
+    expect(origin).not.toMatch(/Legacy|secret|password|ciphertext/);
+  });
+
+  it('recovers password-encrypted legacy notes only after consent and successful existing password authentication', async () => {
+    const encrypted = await encryptNoteWithPassword(
+      'legacy note password',
+      '# Per-note secret',
+      'legacy-password-note',
+    );
+    const ciphertext = JSON.stringify(encrypted.record);
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.html'), ciphertext);
+    mock.confirm = 0;
+    expect(await invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html', 'legacy note password')).toBeNull();
+    mock.confirm = 1;
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html')).rejects.toThrow('password');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html', 'incorrect password')).rejects.toThrow();
+    const before = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(before.entries.find((entry) => entry.path === 'Legacy.html')?.provenance).toBeUndefined();
+    const recovered = (await invoke(
+      IPC_CHANNELS.vaultAdoptEncrypted,
+      'Legacy.html',
+      'legacy note password',
+    )) as import('../shared/types').VaultInfo;
+    expect(recovered.entries.find((entry) => entry.path === 'Legacy.html')?.provenance).toBe('imported');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.html')).toBe('# Per-note secret');
+    expect(await readFile(path.join(mock.root, 'Legacy.html'), 'utf8')).toBe(ciphertext);
+  });
+
+  it('never adopts plaintext, malformed, foreign-key, changed, or unauthenticated notes', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Topic.md')).rejects.toThrow('Only valid app-encrypted');
+    await writeFile(path.join(mock.root, 'Malformed.md'), '{"format":"a11ynotebook-encrypted-v1",');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Malformed.md')).rejects.toThrow('Only valid app-encrypted');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, '../outside.md')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const foreign = JSON.stringify(encryptRecord(Buffer.alloc(32, 7), 'note', 'foreign-note', '# Not authorized'));
+    await writeFile(path.join(mock.root, 'Foreign.md'), foreign);
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Foreign.md')).rejects.toThrow();
+    const encrypted = await encryptNoteWithPassword('legacy note password', '# Original', 'changed-note');
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Changed.md'), JSON.stringify(encrypted.record));
+    mock.derivationGate = async () => {
+      await writeFile(path.join(mock.root, 'Changed.md'), '# External replacement');
+    };
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Changed.md', 'legacy note password')).rejects.toThrow(
+      'changed',
+    );
+    const view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(
+      view.entries
+        .filter((entry) => ['Topic.md', 'Malformed.md', 'Foreign.md', 'Changed.md'].includes(entry.path))
+        .every((entry) => !entry.provenance),
+    ).toBe(true);
+  });
+
+  it('preserves encrypted originals and wipes temporary keys when adoption metadata fails or locking revokes authentication', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const encrypted = await encryptNoteWithPassword('legacy note password', '# Original secret', 'legacy-failure-note');
+    const ciphertext = JSON.stringify(encrypted.record);
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.md'), ciphertext);
+    mock.failProvenanceWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.md', 'legacy note password')).rejects.toThrow(
+      'Origin metadata write failed',
+    );
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
+    mock.failProvenanceWrite = false;
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).rejects.toThrow('password');
+    let entered!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.derivationGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const recovering = invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.md', 'legacy note password');
+    await ready;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await Promise.all([expect(recovering).rejects.toThrow('lock state changed'), locking]);
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
   });
 
   it('persists and reloads reminder settings through IPC and migrates old settings defaults', async () => {
