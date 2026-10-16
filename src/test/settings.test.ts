@@ -2,6 +2,21 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, normalizeShortcut, shortcutConflicts, validateSettings } from '../shared/settings';
 
 describe('settings and shortcut validation', () => {
+  it('defaults legacy note opening to Read mode and persists only supported opening modes', () => {
+    expect(validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} })).toHaveProperty(
+      'defaultNoteOpenMode',
+      'read',
+    );
+    for (const defaultNoteOpenMode of ['read', 'edit']) {
+      expect(validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode })).toHaveProperty(
+        'defaultNoteOpenMode',
+        defaultNoteOpenMode,
+      );
+    }
+    for (const defaultNoteOpenMode of [null, '', 'preview', true, 1]) {
+      expect(() => validateSettings({ ...DEFAULT_SETTINGS, defaultNoteOpenMode })).toThrow();
+    }
+  });
   it('persists reminder preferences, migrates legacy settings and rejects invalid sound values', () => {
     const choices = {
       reminderAlerts: false,
@@ -38,6 +53,14 @@ describe('settings and shortcut validation', () => {
       'save-current-note': '',
     });
     expect(validateSettings(DEFAULT_SETTINGS)).toEqual(DEFAULT_SETTINGS);
+  });
+  it('detects contextual New conflicts while preserving explicitly rebound New notebook', () => {
+    expect(shortcutConflicts({ 'new-notebook': 'Ctrl+N' }).join()).toContain('New notebook');
+    const shortcuts = { 'new-contextual': '', 'new-notebook': 'Ctrl+N' };
+    expect(validateSettings({ ...DEFAULT_SETTINGS, shortcuts }).shortcuts).toEqual(shortcuts);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'new-contextual': 'Ctrl+Alt+N' } }).shortcuts).toEqual({
+      'new-contextual': 'Ctrl+Alt+N',
+    });
   });
   it('rejects invalid settings, typing keys and unknown commands', () => {
     expect(() => normalizeShortcut('b')).toThrow();

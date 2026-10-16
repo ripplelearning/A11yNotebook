@@ -5,6 +5,7 @@ export interface NotebookSettings {
   theme: 'dark' | 'light' | 'high-contrast';
   fontSize: number;
   shortcuts: Partial<Record<CommandId, string>>;
+  defaultNoteOpenMode?: 'read' | 'edit';
   vaultLockMinutes?: number;
   noteEditLockMinutes?: number;
   reminderAlerts?: boolean;
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   theme: 'dark',
   fontSize: 16,
   shortcuts: {},
+  defaultNoteOpenMode: 'read',
   vaultLockMinutes: 15,
   noteEditLockMinutes: 0,
   reminderAlerts: false,
@@ -82,6 +84,7 @@ export function shortcutConflicts(shortcuts: NotebookSettings['shortcuts']): str
 export function validateSettings(value: unknown): NotebookSettings {
   if (!value || typeof value !== 'object') throw new Error('Invalid settings.');
   const settings = value as NotebookSettings;
+  const defaultNoteOpenMode = settings.defaultNoteOpenMode === undefined ? 'read' : settings.defaultNoteOpenMode;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
   const noteEditLockMinutes = settings.noteEditLockMinutes ?? DEFAULT_SETTINGS.noteEditLockMinutes!;
   const reminderAlerts = settings.reminderAlerts === undefined ? false : settings.reminderAlerts;
@@ -97,6 +100,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(settings.fontSize) ||
     settings.fontSize < 12 ||
     settings.fontSize > 32 ||
+    !['read', 'edit'].includes(defaultNoteOpenMode) ||
     !Number.isInteger(vaultLockMinutes) ||
     vaultLockMinutes < 0 ||
     vaultLockMinutes > 240 ||
@@ -128,6 +132,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     theme: settings.theme,
     fontSize: settings.fontSize,
     shortcuts,
+    defaultNoteOpenMode,
     vaultLockMinutes,
     noteEditLockMinutes,
     reminderAlerts,

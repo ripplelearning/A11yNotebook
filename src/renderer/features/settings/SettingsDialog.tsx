@@ -168,6 +168,22 @@ export default function SettingsDialog({
           />
         </label>
         <label>
+          Default Open behavior for notes
+          <select
+            value={draft.defaultNoteOpenMode ?? 'read'}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                defaultNoteOpenMode: event.target.value as 'read' | 'edit',
+              })
+            }
+          >
+            <option value="read">Read mode</option>
+            <option value="edit">Edit mode</option>
+          </select>
+        </label>
+        <p>This applies to managed notes. Read-only documents remain read-only, and editing locks still apply.</p>
+        <label>
           Library idle lock in minutes (0 disables; maximum 240)
           <input
             type="number"
