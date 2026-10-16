@@ -184,7 +184,7 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
 
   return (
     <>
-      <div ref={tree} role="tree" aria-label="Vault files">
+      <div ref={tree} role="tree" aria-label="Library files">
         {render(entries)}
         {!entries.length ? <p>No files yet. Create a notebook or note to get started.</p> : null}
       </div>

@@ -166,6 +166,20 @@ describe('GridEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save grid' }));
     expect(save).toHaveBeenLastCalledWith('| Name | Count |\n| --- | --- |\n| Alpha | 1 |\n|  |  |\n', 'markdown');
   });
+  it('starts with the format of the current asset', () => {
+    const save = vi.fn();
+    render(
+      <GridEditor
+        value={{ columns: ['Name'], rows: [['Alpha']] }}
+        onChange={vi.fn()}
+        onSave={save}
+        format="markdown"
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Grid save format' })).toHaveValue('markdown');
+    fireEvent.click(screen.getByRole('button', { name: 'Save grid' }));
+    expect(save).toHaveBeenCalledWith('| Name |\n| --- |\n| Alpha |\n', 'markdown');
+  });
   it('allows readonly navigation but no mutation and protects the last column', () => {
     const change = vi.fn();
     const { rerender } = render(<GridEditor value={{ columns: ['Only'], rows: [] }} onChange={change} readOnly />);

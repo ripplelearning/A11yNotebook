@@ -20,7 +20,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
     if (recovering) recoveryInput.current?.focus();
   }, [recovering]);
   return (
-    <Modal title="Vault locked" titleId="vault-lock-heading" onClose={() => undefined}>
+    <Modal title="Library locked" titleId="vault-lock-heading" onClose={() => undefined}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -38,7 +38,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
               setError(
                 recovering
                   ? 'Recovery failed. Check the recovery key and try again.'
-                  : 'The password was incorrect or the vault security data is damaged.',
+                  : 'The password was incorrect or the library security data is damaged.',
               ),
             )
             .finally(() => {
@@ -49,13 +49,13 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
       >
         {recovering ? (
           <>
-            <h3>Recover vault password</h3>
+            <h3>Recover library password</h3>
             <p>
-              Use the recovery key you saved when enabling recovery. This resets the vault password; separately
+              Use the recovery key you saved when enabling recovery. This resets the library password; separately
               password-encrypted notes still require their own passwords.
             </p>
             <label>
-              Vault recovery key
+              Library recovery key
               <input
                 ref={recoveryInput}
                 autoComplete="off"
@@ -66,7 +66,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
               />
             </label>
             <label>
-              New vault password (at least 8 characters)
+              New library password (at least 8 characters)
               <input
                 type="password"
                 autoComplete="new-password"
@@ -76,7 +76,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
               />
             </label>
             <label>
-              Confirm new vault password
+              Confirm new library password
               <input
                 type="password"
                 autoComplete="new-password"
@@ -98,7 +98,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
         ) : (
           <>
             <label>
-              Vault password
+              Library password
               <input
                 autoComplete="current-password"
                 data-autofocus
@@ -109,7 +109,7 @@ export default function SecurityGate({ onUnlock, recoveryAvailable = false, onRe
               />
             </label>
             <button type="submit" disabled={busy || password.length < 8}>
-              Unlock vault
+              Unlock library
             </button>
             {recoveryAvailable && onRecover ? (
               <button type="button" disabled={busy} onClick={() => setRecovering(true)}>

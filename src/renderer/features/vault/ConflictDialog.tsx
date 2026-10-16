@@ -26,7 +26,7 @@ export default function ConflictDialog({
       }}
     >
       <p>
-        {conflict.path} {conflict.disk === null ? 'was removed from the vault.' : 'changed outside the app.'} Your
+        {conflict.path} {conflict.disk === null ? 'was removed from the library.' : 'changed outside the app.'} Your
         unsaved text is preserved.
       </p>
       {error ? <p role="alert">{error}</p> : null}

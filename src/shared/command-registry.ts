@@ -432,7 +432,7 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'open-vault',
     label: 'Open library',
-    aliases: ['Open vault'],
+    aliases: ['Open library'],
     description: 'Select and open a library from local storage.',
     shortcut: 'Ctrl+O',
     contexts: ['general'],

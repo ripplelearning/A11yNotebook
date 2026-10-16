@@ -67,7 +67,7 @@ describe('command registry', () => {
     const openLibrary = getCommandById('open-vault');
     const commandSearch = getCommandById('command-search');
 
-    expect(openLibrary?.aliases).toContain('Open vault');
+    expect(openLibrary?.aliases).toContain('Open library');
     expect(commandSearch?.aliases).toContain('Open command search');
     expect(commandSearch?.shortcut).toBe('Ctrl+Shift+P');
     expect(commandSearch?.shortcutAliases).toContain('Ctrl+K');

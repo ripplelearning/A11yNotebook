@@ -111,7 +111,9 @@ describe('local vault workflow', () => {
         name: 'Open Tasks',
       }),
     );
-    const taskTable = await screen.findByRole('table', { name: 'Markdown and HTML checklist tasks in the open vault' });
+    const taskTable = await screen.findByRole('table', {
+      name: 'Markdown and HTML checklist tasks in the open library',
+    });
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
     await waitFor(() =>
       expect(bridge.vault.toggleTask).toHaveBeenCalledWith('Class notes/Week 1.md', 4, true, undefined),
@@ -125,7 +127,7 @@ describe('local vault workflow', () => {
     const openVault = screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i });
     fireEvent.click(openVault);
     expect(screen.getByLabelText('Status bar')).toHaveTextContent(
-      'Save or resolve unsaved changes before opening another vault.',
+      'Save or resolve unsaved changes before opening another library.',
     );
     expect(bridge.vault.open).not.toHaveBeenCalled();
 

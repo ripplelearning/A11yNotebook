@@ -17,7 +17,14 @@ const structure: DocxStructure = {
     },
     {
       kind: 'table',
-      rows: [{ cells: [{ paragraphs: [{ kind: 'paragraph', text: 'Cell one', runs: [{ text: 'Cell one' }] }] }, { paragraphs: [{ kind: 'paragraph', text: 'Cell two', runs: [{ text: 'Cell two' }] }] }] }],
+      rows: [
+        {
+          cells: [
+            { paragraphs: [{ kind: 'paragraph', text: 'Cell one', runs: [{ text: 'Cell one' }] }] },
+            { paragraphs: [{ kind: 'paragraph', text: 'Cell two', runs: [{ text: 'Cell two' }] }] },
+          ],
+        },
+      ],
     },
   ],
   headings: [{ level: 1, text: 'Introduction', blockIndex: 0 }],
@@ -65,7 +72,9 @@ describe('DOCX semantic reader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Go to match in section 2' }));
     expect(screen.getByLabelText('DOCX reading position')).toHaveTextContent('2 of 4');
 
-    fireEvent.click(within(screen.getByRole('navigation', { name: 'DOCX links' })).getByRole('button', { name: 'A safe link' }));
+    fireEvent.click(
+      within(screen.getByRole('navigation', { name: 'DOCX links' })).getByRole('button', { name: 'A safe link' }),
+    );
     expect(openUrl).toHaveBeenCalledWith('https://example.org/guide');
     fireEvent.click(screen.getByRole('button', { name: 'Bookmark DOCX' }));
     await waitFor(() => expect(toggleBookmark).toHaveBeenCalledWith('Guide.docx'));
@@ -77,7 +86,7 @@ describe('DOCX semantic reader', () => {
     expect(document.activeElement).toBe(cells[1]);
 
     act(() => onLock?.());
-    expect(await screen.findByRole('alert')).toHaveTextContent('vault was locked');
+    expect(await screen.findByRole('alert')).toHaveTextContent('library was locked');
     expect(screen.queryByText('Find this paragraph')).not.toBeInTheDocument();
   });
 });

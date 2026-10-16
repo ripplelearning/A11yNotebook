@@ -168,7 +168,7 @@ export default function SettingsDialog({
           />
         </label>
         <label>
-          Vault idle lock in minutes (0 disables; maximum 240)
+          Library idle lock in minutes (0 disables; maximum 240)
           <input
             type="number"
             min={0}
@@ -284,18 +284,18 @@ export default function SettingsDialog({
           </button>
         </fieldset>
         <fieldset>
-          <legend>Vault security</legend>
+          <legend>Library security</legend>
           <p>
             {securityEnabled
               ? recoveryAvailable
-                ? 'This vault is password protected and has an optional recovery key. The key can reset this password, but cannot unlock notes protected by separate passwords.'
-                : 'This vault is password protected. The password cannot be recovered unless you enable recovery.'
-              : 'Set a password to require authentication when opening this vault. This does not encrypt unmarked notes.'}
+                ? 'This library is password protected and has an optional recovery key. The key can reset this password, but cannot unlock notes protected by separate passwords.'
+                : 'This library is password protected. The password cannot be recovered unless you enable recovery.'
+              : 'Set a password to require authentication when opening this library. This does not encrypt unmarked notes.'}
           </p>
           {!securityEnabled && onSetVaultPassword ? (
             <>
               <label>
-                New vault password (at least 8 characters)
+                New library password (at least 8 characters)
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -305,7 +305,7 @@ export default function SettingsDialog({
                 />
               </label>
               <label>
-                Confirm vault password
+                Confirm library password
                 <input
                   type="password"
                   autoComplete="new-password"
@@ -322,32 +322,32 @@ export default function SettingsDialog({
                     .then(() => {
                       setVaultPassword('');
                       setVaultPasswordConfirm('');
-                      setError('Vault password protection enabled.');
+                      setError('Library password protection enabled.');
                     })
-                    .catch(() => setError('Could not enable vault password protection.'));
+                    .catch(() => setError('Could not enable library password protection.'));
                 }}
               >
-                Set vault password
+                Set library password
               </button>
             </>
           ) : null}
           {securityEnabled && onLockVault ? (
-            <button type="button" onClick={() => void onLockVault().catch(() => setError('Could not lock vault.'))}>
-              Lock vault now
+            <button type="button" onClick={() => void onLockVault().catch(() => setError('Could not lock library.'))}>
+              Lock library now
             </button>
           ) : null}
           {securityEnabled && onPrepareRecovery && onAcknowledgeRecovery ? (
             <div>
-              <h3>Vault recovery</h3>
+              <h3>Library recovery</h3>
               {!recoveryKey ? (
                 <>
                   <p>
                     {recoveryAvailable
                       ? 'Generate a replacement recovery key. The previous key stops working after you confirm the new key is saved.'
-                      : 'Recovery is opt-in. Confirm the current vault password to generate a one-time recovery key.'}
+                      : 'Recovery is opt-in. Confirm the current library password to generate a one-time recovery key.'}
                   </p>
                   <label>
-                    Current vault password
+                    Current library password
                     <input
                       type="password"
                       autoComplete="current-password"
@@ -369,7 +369,7 @@ export default function SettingsDialog({
                         .finally(() => setRecoveryPreparing(false));
                     }}
                   >
-                    {recoveryAvailable ? 'Generate replacement recovery key' : 'Enable vault recovery'}
+                    {recoveryAvailable ? 'Generate replacement recovery key' : 'Enable library recovery'}
                   </button>
                 </>
               ) : (
@@ -379,7 +379,7 @@ export default function SettingsDialog({
                     automatically, and cannot recover notes protected by separate passwords.
                   </p>
                   <label>
-                    One-time vault recovery key
+                    One-time library recovery key
                     <input ref={recoveryKeyInput} readOnly value={recoveryKey} spellCheck={false} autoComplete="off" />
                   </label>
                   <label>
@@ -423,7 +423,7 @@ export default function SettingsDialog({
               {recoveryAvailable && onRevokeRecovery && !recoveryKey ? (
                 <>
                   <label>
-                    Current vault password to revoke recovery
+                    Current library password to revoke recovery
                     <input
                       type="password"
                       autoComplete="current-password"
@@ -439,7 +439,7 @@ export default function SettingsDialog({
                       void onRevokeRecovery(revokePassword)
                         .then(() => {
                           setRevokePassword('');
-                          setSecurityNotice('Vault recovery key revoked.');
+                          setSecurityNotice('Library recovery key revoked.');
                         })
                         .catch(() => setError('Could not revoke recovery. Check the current password and try again.'));
                     }}
@@ -518,19 +518,19 @@ export default function SettingsDialog({
           <fieldset disabled={metadataSaving}>
             <legend>Scoped metadata encryption</legend>
             <p>
-              This is not whole-vault encryption. It encrypts Markdown, HTML and PDF annotations and recovery drafts for
-              outlines, mindmaps, grids and flashcards. DOCX annotations do not exist in this build. Ordinary notes,
+              This is not whole-library encryption. It encrypts Markdown, HTML and PDF annotations and recovery drafts
+              for outlines, mindmaps, grids and flashcards. DOCX annotations do not exist in this build. Ordinary notes,
               attachments, saved cognitive asset files (including saved flashcards), filenames, reminders, reminder
-              defaults, milestones, settings (both vault and global copies), flashcard schedules, global preferences,
+              defaults, milestones, settings (both library and global copies), flashcard schedules, global preferences,
               image descriptions, bookmarks, search/link indexes and the audit log remain plaintext. Notes, source
-              attachments, exports and backups remain plaintext, not whole-vault encrypted. Flashcard drafts are
+              attachments, exports and backups remain plaintext, not whole-library encrypted. Flashcard drafts are
               encrypted, but their saved source files remain plaintext. Unlocked application memory is not protected.
-              Plaintext cleanup is not secure erasure. A stable version 3 vault recovery envelope is required.
+              Plaintext cleanup is not secure erasure. A stable version 3 library recovery envelope is required.
             </p>
             {metadataProtection.enabled ? (
               <p role="status">
                 {metadataProtection.cleanupRequired
-                  ? 'Metadata encryption is enabled, but plaintext cleanup must finish. Reopen and unlock the vault to retry.'
+                  ? 'Metadata encryption is enabled, but plaintext cleanup must finish. Reopen and unlock the library to retry.'
                   : 'Annotations and cognitive checkpoints are encrypted at rest.'}
               </p>
             ) : (
@@ -538,7 +538,7 @@ export default function SettingsDialog({
                 <p>
                   {metadataProtection.eligible && !metadataProtection.locked
                     ? 'Enabling this protection migrates existing annotations and enables new encrypted checkpoints. It is opt-in.'
-                    : 'First enable recovery and unlock a version-3 vault to enable scoped metadata encryption.'}
+                    : 'First enable recovery and unlock a version-3 library to enable scoped metadata encryption.'}
                 </p>
                 <label>
                   <input
@@ -548,7 +548,7 @@ export default function SettingsDialog({
                     onChange={(event) => setMetadataConsent(event.target.checked)}
                   />
                   I consent to encrypting only Markdown, HTML and PDF annotations and outline, mindmap, grid and
-                  flashcard recovery drafts; I understand the listed data remains plaintext, not whole-vault encrypted
+                  flashcard recovery drafts; I understand the listed data remains plaintext, not whole-library encrypted
                 </label>
                 <button
                   type="button"

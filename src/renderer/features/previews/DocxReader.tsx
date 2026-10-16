@@ -21,12 +21,14 @@ type ReaderBlock = { index: number; block: DocxParagraph | DocxTable } | { list:
 
 function blockText(block: DocxParagraph | DocxTable): string {
   if (block.kind === 'paragraph') return block.text;
-  return block.rows.flatMap((row) => row.cells.flatMap((cell) => cell.paragraphs.map((paragraph) => paragraph.text))).join(' ');
+  return block.rows
+    .flatMap((row) => row.cells.flatMap((cell) => cell.paragraphs.map((paragraph) => paragraph.text)))
+    .join(' ');
 }
 
 function readerBlocks(blocks: DocxStructure['blocks']): ReaderBlock[] {
   const result: ReaderBlock[] = [];
-  for (let index = 0; index < blocks.length; ) {
+  for (let index = 0; index < blocks.length;) {
     const block = blocks[index];
     if (block.kind !== 'paragraph' || !block.list) {
       result.push({ index, block });
@@ -83,13 +85,7 @@ function InlineRun({ run, onOpenLink }: { run: DocxRun; onOpenLink: (url: string
   );
 }
 
-function ParagraphContent({
-  paragraph,
-  onOpenLink,
-}: {
-  paragraph: DocxParagraph;
-  onOpenLink: (url: string) => void;
-}) {
+function ParagraphContent({ paragraph, onOpenLink }: { paragraph: DocxParagraph; onOpenLink: (url: string) => void }) {
   const content = paragraph.runs.map((run, index) => <InlineRun key={index} run={run} onOpenLink={onOpenLink} />);
   const body = paragraph.headingLevel ? (
     (() => {
@@ -122,7 +118,9 @@ export default function DocxReader({ path }: Props) {
   const matches = useMemo(() => {
     const needle = search.trim().toLocaleLowerCase();
     return needle && structure
-      ? structure.blocks.flatMap((block, index) => (blockText(block).toLocaleLowerCase().includes(needle) ? [index] : []))
+      ? structure.blocks.flatMap((block, index) =>
+          blockText(block).toLocaleLowerCase().includes(needle) ? [index] : [],
+        )
       : [];
   }, [search, structure]);
   const views = useMemo(() => (structure ? readerBlocks(structure.blocks) : []), [structure]);
@@ -152,7 +150,7 @@ export default function DocxReader({ path }: Props) {
       setStructure(null);
       setBookmarked(false);
       setCurrentIndex(0);
-      setError('The vault was locked. Unlock it to continue reading this DOCX.');
+      setError('The library was locked. Unlock it to continue reading this DOCX.');
     });
     const unsubscribeChanged = vault.onChanged((event) => {
       if (!event.paths.length || event.paths.includes(path)) {
@@ -256,9 +254,9 @@ export default function DocxReader({ path }: Props) {
                     <td
                       key={columnIndex}
                       ref={(element) => {
-                        const absoluteIndex = table.rows
-                          .slice(0, rowIndex)
-                          .reduce((count, previous) => count + previous.cells.length, 0) + columnIndex;
+                        const absoluteIndex =
+                          table.rows.slice(0, rowIndex).reduce((count, previous) => count + previous.cells.length, 0) +
+                          columnIndex;
                         cellRefs.current[absoluteIndex] = element;
                       }}
                       tabIndex={0}
@@ -310,7 +308,11 @@ export default function DocxReader({ path }: Props) {
         <button type="button" onClick={() => navigate(Math.max(0, safeIndex - 1))} disabled={safeIndex <= 0}>
           Previous section
         </button>
-        <button type="button" onClick={() => navigate(Math.min(count - 1, safeIndex + 1))} disabled={safeIndex >= count - 1}>
+        <button
+          type="button"
+          onClick={() => navigate(Math.min(count - 1, safeIndex + 1))}
+          disabled={safeIndex >= count - 1}
+        >
           Next section
         </button>
         <button type="button" onClick={toggleBookmark}>

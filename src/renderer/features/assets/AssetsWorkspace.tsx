@@ -350,7 +350,7 @@ export default function AssetsWorkspace({
           event.preventDefault();
           if (busy || dirty) return;
           if (!name.trim() || /[\\/:*?"<>|]/.test(name) || name === '.' || name === '..') {
-            setError('Enter a valid filename. Assets are created at the vault root.');
+            setError('Enter a valid filename. Assets are created at the library root.');
             return;
           }
           const starter = STARTERS[newType];
@@ -442,6 +442,7 @@ export default function AssetsWorkspace({
         {asset && ['grid', 'markdown-grid'].includes(asset.type) ? (
           <GridEditor
             value={grid}
+            format={asset.type === 'grid' ? 'csv' : 'markdown'}
             readOnly={busy || !!recovery?.draft}
             onChange={(value) => {
               setGrid(value);

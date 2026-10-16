@@ -32,10 +32,10 @@ describe('scoped metadata encryption consent', () => {
       'DOCX annotations do not exist',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
-      'settings (both vault and global copies), flashcard schedules',
+      'settings (both library and global copies), flashcard schedules',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
-      'A stable version 3 vault recovery envelope is required',
+      'A stable version 3 library recovery envelope is required',
     );
     fireEvent.click(screen.getByLabelText(/I consent to encrypting only Markdown, HTML and PDF annotations/));
     fireEvent.click(button);
