@@ -20,6 +20,7 @@ import type { AssetDraft, AssetDraftRecovery } from '../../../shared/asset-draft
 import { OutlineEditor, MindMapEditor, GridEditor, FlashcardReview } from './index';
 
 interface Props {
+  title?: string;
   paths: string[];
   initialPath?: string;
   refresh: () => Promise<void>;
@@ -40,6 +41,7 @@ const STARTERS: Record<string, { extension: string; source: string }> = {
 };
 
 export default function AssetsWorkspace({
+  title = 'Cognitive tools',
   paths,
   initialPath,
   refresh,
@@ -274,7 +276,7 @@ export default function AssetsWorkspace({
   };
   return (
     <section aria-labelledby="assets-heading">
-      <h2 id="assets-heading">Cognitive tools</h2>
+      <h2 id="assets-heading">{title}</h2>
       <p>
         Save changes before switching files or closing this view. Encrypted checkpoints require opted-in metadata
         protection; the latest edits within 750 milliseconds may be lost.

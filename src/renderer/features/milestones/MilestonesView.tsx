@@ -5,12 +5,14 @@ import Modal from '../../components/Modal';
 import MilestoneDialog, { associationKey, taskReference } from './MilestoneDialog';
 
 export default function MilestonesView({
+  title = 'Milestones',
   vaultPath,
   notePaths,
   isCurrent,
   onOpenNote,
   announce,
 }: {
+  title?: string;
   vaultPath: string;
   notePaths: string[];
   isCurrent: () => boolean;
@@ -149,7 +151,7 @@ export default function MilestonesView({
   return (
     <section aria-labelledby={`${id}-heading`} aria-busy={loading || busy}>
       <h2 ref={headingRef} id={`${id}-heading`} tabIndex={-1}>
-        Milestones
+        {title}
       </h2>
       <button type="button" disabled={!available || loading || busy} onClick={() => setEditing('new')}>
         Create milestone

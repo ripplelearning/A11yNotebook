@@ -58,6 +58,7 @@ import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
 import MilestonesView from './features/milestones/MilestonesView';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
+import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
@@ -72,7 +73,6 @@ import ContentsScreen from './features/screens/ContentsScreen';
 import LibrariesScreen from './features/screens/LibrariesScreen';
 import NotebooksScreen from './features/screens/NotebooksScreen';
 import NotesFilesScreen from './features/screens/NotesFilesScreen';
-import NewTaskDialog from './features/reminders/NewTaskDialog';
 import ExternalFileDialog from './features/vault/ExternalFileDialog';
 import { isInternallySupportedPath } from '../shared/file-provenance';
 
@@ -115,11 +115,20 @@ function findEntry(entries: VaultEntry[], targetPath: string | null): VaultEntry
   return undefined;
 }
 
+function isManagedEntry(entry: VaultEntry): boolean {
+  return entry.provenance === 'created' || entry.provenance === 'imported';
+}
+
+function isCompatibleImport(path: string): boolean {
+  return /\.(?:md|html?|txt|csv|pdf|epub|docx|png|jpe?g|gif|webp|bmp)$|\.mindmap\.json$/i.test(path);
+}
+
 function notebookForTask(task: VaultTask) {
   return task.path.split('/').slice(0, -1).join('/') || 'Root';
 }
 
 const TAB_PANEL_ID = 'main-tabpanel';
+const tabDomId = (id: string) => `tab-${encodeURIComponent(id)}`;
 const NAVIGATION_SCREENS = [
   { id: 'contents', label: 'Contents' },
   { id: 'libraries', label: 'Libraries' },
@@ -137,10 +146,11 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 };
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
-  { label: 'Library', items: ['open-vault', 'new-contextual', 'new-notebook', 'refresh-links'] },
+  { label: 'Library', items: ['new-contextual', 'new-library', 'open-vault', 'new-notebook', 'refresh-links'] },
   {
     label: 'Note',
     items: [
+      'new-note',
       'save-current-note',
       'new-from-template',
       'export-current-note',
@@ -170,7 +180,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'insert-attachment',
     ],
   },
-  { label: 'Tasks', items: ['show-tasks', 'show-reminders', 'show-milestones'] },
+  { label: 'Tasks', items: ['new-task', 'show-tasks', 'show-reminders', 'show-milestones'] },
   {
     label: 'View',
     items: [
@@ -182,6 +192,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'toggle-read-only-mode',
       'show-settings',
       'show-assets',
+      'new-asset',
     ],
   },
   { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
@@ -225,6 +236,10 @@ export default function App() {
   const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
+  const [taskDialogOpen, setTaskDialogOpen] = useState(false);
+  const [taskCreateError, setTaskCreateError] = useState('');
+  const [taskCreating, setTaskCreating] = useState(false);
+  const [taskNotePaths, setTaskNotePaths] = useState<string[]>([]);
   const [switchingVault, setSwitchingVault] = useState(false);
   const switchingRef = useRef(false);
   const vaultGenerationRef = useRef(0);
@@ -252,6 +267,8 @@ export default function App() {
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
+  const securityLockedRef = useRef(securityLocked);
+  securityLockedRef.current = securityLocked;
   const [lockedEditPaths, setLockedEditPaths] = useState<Set<string>>(() => new Set());
   const [encryptedNotePath, setEncryptedNotePath] = useState<string | null>(null);
   const [notePasswordDialog, setNotePasswordDialog] = useState<{
@@ -277,14 +294,33 @@ export default function App() {
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
+  const currentNoteId = currentNote?.id;
+  const contextualNewCommand: CommandId =
+    selectedTab === 'libraries'
+      ? 'new-library'
+      : selectedTab === 'notebooks'
+        ? 'new-notebook'
+        : selectedTab === 'tasks'
+          ? 'new-task'
+          : selectedTab === 'assets'
+            ? 'new-asset'
+            : 'new-note';
   const currentEditLockKey = currentNote && vault ? `${vault.path}\0${currentNote.path}` : null;
   const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
-  const currentNoteId = currentNote?.id;
   useEffect(() => {
-    if (currentNoteId) {
-      setMode(currentNoteEditLocked ? 'read-only' : (settings.defaultNoteOpenMode ?? 'read-only'));
-    }
-  }, [selectedTab, currentNoteId, currentNoteEditLocked, settings.defaultNoteOpenMode, settingsVaultPath]);
+    setMode(
+      currentNoteId && settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked
+        ? 'edit'
+        : 'read-only',
+    );
+  }, [
+    selectedTab,
+    currentNoteId,
+    settings.defaultNoteOpenMode,
+    settingsVaultPath,
+    securityLocked,
+    currentNoteEditLocked,
+  ]);
   const clearEditLock = (path: string) => {
     const key = `${vault?.path ?? ''}\0${path}`;
     setLockedEditPaths((paths) => {
@@ -295,7 +331,9 @@ export default function App() {
   };
   const allEntries = flattenEntries(vault?.entries ?? []);
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
-  const notePaths = allEntries.filter((entry) => entry.kind === 'note').map((entry) => entry.path);
+  const notePaths = allEntries
+    .filter((entry) => entry.kind === 'note' && isManagedEntry(entry) && !assetRegistry.resolve(entry.path))
+    .map((entry) => entry.path);
   const beginExport = async (relativePath: string) => {
     try {
       const protectedNote = (await window.a11yNotebook?.vault.isNoteEncrypted?.(relativePath)) ?? false;
@@ -370,6 +408,22 @@ export default function App() {
       label: `${note.title}${note.content !== note.saved ? ' (unsaved)' : ''}`,
     })),
   ];
+  const selectedNotebookName = findEntry(vault?.entries ?? [], selectedNotebookPath ?? null)?.name;
+  const libraryContext = vault ? ` in ${vault.name}` : '';
+  const viewTitles: Record<string, string> = {
+    contents: `Contents${libraryContext}`,
+    libraries: vault?.name ?? 'Libraries',
+    notebooks: `Notebooks${libraryContext}`,
+    'notes-files': selectedNotebookName
+      ? `Notes and Files in ${selectedNotebookName}`
+      : `Notes and Files${libraryContext}`,
+    tasks: `Tasks${libraryContext}`,
+    assets: `Cognitive Tools${libraryContext}`,
+    reminders: `Reminders${libraryContext}`,
+    milestones: `Milestones${libraryContext}`,
+  };
+  const activeViewTitle =
+    viewTitles[selectedTab] ?? currentNote?.title ?? tabs.find((tab) => tab.id === selectedTab)?.label ?? 'Welcome';
   const milestoneGeneration = vaultGenerationRef.current;
   const reminderState = useReminders(
     securityLocked ? undefined : vault?.path,
@@ -488,6 +542,8 @@ export default function App() {
 
   useEffect(() => {
     const unsubscribe = window.a11yNotebook?.vault.onSecurityLocked?.(() => {
+      securityLockedRef.current = true;
+      vaultGenerationRef.current += 1;
       setSecurityLocked(true);
       clearAllConflicts();
       setOpenNotes([]);
@@ -505,8 +561,22 @@ export default function App() {
       setUserTemplates([]);
       setActiveDialog(null);
       setItemDialog(null);
+      setTaskDialogOpen(false);
+      setTaskCreating(false);
+      setTaskNotePaths([]);
+      setContextMenu(null);
+      setExportRequest(null);
+      setSelectedTab((current) =>
+        NAVIGATION_SCREENS.some((screen) => screen.id === current) ||
+        ['welcome', 'tasks', 'reminders', 'milestones'].includes(current)
+          ? current
+          : 'welcome',
+      );
+      setPendingFocus(null);
       setAssetTabOpen(false);
       setAssetDirty(false);
+      setAssetBusy(false);
+      setAssetInitialPath(undefined);
       setMode('read-only');
       setVault((current) => (current ? { ...current, entries: [] } : current));
       setStatusMessage('Library locked. Unlock it to continue.');
@@ -638,6 +708,7 @@ export default function App() {
       if (!element) {
         return false;
       }
+      if (target === 'main' && document.activeElement === element) element.blur();
       element.focus();
       if (target !== 'search') {
         setActiveRegion(target);
@@ -720,25 +791,53 @@ export default function App() {
     onOpened?: () => void,
   ) => {
     const bridge = window.a11yNotebook;
-    if (!bridge || switchingRef.current || !canContinue()) return;
+    if (!bridge || switchingRef.current || securityLockedRef.current || !canContinue()) return;
     const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
+    const canOpen = () =>
+      !switchingRef.current &&
+      !securityLockedRef.current &&
+      vaultPathRef.current === root &&
+      vaultGenerationRef.current === generation &&
+      canContinue();
     selectEntry(entry);
-    let legacyEncryptedNote = false;
-    if (entry.kind === 'note' && entry.provenance === 'unknown') {
-      const generation = externalOperationGeneration.current;
-      legacyEncryptedNote = (await bridge.vault.isNoteEncrypted?.(entry.path)) ?? false;
-      if (
-        generation !== externalOperationGeneration.current ||
-        vaultPathRef.current !== root ||
-        switchingRef.current ||
-        !canContinue()
-      )
+    if (entry.kind !== 'notebook' && !isManagedEntry(entry)) {
+      const encryptedLegacy =
+        entry.kind === 'note' &&
+        !assetRegistry.resolve(entry.path) &&
+        (await bridge.vault.isNoteEncrypted?.(entry.path));
+      if (!canOpen()) return;
+      if (encryptedLegacy) {
+        if (!bridge.vault.adoptEncrypted) {
+          setStatusMessage(
+            'Legacy encrypted-note recovery is unavailable. Keep the original encrypted file unchanged.',
+          );
+          return;
+        }
+        let adopted: VaultInfo | null;
+        try {
+          adopted = await bridge.vault.adoptEncrypted(entry.path, notePassword);
+        } catch (failure) {
+          if (!canOpen()) return;
+          if (!notePassword && failure instanceof Error && /note’s password/i.test(failure.message)) {
+            setNotePasswordDialog({ action: 'unlock', entry });
+            return;
+          }
+          throw failure;
+        }
+        if (!canOpen() || !adopted) return;
+        const recovered = findEntry(adopted.entries, entry.path);
+        if (!recovered || recovered.kind !== 'note' || !isManagedEntry(recovered))
+          throw new Error('Encrypted-note authentication did not establish a managed recovery entry.');
+        setVault(adopted);
+        await openEntry(recovered, notePassword, canContinue, onOpened);
         return;
+      } else {
+        setExternalFile(entry);
+        return;
+      }
     }
-    if (
-      entry.kind !== 'notebook' &&
-      ((entry.provenance === 'unknown' && !legacyEncryptedNote) || !isInternallySupportedPath(entry.path))
-    ) {
+    if (entry.kind !== 'notebook' && !isInternallySupportedPath(entry.path)) {
       setExternalFile(entry);
       return;
     }
@@ -751,17 +850,18 @@ export default function App() {
       setAssetSelectionVersion((version) => version + 1);
       setAssetTabOpen(true);
       setSelectedTab('assets');
+      setPendingFocus('main');
       return;
     }
     if (entry.kind === 'attachment') {
       if (/\.(?:txt|csv|html?|pdf|epub|docx)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
-        if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
+        if (!canOpen()) return;
         setAttachment(preview);
         setSelectedTab('attachment');
       } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(entry.path)) {
         const alt = await bridge.vault.getImageAlt(entry.path);
-        if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
+        if (!canOpen()) return;
         setImageAlt(alt);
         setAttachment({ path: entry.path, text: '', kind: 'image' });
         setSelectedTab('attachment');
@@ -776,11 +876,12 @@ export default function App() {
     if (existingNote) {
       onOpened?.();
       setMode(
-        lockedEditPaths.has(`${root ?? ''}\0${existingNote.path}`)
-          ? 'read-only'
-          : (settings.defaultNoteOpenMode ?? 'read-only'),
+        settings.defaultNoteOpenMode === 'edit' && !lockedEditPaths.has(`${root ?? ''}\0${entry.path}`)
+          ? 'edit'
+          : 'read-only',
       );
       setSelectedTab(existingNote.id);
+      setPendingFocus('main');
       return;
     }
     let content: string;
@@ -788,14 +889,14 @@ export default function App() {
       const loaded = await bridge.vault.readNote(entry.path, notePassword);
       content = /\.html$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
     } catch (error) {
-      if (!canContinue()) return;
+      if (!canOpen()) return;
       if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
         setNotePasswordDialog({ action: 'unlock', entry });
         return;
       }
       throw error;
     }
-    if (switchingRef.current || vaultPathRef.current !== root || !canContinue()) return;
+    if (!canOpen()) return;
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
@@ -809,6 +910,8 @@ export default function App() {
         : [...current, note],
     );
     setSelectedTab(note.id);
+    setMode(settings.defaultNoteOpenMode === 'edit' ? 'edit' : 'read-only');
+    setPendingFocus('main');
     onOpened?.();
     setNotePasswordDialog(null);
   };
@@ -822,7 +925,7 @@ export default function App() {
     const imported = await bridge.importEntry(entry.path);
     const isCurrent = () =>
       generation === externalOperationGeneration.current && vaultPathRef.current === root && !switchingRef.current;
-    if (!isCurrent()) return;
+    if (!isCurrent() || !imported) return;
     if (imported.vault.path !== root) throw new Error('The library changed during import.');
     const copy = findEntry(imported.vault.entries, imported.path);
     if (!copy || copy.provenance !== 'imported')
@@ -837,10 +940,74 @@ export default function App() {
       setStatusMessage('Open a library before creating a note.');
       return;
     }
-    setItemDialog({
-      action: 'new-note',
-      ...(selectedTab === 'notes-files' ? { path: selectedNotebookPath ?? '' } : {}),
-    });
+    if (selectedTab === 'notes-files' && !selectedNotebookPath) {
+      setStatusMessage('Select a notebook before creating a note.');
+      return;
+    }
+    if (switchingRef.current || securityLockedRef.current) return;
+    if (assetDirty || assetBusy) {
+      setStatusMessage('Save cognitive asset changes and wait for pending operations before creating a note.');
+      return;
+    }
+    setItemDialog({ action: 'new-note', path: selectedNotebookPath });
+  };
+
+  const createTask = async (path: string, text: string, due: string, priority: string) => {
+    if (!vault || switchingRef.current || securityLocked || taskCreating) return;
+    const root = vault.path;
+    const generation = vaultGenerationRef.current;
+    const isCurrent = () =>
+      !switchingRef.current &&
+      !securityLockedRef.current &&
+      vaultPathRef.current === root &&
+      vaultGenerationRef.current === generation;
+    const bridge = window.a11yNotebook!.vault;
+    setTaskCreating(true);
+    setTaskCreateError('');
+    try {
+      if (!notePaths.includes(path)) throw new Error('Choose a managed note, not an external file or cognitive asset.');
+      if (openNotes.some((note) => note.path === path && note.content !== note.saved) || activeConflict)
+        throw new Error('Save or resolve note changes before adding a task.');
+      if (await bridge.isNoteEncrypted?.(path))
+        throw new Error('Add tasks to an unencrypted note so they can appear in Tasks.');
+      const baseline = await bridge.readNote(path);
+      let content: string;
+      if (/\.html$/i.test(path)) {
+        const document = new DOMParser().parseFromString(baseline, 'text/html');
+        const list = document.createElement('ul');
+        const item = document.createElement('li');
+        item.setAttribute('data-a11y-task-id', crypto.randomUUID());
+        item.setAttribute('data-a11y-task-complete', 'false');
+        if (due) item.setAttribute('data-a11y-task-due', due);
+        item.setAttribute('data-a11y-task-priority', priority);
+        item.textContent = text;
+        list.append(item);
+        document.body.append(list);
+        content = sanitizeNoteHtml(document.body.innerHTML, path);
+      } else {
+        const description = text.replace(/[\r\n]+/g, ' ');
+        content = `${baseline}${baseline.endsWith('\n') || !baseline ? '' : '\n'}- [ ] ${description}${due ? ` due:${due}` : ''} priority:${priority} <!-- a11y-task-id:${crypto.randomUUID()} -->\n`;
+      }
+      if (!isCurrent()) return;
+      await bridge.saveNote(path, content, baseline);
+      if (!isCurrent()) return;
+      setOpenNotes((items) => items.map((note) => (note.path === path ? { ...note, content, saved: content } : note)));
+      setTaskDialogOpen(false);
+      setTaskTabOpen(true);
+      setSelectedTab('tasks');
+      setPendingFocus('main');
+      setStatusMessage('Task created in its associated note.');
+      try {
+        const refreshedTasks = await bridge.getTasks();
+        if (isCurrent()) setTasks(refreshedTasks);
+      } catch {
+        if (isCurrent()) setStatusMessage('Task created. Refresh Tasks to update the list.');
+      }
+    } catch (failure) {
+      setTaskCreateError((failure as Error).message);
+    } finally {
+      setTaskCreating(false);
+    }
   };
 
   const refreshVault = async () => {
@@ -982,6 +1149,7 @@ export default function App() {
       const selected = findEntry(vault.entries, treeSelection);
       const parent =
         request.path ??
+        selectedNotebookPath ??
         (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? ''));
       const leaf =
         request.action === 'new-note'
@@ -991,7 +1159,8 @@ export default function App() {
       setVault(
         request.action === 'new-note' ? await bridge.createNote(relative) : await bridge.createNotebook(relative),
       );
-      if (request.action === 'new-note') await openEntry({ name: leaf, path: relative, kind: 'note' });
+      if (request.action === 'new-note')
+        await openEntry({ name: leaf, path: relative, kind: 'note', provenance: 'created' });
       setStatusMessage(`${request.action === 'new-note' ? 'Note' : 'Notebook'} created.`);
       return;
     }
@@ -1062,7 +1231,8 @@ export default function App() {
   };
 
   const openContextMenu = (target: HTMLElement, pointer?: { x: number; y: number }) => {
-    if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"]')) return;
+    if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"], [role="alertdialog"]'))
+      return;
     const link = target.closest<HTMLAnchorElement>('a[href]');
     const marker = target.closest<HTMLElement>('[data-context]');
     const editable = target.closest<HTMLElement>('textarea, input:not([type="checkbox"]), [contenteditable="true"]');
@@ -1122,13 +1292,19 @@ export default function App() {
     else if (tabId === 'reminders') setReminderTabOpen(false);
     else if (tabId === 'milestones') setMilestoneTabOpen(false);
     else if (tabId === 'assets') {
-      if (assetBusy || (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?'))) return;
+      if (assetBusy) {
+        setStatusMessage('Wait for the cognitive asset operation to finish.');
+        return;
+      }
+      if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
       setAssetTabOpen(false);
       setAssetDirty(false);
+      setAssetBusy(false);
       setAssetInitialPath(undefined);
     } else if (tabId === 'attachment') setAttachment(null);
     setPinnedTabs((current) => new Set([...current].filter((id) => id !== tabId)));
     if (selectedTab === tabId) setSelectedTab('welcome');
+    setPendingFocus('tabs');
   };
 
   const handleContextCommand = async (commandId: CommandId) => {
@@ -1143,7 +1319,49 @@ export default function App() {
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
-    if (commandId === 'context-export-note' && entry?.kind === 'note') {
+    if (commandId === 'context-import-note' && entry) {
+      const importer = window.a11yNotebook?.vault;
+      if (!importer?.importEntry) {
+        setStatusMessage('Document import is unavailable.');
+        return;
+      }
+      const root = vaultPathRef.current;
+      const generation = vaultGenerationRef.current;
+      try {
+        const imported = await importer.importEntry(entry.path);
+        if (
+          switchingRef.current ||
+          vaultPathRef.current !== root ||
+          securityLockedRef.current ||
+          vaultGenerationRef.current !== generation
+        )
+          return;
+        if (!imported) return;
+        setVault(imported.vault);
+        const created = findEntry(imported.vault.entries, imported.path);
+        if (created) await openEntry(created);
+        const kind =
+          created && assetRegistry.resolve(created.path)
+            ? 'a cognitive tool'
+            : created?.kind === 'note'
+              ? 'an editable note'
+              : 'a read-only preview';
+        setStatusMessage(`Document imported as ${kind}. The original file was kept.`);
+      } catch (failure) {
+        if (!securityLockedRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation)
+          setStatusMessage(`Could not import this document: ${(failure as Error).message}`);
+      }
+    } else if ((commandId === 'context-open-with' || commandId === 'context-open-with-default') && entry) {
+      try {
+        const result = await window.a11yNotebook?.vault.openWith?.(entry.path, {
+          makeDefault: commandId === 'context-open-with-default',
+        });
+        if (!result) setStatusMessage('Open With is unavailable.');
+        else if (result.settingsOpened) setStatusMessage('Windows default application settings opened.');
+      } catch {
+        setStatusMessage('Could not open the application chooser.');
+      }
+    } else if (commandId === 'context-export-note' && entry?.kind === 'note') {
       await beginExport(entry.path);
     } else if (commandId === 'context-import-internal' && entry && isInternallySupportedPath(entry.path)) {
       try {
@@ -1389,7 +1607,7 @@ export default function App() {
       setVault(await bridge.createNote(copyPath, note.content));
       setOpenNotes((items) => items.filter((item) => item.path !== note.path));
       synchronization.clearConflict(note.path);
-      await openEntry({ name: copyPath.split('/').at(-1)!, path: copyPath, kind: 'note' });
+      await openEntry({ name: copyPath.split('/').at(-1)!, path: copyPath, kind: 'note', provenance: 'created' });
     } else {
       if (activeConflict.disk === null) throw new Error('The disk note was removed. Save a copy instead.');
       const disk = await bridge.readNote(note.path);
@@ -1631,8 +1849,73 @@ export default function App() {
   };
 
   const handleCommand = (commandId: CommandId) => {
-    if (switchingRef.current) return;
+    if (switchingRef.current || securityLockedRef.current) return;
     clearTimeout(navigationAnnouncementTimer.current);
+    if (
+      (activeDialog && activeDialog !== 'palette') ||
+      itemDialog ||
+      taskDialogOpen ||
+      externalFile ||
+      notePasswordDialog ||
+      activeConflict ||
+      exportRequest
+    )
+      return;
+    if (commandId === 'new-contextual') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      createContextual();
+      return;
+    }
+    if (commandId === 'new-note') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      void createNote();
+      return;
+    }
+    if (commandId === 'new-task') {
+      if (!vault) {
+        setStatusMessage('Open a library before creating a task.');
+        return;
+      }
+      setActiveDialog(null);
+      setTaskCreateError('');
+      setTaskNotePaths([]);
+      setTaskCreating(true);
+      setTaskDialogOpen(true);
+      const root = vaultPathRef.current;
+      const generation = vaultGenerationRef.current;
+      const isCurrent = () =>
+        !securityLockedRef.current &&
+        !switchingRef.current &&
+        root === vaultPathRef.current &&
+        generation === vaultGenerationRef.current;
+      void Promise.all(
+        notePaths.map(async (path) => ({
+          path,
+          encrypted: (await window.a11yNotebook?.vault.isNoteEncrypted?.(path)) ?? false,
+        })),
+      )
+        .then((notes) => {
+          if (isCurrent()) setTaskNotePaths(notes.filter((note) => !note.encrypted).map((note) => note.path));
+        })
+        .catch(() => {
+          if (isCurrent()) setTaskCreateError('Could not inspect eligible notes. Close this dialog and try again.');
+        })
+        .finally(() => {
+          if (isCurrent()) setTaskCreating(false);
+        });
+      return;
+    }
+    if (commandId === 'new-asset') {
+      if (!vault || assetDirty || assetBusy) {
+        setStatusMessage('Open a library and save cognitive asset changes before creating another tool.');
+        return;
+      }
+      setActiveDialog(null);
+      setAssetTabOpen(true);
+      setSelectedTab('assets');
+      setAssetCreationVersion((version) => version + 1);
+      return;
+    }
     if (commandId === 'insert-attachment') {
       if (!currentNote || mode !== 'edit') {
         setStatusMessage('Open a note in edit mode first.');
@@ -1669,15 +1952,15 @@ export default function App() {
       return;
     }
     if (commandId === 'show-assets') {
-      if (!vault) {
-        setStatusMessage('Open a library before using cognitive tools.');
-        return;
-      }
       setAssetTabOpen(true);
       navigateScreen('assets');
       return;
     }
     if (commandId === 'new-from-template') {
+      if (selectedTab === 'notes-files' && !selectedNotebookPath) {
+        setStatusMessage('Select a notebook before creating a note from a template.');
+        return;
+      }
       if (!vault) {
         setStatusMessage('Open a library before using a template.');
         return;
@@ -1685,7 +1968,13 @@ export default function App() {
       const root = vault.path;
       void Promise.all(
         allEntries
-          .filter((entry) => entry.kind === 'note' && entry.path.startsWith('Templates/'))
+          .filter(
+            (entry) =>
+              entry.kind === 'note' &&
+              isManagedEntry(entry) &&
+              !assetRegistry.resolve(entry.path) &&
+              entry.path.startsWith('Templates/'),
+          )
           .map(async (entry) => ({
             id: `user:${entry.path}`,
             name: entry.name.replace(/\.(?:md|html)$/i, ''),
@@ -1732,8 +2021,8 @@ export default function App() {
       else editorToolsRef.current?.openTable();
       return;
     }
-    if (commandId === 'open-vault') {
-      openLibrary();
+    if (commandId === 'open-vault' || commandId === 'new-library') {
+      openLibrary(commandId === 'new-library');
       return;
     }
     if (commandId === 'new-notebook') {
@@ -1750,49 +2039,15 @@ export default function App() {
       return;
     }
     if (commandId === 'close-current-tab') {
-      if (selectedTab === 'assets') {
-        if (assetBusy) {
-          setStatusMessage('Wait for the cognitive asset operation to finish.');
-          return;
-        }
-        if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
-        setAssetTabOpen(false);
-        setAssetDirty(false);
-        setAssetBusy(false);
-        setAssetInitialPath(undefined);
-        setSelectedTab('welcome');
-        return;
-      }
-      if (selectedTab === 'attachment') {
-        setAttachment(null);
-        setSelectedTab('welcome');
-        return;
-      }
-      if (selectedTab === 'reminders') {
-        setReminderTabOpen(false);
-        setSelectedTab('welcome');
-        return;
-      }
-      if (selectedTab === 'milestones') {
-        setMilestoneTabOpen(false);
-        setSelectedTab('welcome');
-        return;
-      }
-      if (selectedTab === 'tasks') {
-        setTaskTabOpen(false);
-        setSelectedTab('welcome');
-        return;
-      }
-      const note = openNotes.find((item) => item.id === selectedTab);
-      if (!note) return;
-      if (note.content !== note.saved && !window.confirm(`Discard unsaved changes to ${note.title}?`)) return;
-      setOpenNotes((current) => current.filter((item) => item.id !== note.id));
-      setSelectedTab('welcome');
-      setStatusMessage(`Closed ${note.title}.`);
+      closeContextTab(selectedTab);
       return;
     }
     if (activeDialog === 'palette' && commandId !== 'command-search') {
       setActiveDialog(null);
+    }
+    if (commandId === 'toggle-read-only-mode' && !currentNote) {
+      setStatusMessage('This view has no note editor. Open a managed Markdown or HTML note to enable editing.');
+      return;
     }
     if (commandId === 'toggle-read-only-mode' && mode === 'read-only' && currentNoteEditLocked) {
       setStatusMessage('Save this note before editing it again.');
@@ -1833,8 +2088,14 @@ export default function App() {
   };
 
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
+    if (event.defaultPrevented || event.isComposing || securityLockedRef.current || event.keyCode === 229) return;
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
-    if (activeDialog || itemDialog || activeConflict || document.querySelector('[role="dialog"]')) {
+    if (
+      activeDialog ||
+      itemDialog ||
+      activeConflict ||
+      document.querySelector('[role="dialog"], [role="alertdialog"]')
+    ) {
       return;
     }
     if ((event.key === 'F10' && event.shiftKey) || event.key === 'ContextMenu') {
@@ -1879,6 +2140,24 @@ export default function App() {
       );
     });
     if (command) {
+      const editing =
+        event.target instanceof Element &&
+        event.target.closest(
+          'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea, select, [contenteditable="true"], [role="textbox"]',
+        );
+      if (
+        editing &&
+        [
+          'new-contextual',
+          'show-contents',
+          'show-libraries',
+          'show-notebooks',
+          'show-notes-files',
+          'show-tasks',
+          'show-assets',
+        ].includes(command.id)
+      )
+        return;
       event.preventDefault();
       handleCommand(command.id);
     }
@@ -1892,7 +2171,7 @@ export default function App() {
   useEffect(() => {
     const listener = (event: KeyboardEvent) => keyDownHandlerRef.current(event);
     const contextListener = (event: MouseEvent) => {
-      if (document.querySelector('[role="dialog"]')) return;
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
       const target =
         event.target instanceof HTMLElement
           ? event.target
@@ -1920,7 +2199,7 @@ export default function App() {
       return undefined;
     }
     return bridge.onMenuCommand((command) => {
-      if (isMenuCommand(command) && !document.querySelector('[role="dialog"]')) {
+      if (isMenuCommand(command) && !document.querySelector('[role="dialog"], [role="alertdialog"]')) {
         menuCommandHandlerRef.current(command);
       }
     });
@@ -1995,17 +2274,45 @@ export default function App() {
     }
     void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'));
   };
+  const isCommandDisabled = (id: CommandId): boolean => {
+    if (securityLocked || switchingVault) return true;
+    if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
+    if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
+    if (id === 'new-asset') return !vault || assetDirty || assetBusy;
+    if (id === 'new-note' || id === 'new-from-template')
+      return !vault || assetDirty || assetBusy || (selectedTab === 'notes-files' && !selectedNotebookPath);
+    if (['new-note', 'new-notebook', 'new-from-template', 'new-task', 'show-tasks', 'show-assets'].includes(id))
+      return !vault;
+    if (id === 'new-library')
+      return assetDirty || assetBusy || !!activeConflict || openNotes.some((note) => note.content !== note.saved);
+    return false;
+  };
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
+  const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
   const contextCommands = contextMenu
-    ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection)).map((command) =>
-        command.id === 'annotate-pdf-selection'
-          ? { ...command, label: 'Add note' }
-          : command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
-            ? { ...command, label: 'Unpin tab' }
-            : command,
-      )
+    ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection))
+        .map((command) => (command.id === 'context-import-internal' ? getCommandById('context-import-note')! : command))
+        .filter((command, index, commands) => commands.findIndex((item) => item.id === command.id) === index)
+        .filter(
+          (command) =>
+            command.id !== 'context-import-note' || (!!contextEntry && isCompatibleImport(contextEntry.path)),
+        )
+        .map((command) =>
+          command.id === 'annotate-pdf-selection'
+            ? { ...command, label: 'Add note' }
+            : command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
+              ? { ...command, label: 'Unpin tab' }
+              : command,
+        )
     : [];
   const disabledContextCommands = new Set<CommandId>();
+  if (!contextEntry || !isCompatibleImport(contextEntry.path) || !window.a11yNotebook?.vault.importEntry)
+    disabledContextCommands.add('context-import-note');
+  if (!window.a11yNotebook?.vault.openWith) {
+    disabledContextCommands.add('context-open-with');
+    disabledContextCommands.add('context-open-with-default');
+  }
   if (contextMenu && !contextMenu.selection)
     contextCommands
       .filter((command) => command.requiresSelection)
@@ -2014,7 +2321,6 @@ export default function App() {
   if (contextMenu?.tabId === 'welcome') disabledContextCommands.add('context-close-tab');
   if (contextMenu?.context === 'tree-note' && (!securityEnabled || encryptedNotePath === contextMenu.path))
     disabledContextCommands.add('context-encrypt-note');
-  const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
   if (
     !contextEntry ||
     contextEntry.kind === 'notebook' ||
@@ -2055,6 +2361,16 @@ export default function App() {
           disabled={disabledContextCommands}
           onClose={() => setContextMenu(null)}
           onSelect={(command) => void handleContextCommand(command)}
+        />
+      ) : null}
+      {taskDialogOpen ? (
+        <AssociatedTaskDialog
+          paths={taskNotePaths}
+          initialPath={currentNote?.path}
+          busy={taskCreating}
+          error={taskCreateError}
+          onCreate={createTask}
+          onClose={() => setTaskDialogOpen(false)}
         />
       ) : null}
       <header className="app-header" aria-label="Application header">
@@ -2102,6 +2418,7 @@ export default function App() {
                     key={command.id}
                     type="button"
                     className="menu-item"
+                    disabled={isCommandDisabled(command.id)}
                     onClick={() => handleCommand(command.id)}
                     aria-keyshortcuts={
                       [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
@@ -2229,7 +2546,7 @@ export default function App() {
                     ref={(element) => {
                       tabRefs.current[tab.id] = element;
                     }}
-                    id={`tab-${tab.id}`}
+                    id={tabDomId(tab.id)}
                     data-context="tab"
                     data-tab-id={tab.id}
                     type="button"
@@ -2249,50 +2566,7 @@ export default function App() {
                       type="button"
                       className="close-tab"
                       aria-label={`Close ${tab.label}`}
-                      onClick={() => {
-                        if (tab.id === 'assets') {
-                          if (assetBusy) {
-                            setStatusMessage('Wait for the cognitive asset operation to finish.');
-                            return;
-                          }
-                          if (assetDirty && !window.confirm('Discard unsaved cognitive asset changes?')) return;
-                          setAssetTabOpen(false);
-                          setAssetDirty(false);
-                          setAssetBusy(false);
-                          setAssetInitialPath(undefined);
-                          if (selected) setSelectedTab('welcome');
-                          return;
-                        }
-                        if (tab.id === 'reminders') {
-                          setReminderTabOpen(false);
-                          if (selected) setSelectedTab('welcome');
-                          return;
-                        }
-                        if (tab.id === 'milestones') {
-                          setMilestoneTabOpen(false);
-                          if (selected) setSelectedTab('welcome');
-                          return;
-                        }
-                        if (tab.id === 'attachment') {
-                          setAttachment(null);
-                          if (selected) setSelectedTab('welcome');
-                          return;
-                        }
-                        if (tab.id === 'tasks') {
-                          setTaskTabOpen(false);
-                          if (selected) setSelectedTab('welcome');
-                          return;
-                        }
-                        const note = openNotes.find((item) => item.id === tab.id);
-                        if (
-                          note &&
-                          note.content !== note.saved &&
-                          !window.confirm(`Discard unsaved changes to ${note.title}?`)
-                        )
-                          return;
-                        setOpenNotes((current) => current.filter((item) => item.id !== tab.id));
-                        if (selected) setSelectedTab('welcome');
-                      }}
+                      onClick={() => closeContextTab(tab.id)}
                     >
                       ×
                     </button>
@@ -2308,33 +2582,49 @@ export default function App() {
             className={activeRegion === 'main' ? 'document active-panel' : 'document'}
             data-region="main"
             role="tabpanel"
-            aria-labelledby={`tab-${selectedTab}`}
+            aria-label={activeViewTitle}
+            aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
             tabIndex={0}
           >
             {assetTabOpen ? (
               <div hidden={selectedTab !== 'assets'}>
-                <AssetsWorkspace
-                  paths={allEntries
-                    .filter((entry) => entry.kind !== 'notebook' && entry.provenance !== 'unknown')
-                    .map((entry) => entry.path)}
-                  initialPath={assetInitialPath}
-                  selectionVersion={assetSelectionVersion}
-                  creationRequestVersion={assetCreationVersion}
-                  refresh={refreshVault}
-                  announce={setStatusMessage}
-                  onDirty={setAssetDirty}
-                  onBusy={setAssetBusy}
-                />
+                {vault ? (
+                  <AssetsWorkspace
+                    title={viewTitles.assets}
+                    paths={allEntries
+                      .filter((entry) => entry.kind !== 'notebook' && isManagedEntry(entry))
+                      .map((entry) => entry.path)}
+                    initialPath={assetInitialPath}
+                    selectionVersion={assetSelectionVersion}
+                    creationRequestVersion={assetCreationVersion}
+                    refresh={refreshVault}
+                    announce={setStatusMessage}
+                    onDirty={setAssetDirty}
+                    onBusy={setAssetBusy}
+                  />
+                ) : (
+                  <section>
+                    <h2>{viewTitles.assets}</h2>
+                    <p>Open a library before creating cognitive tools.</p>
+                  </section>
+                )}
               </div>
             ) : null}
             {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'contents' ? (
               <ContentsScreen vault={vault} entries={vault?.entries ?? []} onNavigate={navigateScreen} />
             ) : selectedTab === 'libraries' ? (
-              <LibrariesScreen vault={vault} onOpenLibrary={() => handleCommand('open-vault')} />
+              <LibrariesScreen
+                vault={vault}
+                onOpenLibrary={() => handleCommand('open-vault')}
+                onNewLibrary={() => handleCommand('new-library')}
+                disabled={switchingVault || securityLocked}
+              />
             ) : selectedTab === 'notebooks' ? (
               <NotebooksScreen
+                title={viewTitles.notebooks}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
+                onNewNotebook={() => handleCommand('new-notebook')}
                 selectedPath={treeSelection}
                 onSelect={selectEntry}
                 onOpen={openDetailsEntry}
@@ -2343,12 +2633,13 @@ export default function App() {
               />
             ) : selectedTab === 'notes-files' ? (
               <NotesFilesScreen
+                title={viewTitles['notes-files']}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
+                onNewNote={() => handleCommand('new-note')}
+                onNewFromTemplate={() => handleCommand('new-from-template')}
                 notebookPath={selectedNotebookPath}
                 creationDisabled={securityLocked || switchingVault || !!relocatingPath}
-                onNewNote={() => void createNote()}
-                onNewFromTemplate={() => handleCommand('new-from-template')}
                 selectedPath={treeSelection}
                 onSelect={selectEntry}
                 onOpen={openDetailsEntry}
@@ -2358,6 +2649,7 @@ export default function App() {
             ) : selectedTab === 'milestones' ? (
               vault && !switchingVault ? (
                 <MilestonesView
+                  title={viewTitles.milestones}
                   key={`${vault.path}:${vaultGenerationRef.current}`}
                   vaultPath={vault.path}
                   notePaths={notePaths}
@@ -2378,6 +2670,7 @@ export default function App() {
               )
             ) : selectedTab === 'reminders' ? (
               <RemindersView
+                title={viewTitles.reminders}
                 reminders={reminderState.reminders}
                 notePaths={notePaths}
                 defaults={reminderState.defaults}
@@ -2417,7 +2710,10 @@ export default function App() {
               />
             ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
-                <h2 id="tasks-heading">Tasks</h2>
+                <h2 id="tasks-heading">{viewTitles.tasks}</h2>
+                <button type="button" disabled={!vault} onClick={() => handleCommand('new-task')}>
+                  New task
+                </button>
                 <TaskProgressSummaries tasks={tasks} />
                 <p role="status" aria-live="polite">
                   {visibleTasks.length} tasks shown.
@@ -2560,7 +2856,12 @@ export default function App() {
                       onClick={() => {
                         setNotePasswordDialog({
                           action: 'encrypt',
-                          entry: { name: currentNote.title, path: currentNote.path, kind: 'note' },
+                          entry: {
+                            name: currentNote.title,
+                            path: currentNote.path,
+                            kind: 'note',
+                            provenance: 'created',
+                          },
                         });
                       }}
                     >
@@ -2743,7 +3044,12 @@ export default function App() {
       </footer>
 
       {activeDialog === 'palette' ? (
-        <CommandPalette shortcuts={settings.shortcuts} onRun={handleCommand} onClose={closeDialog} />
+        <CommandPalette
+          shortcuts={settings.shortcuts}
+          isDisabled={isCommandDisabled}
+          onRun={handleCommand}
+          onClose={closeDialog}
+        />
       ) : null}
       {activeDialog === 'shortcuts' ? (
         <KeyboardShortcutsDialog shortcuts={settings.shortcuts} onClose={closeDialog} />
@@ -2759,6 +3065,7 @@ export default function App() {
             !!itemDialog ||
             !!notePasswordDialog ||
             !!externalFile ||
+            taskDialogOpen ||
             !!activeConflict ||
             switchingRef.current
           }
@@ -2921,6 +3228,7 @@ export default function App() {
       ) : null}
       {activeDialog === 'template' ? (
         <NewFromTemplateDialog
+          initialNotebookPath={selectedNotebookPath}
           notebooks={[
             ...(selectedNotebookPath ? [{ path: selectedNotebookPath, name: selectedNotebookPath }] : []),
             { path: '', name: 'Library root' },
@@ -2932,14 +3240,14 @@ export default function App() {
           onClose={closeDialog}
           onCreate={async (relative, content, cursor) => {
             setVault(await window.a11yNotebook!.vault.createNote(relative, content));
-            await openEntry({ path: relative, name: relative.split('/').at(-1)!, kind: 'note' });
+            await openEntry({ path: relative, name: relative.split('/').at(-1)!, kind: 'note', provenance: 'created' });
             setStatusMessage('Note created from template.');
-            window.setTimeout(() => {
-              if (settings.defaultNoteOpenMode === 'edit') {
+            if (settings.defaultNoteOpenMode === 'edit') {
+              window.setTimeout(() => {
                 editorRef.current?.focus();
                 editorRef.current?.setSelectionRange(cursor, cursor);
-              }
-            }, 0);
+              }, 0);
+            }
           }}
         />
       ) : null}

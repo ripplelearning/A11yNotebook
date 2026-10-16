@@ -13,7 +13,7 @@ const vault: VaultInfo = {
       name: 'Class notes',
       path: 'Class notes',
       kind: 'notebook',
-      children: [{ name: 'Week 1.md', path: 'Class notes/Week 1.md', kind: 'note' }],
+      children: [{ name: 'Week 1.md', path: 'Class notes/Week 1.md', kind: 'note', provenance: 'created' }],
     },
   ],
 };

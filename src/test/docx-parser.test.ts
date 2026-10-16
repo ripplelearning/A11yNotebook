@@ -91,6 +91,15 @@ function validEntries(
 }
 
 describe('bounded local DOCX parser', () => {
+  it('rejects document protection on explicit import without changing ordinary read-only parsing', () => {
+    const bytes = zip({
+      ...validEntries(),
+      'word/settings.xml': `<w:settings xmlns:w="${wordNs}"><w:documentProtection w:edit="readOnly" w:enforcement="1"/></w:settings>`,
+    });
+    expect(parseDocxStructure(bytes).blocks).not.toHaveLength(0);
+    expect(() => parseDocxStructure(bytes, { forImport: true })).toThrow('Protected DOCX');
+  });
+
   it('extracts heading hierarchy, styled runs, nested lists, tables, links, images, breaks, and metadata', () => {
     const content = `<w:document xmlns:w="${wordNs}" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" xmlns:wp="http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing" xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"><w:body><w:p><w:pPr><w:pStyle w:val="CustomHeading"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t xml:space="preserve">A11y </w:t></w:r><w:r><w:rPr><w:i/></w:rPr><w:t>Notebook</w:t></w:r></w:p><w:p><w:pPr><w:numPr><w:ilvl w:val="1"/><w:numId w:val="7"/></w:numPr></w:pPr><w:r><w:t>Nested item</w:t></w:r><w:r><w:br w:type="page"/></w:r></w:p><w:p><w:hyperlink r:id="link"><w:r><w:t>Accessible link</w:t></w:r></w:hyperlink><w:r><w:drawing><wp:inline><wp:docPr descr="Helpful image description"/><a:graphic><a:graphicData><a:blip r:embed="image"/></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p><w:tbl><w:tr><w:tc><w:p><w:r><w:t>Table cell text</w:t></w:r></w:p></w:tc></w:tr></w:tbl><w:sectPr/></w:body></w:document>`;
     const structure = parseDocxStructure(zip(validEntries(content)));

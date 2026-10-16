@@ -94,10 +94,15 @@ export interface VaultBridge {
   onSecurityLocked?(callback: () => void): () => void;
   reveal(path: string): Promise<void>;
   openExternal(path: string): Promise<void>;
-  openWith?(path: string): Promise<void>;
+  openWith?(
+    path: string,
+    options?: { makeDefault?: boolean },
+  ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
   importFile(notebookPath: string): Promise<VaultInfo | null>;
-  importEntry?(path: string): Promise<{ vault: VaultInfo; path: string }>;
+  importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
+  importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
+  adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
   createTask?(input: { notebookPath?: string; text: string }): Promise<VaultTask[]>;

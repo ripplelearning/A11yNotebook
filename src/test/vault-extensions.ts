@@ -6,7 +6,7 @@ export function vaultExtensions() {
     createLibrary: vi.fn(async () => null),
     createTask: vi.fn(async () => []),
     importEntry: vi.fn(),
-    openWith: vi.fn(async () => undefined),
+    openWith: vi.fn(async () => ({ cancelled: false })),
     move: vi.fn(),
     search: vi.fn(async () => []),
     getTags: vi.fn(async () => []),

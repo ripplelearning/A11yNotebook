@@ -3,13 +3,18 @@ import type { VaultInfo } from '../../../shared/types';
 interface LibrariesScreenProps {
   vault: VaultInfo | null;
   onOpenLibrary: () => void;
+  onNewLibrary?: () => void;
+  disabled?: boolean;
 }
 
-export default function LibrariesScreen({ vault, onOpenLibrary }: LibrariesScreenProps) {
+export default function LibrariesScreen({ vault, onOpenLibrary, onNewLibrary, disabled }: LibrariesScreenProps) {
   return (
     <section aria-labelledby="libraries-heading">
-      <h2 id="libraries-heading">Libraries</h2>
-      <button type="button" onClick={onOpenLibrary}>
+      <h2 id="libraries-heading">{vault?.name ?? 'Libraries'}</h2>
+      <button type="button" onClick={onNewLibrary} disabled={disabled || !onNewLibrary}>
+        New library
+      </button>
+      <button type="button" onClick={onOpenLibrary} disabled={disabled}>
         Open library
       </button>
       {vault ? (

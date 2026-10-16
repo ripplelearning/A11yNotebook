@@ -192,9 +192,11 @@ function readZipEntries(bytes: Buffer): Map<string, Buffer> {
   return entries;
 }
 
-export function extractEpubPages(bytes: Buffer): string[] {
+export function extractEpubPages(bytes: Buffer, options?: { forImport?: boolean }): string[] {
   if (bytes.length > MAX_DOCUMENT_BYTES) throw new Error('This ePub is too large to preview.');
   const entries = readZipEntries(bytes);
+  if (options?.forImport && entries.has('META-INF/encryption.xml'))
+    throw new Error('Protected ePub archives cannot be imported. Use an authorized unprotected copy.');
   const container = entries.get('META-INF/container.xml')?.toString('utf8') ?? '';
   const packagePath = /<rootfile\b[^>]*full-path=["']([^"']+)["']/i.exec(container)?.[1];
   if (!packagePath) throw new Error('The ePub package document is missing.');

@@ -4,17 +4,28 @@ import type { VaultEntry } from '../../../shared/types';
 type NotebooksScreenProps = Omit<DetailsViewProps, 'label' | 'items' | 'emptyMessage'> & {
   entries: readonly VaultEntry[];
   hasLibrary: boolean;
+  title?: string;
+  onNewNotebook?: () => void;
 };
 
 function flatten(entries: readonly VaultEntry[]): VaultEntry[] {
   return entries.flatMap((entry) => [entry, ...flatten(entry.children ?? [])]);
 }
 
-export default function NotebooksScreen({ entries, hasLibrary, ...details }: NotebooksScreenProps) {
+export default function NotebooksScreen({
+  entries,
+  hasLibrary,
+  title = 'Notebooks',
+  onNewNotebook,
+  ...details
+}: NotebooksScreenProps) {
   const notebooks = flatten(entries).filter((entry) => entry.kind === 'notebook');
   return (
     <section aria-labelledby="notebooks-heading">
-      <h2 id="notebooks-heading">Notebooks</h2>
+      <h2 id="notebooks-heading">{title}</h2>
+      <button type="button" disabled={!hasLibrary || !onNewNotebook} onClick={onNewNotebook}>
+        New notebook
+      </button>
       <DetailsView
         {...details}
         label="Notebooks"

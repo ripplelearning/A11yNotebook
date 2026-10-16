@@ -1,11 +1,10 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { lstat, mkdir, readFile, realpath, rm, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService, NoteReadSizeLimitError } from './service';
-import { openWithChooser } from './open-with';
 import { createAnnotationStore } from './annotations';
 import { createMetadataStore } from './metadata';
 import {
@@ -31,6 +30,10 @@ import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-d
 import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import { createAssetDraftStore } from './asset-drafts';
+import { IMPORT_EXTENSIONS, importedCopyPath, isEncryptedNoteSource, readImportSource } from './import';
+import { isExternalDocumentPath } from './external-documents';
+import { openWithWindows } from './open-with';
+import { createLocalLibrary } from './create-library';
 import { createAuditStore, runAudited, type AuditAttempt, type AuditOperation } from './audit';
 import {
   createVaultSecurityConfig,
@@ -212,6 +215,55 @@ function requireService() {
   return service;
 }
 
+async function externalDocument(vault: VaultService, relative: string) {
+  if (!isExternalDocumentPath(relative))
+    throw new Error(
+      'Only supported office, text, document, and image files can be opened externally. Executables, scripts, and shortcuts are not supported.',
+    );
+  const target = await vault.resolveEntry(relative);
+  const stat = await lstat(target);
+  if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Choose a regular document file, not a symbolic link.');
+  if (/\.(?:md|markdown|html?)$/i.test(relative)) {
+    if (stat.size > 40 * 1024 * 1024)
+      throw new Error(
+        'This note is too large to safely check for encrypted content. Use Reveal in Explorer to inspect it.',
+      );
+    if (isEncryptedNoteSource(await readBoundedMetadata(target, 40 * 1024 * 1024)))
+      throw new Error('Encrypted notes cannot be opened externally. Export with explicit consent instead.');
+  }
+  return target;
+}
+
+async function copyImportedDocument(
+  vault: VaultService,
+  relative: string,
+  bytes: Buffer,
+  forceCopy: boolean,
+  assertCurrent: () => void,
+) {
+  for (let attempt = forceCopy ? 1 : 0; attempt < 1000; attempt += 1) {
+    assertCurrent();
+    const destination = importedCopyPath(relative, attempt);
+    const candidate = await vault.resolveEntry(destination, true);
+    const exists = await lstat(candidate).then(
+      () => true,
+      (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return false;
+        throw error;
+      },
+    );
+    if (exists) continue;
+    try {
+      const view = await vault.createDocument(destination, bytes, 'imported', assertCurrent);
+      assertCurrent();
+      return { vault: view, path: destination };
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    }
+  }
+  throw new Error('Too many imported copies already exist. Choose another notebook.');
+}
+
 async function rememberVault(vaultPath: string) {
   await mkdir(path.dirname(recentFile()), { recursive: true });
   await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath }), 'utf8');
@@ -278,6 +330,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     assertCurrent();
   } catch (error) {
     await nextService.dispose().catch(() => undefined);
+    if (service) await rememberVault((await service.getVault()).path).catch(() => undefined);
     throw error;
   }
   reminderService?.stop();
@@ -1082,7 +1135,7 @@ export function setupVaultIpc(
       const encrypted = await encryptNoteWithPassword(password, existing, randomUUID());
       try {
         access.assertCurrent();
-        await vault.saveNote(relative, JSON.stringify(encrypted.record), existing);
+        await vault.saveNote(relative, JSON.stringify(encrypted.record), existing, access.assertCurrent);
         audit.committed();
         access.assertCurrent();
         noteKeys.get(encrypted.record.id)?.fill(0);
@@ -1251,19 +1304,35 @@ export function setupVaultIpc(
     const captureFolder = path.posix.join(notebookPath, 'Attachments', `Capture-${captureId}`);
     const noteDirectory = notebookPath ? `${notebookPath}/` : '';
     let attachmentFolder: string | undefined;
+    let attachmentParent: string | undefined;
+    let attachmentFolderCreated = false;
+    let attachmentParentCreated = false;
     let noteCreated = false;
+    const createdFiles: Array<{ absolute: string; dev: number | bigint; ino: number | bigint }> = [];
+    const rememberCreated = (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => {
+      createdFiles.push({ absolute, ...identity });
+    };
     try {
       const capture = await captureWebPage(url, `Attachments/Capture-${captureId}/`);
       return await serializeVaultOperation(async () => {
         access.assertCurrent();
+        attachmentParent = await vault.resolveEntry(path.posix.dirname(captureFolder), true);
+        try {
+          await mkdir(attachmentParent);
+          attachmentParentCreated = true;
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+          if (!(await lstat(attachmentParent)).isDirectory())
+            throw new Error('Capture attachments require a notebook folder.');
+        }
         attachmentFolder = await vault.resolveEntry(captureFolder, true);
         access.assertCurrent();
-        await mkdir(attachmentFolder, { recursive: true });
+        await mkdir(attachmentFolder);
+        attachmentFolderCreated = true;
         for (const [index, image] of capture.images.entries()) {
           access.assertCurrent();
           const imagePath = path.posix.join(captureFolder, `image-${index + 1}${image.extension}`);
-          await writeFile(await vault.resolveEntry(imagePath, true), image.bytes, { flag: 'wx', mode: 0o600 });
-          await vault.recordProvenance(imagePath, 'app-created');
+          await vault.createDocument(imagePath, image.bytes, 'imported', access.assertCurrent, rememberCreated);
         }
         const safeTitle =
           [...capture.title]
@@ -1282,15 +1351,24 @@ export function setupVaultIpc(
         const content =
           format === 'html' ? capture.html : `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
         access.assertCurrent();
-        await vault.createNote(notePath, content, access.assertCurrent);
+        await vault.createNote(notePath, content, 'imported', access.assertCurrent, rememberCreated);
         noteCreated = true;
         const opened = await vault.getVault();
         access.assertCurrent();
         return { vault: opened, notePath, omittedImages: capture.omittedImages };
       });
     } catch (error) {
-      if (attachmentFolder && !noteCreated)
-        await rm(attachmentFolder, { recursive: true, force: true }).catch(() => undefined);
+      if (!noteCreated) {
+        for (const created of createdFiles.reverse()) {
+          const current = await lstat(created.absolute).catch(() => null);
+          if (current?.isFile() && current.dev === created.dev && current.ino === created.ino)
+            await unlink(created.absolute).catch(() => undefined);
+        }
+        if (attachmentFolderCreated && attachmentFolder) await rmdir(attachmentFolder).catch(() => undefined);
+        if (attachmentParentCreated && attachmentParent) await rmdir(attachmentParent).catch(() => undefined);
+        await vault.pruneProvenance(access.assertCurrent).catch(() => undefined);
+        await vault.refreshSearchIndex().catch(() => undefined);
+      }
       throw error;
     }
   });
@@ -1469,7 +1547,9 @@ export function setupVaultIpc(
       await currentAssets.create(relative, content, access.assertCurrent);
       await access.vault.refreshSearchIndex();
       access.assertCurrent();
-      return access.vault.getVault();
+      const view = await access.vault.getVault();
+      access.assertCurrent();
+      return view;
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultFlashcardsGet, async (event, relative: unknown) => {
@@ -1646,12 +1726,13 @@ export function setupVaultIpc(
     const previous = service;
     const generation = securityGeneration;
     const assertCurrent = () => {
-      assertTrusted(event, isTrustedSender);
+      assertTrusted(event, isTrustedSender, true);
       if (service !== previous || securityGeneration !== generation)
         throw new Error('The open library or lock state changed. Retry creating the library.');
+      assertTrusted(event, isTrustedSender);
     };
     const result = await dialog.showSaveDialog({
-      title: 'Create library folder',
+      title: 'Create local library — choose parent folder and new library name',
       buttonLabel: 'Create library',
       defaultPath: 'New library',
       properties: ['showOverwriteConfirmation'],
@@ -1660,14 +1741,7 @@ export function setupVaultIpc(
     if (result.canceled || !result.filePath) return null;
     return serializeVaultOperation(async () => {
       assertCurrent();
-      // No recursive mkdir: an existing folder is never adopted or modified.
-      await mkdir(result.filePath!, { mode: 0o700 }).catch((error: NodeJS.ErrnoException) => {
-        if (error.code === 'EEXIST')
-          throw new Error('A folder or file with that name already exists. Choose a new library name.');
-        throw error;
-      });
-      assertCurrent();
-      return openVaultNow(result.filePath!, assertCurrent);
+      return createLocalLibrary(result.filePath!, (root) => openVaultNow(root, assertCurrent), assertCurrent);
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultGet, async (event) => {
@@ -1734,32 +1808,42 @@ export function setupVaultIpc(
         throw new Error('Invalid saved note baseline.');
       const vault = requireService();
       const access = captureVaultAccess(event, isTrustedSender);
-      const onDisk = await vault.readNote(relativePath);
-      access.assertCurrent();
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(onDisk);
-      } catch {
-        parsed = null;
-      }
-      if (isPasswordEncryptedNote(parsed)) {
-        const key = noteKeys.get(parsed.id);
-        if (!key) throw new Error('Unlock this note with its password before editing.');
-        if (expectedContent !== undefined && decryptPasswordEncryptedNote(key, parsed) !== expectedContent)
-          throw new Error('Note changed on disk. Resolve the conflict before saving.');
-        await vault.saveNote(relativePath, JSON.stringify(reencryptPasswordNote(key, parsed, content)), onDisk);
-      } else if (isEncryptedRecord(parsed)) {
-        if (!masterKey) throw new Error('Unlock the library before editing this encrypted note.');
-        if (expectedContent !== undefined && readVaultEncryptedNote(parsed) !== expectedContent)
-          throw new Error('Note changed on disk. Resolve the conflict before saving.');
-        await vault.saveNote(
-          relativePath,
-          JSON.stringify(encryptRecord(masterKey, 'note', parsed.id, content)),
-          onDisk,
-        );
-      } else {
-        await vault.saveNote(relativePath, content, expectedContent);
-      }
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const onDisk = await vault.readNote(relativePath);
+        access.assertCurrent();
+        let parsed: unknown;
+        try {
+          parsed = JSON.parse(onDisk);
+        } catch {
+          parsed = null;
+        }
+        if (isPasswordEncryptedNote(parsed)) {
+          const key = noteKeys.get(parsed.id);
+          if (!key) throw new Error('Unlock this note with its password before editing.');
+          if (expectedContent !== undefined && decryptPasswordEncryptedNote(key, parsed) !== expectedContent)
+            throw new Error('Note changed on disk. Resolve the conflict before saving.');
+          await vault.saveNote(
+            relativePath,
+            JSON.stringify(reencryptPasswordNote(key, parsed, content)),
+            onDisk,
+            access.assertCurrent,
+          );
+        } else if (isEncryptedRecord(parsed)) {
+          if (!masterKey) throw new Error('Unlock the library before editing this encrypted note.');
+          if (expectedContent !== undefined && readVaultEncryptedNote(parsed) !== expectedContent)
+            throw new Error('Note changed on disk. Resolve the conflict before saving.');
+          await vault.saveNote(
+            relativePath,
+            JSON.stringify(encryptRecord(masterKey, 'note', parsed.id, content)),
+            onDisk,
+            access.assertCurrent,
+          );
+        } else {
+          await vault.saveNote(relativePath, content, expectedContent, access.assertCurrent);
+        }
+        access.assertCurrent();
+      });
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultCreateNotebook, async (event, relativePath: unknown) => {
@@ -1774,7 +1858,9 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      return access.vault.createNote(relativePath, content, access.assertCurrent);
+      const view = await access.vault.createNote(relativePath, content, 'created', access.assertCurrent);
+      access.assertCurrent();
+      return view;
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultRename, async (event, relativePath: unknown, name: unknown) => {
@@ -1994,18 +2080,54 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultOpenExternal, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Path must be text.');
-    const error = await shell.openPath(await requireService().resolveEntry(relativePath));
-    if (error) throw new Error(error);
-  });
-  ipcMain.handle(IPC_CHANNELS.vaultOpenWith, async (event, relativePath: unknown) => {
-    assertTrusted(event, isTrustedSender);
-    if (typeof relativePath !== 'string') throw new Error('Path must be text.');
     const access = captureVaultAccess(event, isTrustedSender);
-    const absolute = await access.vault.resolveEntry(relativePath);
-    if (!(await lstat(absolute)).isFile()) throw new Error('Choose a file to open with another app.');
-    access.assertCurrent();
-    await openWithChooser(absolute);
-    access.assertCurrent();
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const target = await externalDocument(access.vault, relativePath);
+      access.assertCurrent();
+      const error = await shell.openPath(target);
+      if (error) throw new Error(error);
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultOpenWith, async (event, relativePath: unknown, options: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (
+      typeof relativePath !== 'string' ||
+      (options !== undefined &&
+        (!options ||
+          typeof options !== 'object' ||
+          Array.isArray(options) ||
+          Object.keys(options).some((key) => key !== 'makeDefault') ||
+          ('makeDefault' in options && typeof options.makeDefault !== 'boolean')))
+    )
+      throw new Error('Invalid application chooser request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const target = await externalDocument(access.vault, relativePath);
+      access.assertCurrent();
+      if (process.platform !== 'win32') return openWithWindows(target);
+      if ((options as { makeDefault?: boolean } | undefined)?.makeDefault) {
+        const consent = await dialog.showMessageBox({
+          type: 'question',
+          title: 'Choose a default application in Windows',
+          message: `Open Windows Default Apps settings for ${path.extname(relativePath)} files?`,
+          detail:
+            'Only you can choose the default application in Windows settings. This app cannot confirm or change that choice.',
+          buttons: ['Cancel', 'Open Windows settings'],
+          defaultId: 0,
+          cancelId: 0,
+          noLink: true,
+        });
+        access.assertCurrent();
+        if (consent.response !== 1) return { cancelled: true };
+        await shell.openExternal('ms-settings:defaultapps');
+        return { cancelled: false, settingsOpened: true };
+      }
+      const result = await openWithWindows(target);
+      access.assertCurrent();
+      return result;
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultOpenUrl, async (event, rawUrl: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -2025,21 +2147,132 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof notebookPath !== 'string') throw new Error('Notebook path must be text.');
     const access = captureVaultAccess(event, isTrustedSender);
-    const result = await dialog.showOpenDialog({ properties: ['openFile'] });
+    const vault = access.vault;
+    const notebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
+    if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder for the import.');
     access.assertCurrent();
+    const result = await dialog.showOpenDialog({
+      title: 'Import a copy into this library',
+      properties: ['openFile'],
+      filters: [
+        {
+          name: 'Supported notes, documents, images, and assets',
+          extensions: IMPORT_EXTENSIONS.filter((extension) => extension !== 'json'),
+        },
+        { name: 'Mind maps (.mindmap.json only)', extensions: ['json'] },
+      ],
+    });
     if (result.canceled || !result.filePaths[0]) return null;
+    const source = result.filePaths[0];
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      return access.vault.importFile(result.filePaths[0], notebookPath, access.assertCurrent);
+      const bytes = await readImportSource(source, access.assertCurrent);
+      access.assertCurrent();
+      const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
+      if (!(await lstat(currentNotebook)).isDirectory())
+        throw new Error('The destination notebook is no longer available.');
+      return (
+        await copyImportedDocument(
+          vault,
+          path.posix.join(notebookPath, path.basename(source)),
+          bytes,
+          false,
+          access.assertCurrent,
+        )
+      ).vault;
     });
   });
-  ipcMain.handle(IPC_CHANNELS.vaultImportEntry, async (event, relativePath: unknown) => {
+  const importSelectedEntry = async (event: IpcMainInvokeEvent, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relativePath !== 'string') throw new Error('Path must be text.');
+    if (typeof relativePath !== 'string') throw new Error('Document path must be text.');
     const access = captureVaultAccess(event, isTrustedSender);
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      return access.vault.importEntry(relativePath, access.assertCurrent);
+      const source = await access.vault.resolveEntry(relativePath);
+      const bytes = await readImportSource(source, access.assertCurrent);
+      access.assertCurrent();
+      const consent = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Import selected document',
+        message: `Import a managed copy of “${relativePath}”?`,
+        detail:
+          'The original will be kept unchanged. A separate copy with an imported suffix will be created in the same notebook, retaining its format and existing reader limits.',
+        buttons: ['Cancel', 'Import copy'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      access.assertCurrent();
+      if (consent.response !== 1) return null;
+      return copyImportedDocument(access.vault, relativePath, bytes, true, access.assertCurrent);
+    });
+  };
+  ipcMain.handle(IPC_CHANNELS.vaultImportEntry, importSelectedEntry);
+  ipcMain.handle(IPC_CHANNELS.vaultImportAsNote, async (event, relativePath: unknown) => {
+    const result = await importSelectedEntry(event, relativePath);
+    if (!result) throw new Error('Import cancelled. The original document was not changed.');
+    return result;
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultAdoptEncrypted, async (event, relativePath: unknown, password: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string' || (password !== undefined && typeof password !== 'string'))
+      throw new Error('Invalid encrypted-note recovery request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      if (!/\.(?:md|html)$/i.test(relativePath)) throw new Error('Legacy recovery requires a Markdown or HTML note.');
+      const absolute = await access.vault.resolveEntry(relativePath);
+      const ciphertext = await readBoundedMetadata(absolute, 40 * 1024 * 1024);
+      let envelope: unknown;
+      try {
+        envelope = JSON.parse(ciphertext);
+      } catch {
+        throw new Error('Only valid app-encrypted notes can use legacy recovery.');
+      }
+      if (!isEncryptedRecord(envelope) && !isPasswordEncryptedNote(envelope))
+        throw new Error(
+          'Only valid app-encrypted notes can use legacy recovery. Plaintext originals must be explicitly imported.',
+        );
+      access.assertCurrent();
+      const consent = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Recover legacy encrypted note',
+        message: `Open “${relativePath}” as a managed encrypted note?`,
+        detail:
+          'The existing library key or note password must authenticate this app-encrypted note. Its ciphertext and encryption rules will remain unchanged; only an explicit imported-origin record is added.',
+        buttons: ['Cancel', 'Authenticate and recover'],
+        defaultId: 0,
+        cancelId: 0,
+        noLink: true,
+      });
+      access.assertCurrent();
+      if (consent.response !== 1) return null;
+      let derivedKey: Buffer | undefined;
+      try {
+        if (isPasswordEncryptedNote(envelope)) {
+          const cached = noteKeys.get(envelope.id);
+          if (cached) decryptPasswordEncryptedNote(cached, envelope);
+          else {
+            if (password === undefined) throw new Error('Enter this note’s password to recover it.');
+            const unlocked = await unlockPasswordEncryptedNote(password, envelope);
+            derivedKey = unlocked.key;
+          }
+        } else {
+          if (!masterKey) throw new Error('Unlock the original library before recovering this vault-encrypted note.');
+          readVaultEncryptedNote(envelope);
+        }
+        access.assertCurrent();
+        const view = await access.vault.adoptEncryptedNote(relativePath, ciphertext, access.assertCurrent);
+        access.assertCurrent();
+        if (derivedKey && isPasswordEncryptedNote(envelope)) {
+          noteKeys.get(envelope.id)?.fill(0);
+          noteKeys.set(envelope.id, derivedKey);
+          derivedKey = undefined;
+        }
+        return view;
+      } finally {
+        derivedKey?.fill(0);
+      }
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultDelete, async (event, relativePath: unknown) => {
@@ -2070,7 +2303,7 @@ export function setupVaultIpc(
       try {
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
-        await vault.removeProvenance(relativePath);
+        await vault.pruneProvenance(access.assertCurrent);
         await vault.refreshSearchIndex();
         return vault.getVault();
       } catch {

@@ -94,7 +94,8 @@ describe('focus commands', () => {
     expect(screen.getByRole('tabpanel')).toHaveFocus();
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
-    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('Mode switched to edit.');
+    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('This view has no note editor.');
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
   });
 });
 
@@ -166,7 +167,7 @@ describe('tabs', () => {
     const vault: VaultInfo = {
       name: 'Study',
       path: '/study',
-      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note' }],
+      entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' }],
     };
     window.a11yNotebook = {
       updater: { onStatus: () => () => undefined },
@@ -220,6 +221,6 @@ describe('tabs', () => {
     fireEvent.keyDown(note, { key: 'ArrowLeft' });
     expect(tasks).toHaveFocus();
     expect(tasks).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', tasks.id);
+    expect(panel).toHaveAccessibleName('Tasks in Study');
   });
 });

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
-import { encryptRecord, unlockVault } from '../../electron/vault/security';
+import { encryptNoteWithPassword, encryptRecord, unlockVault } from '../../electron/vault/security';
 import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { Milestone } from '../shared/milestones';
@@ -27,12 +27,19 @@ const mock = vi.hoisted(() => ({
   derivedKeys: [] as Buffer[],
   captureGate: undefined as undefined | (() => Promise<void>),
   captureTitle: '.Research',
+  captureImages: [] as Array<{ extension: string; bytes: Buffer }>,
+  captureExtraUserFile: false,
   attachmentReadGate: undefined as undefined | (() => Promise<void>),
   assetReadGate: undefined as undefined | (() => Promise<void>),
   taskWriteGate: undefined as undefined | (() => Promise<void>),
   securityWriteGate: undefined as undefined | (() => Promise<void>),
   saveDialogGate: undefined as undefined | (() => Promise<void>),
+  openDialogGate: undefined as undefined | (() => Promise<void>),
+  openSelection: undefined as undefined | string,
+  openCanceled: false,
+  importConsentGate: undefined as undefined | (() => Promise<void>),
   failAuditWrite: false,
+  failProvenanceWrite: false,
   auditWriteGate: undefined as undefined | (() => Promise<void>),
   messages: [] as { title?: string; message?: string }[],
   savePath: '',
@@ -54,6 +61,14 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       return actual.readFile(...args);
     },
     writeFile: async (...args: Parameters<typeof actual.writeFile>) => {
+      if (
+        mock.captureExtraUserFile &&
+        String(args[0]).includes('Capture-') &&
+        path.basename(String(args[0])).startsWith('.import-')
+      ) {
+        mock.captureExtraUserFile = false;
+        await actual.writeFile(path.join(path.dirname(String(args[0])), 'Concurrent-user.txt'), 'Keep this user data');
+      }
       if (path.basename(String(args[0])).startsWith('.Topic.md.')) await mock.taskWriteGate?.();
       if (mock.failRecentWrite && String(args[0]).endsWith('recent-vault.json'))
         throw new Error('Recent-vault persistence failed.');
@@ -65,6 +80,8 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       return actual.writeFile(...args);
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
+      if (mock.failProvenanceWrite && String(args[1]).endsWith('provenance.json'))
+        throw new Error('Origin metadata write failed');
       if (String(args[1]).endsWith('audit.json')) {
         if (mock.failAuditWrite) throw new Error('Audit storage unavailable.');
         await mock.auditWriteGate?.();
@@ -117,7 +134,7 @@ vi.mock('../../electron/vault/web-capture', async (importOriginal) => {
         title: mock.captureTitle,
         markdown: 'Captured content',
         html: '<h1>Research</h1>',
-        images: [],
+        images: mock.captureImages,
         omittedImages: 0,
       };
     },
@@ -130,9 +147,14 @@ vi.mock('electron', () => ({
     handle: (channel: string, handler: (...args: unknown[]) => Promise<unknown>) => mock.handlers.set(channel, handler),
   },
   dialog: {
-    showOpenDialog: async () => ({ canceled: false, filePaths: [mock.root] }),
+    showOpenDialog: async () => {
+      const selected = mock.openSelection ?? mock.root;
+      if (mock.openDialogGate) await mock.openDialogGate();
+      return { canceled: mock.openCanceled, filePaths: [selected] };
+    },
     showMessageBox: async (options: { title?: string; message?: string }) => {
       mock.messages.push(options);
+      if (options.title === 'Import selected document') await mock.importConsentGate?.();
       return { response: mock.confirm };
     },
     showSaveDialog: async (options: unknown) => {
@@ -165,7 +187,12 @@ vi.mock('electron', () => ({
       return mock.notificationsSupported;
     }
   },
-  shell: { showItemInFolder: vi.fn(), openPath: vi.fn(async () => ''), trashItem: vi.fn(async () => undefined) },
+  shell: {
+    showItemInFolder: vi.fn(),
+    openPath: vi.fn(async () => ''),
+    openExternal: vi.fn(async () => undefined),
+    trashItem: vi.fn(async () => undefined),
+  },
 }));
 
 vi.mock('../../electron/vault/search', async (importOriginal) => {
@@ -247,12 +274,19 @@ beforeEach(async () => {
   mock.derivedKeys = [];
   mock.captureGate = undefined;
   mock.captureTitle = '.Research';
+  mock.captureImages = [];
+  mock.captureExtraUserFile = false;
   mock.attachmentReadGate = undefined;
   mock.assetReadGate = undefined;
   mock.taskWriteGate = undefined;
   mock.securityWriteGate = undefined;
   mock.saveDialogGate = undefined;
+  mock.openDialogGate = undefined;
+  mock.openSelection = undefined;
+  mock.openCanceled = false;
+  mock.importConsentGate = undefined;
   mock.failAuditWrite = false;
+  mock.failProvenanceWrite = false;
   mock.auditWriteGate = undefined;
   mock.messages = [];
   mock.saveCanceled = false;
@@ -287,6 +321,468 @@ afterEach(async () => {
 });
 
 describe('extended vault IPC integration', () => {
+  it('imports an unchanged supported original into a notebook or root and suffixes copies without overwriting', async () => {
+    mock.openSelection = path.join(temporary, 'Imported.html');
+    const original = '<h1>Original</h1>\r\n<script>retained but not executed by import</script>';
+    await writeFile(mock.openSelection, original);
+    const imported = (await invoke(IPC_CHANNELS.vaultImport, 'Folder')) as import('../shared/types').VaultInfo;
+    expect(imported.entries.find((entry) => entry.path === 'Folder')?.children?.[0]).toMatchObject({
+      path: 'Folder/Imported.html',
+      provenance: 'imported',
+    });
+    expect(await readFile(path.join(mock.root, 'Folder', 'Imported.html'), 'utf8')).toBe(original);
+    expect(await readFile(mock.openSelection, 'utf8')).toBe(original);
+    await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    expect(await readFile(path.join(mock.root, 'Folder', 'Imported (imported).html'), 'utf8')).toBe(original);
+    const rootImport = (await invoke(IPC_CHANNELS.vaultImport, '')) as import('../shared/types').VaultInfo;
+    expect(rootImport.entries.find((entry) => entry.path === 'Imported.html')?.provenance).toBe('imported');
+    await expect(invoke(IPC_CHANNELS.vaultImport, '../outside')).rejects.toThrow();
+    await expect(invoke(IPC_CHANNELS.vaultImport, 'Topic.md')).rejects.toThrow('folder');
+  });
+
+  it('explicitly imports existing unknown files as validated sibling copies without reclassifying originals', async () => {
+    const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    const first = (await invoke(IPC_CHANNELS.vaultImportAsNote, 'Topic.md')) as {
+      vault: import('../shared/types').VaultInfo;
+      path: string;
+    };
+    expect(first.path).toBe('Topic (imported).md');
+    expect(first.vault.entries.find((entry) => entry.path === first.path)?.provenance).toBe('imported');
+    expect(first.vault.entries.find((entry) => entry.path === 'Topic.md')?.provenance).toBeUndefined();
+    expect(await readFile(path.join(mock.root, first.path), 'utf8')).toBe(original);
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(original);
+    const second = (await invoke(IPC_CHANNELS.vaultImportAsNote, 'Topic.md')) as { path: string };
+    expect(second.path).toBe('Topic (imported 2).md');
+    await expect(invoke(IPC_CHANNELS.vaultImportAsNote, '../outside.md')).rejects.toThrow();
+    await expect(invoke(IPC_CHANNELS.vaultImportAsNote, path.join(mock.root, 'Topic.md'))).rejects.toThrow();
+    await writeFile(path.join(mock.root, 'Legacy.md'), '{"format":"a11ynotebook-encrypted-v1","ciphertext":"private"}');
+    await expect(invoke(IPC_CHANNELS.vaultImportAsNote, 'Legacy.md')).rejects.toThrow(
+      'Encrypted notes cannot be imported',
+    );
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, 'Legacy.md')).rejects.toThrow('Encrypted notes');
+    expect(await readdir(mock.root)).not.toContain('Legacy (imported).md');
+  });
+
+  it('imports precisely the selected entry after native consent, with cancellation returning null and no picker', async () => {
+    mock.openDialogGate = () => {
+      throw new Error('Selected-entry import must not show a picker');
+    };
+    const source = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
+    mock.confirm = 0;
+    expect(await invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md')).toBeNull();
+    expect(await readdir(mock.root)).not.toContain('Topic (imported).md');
+    mock.confirm = 1;
+    const result = (await invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md')) as {
+      vault: import('../shared/types').VaultInfo;
+      path: string;
+    };
+    expect(result.path).toBe('Topic (imported).md');
+    expect(result.vault.entries.find((entry) => entry.path === result.path)?.provenance).toBe('imported');
+    expect(await readFile(path.join(mock.root, result.path), 'utf8')).toBe(source);
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(source);
+    const handler = mock.handlers.get(IPC_CHANNELS.vaultImportEntry)!;
+    await expect(handler({}, 'Topic.md')).rejects.toThrow('Untrusted');
+    await expect(invoke(IPC_CHANNELS.vaultImportEntry, '../outside.md')).rejects.toThrow();
+    await expect(invoke(IPC_CHANNELS.vaultImportEntry, path.join(mock.root, 'Topic.md'))).rejects.toThrow();
+  });
+
+  it('revokes a selected-entry import when locking is requested during native consent', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    let entered!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.importConsentGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const importing = invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md');
+    await ready;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await Promise.all([expect(importing).rejects.toThrow('lock state changed'), locking]);
+    expect(await readdir(mock.root)).not.toContain('Topic (imported).md');
+  });
+
+  it('handles import cancellation, invalid originals, index failure rollback, and untrusted IPC', async () => {
+    mock.openCanceled = true;
+    expect(await invoke(IPC_CHANNELS.vaultImport, '')).toBeNull();
+    mock.openCanceled = false;
+    mock.openSelection = path.join(temporary, 'Invalid.pdf');
+    await writeFile(mock.openSelection, 'Not a PDF');
+    await expect(invoke(IPC_CHANNELS.vaultImport, '')).rejects.toThrow('PDF');
+    mock.openSelection = path.join(temporary, 'Original.md');
+    await writeFile(mock.openSelection, '# Original');
+    mock.failIndexRefreshAt = mock.refreshCount + 1;
+    await expect(invoke(IPC_CHANNELS.vaultImport, '')).rejects.toThrow('Index write failed');
+    expect(await readdir(mock.root)).not.toContain('Original.md');
+    const handler = mock.handlers.get(IPC_CHANNELS.vaultImport)!;
+    await expect(handler({}, '')).rejects.toThrow('Untrusted');
+  });
+
+  it('keeps provenance after failed trash and never transfers it to a replacement after deletion', async () => {
+    const { shell } = await import('electron');
+    mock.openSelection = path.join(temporary, 'Imported.md');
+    await writeFile(mock.openSelection, '# Original');
+    await invoke(IPC_CHANNELS.vaultImport, '');
+    vi.mocked(shell.trashItem).mockRejectedValueOnce(new Error('Trash unavailable'));
+    await expect(invoke(IPC_CHANNELS.vaultDelete, 'Imported.md')).rejects.toThrow('Trash unavailable');
+    let view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(view.entries.find((entry) => entry.path === 'Imported.md')?.provenance).toBe('imported');
+    vi.mocked(shell.trashItem).mockImplementationOnce(async (filename) => {
+      await rm(filename);
+    });
+    await invoke(IPC_CHANNELS.vaultDelete, 'Imported.md');
+    const originRecords = JSON.parse(
+      await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8'),
+    ).records;
+    expect(originRecords).toEqual({});
+    await writeFile(path.join(mock.root, 'Imported.md'), '# Replacement');
+    view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(view.entries.find((entry) => entry.path === 'Imported.md')?.provenance).toBeUndefined();
+  });
+
+  it('does not copy a selected import after a lock during its native dialog', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    mock.openSelection = path.join(temporary, 'Original.md');
+    await writeFile(mock.openSelection, '# Original');
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.openDialogGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const importing = invoke(IPC_CHANNELS.vaultImport, '');
+    await ready;
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await expect(importing).rejects.toThrow(/Unlock|lock state changed/);
+    expect(await readdir(mock.root)).not.toContain('Original.md');
+  });
+
+  it('rejects an import selected for a library that changed while its native dialog was open', async () => {
+    const originalRoot = mock.root;
+    mock.openSelection = path.join(temporary, 'Original.md');
+    await writeFile(mock.openSelection, '# Original');
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.openDialogGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const importing = invoke(IPC_CHANNELS.vaultImport, '');
+    await ready;
+    mock.openDialogGate = undefined;
+    mock.openSelection = undefined;
+    mock.root = path.join(temporary, 'Other library');
+    await mkdir(mock.root);
+    await invoke(IPC_CHANNELS.vaultOpen);
+    release();
+    await expect(importing).rejects.toThrow('lock state changed');
+    expect(await readdir(originalRoot)).not.toContain('Original.md');
+    expect(await readdir(mock.root)).not.toContain('Original.md');
+  });
+
+  it('rejects new library creation selected before an explicit lock without creating any folder', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    mock.savePath = path.join(temporary, 'Cancelled library');
+    let release!: () => void;
+    let entered!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.saveDialogGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const creating = invoke(IPC_CHANNELS.vaultCreateLibrary);
+    await ready;
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await expect(creating).rejects.toThrow('lock state changed');
+    expect(await readdir(temporary)).not.toContain('Cancelled library');
+  });
+
+  it('creates a local library through native name/parent selection without touching existing folders', async () => {
+    mock.saveCanceled = true;
+    expect(await invoke(IPC_CHANNELS.vaultCreateLibrary)).toBeNull();
+    mock.saveCanceled = false;
+    mock.savePath = mock.root;
+    await expect(invoke(IPC_CHANNELS.vaultCreateLibrary)).rejects.toThrow();
+    expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('# Topic');
+    mock.savePath = path.join(temporary, 'New library');
+    const created = (await invoke(IPC_CHANNELS.vaultCreateLibrary)) as import('../shared/types').VaultInfo;
+    expect(created).toMatchObject({ name: 'New library', path: mock.savePath, entries: [] });
+    expect(JSON.parse(await readFile(path.join(mock.userData, 'recent-vault.json'), 'utf8')).lastOpened).toBe(
+      mock.savePath,
+    );
+  });
+
+  it('rolls back a failed new library and keeps the existing library open', async () => {
+    mock.savePath = path.join(temporary, 'Failed library');
+    mock.failRecentWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultCreateLibrary)).rejects.toThrow('Recent-vault persistence failed');
+    expect(await readdir(temporary)).not.toContain('Failed library');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).toContain('# Topic');
+  });
+
+  it('preserves imported origin through rename repair, encryption, protection and rollback', async () => {
+    mock.openSelection = path.join(temporary, 'Original.md');
+    await writeFile(mock.openSelection, '# Original');
+    await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    await invoke(IPC_CHANNELS.vaultRename, 'Folder/Original.md', 'Renamed.md');
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Folder/Renamed.md', '# Original', 'note password 123');
+    let view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(view.entries.find((entry) => entry.path === 'Folder')?.children?.[0].provenance).toBe('imported');
+    await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'vault password 123');
+    await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, true);
+    await invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: true });
+    expect(await invoke(IPC_CHANNELS.vaultMetadataProtectionStatus)).toMatchObject({ enabled: true });
+    mock.failIndexRefreshAt = mock.refreshCount + 1;
+    await expect(invoke(IPC_CHANNELS.vaultMove, 'Folder/Renamed.md', 'Restored.md')).rejects.toThrow();
+    view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(view.entries.find((entry) => entry.path === 'Folder')?.children?.[0]).toMatchObject({
+      path: 'Folder/Renamed.md',
+      provenance: 'imported',
+    });
+    await invoke(IPC_CHANNELS.vaultSecurityLock);
+    expect(((await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo).entries).toEqual([]);
+  });
+
+  it('validates external document handoff and refuses encrypted notes, executables and malformed chooser options', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, '../outside.md')).rejects.toThrow();
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, path.join(mock.root, 'Topic.md'))).rejects.toThrow();
+    await writeFile(path.join(mock.root, 'Program.exe'), 'MZ');
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, 'Program.exe')).rejects.toThrow('supported');
+    await expect(invoke(IPC_CHANNELS.vaultOpenWith, 'Topic.md', { executable: 'danger.exe' })).rejects.toThrow(
+      'Invalid',
+    );
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Topic.md', '# Topic\n\nalpha #research\n', 'note password 123');
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, 'Topic.md')).rejects.toThrow('Encrypted notes');
+    await expect(invoke(IPC_CHANNELS.vaultOpenWith, 'Topic.md')).rejects.toThrow('Encrypted notes');
+    await writeFile(path.join(mock.root, 'Legacy.markdown'), '{"format":"a11ynotebook-encrypted-v1",');
+    await expect(invoke(IPC_CHANNELS.vaultOpenExternal, 'Legacy.markdown')).rejects.toThrow('Encrypted notes');
+  });
+
+  it('opens only Windows-owned default settings after explicit consent and reports cancellation truthfully', async () => {
+    const { shell } = await import('electron');
+    const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+    Object.defineProperty(process, 'platform', { ...platform, value: 'win32' });
+    const openSettings = vi.mocked(shell.openExternal);
+    openSettings.mockClear();
+    try {
+      mock.confirm = 0;
+      expect(await invoke(IPC_CHANNELS.vaultOpenWith, 'Topic.md', { makeDefault: true })).toEqual({ cancelled: true });
+      expect(openSettings).not.toHaveBeenCalled();
+      mock.confirm = 1;
+      expect(await invoke(IPC_CHANNELS.vaultOpenWith, 'Topic.md', { makeDefault: true })).toEqual({
+        cancelled: false,
+        settingsOpened: true,
+      });
+
+      expect(openSettings).toHaveBeenCalledExactlyOnceWith('ms-settings:defaultapps');
+      openSettings.mockRejectedValueOnce(new Error('Windows settings unavailable'));
+      await expect(invoke(IPC_CHANNELS.vaultOpenWith, 'Topic.md', { makeDefault: true })).rejects.toThrow(
+        'settings unavailable',
+      );
+    } finally {
+      Object.defineProperty(process, 'platform', platform);
+    }
+  });
+
+  it('hands external-only Office/text originals to OS applications without treating them as internally importable', async () => {
+    const { shell } = await import('electron');
+    for (const extension of ['rtf', 'doc', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp']) {
+      const relative = `Original.${extension}`;
+      const absolute = path.join(mock.root, relative);
+      await writeFile(absolute, 'Original external document');
+      await invoke(IPC_CHANNELS.vaultOpenExternal, relative);
+      expect(shell.openPath).toHaveBeenLastCalledWith(absolute);
+      await expect(invoke(IPC_CHANNELS.vaultImportAsNote, relative)).rejects.toThrow('no internal importer');
+      expect(await readFile(absolute, 'utf8')).toBe('Original external document');
+    }
+    for (const extension of ['exe', 'ps1', 'cmd', 'js', 'lnk', 'url', 'desktop']) {
+      const relative = `Unsafe.${extension}`;
+      await writeFile(path.join(mock.root, relative), 'Not allowed');
+      await expect(invoke(IPC_CHANNELS.vaultOpenExternal, relative)).rejects.toThrow('not supported');
+    }
+    if (process.platform !== 'win32') {
+      await symlink(path.join(mock.root, 'Original.doc'), path.join(mock.root, 'Link.doc'));
+      await expect(invoke(IPC_CHANNELS.vaultOpenExternal, 'Link.doc')).rejects.toThrow('Symbolic links');
+    }
+  });
+
+  it('marks explicitly captured images and their note imported without changing image bytes', async () => {
+    const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    mock.captureImages = [{ extension: '.png', bytes }];
+    const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')) as {
+      vault: import('../shared/types').VaultInfo;
+      notePath: string;
+    };
+    const folder = result.vault.entries.find((entry) => entry.path === 'Folder')!;
+    const note = folder.children?.find((entry) => entry.path === result.notePath);
+    const image = folder.children?.find((entry) => entry.name === 'Attachments')?.children?.[0].children?.[0];
+    expect(note?.provenance).toBe('imported');
+    expect(image?.provenance).toBe('imported');
+    expect(await readFile(path.join(mock.root, image!.path))).toEqual(bytes);
+  });
+
+  it('rolls back captured images and their origin records when note creation fails', async () => {
+    mock.captureImages = [{ extension: '.png', bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) }];
+    const parent = path.join(mock.root, 'Folder', 'Attachments');
+    await mkdir(parent);
+    await writeFile(path.join(parent, 'Keep.txt'), 'Existing user file');
+    mock.failIndexRefreshAt = mock.refreshCount + 2;
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')).rejects.toThrow(
+      'Index write failed',
+    );
+    expect(await readdir(parent)).toEqual(['Keep.txt']);
+    expect(await readFile(path.join(parent, 'Keep.txt'), 'utf8')).toBe('Existing user file');
+    expect(
+      JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8')).records,
+    ).toEqual({});
+    expect((await readdir(path.join(mock.root, 'Folder'))).filter((name) => name.endsWith('.md'))).toEqual([]);
+  });
+
+  it('does not recursively delete concurrent user files during capture rollback', async () => {
+    mock.captureImages = [{ extension: '.png', bytes: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) }];
+    mock.captureExtraUserFile = true;
+    mock.failIndexRefreshAt = mock.refreshCount + 2;
+    await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'markdown')).rejects.toThrow(
+      'Index write failed',
+    );
+    const parent = path.join(mock.root, 'Folder', 'Attachments');
+    const capture = (await readdir(parent))[0];
+    expect(await readdir(path.join(parent, capture))).toEqual(['Concurrent-user.txt']);
+    expect(await readFile(path.join(parent, capture, 'Concurrent-user.txt'), 'utf8')).toBe('Keep this user data');
+    expect(
+      JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8')).records,
+    ).toEqual({});
+  });
+
+  it('explicitly recovers a legacy vault-encrypted note without modifying ciphertext or requiring export', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const config = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'security.json'), 'utf8'));
+    const key = await unlockVault(config, 'vault password 123');
+    const ciphertext = JSON.stringify(encryptRecord(key, 'note', 'legacy-vault-note', '# Legacy secret'));
+    key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.md'), ciphertext);
+    const before = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(before.entries.find((entry) => entry.path === 'Legacy.md')?.provenance).toBeUndefined();
+    const recovered = (await invoke(
+      IPC_CHANNELS.vaultAdoptEncrypted,
+      'Legacy.md',
+    )) as import('../shared/types').VaultInfo;
+    expect(recovered.entries.find((entry) => entry.path === 'Legacy.md')?.provenance).toBe('imported');
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).toBe('# Legacy secret');
+    const origin = await readFile(path.join(mock.root, '.a11ynotebook', 'provenance.json'), 'utf8');
+    expect(origin).not.toMatch(/Legacy|secret|password|ciphertext/);
+  });
+
+  it('recovers password-encrypted legacy notes only after consent and successful existing password authentication', async () => {
+    const encrypted = await encryptNoteWithPassword(
+      'legacy note password',
+      '# Per-note secret',
+      'legacy-password-note',
+    );
+    const ciphertext = JSON.stringify(encrypted.record);
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.html'), ciphertext);
+    mock.confirm = 0;
+    expect(await invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html', 'legacy note password')).toBeNull();
+    mock.confirm = 1;
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html')).rejects.toThrow('password');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.html', 'incorrect password')).rejects.toThrow();
+    const before = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(before.entries.find((entry) => entry.path === 'Legacy.html')?.provenance).toBeUndefined();
+    const recovered = (await invoke(
+      IPC_CHANNELS.vaultAdoptEncrypted,
+      'Legacy.html',
+      'legacy note password',
+    )) as import('../shared/types').VaultInfo;
+    expect(recovered.entries.find((entry) => entry.path === 'Legacy.html')?.provenance).toBe('imported');
+    expect(await invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.html')).toBe('# Per-note secret');
+    expect(await readFile(path.join(mock.root, 'Legacy.html'), 'utf8')).toBe(ciphertext);
+  });
+
+  it('never adopts plaintext, malformed, foreign-key, changed, or unauthenticated notes', async () => {
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Topic.md')).rejects.toThrow('Only valid app-encrypted');
+    await writeFile(path.join(mock.root, 'Malformed.md'), '{"format":"a11ynotebook-encrypted-v1",');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Malformed.md')).rejects.toThrow('Only valid app-encrypted');
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, '../outside.md')).rejects.toThrow();
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const foreign = JSON.stringify(encryptRecord(Buffer.alloc(32, 7), 'note', 'foreign-note', '# Not authorized'));
+    await writeFile(path.join(mock.root, 'Foreign.md'), foreign);
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Foreign.md')).rejects.toThrow();
+    const encrypted = await encryptNoteWithPassword('legacy note password', '# Original', 'changed-note');
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Changed.md'), JSON.stringify(encrypted.record));
+    mock.derivationGate = async () => {
+      await writeFile(path.join(mock.root, 'Changed.md'), '# External replacement');
+    };
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Changed.md', 'legacy note password')).rejects.toThrow(
+      'changed',
+    );
+    const view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
+    expect(
+      view.entries
+        .filter((entry) => ['Topic.md', 'Malformed.md', 'Foreign.md', 'Changed.md'].includes(entry.path))
+        .every((entry) => !entry.provenance),
+    ).toBe(true);
+  });
+
+  it('preserves encrypted originals and wipes temporary keys when adoption metadata fails or locking revokes authentication', async () => {
+    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
+    const encrypted = await encryptNoteWithPassword('legacy note password', '# Original secret', 'legacy-failure-note');
+    const ciphertext = JSON.stringify(encrypted.record);
+    encrypted.key.fill(0);
+    await writeFile(path.join(mock.root, 'Legacy.md'), ciphertext);
+    mock.failProvenanceWrite = true;
+    await expect(invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.md', 'legacy note password')).rejects.toThrow(
+      'Origin metadata write failed',
+    );
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
+    mock.failProvenanceWrite = false;
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Legacy.md')).rejects.toThrow('password');
+    let entered!: () => void;
+    let release!: () => void;
+    const ready = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    mock.derivationGate = () => {
+      entered();
+      return new Promise<void>((resolve) => {
+        release = resolve;
+      });
+    };
+    const recovering = invoke(IPC_CHANNELS.vaultAdoptEncrypted, 'Legacy.md', 'legacy note password');
+    await ready;
+    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
+    release();
+    await Promise.all([expect(recovering).rejects.toThrow('lock state changed'), locking]);
+    expect(mock.derivedKeys.at(-1)?.every((byte) => byte === 0)).toBe(true);
+    expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
+  });
+
   it('persists and reloads reminder settings through IPC and migrates old settings defaults', async () => {
     const settings = {
       ...DEFAULT_SETTINGS,

@@ -9,6 +9,7 @@ import CreateReminderDialog from './CreateReminderDialog';
 import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../shared/reminder-defaults';
 
 export interface RemindersViewProps {
+  title?: string;
   reminders: Reminder[];
   notePaths: string[];
   onCreate: (input: CreateReminderInput) => void | Promise<unknown>;
@@ -21,6 +22,7 @@ export interface RemindersViewProps {
 }
 
 export default function RemindersView({
+  title: headingTitle = 'Reminders',
   reminders,
   notePaths,
   onCreate,
@@ -102,7 +104,7 @@ export default function RemindersView({
   );
   return (
     <section aria-labelledby={`${id}-heading`}>
-      <h2 id={`${id}-heading`}>Reminders</h2>
+      <h2 id={`${id}-heading`}>{headingTitle}</h2>
       <button type="button" disabled={notePaths.length === 0} onClick={() => setCreating(true)}>
         Create reminder
       </button>

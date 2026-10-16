@@ -44,6 +44,11 @@ function storedZip(entries: Record<string, string>) {
 }
 
 describe('PDF and ePub extraction', () => {
+  it('rejects encrypted ePub package metadata before an explicit managed import', () => {
+    const bytes = storedZip({ 'META-INF/encryption.xml': '<encryption/>' });
+    expect(() => extractEpubPages(bytes, { forImport: true })).toThrow('Protected ePub');
+  });
+
   it('extracts literal and hex PDF text operators', () => {
     const pdf = Buffer.from(
       '%PDF-1.7\n<< /Length 28 >>\nstream\nBT (Hello\\040world) Tj <00410042> Tj ET\nendstream\n',

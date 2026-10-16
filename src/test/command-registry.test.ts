@@ -63,6 +63,31 @@ describe('command registry', () => {
     expect(new Set(COMMANDS.map((command) => command.label)).size).toBe(COMMANDS.length);
   });
 
+  it('dispatches each contextual creation command once', () => {
+    const context = createContext({
+      newContextual: vi.fn(),
+      newLibrary: vi.fn(),
+      newNote: vi.fn(),
+      newTask: vi.fn(),
+      newAsset: vi.fn(),
+    });
+    for (const id of ['new-contextual', 'new-library', 'new-note', 'new-task', 'new-asset'] as const) {
+      expect(dispatchCommand(id, context)).toBeUndefined();
+    }
+    for (const callback of [
+      context.newContextual,
+      context.newLibrary,
+      context.newNote,
+      context.newTask,
+      context.newAsset,
+    ]) {
+      expect(callback).toHaveBeenCalledTimes(1);
+    }
+    expect(getKeyboardShortcuts().filter(({ shortcut }) => shortcut === 'Ctrl+N')).toEqual([
+      { commandId: 'new-contextual', label: 'New', shortcut: 'Ctrl+N' },
+    ]);
+  });
+
   it('keeps legacy command names searchable and the Ctrl+K palette shortcut active', () => {
     const openLibrary = getCommandById('open-vault');
     const commandSearch = getCommandById('command-search');
