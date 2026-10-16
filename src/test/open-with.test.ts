@@ -3,6 +3,7 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { openWithWindows } from '../../electron/vault/open-with';
+import { isExternalDocumentPath } from '../../electron/vault/external-documents';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -66,38 +67,19 @@ describe('Windows native Open With handoff', () => {
 describe('native Open With packaging contract', () => {
   it('allows common external-only documents while excluding executables, scripts, and shortcuts', async () => {
     const source = await readFile('native/windows/OpenWith.cs', 'utf8');
-    const extensions = [...source.matchAll(/case "(\.[a-z]+)":/g)].map((match) => match[1]).sort();
-    expect(extensions).toEqual(
-      [
-        '.md',
-        '.html',
-        '.htm',
-        '.txt',
-        '.csv',
-        '.pdf',
-        '.epub',
-        '.docx',
-        '.png',
-        '.jpg',
-        '.jpeg',
-        '.gif',
-        '.webp',
-        '.bmp',
-        '.json',
-        '.rtf',
-        '.doc',
-        '.xls',
-        '.xlsx',
-        '.ppt',
-        '.pptx',
-        '.odt',
-        '.ods',
-        '.odp',
-      ].sort(),
-    );
-    for (const extension of ['.exe', '.com', '.bat', '.cmd', '.ps1', '.js', '.vbs', '.lnk', '.url'])
+    const mainSource = await readFile('electron/vault/external-documents.ts', 'utf8');
+    const extensions = [...source.matchAll(/case "(\.[a-z0-9]+)":/g)].map((match) => match[1]).sort();
+    const approvedExtensions = [...mainSource.matchAll(/'(\.[a-z0-9]+)'/g)].map((match) => match[1]).sort();
+    expect(approvedExtensions.length).toBeGreaterThan(0);
+    expect(extensions).toEqual(approvedExtensions);
+    for (const extension of extensions) {
+      expect(isExternalDocumentPath(`Original${extension}`)).toBe(true);
+      expect(isExternalDocumentPath(`Original${extension.toUpperCase()}`)).toBe(true);
+    }
+    for (const extension of ['.exe', '.com', '.bat', '.cmd', '.ps1', '.js', '.vbs', '.lnk', '.url']) {
       expect(extensions).not.toContain(extension);
-    expect(source).toContain('return filename.EndsWith(".mindmap.json", StringComparison.OrdinalIgnoreCase);');
+      expect(isExternalDocumentPath(`Original${extension}`)).toBe(false);
+    }
     expect(source).toContain('default:\n                return false;');
     expect(source).toContain("file.ReadByte() == 'M' && file.ReadByte() == 'Z'");
   });

@@ -61,10 +61,11 @@ export function createProvenanceStore(resolver: MetadataResolver, liveIdentities
     const key = await identity(absolute);
     return key ? (records ?? (await snapshot(strict)))[key] : undefined;
   }
-  function record(absolute: string, origin: Provenance, assertCurrent?: () => void) {
+  function record(absolute: string, origin: Provenance, assertCurrent?: () => void, expectedIdentity?: string) {
     return serialize(async () => {
       if (origin !== 'created' && origin !== 'imported') throw new Error('Invalid document origin.');
       const key = await identity(absolute);
+      if (expectedIdentity && key !== expectedIdentity) throw new Error('The selected file changed. Retry the operation.');
       if (!key) return;
       let records = await snapshot(true);
       if (liveIdentities && Object.keys(records).length >= nextPruneAt) {

@@ -768,12 +768,27 @@ export default function App() {
       canContinue();
     selectEntry(entry);
     if (entry.kind !== 'notebook' && !isManagedEntry(entry)) {
-      if (!bridge.vault.openWith) {
-        setStatusMessage('Use Open With to choose an application for this external file.');
+      const encryptedLegacy =
+        entry.kind === 'note' &&
+        !assetRegistry.resolve(entry.path) &&
+        (await bridge.vault.isNoteEncrypted?.(entry.path));
+      if (!canOpen()) return;
+      if (encryptedLegacy) {
+        if (
+          !notePassword &&
+          !window.confirm(
+            'Open this legacy encrypted note using A11y Notebook’s existing unlock workflow? Its origin is unknown; decryption must authenticate successfully before any content is shown.',
+          )
+        )
+          return;
+      } else {
+        if (!bridge.vault.openWith) {
+          setStatusMessage('Use Open With to choose an application for this external file.');
+          return;
+        }
+        await bridge.vault.openWith(entry.path);
         return;
       }
-      await bridge.vault.openWith(entry.path);
-      return;
     }
     if (assetRegistry.resolve(entry.path)) {
       if (assetDirty || assetBusy) {
@@ -2132,6 +2147,7 @@ export default function App() {
   };
   const isCommandDisabled = (id: CommandId): boolean => {
     if (securityLocked || switchingVault) return true;
+    if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
     if (id === 'new-asset') return !vault || assetDirty || assetBusy;

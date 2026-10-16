@@ -27,14 +27,16 @@ internal static class OpenWith
         string extension = Path.GetExtension(filename).ToLowerInvariant();
         switch (extension)
         {
-            case ".md": case ".html": case ".htm": case ".txt": case ".csv":
+            case ".md": case ".markdown": case ".html": case ".htm": case ".txt":
+            case ".csv": case ".tsv": case ".log": case ".json": case ".xml":
+            case ".yaml": case ".yml": case ".toml": case ".ini": case ".rst":
+            case ".adoc": case ".tex": case ".mobi": case ".azw3":
             case ".pdf": case ".epub": case ".docx": case ".png": case ".jpg":
             case ".jpeg": case ".gif": case ".webp": case ".bmp":
             case ".rtf": case ".doc": case ".xls": case ".xlsx": case ".ppt":
-            case ".pptx": case ".odt": case ".ods": case ".odp":
+            case ".pptx": case ".odt": case ".ods": case ".odp": case ".odg":
+            case ".odf": case ".pages": case ".numbers": case ".key":
                 return true;
-            case ".json":
-                return filename.EndsWith(".mindmap.json", StringComparison.OrdinalIgnoreCase);
             default:
                 return false;
         }

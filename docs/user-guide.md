@@ -48,6 +48,9 @@ App creation and explicit import record provenance separately in `.a11ynotebook/
 document does not acquire an embedded app marker. File extensions and notebook membership alone do not establish
 origin. Existing libraries without these records remain readable on disk and are not automatically relabelled as
 app-created: legacy/unknown files require explicit import before opening internally.
+An exception preserves access to older encrypted libraries: a recognized encrypted-note envelope offers explicit
+confirmation to use the existing unlock workflow. Content is shown only after authenticated decryption succeeds;
+this does not silently classify other legacy files as app-created. Cancel leaves the encrypted file unchanged.
 
 For a compatible external file, use **Import into A11y Notebook** from its context menu to create a managed copy.
 The original is preserved. Markdown and HTML notes support reading and editing; supported text, image, PDF, ePub

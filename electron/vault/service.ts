@@ -342,6 +342,22 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     };
   }
 
+  async function adoptEncryptedNote(relativePath: string, expectedCiphertext: string, assertCurrent: () => void) {
+    assertCurrent();
+    assertVisibleCreationPath(relativePath);
+    const absolute = await resolveEntry(relativePath);
+    if (!isNotePath(relativePath)) throw new Error('Only encrypted Markdown and HTML notes can be recovered.');
+    const identity = await provenance.identity(absolute);
+    if (!identity) throw new Error('This filesystem cannot reliably identify the encrypted note for managed recovery.');
+    if ((await readNote(relativePath)) !== expectedCiphertext)
+      throw new Error('The encrypted note changed. Retry recovery.');
+    assertCurrent();
+    await provenance.record(absolute, 'imported', assertCurrent, identity);
+    const view = await getVault();
+    assertCurrent();
+    return view;
+  }
+
   async function createDocument(
     relativePath: string,
     content: string | Buffer,
@@ -658,6 +674,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     createNote,
     createDocument,
     preserveProvenance,
+    adoptEncryptedNote,
     pruneProvenance: (assertCurrent?: () => void) => provenance.prune(assertCurrent),
     renameEntry,
     moveEntry,

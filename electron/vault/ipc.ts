@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { lstat, mkdir, readFile, realpath, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -2176,6 +2176,58 @@ export function setupVaultIpc(
     const result = await importSelectedEntry(event, relativePath);
     if (!result) throw new Error('Import cancelled. The original document was not changed.');
     return result;
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultAdoptEncrypted, async (event, relativePath: unknown, password: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string' || (password !== undefined && typeof password !== 'string'))
+      throw new Error('Invalid encrypted-note recovery request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const ciphertext = await access.vault.readNote(relativePath);
+      let envelope: unknown;
+      try { envelope = JSON.parse(ciphertext); } catch {
+        throw new Error('Only valid app-encrypted notes can use legacy recovery.');
+      }
+      if (!isEncryptedRecord(envelope) && !isPasswordEncryptedNote(envelope))
+        throw new Error('Only valid app-encrypted notes can use legacy recovery. Plaintext originals must be explicitly imported.');
+      access.assertCurrent();
+      const consent = await dialog.showMessageBox({
+        type: 'question',
+        title: 'Recover legacy encrypted note',
+        message: `Open “${relativePath}” as a managed encrypted note?`,
+        detail: 'The existing library key or note password must authenticate this app-encrypted note. Its ciphertext and encryption rules will remain unchanged; only an explicit imported-origin record is added.',
+        buttons: ['Cancel', 'Authenticate and recover'], defaultId: 0, cancelId: 0, noLink: true,
+      });
+      access.assertCurrent();
+      if (consent.response !== 1) return null;
+      let derivedKey: Buffer | undefined;
+      try {
+        if (isPasswordEncryptedNote(envelope)) {
+          const cached = noteKeys.get(envelope.id);
+          if (cached) decryptPasswordEncryptedNote(cached, envelope);
+          else {
+            if (password === undefined) throw new Error('Enter this note’s password to recover it.');
+            const unlocked = await unlockPasswordEncryptedNote(password, envelope);
+            derivedKey = unlocked.key;
+          }
+        } else {
+          if (!masterKey) throw new Error('Unlock the original library before recovering this vault-encrypted note.');
+          readVaultEncryptedNote(envelope);
+        }
+        access.assertCurrent();
+        const view = await access.vault.adoptEncryptedNote(relativePath, ciphertext, access.assertCurrent);
+        access.assertCurrent();
+        if (derivedKey && isPasswordEncryptedNote(envelope)) {
+          noteKeys.get(envelope.id)?.fill(0);
+          noteKeys.set(envelope.id, derivedKey);
+          derivedKey = undefined;
+        }
+        return view;
+      } finally {
+        derivedKey?.fill(0);
+      }
+    });
   });
   ipcMain.handle(IPC_CHANNELS.vaultDelete, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

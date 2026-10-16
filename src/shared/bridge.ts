@@ -102,6 +102,7 @@ export interface VaultBridge {
   importFile(notebookPath: string): Promise<VaultInfo | null>;
   importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
   importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
+  adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
   toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;

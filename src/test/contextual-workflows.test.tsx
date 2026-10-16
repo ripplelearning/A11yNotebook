@@ -10,6 +10,7 @@ import { vaultExtensions } from './vault-extensions';
 afterEach(() => {
   delete window.a11yNotebook;
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settings?: Partial<NotebookSettings> } = {}) {
@@ -60,7 +61,7 @@ function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settin
       createNote: vi.fn(async () => vault),
       createNotebook: vi.fn(async () => vault),
       openWith: vi.fn(async () => ({ cancelled: false })),
-      importAsNote: vi.fn(),
+      importEntry: vi.fn(),
     },
   };
   window.a11yNotebook = bridge as unknown as NotebookBridge;
@@ -399,6 +400,44 @@ describe('contextual shell workflows', () => {
     await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('External.md', { makeDefault: true }));
   });
 
+  it('keeps non-note views read-only even when the default note preference is Edit', async () => {
+    setup({ mode: 'edit' });
+    await screen.findByRole('heading', { name: 'Study' });
+    for (const key of ['0', '1', '2', '3', '4', '5']) {
+      shortcut(key);
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
+      expect(screen.getByRole('button', { name: 'Toggle read-only/edit mode' })).toBeDisabled();
+    }
+    shortcut('e');
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent('no note editor');
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
+  });
+
+  it.each(['pdf', 'docx', 'txt'])(
+    'never offers an editor for managed %s previews under default Edit',
+    async (extension) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => new Promise(() => {})),
+      );
+      const path = `Guide.${extension}`;
+      const { bridge } = setup({
+        mode: 'edit',
+        entries: [{ name: path, path, kind: 'attachment', provenance: 'imported' }],
+      });
+      bridge.vault.readAttachment.mockResolvedValue({ path, kind: `.${extension}`, text: 'Read-only preview' });
+      await screen.findByRole('heading', { name: 'Study' });
+      fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(`Guide\\.${extension}`) }));
+      await screen.findByRole('tab', { name: path });
+      expect(screen.getByRole('button', { name: 'Toggle read-only/edit mode' })).toBeDisabled();
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
+      shortcut('e');
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent('no note editor');
+      expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
+      expect(screen.queryByRole('textbox', { name: 'HTML source' })).not.toBeInTheDocument();
+    },
+  );
+
   it('keeps the tab panel labelled when note paths contain spaces and punctuation', async () => {
     setup({ entries: [{ name: 'A plan #1.md', path: 'A plan #1.md', kind: 'note', provenance: 'created' }] });
     await screen.findByRole('heading', { name: 'Study' });
@@ -411,7 +450,7 @@ describe('contextual shell workflows', () => {
     const { bridge, vault } = setup({
       entries: [{ name: 'External.md', path: 'External.md', kind: 'attachment', provenance: 'unknown' }],
     });
-    bridge.vault.importAsNote.mockResolvedValue({
+    bridge.vault.importEntry.mockResolvedValue({
       vault: {
         ...vault,
         entries: [...vault.entries, { name: 'Imported.md', path: 'Imported.md', kind: 'note', provenance: 'imported' }],
@@ -421,7 +460,7 @@ describe('contextual shell workflows', () => {
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: /External\.md/ }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Import into A11y Notebook…' }));
-    await waitFor(() => expect(bridge.vault.importAsNote).toHaveBeenCalledWith('External.md'));
+    await waitFor(() => expect(bridge.vault.importEntry).toHaveBeenCalledWith('External.md'));
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledWith('Imported.md', undefined));
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
     expect(screen.getByRole('treeitem', { name: /External\.md/ })).toBeInTheDocument();
@@ -434,7 +473,7 @@ describe('contextual shell workflows', () => {
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: /Program\.exe/ }));
     expect(screen.queryByRole('menuitem', { name: 'Import into A11y Notebook…' })).not.toBeInTheDocument();
-    expect(bridge.vault.importAsNote).not.toHaveBeenCalled();
+    expect(bridge.vault.importEntry).not.toHaveBeenCalled();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
   });
 });

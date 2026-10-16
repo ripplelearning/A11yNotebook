@@ -8,13 +8,21 @@ import { DEFAULT_SETTINGS } from '../shared/settings';
 
 afterEach(() => {
   delete window.a11yNotebook;
+  vi.restoreAllMocks();
 });
 
 function setup(hasLibrary = true, editByDefault = false) {
   const vault: VaultInfo = {
     path: '/study',
     name: 'Study',
-    entries: [{ name: 'Research', path: 'Research', kind: 'notebook', children: [] }],
+    entries: [
+      {
+        name: 'Research',
+        path: 'Research',
+        kind: 'notebook',
+        children: [{ name: 'Legacy.md', path: 'Research/Legacy.md', kind: 'note' }],
+      },
+    ],
   };
   window.a11yNotebook = {
     onMenuCommand: vi.fn(() => () => undefined),
@@ -127,5 +135,23 @@ describe('contextual navigation names and repeated focus', () => {
     expect(input).toHaveFocus();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(screen.getByRole('tabpanel', { name: 'Welcome' })).toBeInTheDocument();
+  });
+
+  it('requires explicit consent before using the existing encrypted-note unlock path for legacy files', async () => {
+    setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    const vault = window.a11yNotebook!.vault;
+    vault.isNoteEncrypted = vi.fn(async () => true);
+    vault.readNote = vi.fn(async () => '# Recovered');
+    const consent = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    navigate('3');
+    const file = screen.getByRole('gridcell', { name: 'Legacy.md' });
+    fireEvent.keyDown(file, { key: 'Enter' });
+    await waitFor(() => expect(consent).toHaveBeenCalledOnce());
+    expect(vault.readNote).not.toHaveBeenCalled();
+    consent.mockReturnValue(true);
+    fireEvent.keyDown(file, { key: 'Enter' });
+    await screen.findByRole('heading', { name: 'Legacy', level: 2 });
+    expect(vault.readNote).toHaveBeenCalledWith('Research/Legacy.md', undefined);
   });
 });
