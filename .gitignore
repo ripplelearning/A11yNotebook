@@ -8,6 +8,7 @@ release/
 out/
 .vite/
 coverage/
+.test-tmp/
 *.tsbuildinfo
 
 # Logs

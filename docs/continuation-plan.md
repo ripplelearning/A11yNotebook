@@ -5,10 +5,10 @@ Main includes scoped sensitive-action auditing, milestone planning UI, and local
 Remaining phases require focused implementations, tests, reviews, and accessibility
 validation. Do not combine unrelated data migrations or infer that a feature is complete from roadmap scaffolding.
 
-## Delivered here — opt-in vault recovery ✅
+## Delivered here — opt-in library recovery ✅
 
 - Legacy version-1 password records continue to unlock unchanged. Recovery is never enabled implicitly.
-- After confirming the existing password in an unlocked vault, the user can generate a 256-bit random recovery key,
+- After confirming the existing password in an unlocked library, the user can generate a 256-bit random recovery key,
   save it separately, and explicitly acknowledge saving it. It is displayed once in an accessible read-only field;
   the app does not copy, persist, or log the recovery secret.
 - Current version 3 wraps a fresh random data key independently with the existing scrypt-derived password key and the
@@ -16,12 +16,12 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
   bounds, and an authenticated config manifest. The manifest binds recovery-wrapper fields and credential presence;
   credential and legacy-key envelopes authenticate their own ciphertext.
 - The atomic `security.json` replacement is the migration commit boundary. It contains the re-encrypted credentials and
-  a wrapped prior vault key for legacy vault-key-encrypted notes. The old encrypted credential file is removed after
-  commit. A durable cleanup marker causes startup to retry cleanup before exposing the vault; a cleanup failure locks
-  the vault. A failure before the commit preserves the old security record and credentials.
-- Recovery resets the vault password, preserves credentials and vault-key-encrypted notes, and rejects the old
+  a wrapped prior library key for legacy library-key-encrypted notes. The old encrypted credential file is removed after
+  commit. A durable cleanup marker causes startup to retry cleanup before exposing the library; a cleanup failure locks
+  the library. A failure before the commit preserves the old security record and credentials.
+- Recovery resets the library password, preserves credentials and library-key-encrypted notes, and rejects the old
   password. Users can rotate or revoke recovery after confirming their current password. Independently
-  password-encrypted notes are deliberately not recoverable through the vault recovery key.
+  password-encrypted notes are deliberately not recoverable through the library recovery key.
 - Derived keys and data keys remain in the main process. Recovery keys are user-facing secrets and are shown to the
   renderer only for explicit saving/acknowledgment and user-initiated recovery.
 
@@ -34,14 +34,14 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
    speech/focus still needs Windows AT verification; an audit viewer and comprehensive automatic-lock/event history
    are not implemented.
 2. **Scoped annotation/checkpoint protection — implemented; broader indexes/metadata remain open.** Explicit consent
-   in an unlocked version-3 vault enables main-process authenticated per-store ciphertext and security-pointer
+   in an unlocked version-3 library enables main-process authenticated per-store ciphertext and security-pointer
    migration, with cleanup retry and no protected plaintext fallback. Markdown/HTML/PDF annotations and cognitive
    checkpoints are included; DOCX annotations do not exist. Search/link indexes, bookmarks, reminders/defaults,
    schedules, settings, milestones, descriptions, source files, filenames and exports remain plaintext.
    The verified baseline inventory and scoped threat model are in `security.md`. Broader protection still requires
    direct `service.ts` link/bookmark writers, `search.ts` cache/startup/watch writers, both settings copies and global
    preferences to be addressed. Actual data-key rotation (not recovery-key rotation) remains open.
-3. **Whole-vault encryption — open design and implementation.** This is a separate opt-in storage mode, not password
+3. **Whole-library encryption — open design and implementation.** This is a separate opt-in storage mode, not password
    gating. Before implementation, specify threat model and behavior for ordinary-file interoperability, filenames and
    attachments, external editors/watchers, search, export, lock, migration, and recovery. Require a bounded authenticated
    streaming/container format and a safe resumable migration with explicit rollback and crash-restart tests. Do not
@@ -57,10 +57,10 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 - Already implemented in-process: shared main-process scheduler, due summaries, consent/privacy choices, deduplication, and switch/lock
   behavior across reminders and due flashcard reviews. Explicitly distinguish a closed window from an exited process.
 - In-app alerts use this scheduler with persisted Settings choices, bundled sound, focused-only accessible dialogs,
-  queued reminders, Mark Complete/Dismiss/Snooze actions, all requested snooze intervals, privacy and vault cancellation.
+  queued reminders, Mark Complete/Dismiss/Snooze actions, all requested snooze intervals, privacy and library cancellation.
   Native notifications are independent. Escape/Later closes without reminder dismissal.
 - **Partial — exact remaining acceptance criterion:** retain a privacy-safe due-event snapshot in the existing
-  scheduler while locked, play configured sound and queue a generic “A reminder is due. Unlock the vault to view it.”
+  scheduler while locked, play configured sound and queue a generic “A reminder is due. Unlock the library to view it.”
   alert without reading/revealing titles. Current locking stops the scheduler, clears alerts/audio and catches up
   only after unlock. Add locked+unfocused sound/dialog and lock-during-delivery race tests before claiming this complete.
 - **Manual validation needed:** real Windows unfocused/minimized audio, queue focus transfer/return and
@@ -157,7 +157,7 @@ Before claiming implementation:
   ledger before concurrent helper/app startup can claim notifications. Existing in-process dedup alone is insufficient.
 - Encrypted schedules cannot be decrypted after exit without an unlocked main-process key. Prefer an explicitly
   consented generic “Open A11y Notebook to check reminders” wake-up with no persisted sensitive schedule, or explicitly
-  document no per-reminder delivery for protected vaults. Never persist credentials to bypass locking. Specify vault
+  document no per-reminder delivery for protected libraries. Never persist credentials to bypass locking. Specify library
   switch/lock behavior, task cancellation, reboot and app/helper coordination before exporting even generic wake times.
 - Add mocked OS tests for malicious arguments/paths/XML, failed registration/updates/unregister, consent cancellation,
   duplicate helpers, lease crash/restart, changed installation paths and locked/encrypted schedules. Mocks do not

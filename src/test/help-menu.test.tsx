@@ -5,6 +5,8 @@ import type { NotebookBridge } from '../shared/bridge';
 import { vaultExtensions } from './vault-extensions';
 import type { MenuCommand } from '../shared/ipc';
 import type { UpdaterStatus } from '../shared/updater';
+import { KeyboardShortcutsDialog } from '../renderer/components/HelpDialogs';
+import { getKeyboardShortcuts } from '../shared/command-registry';
 
 function installBridge() {
   let statusListener: ((status: UpdaterStatus) => void) | null = null;
@@ -94,6 +96,20 @@ describe('Help menu', () => {
     expect(within(dialog).getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
+    const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
+    expect(within(searchRow).getByRole('cell', { name: 'Alt+Q' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('cell', { name: 'Ctrl+L' })).not.toBeInTheDocument();
+    for (const { label, shortcut } of getKeyboardShortcuts()) {
+      expect(within(dialog).getByRole('row', { name: `${label} ${shortcut}` })).toBeInTheDocument();
+    }
+  });
+
+  it('shows the active search shortcut when customized instead of the default', () => {
+    render(<KeyboardShortcutsDialog onClose={() => undefined} shortcuts={{ 'focus-search': 'Alt+W' }} />);
+    const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
+    const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
+    expect(within(searchRow).getByRole('cell', { name: 'Alt+W' })).toBeInTheDocument();
+    expect(within(dialog).queryByRole('cell', { name: 'Alt+Q' })).not.toBeInTheDocument();
   });
 
   it('uses the accessible notebook-name dialog from both notebook entry points', async () => {

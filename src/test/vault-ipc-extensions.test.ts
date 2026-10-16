@@ -705,7 +705,7 @@ describe('extended vault IPC integration', () => {
     });
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
     await invoke(IPC_CHANNELS.vaultSecurityLock);
-    for (const channel of channels) await expect(invoke(channel)).rejects.toThrow('Unlock the vault');
+    for (const channel of channels) await expect(invoke(channel)).rejects.toThrow('Unlock the library');
   });
 
   it('enforces privacy and notification preferences for task reminders', async () => {
@@ -799,7 +799,7 @@ describe('extended vault IPC integration', () => {
       invoke(IPC_CHANNELS.vaultMilestoneUpdate, milestone.id, { title: 'Not permitted' }),
       invoke(IPC_CHANNELS.vaultMilestoneDelete, milestone.id),
     ];
-    await Promise.all([locking, ...queued.map((request) => expect(request).rejects.toThrow('Unlock the vault'))]);
+    await Promise.all([locking, ...queued.map((request) => expect(request).rejects.toThrow('Unlock the library'))]);
     await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'phase-five-test-password');
     expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([milestone]);
   });
@@ -988,10 +988,12 @@ describe('extended vault IPC integration', () => {
     });
     expect(((await invoke(IPC_CHANNELS.vaultGet)) as { entries: unknown[] }).entries).toEqual([]);
     await writeFile(path.join(mock.root, 'Private.png'), new Uint8Array([1, 2, 3]));
-    expect((await mock.protocol!({ url: 'vault-file://attachment/Private.png' })).status).toBe(423);
-    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/Unlock the vault/);
+    const lockedPreview = await mock.protocol!({ url: 'vault-file://attachment/Private.png' });
+    expect(lockedPreview.status).toBe(423);
+    expect(await lockedPreview.text()).toBe('Library is locked.');
+    await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).rejects.toThrow(/Unlock the library/);
     await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'wrong password')).rejects.toThrow(
-      /Incorrect vault password/,
+      /Incorrect library password/,
     );
     const reopened = await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery');
     expect(reopened).toEqual(expect.objectContaining({ path: mock.root }));
@@ -1217,7 +1219,7 @@ describe('extended vault IPC integration', () => {
     await writeFile(path.join(mock.root, 'Legacy.md'), JSON.stringify(encryptedNote));
 
     await expect(invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'wrong password')).rejects.toThrow(
-      /Incorrect vault password/,
+      /Incorrect library password/,
     );
     await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
     await invoke(IPC_CHANNELS.vaultSecurityAcknowledgeRecovery, false);
@@ -1246,7 +1248,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultSecurityRecover, 'malformed', 'new vault password')).rejects.toThrow();
     await invoke(IPC_CHANNELS.vaultSecurityRecover, recoveryKey, 'new vault password');
     await expect(invoke(IPC_CHANNELS.vaultSecurityUnlock, 'correct horse battery')).rejects.toThrow(
-      /Incorrect vault password/,
+      /Incorrect library password/,
     );
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
@@ -1396,7 +1398,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 'http://127.0.0.1/', '', 'markdown')).rejects.toThrow(/HTTPS/);
     await expect(
       invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '../outside', 'markdown'),
-    ).rejects.toThrow(/valid inside this vault/);
+    ).rejects.toThrow(/valid inside this library/);
     await expect(invoke(IPC_CHANNELS.vaultCaptureWeb, 42, '', 'markdown')).rejects.toThrow(
       /Invalid web capture request/,
     );
@@ -1465,12 +1467,12 @@ describe('extended vault IPC integration', () => {
       text: '',
     });
     await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, '../outside.docx')).rejects.toThrow(
-      'not valid inside this vault',
+      'not valid inside this library',
     );
     await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, 'Guide.docx')).rejects.toThrow(/malformed|truncated/i);
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'docx-lock-test-password');
     await invoke(IPC_CHANNELS.vaultSecurityLock);
-    await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, 'Guide.docx')).rejects.toThrow('Unlock the vault');
+    await expect(invoke(IPC_CHANNELS.vaultReadDocxStructure, 'Guide.docx')).rejects.toThrow('Unlock the library');
   });
   it('persists assets and schedules but rejects changed-deck ratings', async () => {
     await invoke(IPC_CHANNELS.vaultAssetCreate, 'Study.cards.md', 'Q :: A\n');

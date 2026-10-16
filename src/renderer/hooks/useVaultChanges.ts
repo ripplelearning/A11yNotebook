@@ -55,7 +55,7 @@ export function useVaultChanges(
           }
         }
       } catch {
-        announce('Could not refresh external vault changes. Your unsaved edits are preserved.');
+        announce('Could not refresh external library changes. Your unsaved edits are preserved.');
       } finally {
         operations.current -= 1;
         if (!operations.current) setChecking(false);
@@ -73,7 +73,7 @@ export function useVaultChanges(
     return bridge.onChanged((event) => {
       if (event.vaultPath !== rootRef.current) return;
       setChecking(true);
-      queue = queue.then(() => checkDisk()).catch(() => announce('Could not synchronize the vault.'));
+      queue = queue.then(() => checkDisk()).catch(() => announce('Could not synchronize the library.'));
     });
   }, [vaultPath, checkDisk, announce]);
 

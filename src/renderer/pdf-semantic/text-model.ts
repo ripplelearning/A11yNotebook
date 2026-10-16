@@ -296,7 +296,7 @@ export class TextModel {
         classification: 'orphan',
         confidence: 'uncertain',
         verification: 'unverified',
-        reason: 'PDF vault path does not match the annotation document identity.',
+        reason: 'PDF library path does not match the annotation document identity.',
       };
     }
     const changed = this.identity.fileHash !== target.documentIdentity.fileHash;

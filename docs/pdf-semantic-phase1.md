@@ -56,7 +56,7 @@ parser and its navigation behavior remain unchanged.
 
 ## Current boundary
 
-The PDF itself remains read-only; annotations are separate vault metadata.
+The PDF itself remains read-only; annotations are separate library metadata.
 Browser screen-reader verification and detailed alignment checks for unusual
 PDF fonts/layouts still require manual testing.
 
@@ -89,7 +89,7 @@ retain their expected behavior.
 
 ## Phases 3–4 — Stable anchors and accessible notes
 
-PDF targets store PDF.js fingerprint, SHA-256 file hash, vault-relative path,
+PDF targets store PDF.js fingerprint, SHA-256 file hash, library-relative path,
 one-based page, canonical UTF-16 range, original quote, normalized search quote,
 and surrounding context. The metadata envelope is version 2; PDF, Markdown,
 and HTML contracts are independently versioned at 1. Existing Markdown/HTML

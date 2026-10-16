@@ -1,6 +1,6 @@
 export const sampleVault = {
   id: 'vault-1',
-  name: 'Personal Knowledge Vault',
+  name: 'Personal Knowledge Library',
   description: 'Local-first home for notes, tasks, bookmarks, and documents.',
 };
 
@@ -13,7 +13,7 @@ export const sampleNotebook = {
       title: 'Welcome',
       summary: 'First-access overview and accessibility foundation.',
       content:
-        'Welcome to A11y Notebook. This foundation provides the shell, commands, and local persistence boundary needed for future vault features.',
+        'Welcome to A11y Notebook. This foundation provides the shell, commands, and local persistence boundary needed for future library features.',
     },
   ],
 };

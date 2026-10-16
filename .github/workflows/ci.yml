@@ -40,4 +40,39 @@ jobs:
 
       - name: Package Windows installer without publishing
         if: runner.os == 'Windows'
-        run: npm run package:win
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $channel = if ($version -match '-rc\.') { 'rc' } else { 'latest' }
+          npm run package:win -- --config.publish.channel=$channel --config.generateUpdatesFilesForAllChannels=false
+
+      - name: Record Windows candidate source and checksums
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $commit = git rev-parse HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to determine build source.' }
+          [ordered]@{
+            commit = $commit
+            version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+            run = "$env:GITHUB_SERVER_URL/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID"
+            releaseTag = $null
+            status = 'PR/CI test build, not an exact-tag release; signing not verified'
+          } | ConvertTo-Json | Set-Content release/provenance.json
+          Get-ChildItem release -File | Where-Object { $_.Extension -in @('.exe', '.blockmap', '.yml', '.json') } | ForEach-Object {
+            if ($_.Length -eq 0) { throw "Empty build artifact: $($_.Name)" }
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content release/SHA256SUMS.txt
+
+      - name: Upload downloadable Windows test build
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: windows-test-build
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/provenance.json
+            release/SHA256SUMS.txt
+          if-no-files-found: error

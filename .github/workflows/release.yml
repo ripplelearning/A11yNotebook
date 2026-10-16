@@ -1,38 +1,58 @@
 name: Release
 
-# Publishes the Windows installer to a GitHub Release when a version tag is pushed.
-# Installed copies of A11y Notebook find it through Help → Check for Updates.
 on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing merged version tag (for example v1.1.2-rc.1); never a branch'
+        required: true
+        type: string
 
 permissions:
   contents: write
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 jobs:
   release-windows:
     runs-on: windows-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
     steps:
+      - name: Validate tag input
+        shell: pwsh
+        run: |
+          if ($env:RELEASE_TAG -notmatch '^v\d+\.\d+\.\d+(-rc\.\d+)?$') {
+            throw 'Use an exact vX.Y.Z or vX.Y.Z-rc.N tag.'
+          }
+
       - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - name: Verify tag matches package.json version
-        shell: bash
+      - name: Verify exact merged tag and unused release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          PACKAGE_VERSION="v$(node -p "require('./package.json').version")"
-          if [ "$PACKAGE_VERSION" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $PACKAGE_VERSION. Bump the version before tagging."
-            exit 1
-          fi
+          node scripts/verify-release.mjs tag "$env:RELEASE_TAG"
+          if ($LASTEXITCODE -ne 0) { throw 'Tag verification failed.' }
+          git merge-base --is-ancestor HEAD origin/main
+          if ($LASTEXITCODE -ne 0) { throw 'Release source must already be merged into main.' }
+          $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases" --jq '.[].tag_name'
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing releases.' }
+          if ($tags -contains $env:RELEASE_TAG) { throw 'Release already exists; never overwrite assets.' }
 
       - name: Install dependencies
         run: npm ci
@@ -46,31 +66,151 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build and publish Windows installer
-        run: npm run release:win
+      - name: Verify release-tool formatting and generated shortcuts
+        shell: pwsh
+        run: |
+          npx prettier --check .github/workflows/ci.yml .github/workflows/release.yml scripts/verify-release.mjs src/test/release-validation.test.ts docs/updater.md package.json package-lock.json
+          if ($LASTEXITCODE -ne 0) { throw 'Formatting failed.' }
+          npm run docs:shortcuts
+          if ($LASTEXITCODE -ne 0) { throw 'Shortcut generation failed.' }
+          git diff --exit-code -- docs/keyboard-shortcuts.md
+          if ($LASTEXITCODE -ne 0) { throw 'Generated shortcuts are stale.' }
+
+      - name: Require signing credentials for stable releases
+        shell: pwsh
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: |
+          if ($env:RELEASE_TAG -notmatch '-rc\.' -and !$env:CSC_LINK) {
+            throw 'Stable releases require owner-provisioned signing credentials.'
+          }
+          if ($env:CSC_LINK) {
+            "FORCE_SIGNING=true" >> $env:GITHUB_ENV
+          } else {
+            "FORCE_SIGNING=false" >> $env:GITHUB_ENV
+          }
+          $channel = if ($env:RELEASE_TAG -match '-rc\.') { 'rc' } else { 'latest' }
+          "UPDATE_CHANNEL=$channel" >> $env:GITHUB_ENV
+
+      - name: Build and package without publishing
+        run: npm run package:win -- --config.forceCodeSigning=${{ env.FORCE_SIGNING }} --config.generateUpdatesFilesForAllChannels=false --config.publish.channel=${{ env.UPDATE_CHANNEL }}
+        env:
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
 
-      - name: Verify published release assets
+      - name: Verify Authenticode signatures
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $paths = @(
+            "release/A11y-Notebook-Setup-$version.exe",
+            "release/A11y-Notebook-Portable-$version.exe",
+            'release/win-unpacked/A11y Notebook.exe'
+          )
+          $signatures = foreach ($path in $paths) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $path
+            if ($env:FORCE_SIGNING -eq 'true' -and $signature.Status -ne 'Valid') {
+              throw "Signature verification failed: $path ($($signature.Status))"
+            }
+            if ($env:FORCE_SIGNING -eq 'false' -and $signature.Status -ne 'NotSigned') {
+              throw "Unexpected signature status: $path ($($signature.Status))"
+            }
+            [ordered]@{
+              file = $path
+              status = "$($signature.Status)"
+              subject = $signature.SignerCertificate.Subject
+              thumbprint = $signature.SignerCertificate.Thumbprint
+            }
+          }
+          ConvertTo-Json -InputObject @($signatures) | Set-Content release/signatures.json
+          if ($env:FORCE_SIGNING -eq 'true') {
+            $updateConfig = Get-Content 'release/win-unpacked/resources/app-update.yml' -Raw
+            if ($updateConfig -notmatch '(?m)^publisherName:') {
+              throw 'Signed app must retain publisher verification in its updater configuration.'
+            }
+          }
+
+      - name: Verify artifacts and record provenance
+        run: node scripts/verify-release.mjs artifacts "${{ env.RELEASE_TAG }}"
+
+      - name: Windows desktop UI Automation smoke
+        id: uia
+        continue-on-error: true
+        run: npm run test:ui-smoke
+
+      - name: Installed upgrade smoke (not updater E2E)
+        id: upgrade
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          ./scripts/windows-installed-upgrade.ps1 -CandidateInstallerPath "release/A11y-Notebook-Setup-$version.exe" -CandidateVersion $version
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Record desktop validation outcomes
+        shell: pwsh
+        env:
+          UIA_OUTCOME: ${{ steps.uia.outcome }}
+          UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
+        run: |
+          [ordered]@{
+            uiAutomation = $env:UIA_OUTCOME
+            installerOverInstall = $env:UPGRADE_OUTCOME
+            updaterEndToEnd = 'not exercised; stable clients do not opt into RC updates'
+          } | ConvertTo-Json | Set-Content release/desktop-validation.json
+          "$((Get-FileHash release/desktop-validation.json -Algorithm SHA256).Hash.ToLower())  desktop-validation.json" | Add-Content release/SHA256SUMS.txt
+          Get-Content release/desktop-validation.json >> $env:GITHUB_STEP_SUMMARY
+
+      - name: Retain verified build even if publication fails
+        uses: actions/upload-artifact@v4.6.2
+        with:
+          name: windows-${{ env.RELEASE_TAG }}
+          path: |
+            release/*.exe
+            release/*.blockmap
+            release/*.yml
+            release/SHA256SUMS.txt
+            release/provenance.json
+            release/signatures.json
+            release/desktop-validation.json
+          if-no-files-found: error
+
+      - name: Require passing desktop checks for stable promotion
+        if: ${{ !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
+        run: throw 'Stable promotion requires passing Windows desktop validation.'
+
+      - name: Publish new release only after validation
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UIA_OUTCOME: ${{ steps.uia.outcome }}
+          UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
-          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
-          $json = gh release view "$env:GITHUB_REF_NAME" --repo "$env:GITHUB_REPOSITORY" --json isDraft,assets
-          if ($LASTEXITCODE -ne 0) { throw "Could not read the published release." }
-          $release = $json | ConvertFrom-Json
-          if ($release.isDraft) { throw "Release is still a draft; the updater cannot discover it." }
-          $required = @(
-            "A11y-Notebook-Setup-$version.exe",
-            "A11y-Notebook-Setup-$version.exe.blockmap",
-            "A11y-Notebook-Portable-$version.exe",
-            "latest.yml"
-          )
-          foreach ($name in $required) {
-            $asset = $release.assets | Where-Object { $_.name -eq $name }
-            if (!$asset -or $asset.size -le 0) { throw "Release asset missing or empty: $name" }
-            Write-Host "Verified release asset: $name ($($asset.size) bytes)"
+          $rc = $env:RELEASE_TAG -match '-rc\.'
+          $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } else { 'UNSIGNED test candidate; Windows may display SmartScreen warnings' }
+          $notes = @"
+          $trust.
+
+          Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
+          Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
+          Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs; failures remain open and do not prevent downloading this RC for testing.
+          Installer-over-install is NOT full updater E2E. No prerelease opt-in or signature-policy bypass was added.
+          Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
+          "@
+          $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
+          $assets = Get-ChildItem release -File | Where-Object {
+            $_.Name -match '\.(exe|blockmap|yml)$' -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
+          } | ForEach-Object FullName
+          $options = if ($rc) { @('--prerelease', '--latest=false') } else { @('--latest') }
+          gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" @options @assets
+          if ($LASTEXITCODE -ne 0) { throw 'Publication failed; do not overwrite an existing release.' }
+          $release = gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets,url | ConvertFrom-Json
+          if ($LASTEXITCODE -ne 0 -or $release.isDraft -or $release.isPrerelease -ne $rc) { throw 'Published release state is incorrect.' }
+          foreach ($path in $assets) {
+            $file = Get-Item $path
+            $asset = $release.assets | Where-Object name -eq $file.Name
+            if (!$asset -or $asset.size -ne $file.Length) { throw "Published asset missing or wrong size: $($file.Name)" }
           }
+          "Download: $($release.url)" >> $env:GITHUB_STEP_SUMMARY

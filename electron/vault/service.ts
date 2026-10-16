@@ -34,12 +34,12 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   function initialize(): Promise<VaultInfo> {
-    if (disposed) return Promise.reject(new Error('This vault is closed.'));
+    if (disposed) return Promise.reject(new Error('This library is closed.'));
     if (initialization) return initialization;
     initialization = (async () => {
       root = await realpath(vaultPath);
       const stat = await lstat(root);
-      if (!stat.isDirectory()) throw new Error('Vault must be a folder.');
+      if (!stat.isDirectory()) throw new Error('Library must be a folder.');
       await ensureMetadataDirectory(root);
       searchIndex = createSearchIndex(root);
       await searchIndex.initialize();
@@ -57,17 +57,17 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   async function refreshSearchIndex() {
-    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    if (!searchIndex || disposed) throw new Error('Open a library first.');
     await searchIndex.refresh();
   }
 
   async function search(query: unknown) {
-    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    if (!searchIndex || disposed) throw new Error('Open a library first.');
     return searchIndex.search(query);
   }
 
   async function getTags(): Promise<string[]> {
-    if (!searchIndex || disposed) throw new Error('Open a vault first.');
+    if (!searchIndex || disposed) throw new Error('Open a library first.');
     return searchIndex.getTags();
   }
 
@@ -75,7 +75,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     callback: (event: VaultChangedEvent) => void | Promise<void>,
     onError?: (error: unknown) => void,
   ): Promise<void> {
-    if (!searchIndex || disposed) return Promise.reject(new Error('Open a vault first.'));
+    if (!searchIndex || disposed) return Promise.reject(new Error('Open a library first.'));
     if (typeof callback !== 'function') return Promise.reject(new Error('A change callback is required.'));
     if (onError !== undefined && typeof onError !== 'function')
       return Promise.reject(new Error('Invalid watcher error callback.'));
@@ -106,7 +106,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   async function resolveMetadata(name: string, allowMissing = false): Promise<string> {
-    if (!root || disposed) throw new Error('Open a vault first.');
+    if (!root || disposed) throw new Error('Open a library first.');
     if (typeof name !== 'string' || !name || name === '.' || name === '..' || /[\\/\0:]/.test(name)) {
       throw new Error('Enter a valid metadata filename without folder separators.');
     }
@@ -115,7 +115,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   async function resolveEntry(relativePath: string, allowMissing = false) {
-    if (!root || disposed) throw new Error('Open a vault first.');
+    if (!root || disposed) throw new Error('Open a library first.');
     if (
       typeof relativePath !== 'string' ||
       !relativePath ||
@@ -124,7 +124,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       relativePath.split(/[\\/]/).some((part) => part === '..' || part === '.' || part === '') ||
       relativePath.split(/[\\/]/)[0].toLowerCase() === '.a11ynotebook'
     ) {
-      throw new Error('The requested path is not valid inside this vault.');
+      throw new Error('The requested path is not valid inside this library.');
     }
     return checkedVaultPath(root, relativePath, allowMissing);
   }
@@ -184,7 +184,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       const bytes = await file.readFile();
       if (bytes.length > 40 * 1024 * 1024) throw new Error('This DOCX exceeds the 40 MiB archive limit.');
       const structure = parseDocxStructure(bytes);
-      if (disposed || !root) throw new Error('This vault is closed.');
+      if (disposed || !root) throw new Error('This library is closed.');
       return structure;
     } finally {
       await file.close();
@@ -215,7 +215,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
   }
 
   async function getVault(): Promise<VaultInfo> {
-    if (!root || disposed) throw new Error('Open a vault first.');
+    if (!root || disposed) throw new Error('Open a library first.');
     return { name: path.basename(root), path: root, entries: await scanDirectory(root, '') };
   }
 

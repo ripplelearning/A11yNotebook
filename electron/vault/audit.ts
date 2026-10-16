@@ -205,7 +205,7 @@ export async function runAudited<T>(
   if (failed) {
     if (committed)
       throw new Error(
-        `The operation committed, but subsequent processing failed. ${failure instanceof Error ? failure.message : 'Reopen the vault to check its state.'}`,
+        `The operation committed, but subsequent processing failed. ${failure instanceof Error ? failure.message : 'Reopen the library to check its state.'}`,
       );
     throw failure;
   }

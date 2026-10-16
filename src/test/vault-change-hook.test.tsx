@@ -67,6 +67,18 @@ describe('external vault change synchronization', () => {
     await screen.findByText('Conflict pending');
     expect(screen.getByLabelText('Note text')).toHaveValue('mine');
   });
+  it('announces a failed library refresh without discarding unsaved edits', async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText('Note text'), { target: { value: 'mine' } });
+    window.a11yNotebook!.vault.get = vi.fn().mockRejectedValue(new Error('Read failed'));
+    act(() => listener({ vaultPath: '/vault', paths: ['N.md'] }));
+    await waitFor(() =>
+      expect(announce).toHaveBeenCalledWith(
+        'Could not refresh external library changes. Your unsaved edits are preserved.',
+      ),
+    );
+    expect(screen.getByLabelText('Note text')).toHaveValue('mine');
+  });
   it('does not treat an app save as a conflicting external change', async () => {
     setup();
     fireEvent.change(screen.getByLabelText('Note text'), { target: { value: 'mine' } });

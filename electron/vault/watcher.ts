@@ -104,7 +104,7 @@ export async function createVaultWatcher(
     }
   }
   if (!recursive) await reconcile();
-  if (!watchers.has('')) throw new Error('Unable to watch the vault folder.');
+  if (!watchers.has('')) throw new Error('Unable to watch the library folder.');
 
   return {
     async dispose() {

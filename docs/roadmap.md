@@ -19,14 +19,14 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - Global command registry and command palette
 - Focus-region cycling with F6 and Shift+F6
 - Read-only/edit mode toggles and live state announcements
-- JSON persistence boundary and sample vault data
+- JSON persistence boundary and sample library data
 - Automated tests for registry behavior and renderer accessibility primitives
 
-## Phase 2 — Vault and notebook model
+## Phase 2 — Library and notebook model
 
-- ✅ A vault is a local folder; notebook folders, Markdown/HTML notes, and attachments are read directly from disk.
+- ✅ A library is a local folder; notebook folders, Markdown/HTML notes, and attachments are read directly from disk.
 - ✅ Human-readable hidden `.a11ynotebook/` metadata directory; Markdown and HTML notes remain ordinary files.
-- ✅ Native folder picker, recent-vault restoration, create notebook/note, rename, import, reveal, external open, and recycle-bin delete.
+- ✅ Native folder picker, recent-library restoration, create notebook/note, rename, import, reveal, external open, and recycle-bin delete.
 - ✅ Main-process filesystem service validates relative paths and rejects symlinks; renderer receives only typed IPC operations.
 - ✅ Accessible tree with roving focus, expansion, arrows, Home/End, Enter, F2, Delete, type-ahead, and `*`.
 - ✅ Global search across Markdown and HTML note names/bodies and supported text attachment types.
@@ -34,8 +34,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ External-change watching, clean-note reload, and dirty-note conflict choices with autosave paused.
 - ✅ Confirmed moves/renames with unambiguous wiki/inline-relative link repair and metadata path migration.
 - ✅ Registry-backed global context menu: Shift+F10, Applications key, and right-click; tree/tab/editor/link/task/search/annotation/reminder/attachment contexts.
-- ✅ Context-menu note encryption action when vault protection is enabled.
-- ⏳ Recent-vault picker (only automatic last-vault restoration currently exists), reference-style link repair, and crash-atomic multi-file moves.
+- ✅ Context-menu note encryption action when library protection is enabled.
+- ⏳ Recent-library picker (only automatic last-library restoration currently exists), reference-style link repair, and crash-atomic multi-file moves.
 
 ## Phase 3 — Reader and editor experience
 
@@ -59,7 +59,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Convert Markdown/HTML note content into a sibling copy after an explicit format-loss warning; the source remains unchanged.
 - 🚧 Conversion warnings flag common CSS/active-content/table/image loss, but do not provide a complete itemized loss report or in-place path/metadata migration.
 - ✅ HTML checklists use stable task IDs in `data-a11y-task-id`, `data-a11y-task-complete`, optional `data-a11y-task-due`, `data-a11y-task-priority`, and `data-a11y-task-remind` attributes. Rich text can insert a task item; source editing can edit its metadata. Task indexing, filters, due/priority sorting, targeted toggles, reminders, and progress summaries include HTML.
-- ✅ Built-in and vault HTML/Markdown templates can create either note format; placeholder escaping/sanitization, correct extension, preview, and cursor placement are supported. Markdown remains the default.
+- ✅ Built-in and library HTML/Markdown templates can create either note format; placeholder escaping/sanitization, correct extension, preview, and cursor placement are supported. Markdown remains the default.
 - ✅ Markdown/HTML notes export through an accessible action and native save dialog to Markdown or sanitized standalone HTML. Export does not modify the source, protects the original from being selected as output, confirms overwrites, requires consent for decrypted protected notes, embeds local raster images in HTML, and warns that relative links/other metadata are not packaged.
 - ✅ Web capture offers Markdown or HTML. Main-process sanitization preserves semantic headings, lists, tables and safe links, localizes supported raster images with alt descriptions, records canonical source attribution, opens/indexes the note, and announces partial image failures.
 - ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. PDF uses an independent target contract; ePub annotation UI remains open.
@@ -78,8 +78,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Accessible reminder table, grouped Overdue/Today/This week agenda, and notebook completion/progress summaries.
 - ✅ Persisted, validated reminder defaults and creation-dialog preferences without rewriting existing reminders.
 - ✅ Named milestone service/typed IPC with stable task associations, move preservation, and live progress.
-- ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and vault switch/lock cancellation.
-- 🚧 Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. Generic locked-vault alert/sound remains open; lock stops delivery until unlock.
+- ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and library switch/lock cancellation.
+- 🚧 Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. Generic locked-library alert/sound remains open; lock stops delivery until unlock.
 - ⛔ Real Windows minimized/background audio, focus and JAWS/NVDA/Narrator verification remains manual.
 - ✅ Milestone planning UI on existing service/typed IPC: list/detail/create/edit/delete, task/note associations, dates/status/progress and keyboard/focus regression tests.
 - ⏳ Exited-process notification delivery: no Task Scheduler/helper integration ships yet.
@@ -97,19 +97,19 @@ Implemented does not mean production-ready; automated tests do not replace the m
 
 ## Phase 7 — Security and local protection 🚧
 
-- ✅ Optional vault password gate, configurable idle lock, and unsaved-edit timeout.
-- ✅ Opt-in versioned vault recovery with a separate random recovery key, authenticated password wrapper, credential-preserving atomic migration, password reset, rotation and revocation
+- ✅ Optional library password gate, configurable idle lock, and unsaved-edit timeout.
+- ✅ Opt-in versioned library recovery with a separate random recovery key, authenticated password wrapper, credential-preserving atomic migration, password reset, rotation and revocation
 - ✅ Scoped sensitive-action audit logging with a bounded versioned schema, retention, redaction, atomic staging and explicit storage-failure/committed-operation outcomes; see security documentation for exclusions and OS-user tampering limits.
-- ✅ AES-256-GCM encrypted credential storage using the main-process vault key.
+- ✅ AES-256-GCM encrypted credential storage using the main-process library key.
 - ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing for passwords generated in the note-encryption dialog.
 - ✅ Scoped opt-in encrypted Markdown/HTML/PDF annotations and cognitive checkpoints using stable v3 keys, authenticated pointers and resumable plaintext cleanup.
-- ⏳ Excluded indexes/metadata and whole-vault encryption remain plaintext/open; scoped protection does not cover search, links, bookmarks, reminders or settings.
+- ⏳ Excluded indexes/metadata and whole-library encryption remain plaintext/open; scoped protection does not cover search, links, bookmarks, reminders or settings.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
 
-- ✅ Attachments are stored in the vault, listed in the tree, and can be revealed or opened externally.
+- ✅ Attachments are stored in the library, listed in the tree, and can be revealed or opened externally.
 - ✅ Sanitized sandboxed HTML, plain-text/CSV and raster-image previews; saved image descriptions; validated image protocol.
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
@@ -146,7 +146,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 - ✅ Notebook task-completion summaries, milestone service/progress and planning UI; manual Windows AT validation remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
 - ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
-- ⏳ Recent-vault selection is not available; the app restores the last opened vault automatically.
+- ⏳ Recent-library selection is not available; the app restores the last opened library automatically.
 - ⛔ Windows signing, UI Automation execution, native notification delivery verification, and real JAWS/NVDA/Narrator speech checks need owner-provisioned credentials or Windows/manual test infrastructure.
 
 ## Dependency-ordered continuation

@@ -107,7 +107,7 @@ export class PdfDocument {
         classification: 'orphan',
         confidence: 'uncertain',
         verification: 'unverified',
-        reason: 'PDF vault path does not match the annotation document identity.',
+        reason: 'PDF library path does not match the annotation document identity.',
       };
     }
     if (target.page <= this.numPages) {

@@ -150,7 +150,7 @@ export function createProtectedMetadataStore(options: {
   async function commit(identity: MetadataProtectionPointer, access: ProtectedMetadataAccess) {
     access.assertCurrent();
     const config = getConfig();
-    if (!config) throw new Error('Vault protection is unavailable.');
+    if (!config) throw new Error('Library protection is unavailable.');
     await options.commitConfig(updateMetadataProtection(config, access.key, identity), access);
     access.assertCurrent();
   }
@@ -246,7 +246,7 @@ export function createProtectedMetadataStore(options: {
     async enable() {
       const access = options.access();
       if (pointer()) throw new Error('Encrypted metadata protection is already enabled.');
-      if (getConfig()?.version !== 3) throw new Error('Enable vault recovery and unlock a version-3 vault first.');
+      if (getConfig()?.version !== 3) throw new Error('Enable library recovery and unlock a version-3 library first.');
       await collectOrphans();
       const directory = path.dirname(await resolver.resolveMetadata('security.json', true));
       if (

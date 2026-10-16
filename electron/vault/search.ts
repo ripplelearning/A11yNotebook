@@ -38,24 +38,25 @@ export function isVisibleVaultPath(relativePath: string) {
 /** Check every ancestor, including the private metadata folder, before accessing it. */
 export async function checkedVaultPath(root: string, relativePath: string, allowMissing = false) {
   const rootStat = await lstat(root);
-  if (rootStat.isSymbolicLink() || !rootStat.isDirectory()) throw new Error('Vault root must remain a regular folder.');
+  if (rootStat.isSymbolicLink() || !rootStat.isDirectory())
+    throw new Error('Library root must remain a regular folder.');
   if (
     !relativePath ||
     path.isAbsolute(relativePath) ||
     path.win32.isAbsolute(relativePath) ||
     relativePath.split(/[\\/]/).some((part) => part === '' || part === '.' || part === '..')
   ) {
-    throw new Error('The requested path is not valid inside this vault.');
+    throw new Error('The requested path is not valid inside this library.');
   }
   const target = path.resolve(root, relativePath);
-  if (!target.startsWith(`${root}${path.sep}`)) throw new Error('Path is outside the vault.');
+  if (!target.startsWith(`${root}${path.sep}`)) throw new Error('Path is outside the library.');
   let current = root;
   const segments = path.relative(root, target).split(path.sep);
   for (let index = 0; index < segments.length; index += 1) {
     current = path.join(current, segments[index]);
     try {
       const stat = await lstat(current);
-      if (stat.isSymbolicLink()) throw new Error('Symbolic links are not supported in vault paths.');
+      if (stat.isSymbolicLink()) throw new Error('Symbolic links are not supported in library paths.');
       if (index < segments.length - 1 && !stat.isDirectory()) throw new Error('A parent path is not a folder.');
     } catch (error) {
       if (allowMissing && (error as NodeJS.ErrnoException).code === 'ENOENT') break;
@@ -69,7 +70,7 @@ export async function ensureMetadataDirectory(root: string) {
   const directory = await checkedVaultPath(root, '.a11ynotebook', true);
   await mkdir(directory, { recursive: true });
   await checkedVaultPath(root, '.a11ynotebook');
-  if (!(await lstat(directory)).isDirectory()) throw new Error('Vault metadata must be a folder.');
+  if (!(await lstat(directory)).isDirectory()) throw new Error('Library metadata must be a folder.');
   return directory;
 }
 
@@ -311,7 +312,9 @@ export function createSearchIndex(root: string) {
                 ? await readSafeBuffer(root, relative, MAX_INDEXED_DOCUMENT_BYTES)
                 : null;
             const content = textRead?.content ?? '';
-            const documentText = documentRead ? extractDocumentText(documentRead.content, extension) : { text: '', title: undefined };
+            const documentText = documentRead
+              ? extractDocumentText(documentRead.content, extension)
+              : { text: '', title: undefined };
             const indexedStat = textRead?.stat ?? documentRead?.stat ?? stat;
             const title =
               extension === '.md'
