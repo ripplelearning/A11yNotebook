@@ -1,4 +1,14 @@
-import { app, BrowserWindow, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  protocol,
+  session,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
@@ -20,6 +30,7 @@ const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html')
 const rendererIndexUrl = pathToFileURL(rendererIndexPath).href;
 
 let mainWindow: BrowserWindow | null = null;
+let shortcutCaptureActive = false;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
@@ -30,7 +41,7 @@ function isAppUrl(url: string) {
   return url.split(/[?#]/)[0] === rendererIndexUrl;
 }
 
-function isTrustedSender(event: IpcMainInvokeEvent) {
+function isTrustedSender(event: IpcMainInvokeEvent | IpcMainEvent) {
   const frame = event.senderFrame;
   return (
     mainWindow !== null &&
@@ -46,9 +57,37 @@ function isRepositoryUrl(url: string) {
 }
 
 function sendToRenderer(channel: string, payload: UpdaterStatus | MenuCommand) {
+  if (channel === IPC_CHANNELS.menuCommand && shortcutCaptureActive) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+function updateApplicationMenu() {
+  Menu.setApplicationMenu(
+    buildApplicationMenu(
+      (command) => {
+        if (isMenuCommand(command)) sendToRenderer(IPC_CHANNELS.menuCommand, command);
+      },
+      isDevelopment,
+      () => shortcutCaptureActive,
+    ),
+  );
+}
+
+function setShortcutCaptureActive(active: boolean) {
+  shortcutCaptureActive = active;
+  mainWindow?.webContents.setIgnoreMenuShortcuts(active);
+  updateApplicationMenu();
+}
+
+export function setupShortcutCaptureIpc(
+  isTrusted: (event: IpcMainEvent) => boolean,
+  setActive: (active: boolean) => void,
+) {
+  ipcMain.on(IPC_CHANNELS.shortcutCaptureActive, (event, active: unknown) => {
+    if (isTrusted(event) && typeof active === 'boolean') setActive(active);
+  });
 }
 
 export function setupPdfReadingPreferencesIpc(
@@ -92,7 +131,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
     mainWindow = null;
+    setShortcutCaptureActive(false);
   });
+  mainWindow.webContents.on('did-start-loading', () => setShortcutCaptureActive(false));
+  mainWindow.webContents.on('render-process-gone', () => setShortcutCaptureActive(false));
 
   // Never open new Electron windows. Only this project's GitHub pages may open, and
   // they open in the user's default browser.
@@ -190,13 +232,8 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
 
-    Menu.setApplicationMenu(
-      buildApplicationMenu((command) => {
-        if (isMenuCommand(command)) {
-          sendToRenderer(IPC_CHANNELS.menuCommand, command);
-        }
-      }, isDevelopment),
-    );
+    setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
+    updateApplicationMenu();
 
     createWindow();
 

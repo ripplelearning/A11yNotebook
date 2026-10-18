@@ -16,6 +16,7 @@ const CHANNELS: typeof SharedChannels = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  shortcutCaptureActive: 'menu:shortcut-capture-active',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
@@ -121,6 +122,9 @@ function subscribe<T>(
 }
 
 const bridge: NotebookBridge = {
+  setShortcutCaptureActive: (active) => {
+    if (typeof active === 'boolean') ipcRenderer.send(CHANNELS.shortcutCaptureActive, active);
+  },
   getPdfReadingPreferences: () => ipcRenderer.invoke(CHANNELS.getPdfReadingPreferences),
   setPdfReadingPreferences: (preferences) => ipcRenderer.invoke(CHANNELS.setPdfReadingPreferences, preferences),
   onPdfReadingPreferencesChanged: (callback) =>

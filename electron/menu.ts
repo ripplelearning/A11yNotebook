@@ -4,10 +4,17 @@ import { Menu, type MenuItemConstructorOptions } from 'electron';
 import type { MenuCommand } from '../src/shared/ipc';
 import { getCommandById, type CommandId } from '../src/shared/command-registry';
 
-export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void, isDevelopment: boolean) {
+export function buildApplicationMenu(
+  sendCommand: (command: MenuCommand) => void,
+  isDevelopment: boolean,
+  isShortcutCaptureActive: () => boolean = () => false,
+) {
+  const dispatch = (command: MenuCommand) => {
+    if (!isShortcutCaptureActive()) sendCommand(command);
+  };
   const commandItem = (id: CommandId): MenuItemConstructorOptions => ({
     label: getCommandById(id)!.label,
-    click: () => sendCommand(id),
+    click: () => dispatch(id),
   });
   const viewItems: MenuItemConstructorOptions[] = [
     { role: 'resetZoom' },
@@ -31,6 +38,10 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
         commandItem('new-note'),
         commandItem('new-from-template'),
         commandItem('save-current-note'),
+        commandItem('export-current-note'),
+        commandItem('toggle-bookmark'),
+        commandItem('close-current-tab'),
+        commandItem('refresh-links'),
         { type: 'separator' },
         { role: 'quit', label: 'E&xit' },
       ],
@@ -55,6 +66,9 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
         commandItem('format-heading1'),
         commandItem('format-heading2'),
         commandItem('format-heading3'),
+        commandItem('format-heading4'),
+        commandItem('format-heading5'),
+        commandItem('format-heading6'),
         commandItem('format-bullet'),
         commandItem('format-numbered'),
         commandItem('format-checkbox'),
@@ -88,20 +102,38 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
         commandItem('show-assets'),
         { type: 'separator' },
         commandItem('toggle-right-pane'),
+        commandItem('toggle-read-only-mode'),
         { type: 'separator' },
         ...viewItems,
       ],
     },
     {
+      label: '&Window',
+      submenu: [
+        commandItem('focus-search'),
+        commandItem('focus-navigation'),
+        commandItem('focus-main-content'),
+        commandItem('focus-right-pane'),
+      ],
+    },
+    {
       label: '&Help',
       submenu: [
-        { label: 'Check for &Updates…', click: () => sendCommand('check-for-updates') },
-        { label: '&Keyboard Shortcuts', click: () => sendCommand('show-keyboard-shortcuts') },
+        commandItem('command-search'),
+        { label: 'Check for &Updates…', click: () => dispatch('check-for-updates') },
+        { label: '&Keyboard Shortcuts', click: () => dispatch('show-keyboard-shortcuts') },
         { type: 'separator' },
-        { label: '&About A11y Notebook', click: () => sendCommand('show-about') },
+        { label: '&About A11y Notebook', click: () => dispatch('show-about') },
       ],
     },
   ];
 
+  if (isShortcutCaptureActive()) {
+    for (const group of template) {
+      for (const item of group.submenu as MenuItemConstructorOptions[]) {
+        if (item.type !== 'separator') item.enabled = false;
+      }
+    }
+  }
   return Menu.buildFromTemplate(template);
 }

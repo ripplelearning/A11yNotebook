@@ -9,6 +9,7 @@ type NotesFilesScreenProps = Omit<DetailsViewProps, 'label' | 'items' | 'emptyMe
   title?: string;
   onNewNote?: () => void;
   onNewFromTemplate?: () => void;
+  showCommandButtons?: boolean;
 };
 
 function flatten(entries: readonly VaultEntry[]): VaultEntry[] {
@@ -23,6 +24,7 @@ export default function NotesFilesScreen({
   title = 'Notes and Files',
   onNewNote,
   onNewFromTemplate,
+  showCommandButtons = true,
   ...details
 }: NotesFilesScreenProps) {
   const prefix = notebookPath ? `${notebookPath}/` : undefined;
@@ -32,20 +34,24 @@ export default function NotesFilesScreen({
   return (
     <section aria-labelledby="notes-files-heading">
       <h2 id="notes-files-heading">{title}</h2>
-      <button
-        type="button"
-        disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewNote}
-        onClick={onNewNote}
-      >
-        New note
-      </button>
-      <button
-        type="button"
-        disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewFromTemplate}
-        onClick={onNewFromTemplate}
-      >
-        New note from template
-      </button>
+      {showCommandButtons && (
+        <>
+          <button
+            type="button"
+            disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewNote}
+            onClick={onNewNote}
+          >
+            New note
+          </button>
+          <button
+            type="button"
+            disabled={!hasLibrary || creationDisabled || !notebookPath || !onNewFromTemplate}
+            onClick={onNewFromTemplate}
+          >
+            New note from template
+          </button>
+        </>
+      )}
       {!hasLibrary ? (
         <p>Open a library and select a notebook to create notes.</p>
       ) : !notebookPath ? (

@@ -10,11 +10,13 @@ import {
 import type { PdfReadingPreferences } from '../../../shared/pdf-reading-preferences';
 import type { MetadataProtectionStatus } from '../../../shared/metadata-protection';
 import { playReminderSound, stopReminderSound } from '../reminders/reminderSound';
+import { useShortcutCapture } from './useShortcutCapture';
 
 interface Props {
   settings: NotebookSettings;
   onSave: (settings: NotebookSettings) => Promise<void>;
   onClose: () => void;
+  onShortcutCaptureChange?: (active: boolean) => void;
   securityEnabled?: boolean;
   recoveryAvailable?: boolean;
   onSetVaultPassword?: (password: string) => Promise<void>;
@@ -30,6 +32,7 @@ export default function SettingsDialog({
   settings,
   onSave,
   onClose,
+  onShortcutCaptureChange,
   securityEnabled = false,
   recoveryAvailable = false,
   onSetVaultPassword,
@@ -41,6 +44,15 @@ export default function SettingsDialog({
   onDeleteCredential,
 }: Props) {
   const [draft, setDraft] = useState(settings);
+  const capture = useShortcutCapture(
+    draft.shortcuts,
+    (id, shortcut) =>
+      setDraft((current) => ({
+        ...current,
+        shortcuts: { ...current.shortcuts, [id]: shortcut },
+      })),
+    onShortcutCaptureChange,
+  );
   const [error, setError] = useState('');
   const [securityNotice, setSecurityNotice] = useState('');
   const [saving, setSaving] = useState(false);
@@ -119,10 +131,18 @@ export default function SettingsDialog({
       .catch(() => setError('Could not read encrypted credentials.'));
   }, [securityEnabled]);
   return (
-    <Modal title="Settings" titleId="settings-heading" onClose={onClose}>
+    <Modal
+      title="Settings"
+      titleId="settings-heading"
+      onClose={() => {
+        capture.stop();
+        onClose();
+      }}
+    >
       <form
         onSubmit={(event) => {
           event.preventDefault();
+          capture.stop();
           try {
             const validated = validateSettings(draft);
             setSaving(true);
@@ -135,6 +155,7 @@ export default function SettingsDialog({
           }
         }}
       >
+        <h3>General editing and autosave</h3>
         <label>
           Autosave delay in milliseconds (0 disables autosave)
           <input
@@ -146,6 +167,33 @@ export default function SettingsDialog({
             onChange={(event) => setDraft({ ...draft, autosaveDelay: Number(event.target.value) })}
           />
         </label>
+        <label>
+          Default note open mode
+          <select
+            value={draft.defaultNoteOpenMode ?? 'read-only'}
+            onChange={(event) =>
+              setDraft({
+                ...draft,
+                defaultNoteOpenMode: event.target.value as NotebookSettings['defaultNoteOpenMode'],
+              })
+            }
+          >
+            <option value="read-only">Read mode</option>
+            <option value="edit">Edit mode</option>
+          </select>
+        </label>
+        <p>This applies to managed notes. Read-only documents remain read-only, and editing locks still apply.</p>
+        <label>
+          Lock editing after unsaved changes in minutes (0 disables; maximum 240)
+          <input
+            type="number"
+            min={0}
+            max={240}
+            value={draft.noteEditLockMinutes ?? 0}
+            onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
+          />
+        </label>
+        <h3>Appearance and interface</h3>
         <label>
           Theme
           <select
@@ -168,43 +216,21 @@ export default function SettingsDialog({
           />
         </label>
         <label>
-          Default note open mode
-          <select
-            value={draft.defaultNoteOpenMode ?? 'read-only'}
-            onChange={(event) =>
-              setDraft({
-                ...draft,
-                defaultNoteOpenMode: event.target.value as NotebookSettings['defaultNoteOpenMode'],
-              })
-            }
-          >
-            <option value="read-only">Read mode</option>
-            <option value="edit">Edit mode</option>
-          </select>
-        </label>
-        <p>This applies to managed notes. Read-only documents remain read-only, and editing locks still apply.</p>
-        <label>
-          Library idle lock in minutes (0 disables; maximum 240)
           <input
-            type="number"
-            min={0}
-            max={240}
-            value={draft.vaultLockMinutes ?? 15}
-            onChange={(event) => setDraft({ ...draft, vaultLockMinutes: Number(event.target.value) })}
+            type="checkbox"
+            checked={draft.showCommandButtons ?? false}
+            onChange={(event) => setDraft({ ...draft, showCommandButtons: event.target.checked })}
           />
+          Show command/action buttons in the UI
         </label>
-        <label>
-          Lock editing after unsaved changes in minutes (0 disables; maximum 240)
-          <input
-            type="number"
-            min={0}
-            max={240}
-            value={draft.noteEditLockMinutes ?? 0}
-            onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
-          />
-        </label>
+        <p>
+          The default is the menu-first interface. The native menu stays available in both modes. Browser development
+          keeps command buttons available.
+        </p>
         <fieldset>
-          <legend>Reminder alerts</legend>
+          <legend>
+            <h3>Reminder alerts</h3>
+          </legend>
           <label>
             <input
               type="checkbox"
@@ -258,7 +284,9 @@ export default function SettingsDialog({
           <p role="status">{soundNotice}</p>
         </fieldset>
         <fieldset aria-describedby="pdf-reading-help" disabled={pdfLoading || pdfSaving}>
-          <legend>PDF Reading</legend>
+          <legend>
+            <h3>PDF Reading</h3>
+          </legend>
           <p id="pdf-reading-help">
             Content remains visible, selectable, and searchable in all views. This only affects screen reader
             announcements.
@@ -282,25 +310,69 @@ export default function SettingsDialog({
         </fieldset>
         <p role="status">{pdfConfirmation}</p>
         <fieldset>
-          <legend>Keyboard shortcuts</legend>
-          <p>Leave a shortcut empty to disable it. Pane and tab navigation keys are reserved.</p>
+          <legend>
+            <h3>Keyboard Shortcuts</h3>
+          </legend>
+          <p>
+            Enter a shortcut manually or use Capture Shortcut. Leave it empty to disable it. Pane and tab navigation
+            keys are reserved. Escape or Tab cancels capture. Operating-system shortcuts may not reach this app.
+          </p>
+          <p role="status" aria-live="polite">
+            {capture.notice}
+          </p>
           {COMMANDS.map((command) => (
-            <label key={command.id}>
-              {command.label}
+            <div key={command.id} className="settings-shortcut-row">
+              <label htmlFor={`shortcut-${command.id}`}>{command.label}</label>
               <input
+                id={`shortcut-${command.id}`}
                 value={draft.shortcuts[command.id] ?? command.shortcut ?? ''}
+                onFocus={() => {
+                  if (capture.capturing) capture.stop();
+                }}
                 onChange={(event) =>
                   setDraft({ ...draft, shortcuts: { ...draft.shortcuts, [command.id]: event.target.value } })
                 }
               />
-            </label>
+              <button
+                id={`capture-${command.id}`}
+                type="button"
+                aria-label={`Capture Shortcut for ${command.label}`}
+                aria-pressed={capture.capturing === command.id}
+                onClick={() => capture.start(command.id)}
+              >
+                Capture Shortcut
+              </button>
+            </div>
           ))}
-          <button type="button" onClick={() => setDraft({ ...draft, shortcuts: {} })}>
+          {capture.capturing && (
+            <button type="button" onClick={capture.cancel}>
+              Cancel capture
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              capture.stop();
+              setDraft({ ...draft, shortcuts: {} });
+            }}
+          >
             Reset shortcuts to defaults
           </button>
         </fieldset>
         <fieldset>
-          <legend>Library security</legend>
+          <legend>
+            <h3>Library security</h3>
+          </legend>
+          <label>
+            Library idle lock in minutes (0 disables; maximum 240)
+            <input
+              type="number"
+              min={0}
+              max={240}
+              value={draft.vaultLockMinutes ?? 15}
+              onChange={(event) => setDraft({ ...draft, vaultLockMinutes: Number(event.target.value) })}
+            />
+          </label>
           <p>
             {securityEnabled
               ? recoveryAvailable
@@ -354,7 +426,7 @@ export default function SettingsDialog({
           ) : null}
           {securityEnabled && onPrepareRecovery && onAcknowledgeRecovery ? (
             <div>
-              <h3>Library recovery</h3>
+              <h4>Library recovery</h4>
               {!recoveryKey ? (
                 <>
                   <p>
@@ -468,7 +540,7 @@ export default function SettingsDialog({
           ) : null}
           {securityEnabled && onSaveCredential && onDeleteCredential ? (
             <>
-              <h3>Encrypted service credentials</h3>
+              <h4>Encrypted service credentials</h4>
               <ul>
                 {credentials.map((credential) => (
                   <li key={credential.id}>
@@ -532,7 +604,9 @@ export default function SettingsDialog({
         </fieldset>
         {metadataProtection ? (
           <fieldset disabled={metadataSaving}>
-            <legend>Scoped metadata encryption</legend>
+            <legend>
+              <h3>Scoped metadata encryption</h3>
+            </legend>
             <p>
               This is not whole-library encryption. It encrypts Markdown, HTML and PDF annotations and recovery drafts
               for outlines, mindmaps, grids and flashcards. DOCX annotations do not exist in this build. Ordinary notes,
@@ -606,10 +680,22 @@ export default function SettingsDialog({
         <button type="submit" disabled={saving}>
           Save settings
         </button>
-        <button type="button" onClick={() => setDraft(DEFAULT_SETTINGS)}>
+        <button
+          type="button"
+          onClick={() => {
+            capture.stop();
+            setDraft(DEFAULT_SETTINGS);
+          }}
+        >
           Reset all settings
         </button>
-        <button type="button" onClick={onClose}>
+        <button
+          type="button"
+          onClick={() => {
+            capture.stop();
+            onClose();
+          }}
+        >
           Cancel
         </button>
       </form>

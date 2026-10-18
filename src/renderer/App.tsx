@@ -2349,8 +2349,13 @@ export default function App() {
         : `A11y Notebook${vault ? ` – ${vault.name}` : ''}`;
   }, [currentNote, vault]);
 
+  const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
+
   return (
-    <div className="app-shell" aria-label="A11y Notebook application shell">
+    <div
+      className={showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}
+      aria-label="A11y Notebook application shell"
+    >
       {contextMenu ? (
         <GlobalContextMenu
           commands={contextCommands}
@@ -2402,39 +2407,41 @@ export default function App() {
         </button>
       </header>
 
-      <nav className="menu-bar" aria-label="Main menu">
-        {menuGroups.map((group) => {
-          const labelId = `menu-group-${group.label.toLowerCase()}`;
-          return (
-            <div key={group.label} className="menu-group" role="group" aria-labelledby={labelId}>
-              <span id={labelId} className="menu-label">
-                {group.label}
-              </span>
-              {group.items.map((commandId) => {
-                const command = getCommandById(commandId);
-                if (!command) return null;
-                return (
-                  <button
-                    key={command.id}
-                    type="button"
-                    className="menu-item"
-                    disabled={isCommandDisabled(command.id)}
-                    onClick={() => handleCommand(command.id)}
-                    aria-keyshortcuts={
-                      [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
-                        .filter((shortcut): shortcut is string => Boolean(shortcut))
-                        .map(toAriaKeyShortcut)
-                        .join(' ') || undefined
-                    }
-                  >
-                    {command.label}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </nav>
+      {showCommandButtons && (
+        <nav className="menu-bar" aria-label="Main menu">
+          {menuGroups.map((group) => {
+            const labelId = `menu-group-${group.label.toLowerCase()}`;
+            return (
+              <div key={group.label} className="menu-group" role="group" aria-labelledby={labelId}>
+                <span id={labelId} className="menu-label">
+                  {group.label}
+                </span>
+                {group.items.map((commandId) => {
+                  const command = getCommandById(commandId);
+                  if (!command) return null;
+                  return (
+                    <button
+                      key={command.id}
+                      type="button"
+                      className="menu-item"
+                      disabled={isCommandDisabled(command.id)}
+                      onClick={() => handleCommand(command.id)}
+                      aria-keyshortcuts={
+                        [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
+                          .filter((shortcut): shortcut is string => Boolean(shortcut))
+                          .map(toAriaKeyShortcut)
+                          .join(' ') || undefined
+                      }
+                    >
+                      {command.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
+      )}
 
       <main className="workspace" aria-label="Workspace layout">
         <aside
@@ -2445,48 +2452,50 @@ export default function App() {
           tabIndex={-1}
         >
           <h2>{vault?.name ?? 'Library'}</h2>
-          <div className="vault-actions">
-            <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
-              Open Tasks
-            </button>
-            <button type="button" onClick={() => void createNote()} disabled={!vault}>
-              New note
-            </button>
-            <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
-              New notebook
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  treeSelection &&
-                  findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' &&
-                  window.a11yNotebook
-                )
-                  void window.a11yNotebook.vault
-                    .importFile(treeSelection)
-                    .then((updated) => updated && setVault(updated));
-                else setStatusMessage('Select a notebook before importing a file.');
-              }}
-              disabled={!vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook'}
-            >
-              Import file
-            </button>
-            <button
-              type="button"
-              onClick={() => treeSelection && void window.a11yNotebook?.vault.reveal(treeSelection)}
-              disabled={!treeSelection}
-            >
-              Reveal in Explorer
-            </button>
-            <button
-              type="button"
-              onClick={() => treeSelection && void window.a11yNotebook?.vault.openExternal(treeSelection)}
-              disabled={!treeSelection}
-            >
-              Open in external app
-            </button>
-          </div>
+          {showCommandButtons && (
+            <div className="vault-actions">
+              <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
+                Open Tasks
+              </button>
+              <button type="button" onClick={() => void createNote()} disabled={!vault}>
+                New note
+              </button>
+              <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
+                New notebook
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (
+                    treeSelection &&
+                    findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' &&
+                    window.a11yNotebook
+                  )
+                    void window.a11yNotebook.vault
+                      .importFile(treeSelection)
+                      .then((updated) => updated && setVault(updated));
+                  else setStatusMessage('Select a notebook before importing a file.');
+                }}
+                disabled={!vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook'}
+              >
+                Import file
+              </button>
+              <button
+                type="button"
+                onClick={() => treeSelection && void window.a11yNotebook?.vault.reveal(treeSelection)}
+                disabled={!treeSelection}
+              >
+                Reveal in Explorer
+              </button>
+              <button
+                type="button"
+                onClick={() => treeSelection && void window.a11yNotebook?.vault.openExternal(treeSelection)}
+                disabled={!treeSelection}
+              >
+                Open in external app
+              </button>
+            </div>
+          )}
           {vault ? (
             <VaultTree
               entries={vault.entries}
@@ -2614,6 +2623,7 @@ export default function App() {
               <ContentsScreen vault={vault} entries={vault?.entries ?? []} onNavigate={navigateScreen} />
             ) : selectedTab === 'libraries' ? (
               <LibrariesScreen
+                showCommandButtons={showCommandButtons}
                 vault={vault}
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
@@ -2621,6 +2631,7 @@ export default function App() {
               />
             ) : selectedTab === 'notebooks' ? (
               <NotebooksScreen
+                showCommandButtons={showCommandButtons}
                 title={viewTitles.notebooks}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
@@ -2633,6 +2644,7 @@ export default function App() {
               />
             ) : selectedTab === 'notes-files' ? (
               <NotesFilesScreen
+                showCommandButtons={showCommandButtons}
                 title={viewTitles['notes-files']}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
@@ -2711,9 +2723,11 @@ export default function App() {
             ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
                 <h2 id="tasks-heading">{viewTitles.tasks}</h2>
-                <button type="button" disabled={!vault} onClick={() => handleCommand('new-task')}>
-                  New task
-                </button>
+                {showCommandButtons && (
+                  <button type="button" disabled={!vault} onClick={() => handleCommand('new-task')}>
+                    New task
+                  </button>
+                )}
                 <TaskProgressSummaries tasks={tasks} />
                 <p role="status" aria-live="polite">
                   {visibleTasks.length} tasks shown.
@@ -2839,7 +2853,7 @@ export default function App() {
             ) : currentNote ? (
               <>
                 <h2>{currentNote.title}</h2>
-                {mode === 'read-only' ? (
+                {showCommandButtons && mode === 'read-only' ? (
                   <button type="button" onClick={() => void toggleActiveBookmark()}>
                     {bookmarks.some((bookmark) => bookmark.path === currentNote.path)
                       ? 'Remove bookmark'
@@ -2869,14 +2883,18 @@ export default function App() {
                     </button>
                   )
                 ) : null}
-                <button type="button" onClick={() => void beginExport(currentNote.path)}>
-                  Export note…
-                </button>
+                {showCommandButtons && (
+                  <button type="button" onClick={() => void beginExport(currentNote.path)}>
+                    Export note…
+                  </button>
+                )}
                 {mode === 'edit' ? (
                   <>
-                    <button type="button" onClick={() => void saveActiveNote()}>
-                      Save note
-                    </button>
+                    {showCommandButtons && (
+                      <button type="button" onClick={() => void saveActiveNote()}>
+                        Save note
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={currentNote.path === encryptedNotePath}
@@ -2893,6 +2911,7 @@ export default function App() {
                 ) : null}
                 {mode === 'edit' ? (
                   <EditorTools
+                    showCommandButtons={showCommandButtons}
                     ref={editorToolsRef}
                     textareaRef={editorRef}
                     bindShortcuts={false}
@@ -3076,6 +3095,7 @@ export default function App() {
       {activeDialog === 'settings' ? (
         <SettingsDialog
           settings={settings}
+          onShortcutCaptureChange={(active) => window.a11yNotebook?.setShortcutCaptureActive?.(active)}
           securityEnabled={securityEnabled}
           recoveryAvailable={recoveryAvailable}
           onClose={closeDialog}

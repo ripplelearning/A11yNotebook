@@ -6,6 +6,7 @@ type NotebooksScreenProps = Omit<DetailsViewProps, 'label' | 'items' | 'emptyMes
   hasLibrary: boolean;
   title?: string;
   onNewNotebook?: () => void;
+  showCommandButtons?: boolean;
 };
 
 function flatten(entries: readonly VaultEntry[]): VaultEntry[] {
@@ -17,15 +18,18 @@ export default function NotebooksScreen({
   hasLibrary,
   title = 'Notebooks',
   onNewNotebook,
+  showCommandButtons = true,
   ...details
 }: NotebooksScreenProps) {
   const notebooks = flatten(entries).filter((entry) => entry.kind === 'notebook');
   return (
     <section aria-labelledby="notebooks-heading">
       <h2 id="notebooks-heading">{title}</h2>
-      <button type="button" disabled={!hasLibrary || !onNewNotebook} onClick={onNewNotebook}>
-        New notebook
-      </button>
+      {showCommandButtons && (
+        <button type="button" disabled={!hasLibrary || !onNewNotebook} onClick={onNewNotebook}>
+          New notebook
+        </button>
+      )}
       <DetailsView
         {...details}
         label="Notebooks"

@@ -12,6 +12,19 @@
 - [ ] Windows UIA tree and manual screen-reader checks are part of the validation plan.
 - [ ] F6 and Shift+F6 move real keyboard focus (not just highlighting) and skip the hidden right pane.
 - [ ] Every modal dialog moves focus inside on open, keeps Tab inside, closes on Escape, and returns focus.
+- [ ] Settings exposes level-three section headings under its level-two dialog heading, including editing/autosave,
+      appearance/interface, reminders, PDF reading, keyboard shortcuts, library security, and available metadata controls.
+- [ ] Show command/action buttons restores application command strips without removing the native menu; the default
+      menu-first mode retains essential navigation, content, dialog and form controls. Browser-only development retains command access.
+- [ ] Each shortcut has a uniquely named Capture Shortcut button; listening, errors and success are announced.
+      Valid capture updates only that draft textbox and focuses it. Manual entry still works.
+- [ ] Escape cancels capture without dismissing Settings and returns focus to its button; Tab cancels and navigates
+      normally; Cancel capture and replacement work. Reset/save/close stop listening. No app commands execute during capture.
+- [ ] Modifier-only/repeated/IME/AltGraph/unsupported input does not corrupt bindings; conflicts and reserved keys
+      are rejected. Verify native accelerator suppression on Windows, including role accelerators, without claiming
+      interception of operating-system shortcuts.
+- [ ] Check both button modes, Settings scrolling and focus trap at large fonts, high contrast, and narrow windows
+      with NVDA, JAWS and Narrator. These are manual acceptance steps, not claims of completed validation.
 - [ ] The tab list follows the WAI-ARIA tabs pattern (arrow keys, Home and End, roving tabindex, labelled tab panel).
 - [ ] The Help menu (in-app and native Windows menu) is keyboard operable, and each item has a clear, unique name.
 - [ ] Check for Updates opens a labelled modal update dialog that describes the current state in text.

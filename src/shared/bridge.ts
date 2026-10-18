@@ -129,6 +129,8 @@ export interface UpdaterBridge {
 
 /** Everything the preload script exposes on `window.a11yNotebook`. */
 export interface NotebookBridge {
+  /** Suspend native menu shortcuts while a shortcut field captures keyboard input. */
+  setShortcutCaptureActive?(active: boolean): void;
   updater: UpdaterBridge;
   vault: VaultBridge;
   getPdfReadingPreferences?(): Promise<PdfReadingPreferences>;

@@ -37,5 +37,24 @@ Standard text editing and pane/tab navigation are reserved.
 | Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header |
 | Details grid | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames |
 | Flashcards | Tab to Show answer, then Again/Hard/Good/Easy |
+
+## Customize and capture
+
+Settings exposes a **Keyboard Shortcuts** heading. Every command has a manual textbox and an optional
+**Capture Shortcut for [command]** button. Activate it, then press Ctrl/Alt plus a letter or number, or F1–F12
+with optional Ctrl/Alt/Shift modifiers. Capture normalizes the combination into that command's draft textbox;
+**Save settings** applies it and **Cancel** discards draft changes.
+
+**Escape** or **Cancel capture** cancels without closing Settings or changing the old binding. **Tab** cancels
+and continues dialog navigation. A different capture button replaces the listener. Reset, save and close stop capture.
+Modifier-only presses wait; repeats, IME/composition, AltGraph and unsupported keys do not replace the old value.
+Existing conflict checks apply to defaults, custom assignments, fixed aliases, and reserved navigation/editing keys.
+Listening and validation feedback are announced; successful capture focuses the textbox and cancellation returns
+focus to the capture button (Tab instead continues navigation). App shortcuts and native accelerators are suspended
+while listening. Operating-system-reserved combinations may not reach the app and cannot always be intercepted.
+
+Under **Appearance and interface**, **Show command/action buttons in the UI** restores the button-rich layout.
+It defaults off (also for older settings), keeps the native menu in either mode, and applies on Save settings.
+Browser-only development retains accessible command buttons without a native menu.
 `;
 await writeFile(outputPath, await prettier.format(document + featureNavigation, { parser: 'markdown' }));

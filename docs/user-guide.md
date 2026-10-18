@@ -338,6 +338,28 @@ rejected. DOCX annotations are not available; legacy binary `.doc` is unsupporte
 
 ## Settings
 
+Settings sections have visible semantic headings for screen-reader heading navigation: **General editing and autosave**,
+**Appearance and interface**, **Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and **Library security**.
+Scoped metadata encryption has its own heading when available, with security subsections under Library security.
+
+In **Appearance and interface**, **Show command/action buttons in the UI** restores the button-rich application
+layout. It is off by default, including for older settings files, to favor the native-menu-first design.
+The native menu remains available in either mode. Essential navigation, content, dialog, form, and Settings controls
+remain available; browser development without the native bridge retains command buttons. This preference and
+shortcut edits apply only after **Save settings**; **Cancel** discards them, and reset changes the draft.
+The saved preference survives restarts in library settings and app defaults.
+
+Every command in **Keyboard Shortcuts** has both a textbox for manual entry and a uniquely labelled **Capture Shortcut**
+button. Activate the button, then press Ctrl/Alt with a letter or number, or an F1–F12 combination (Ctrl/Alt/Shift
+modifiers are supported). The listening command and result are announced. A valid, nonconflicting combination is
+normalized into that command's draft textbox and focus returns there; it is not saved automatically.
+Modifier-only presses wait, repeats are ignored, and unsupported input, IME composition, and AltGraph leave the old
+value unchanged. Conflicting bindings, fixed aliases, and reserved navigation/editing keys are rejected with feedback;
+try again or cancel. **Escape**, **Tab**, or **Cancel capture** cancels without changing the binding; Escape during
+capture does not close Settings. Tab retains normal dialog navigation. Starting another capture replaces the old one.
+Reset, save, close, and leaving Settings stop capture. Application shortcuts and native menu accelerators are
+suspended while listening, but operating-system-reserved combinations cannot always be intercepted.
+
 **Settings** (Ctrl+Alt+S) changes autosave delay (0 disables it), dark/light/high-contrast theme, font size,
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.
 Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the library's
