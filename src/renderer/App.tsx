@@ -1942,18 +1942,8 @@ export default function App() {
       else setStatusMessage('Save open notes and open a library before capturing a webpage.');
       return;
     }
-    if (commandId === 'import-file') {
-      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook) {
-        void window.a11yNotebook.vault.importFile(treeSelection).then((updated) => updated && setVault(updated));
-      } else setStatusMessage('Select a notebook before importing a file.');
-      return;
-    }
     if (commandId === 'reveal-selected') {
       if (treeSelection) void window.a11yNotebook?.vault.reveal(treeSelection);
-      return;
-    }
-    if (commandId === 'open-selected-external') {
-      if (treeSelection) void window.a11yNotebook?.vault.openExternal(treeSelection);
       return;
     }
     if (commandId === 'encrypt-current-note') {
@@ -1983,6 +1973,25 @@ export default function App() {
       return;
     }
     if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
+    if (commandId === 'import-file') {
+      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook)
+        void window.a11yNotebook.vault
+          .importFile(treeSelection)
+          .then((updated) => updated && setVault(updated))
+          .catch(() => setStatusMessage('Could not import the selected file.'));
+      else setStatusMessage('Select a notebook before importing a file.');
+      return;
+    }
+    if (commandId === 'open-selected-external') {
+      if (isCommandDisabled(commandId) || !treeSelection) {
+        setStatusMessage('Select a file before opening it externally.');
+        return;
+      }
+      void window
+        .a11yNotebook!.vault.openExternal(treeSelection)
+        .catch(() => setStatusMessage('Could not open the selected file externally.'));
+      return;
+    }
     if (commandId === 'show-settings') {
       setActiveDialog('settings');
       return;
@@ -2334,6 +2343,12 @@ export default function App() {
   };
   const isCommandDisabled = (id: CommandId): boolean => {
     if (securityLocked || switchingVault) return true;
+    if (id === 'import-file')
+      return !window.a11yNotebook || !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
+    if (id === 'open-selected-external') {
+      const entry = findEntry(vault?.entries ?? [], treeSelection);
+      return !window.a11yNotebook || !entry || entry.kind === 'notebook';
+    }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
     if (id === 'save-current-note')
@@ -2345,8 +2360,7 @@ export default function App() {
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')
       return !vault || openNotes.some((note) => note.content !== note.saved) || !!activeConflict;
-    if (id === 'import-file') return !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
-    if (id === 'reveal-selected' || id === 'open-selected-external') return !treeSelection;
+    if (id === 'reveal-selected') return !treeSelection;
     if (id === 'encrypt-current-note')
       return (
         !currentNote ||
@@ -2464,8 +2478,13 @@ export default function App() {
         : `A11y Notebook${vault ? ` – ${vault.name}` : ''}`;
   }, [currentNote, vault]);
 
+  const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
+
   return (
-    <div className="app-shell" aria-label="A11y Notebook application shell">
+    <div
+      className={showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}
+      aria-label="A11y Notebook application shell"
+    >
       {contextMenu ? (
         <GlobalContextMenu
           commands={contextCommands}
@@ -2510,7 +2529,7 @@ export default function App() {
         </div>
       </header>
 
-      {!window.a11yNotebook ? (
+      {showCommandButtons && (
         <nav className="menu-bar browser-command-menu" aria-label="Application commands">
           {menuGroups.map((group) => {
             const labelId = `menu-group-${group.label.toLowerCase()}`;
@@ -2544,7 +2563,7 @@ export default function App() {
             );
           })}
         </nav>
-      ) : null}
+      )}
 
       <main className="workspace" aria-label="Workspace layout">
         <aside
@@ -2555,6 +2574,40 @@ export default function App() {
           tabIndex={-1}
         >
           <h2>{vault?.name ?? 'Library'}</h2>
+          {showCommandButtons && (
+            <div className="vault-actions">
+              <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
+                Open Tasks
+              </button>
+              <button type="button" onClick={() => void createNote()} disabled={!vault}>
+                New note
+              </button>
+              <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
+                New notebook
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCommand('import-file')}
+                disabled={isCommandDisabled('import-file')}
+              >
+                Import file
+              </button>
+              <button
+                type="button"
+                onClick={() => treeSelection && void window.a11yNotebook?.vault.reveal(treeSelection)}
+                disabled={!treeSelection}
+              >
+                Reveal in Explorer
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCommand('open-selected-external')}
+                disabled={isCommandDisabled('open-selected-external')}
+              >
+                Open in external app
+              </button>
+            </div>
+          )}
           {vault ? (
             <VaultTree
               entries={vault.entries}
@@ -2682,6 +2735,7 @@ export default function App() {
               <ContentsScreen vault={vault} entries={vault?.entries ?? []} onNavigate={navigateScreen} />
             ) : selectedTab === 'libraries' ? (
               <LibrariesScreen
+                showCommandButtons={showCommandButtons}
                 vault={vault}
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
@@ -2689,6 +2743,7 @@ export default function App() {
               />
             ) : selectedTab === 'notebooks' ? (
               <NotebooksScreen
+                showCommandButtons={showCommandButtons}
                 title={viewTitles.notebooks}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
@@ -2701,6 +2756,7 @@ export default function App() {
               />
             ) : selectedTab === 'notes-files' ? (
               <NotesFilesScreen
+                showCommandButtons={showCommandButtons}
                 title={viewTitles['notes-files']}
                 entries={vault?.entries ?? []}
                 hasLibrary={!!vault}
@@ -2779,9 +2835,11 @@ export default function App() {
             ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
                 <h2 id="tasks-heading">{viewTitles.tasks}</h2>
-                <button type="button" disabled={!vault} onClick={() => handleCommand('new-task')}>
-                  New task
-                </button>
+                {showCommandButtons && (
+                  <button type="button" disabled={!vault} onClick={() => handleCommand('new-task')}>
+                    New task
+                  </button>
+                )}
                 <TaskProgressSummaries tasks={tasks} />
                 <p role="status" aria-live="polite">
                   {visibleTasks.length} tasks shown.
@@ -2907,13 +2965,67 @@ export default function App() {
             ) : currentNote ? (
               <>
                 <h2>{currentNote.title}</h2>
+                {showCommandButtons && mode === 'read-only' ? (
+                  <button type="button" onClick={() => void toggleActiveBookmark()}>
+                    {bookmarks.some((bookmark) => bookmark.path === currentNote.path)
+                      ? 'Remove bookmark'
+                      : 'Bookmark note'}
+                  </button>
+                ) : null}
                 {mode === 'read-only' && securityEnabled ? (
                   encryptedNotePath === currentNote.path ? (
                     <span role="status">Encrypted note</span>
+                  ) : showCommandButtons ? (
+                    <button
+                      type="button"
+                      disabled={currentNote.content !== currentNote.saved}
+                      onClick={() => {
+                        setNotePasswordDialog({
+                          action: 'encrypt',
+                          entry: {
+                            name: currentNote.title,
+                            path: currentNote.path,
+                            kind: 'note',
+                            provenance: 'created',
+                          },
+                        });
+                      }}
+                    >
+                      Encrypt note
+                    </button>
                   ) : null
+                ) : null}
+                {showCommandButtons && (
+                  <button type="button" onClick={() => void beginExport(currentNote.path)}>
+                    Export note…
+                  </button>
+                )}
+                {mode === 'edit' ? (
+                  <>
+                    {showCommandButtons && (
+                      <button type="button" onClick={() => void saveActiveNote()}>
+                        Save note
+                      </button>
+                    )}
+                    {showCommandButtons && (
+                      <button
+                        type="button"
+                        disabled={currentNote.path === encryptedNotePath}
+                        onClick={() => void convertActiveNoteFormat()}
+                      >
+                        Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
+                      </button>
+                    )}
+                  </>
+                ) : null}
+                {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
+                  <button type="button" onClick={() => void saveActiveNote()}>
+                    Save locked note changes
+                  </button>
                 ) : null}
                 {mode === 'edit' ? (
                   <EditorTools
+                    showCommandButtons={showCommandButtons}
                     ref={editorToolsRef}
                     textareaRef={editorRef}
                     bindShortcuts={false}
@@ -3097,6 +3209,7 @@ export default function App() {
       {activeDialog === 'settings' ? (
         <SettingsDialog
           settings={settings}
+          onShortcutCaptureChange={(active) => window.a11yNotebook?.setShortcutCaptureActive?.(active)}
           securityEnabled={securityEnabled}
           recoveryAvailable={recoveryAvailable}
           onClose={closeDialog}

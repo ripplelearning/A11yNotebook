@@ -44,6 +44,10 @@ a:focus-visible,
   grid-template-rows: auto auto 1fr auto;
 }
 
+.app-shell.command-buttons-hidden {
+  grid-template-rows: auto 1fr auto;
+}
+
 .app-header,
 .menu-bar,
 .status-bar {
@@ -413,6 +417,28 @@ a:focus-visible,
 
 .modal.wide-modal {
   width: min(720px, 100%);
+}
+
+.settings-shortcut-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-block: 0.75rem;
+}
+
+.settings-shortcut-row label {
+  flex-basis: 100%;
+}
+
+.settings-shortcut-row input {
+  flex: 1 1 12ch;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.settings-shortcut-row button {
+  max-width: 100%;
+  overflow-wrap: anywhere;
 }
 
 .modal-title {

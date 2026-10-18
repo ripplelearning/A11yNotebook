@@ -2,6 +2,20 @@ import { describe, expect, it } from 'vitest';
 import { DEFAULT_SETTINGS, normalizeShortcut, shortcutConflicts, validateSettings } from '../shared/settings';
 
 describe('settings and shortcut validation', () => {
+  it('defaults missing command-button preferences to menu-first and persists either mode', () => {
+    expect(DEFAULT_SETTINGS.showCommandButtons).toBe(false);
+    expect(
+      validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} }).showCommandButtons,
+    ).toBe(false);
+    for (const showCommandButtons of [true, false]) {
+      expect(validateSettings(JSON.parse(JSON.stringify({ ...DEFAULT_SETTINGS, showCommandButtons })))).toMatchObject({
+        showCommandButtons,
+      });
+    }
+  });
+  it.each([null, 0, 1, 'true', {}, []])('rejects non-boolean command-button preference %j', (showCommandButtons) => {
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, showCommandButtons })).toThrow('Invalid settings values.');
+  });
   it('defaults legacy note-open preferences to read-only', () => {
     expect(DEFAULT_SETTINGS.defaultNoteOpenMode).toBe('read-only');
     expect(

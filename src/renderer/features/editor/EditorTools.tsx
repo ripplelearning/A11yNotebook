@@ -28,6 +28,7 @@ export interface EditorToolsProps {
   notePaths: string[];
   /** Disable local defaults when the host owns configurable/global shortcuts. */
   bindShortcuts?: boolean;
+  showCommandButtons?: boolean;
   /** The host owns file picking/copying and may insert the resulting reference with applyTextEdit. */
   onRequestAttachment?: () => void;
 }
@@ -62,7 +63,15 @@ interface SavedSelection {
 }
 
 const EditorTools = forwardRef<EditorToolsHandle, EditorToolsProps>(function EditorTools(
-  { textareaRef, onContentChange, announce, notePaths, onRequestAttachment, bindShortcuts = true },
+  {
+    textareaRef,
+    onContentChange,
+    announce,
+    notePaths,
+    onRequestAttachment,
+    bindShortcuts = true,
+    showCommandButtons = true,
+  },
   ref,
 ) {
   const id = useId();
@@ -211,47 +220,49 @@ const EditorTools = forwardRef<EditorToolsHandle, EditorToolsProps>(function Edi
 
   return (
     <>
-      <div ref={toolbarRef} role="toolbar" aria-label="Markdown formatting" onKeyDown={toolbarKeyDown}>
-        {FORMATS.map((item, index) => (
-          <button
-            key={item.action}
-            type="button"
-            tabIndex={activeButton === index ? 0 : -1}
-            aria-keyshortcuts={bindShortcuts ? item.shortcut : undefined}
-            onFocus={() => setActiveButton(index)}
-            onClick={() => format(item.action)}
-          >
-            {item.label}
-          </button>
-        ))}
-        <button
-          type="button"
-          tabIndex={activeButton === FORMATS.length ? 0 : -1}
-          onFocus={() => setActiveButton(FORMATS.length)}
-          aria-keyshortcuts={bindShortcuts ? 'Control+Shift+L Meta+Shift+L' : undefined}
-          onClick={() => openDialog('link')}
-        >
-          Insert link
-        </button>
-        <button
-          type="button"
-          tabIndex={activeButton === FORMATS.length + 1 ? 0 : -1}
-          onFocus={() => setActiveButton(FORMATS.length + 1)}
-          onClick={() => openDialog('table')}
-        >
-          Insert table
-        </button>
-        {onRequestAttachment && (
+      {showCommandButtons && (
+        <div ref={toolbarRef} role="toolbar" aria-label="Markdown formatting" onKeyDown={toolbarKeyDown}>
+          {FORMATS.map((item, index) => (
+            <button
+              key={item.action}
+              type="button"
+              tabIndex={activeButton === index ? 0 : -1}
+              aria-keyshortcuts={bindShortcuts ? item.shortcut : undefined}
+              onFocus={() => setActiveButton(index)}
+              onClick={() => format(item.action)}
+            >
+              {item.label}
+            </button>
+          ))}
           <button
             type="button"
-            tabIndex={activeButton === FORMATS.length + 2 ? 0 : -1}
-            onFocus={() => setActiveButton(FORMATS.length + 2)}
-            onClick={onRequestAttachment}
+            tabIndex={activeButton === FORMATS.length ? 0 : -1}
+            onFocus={() => setActiveButton(FORMATS.length)}
+            aria-keyshortcuts={bindShortcuts ? 'Control+Shift+L Meta+Shift+L' : undefined}
+            onClick={() => openDialog('link')}
           >
-            Insert attachment
+            Insert link
           </button>
-        )}
-      </div>
+          <button
+            type="button"
+            tabIndex={activeButton === FORMATS.length + 1 ? 0 : -1}
+            onFocus={() => setActiveButton(FORMATS.length + 1)}
+            onClick={() => openDialog('table')}
+          >
+            Insert table
+          </button>
+          {onRequestAttachment && (
+            <button
+              type="button"
+              tabIndex={activeButton === FORMATS.length + 2 ? 0 : -1}
+              onFocus={() => setActiveButton(FORMATS.length + 2)}
+              onClick={onRequestAttachment}
+            >
+              Insert attachment
+            </button>
+          )}
+        </div>
+      )}
       {dialog && (
         <Modal
           titleId={`${id}-title`}

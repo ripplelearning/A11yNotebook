@@ -33,15 +33,16 @@ silently treated as app-created notes. F2 opens a rename dialog. Delete asks bef
 to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
 
 Use **File → New note**, **File → New notebook**, or **Tools → Import file**. Imported files are copied into the
-selected notebook. Select a tree item before using **Tools → Reveal selected item in Explorer** or **Open selected item
-in external app**. These commands use the current selection, not a previously selected item.
+selected notebook. Select a tree item before using **Tools → Reveal selected item in Explorer** or **Open in external
+app**. These commands use the current selection, not a previously selected item.
 
 The Windows/Electron build has a native menu bar with **File**, **Edit**, **View**, **Insert**, **Format**, **Tools**, and
 **Help**. Use Alt and the underlined mnemonic, then the arrow keys, Enter, or Escape. Menu commands have no hard-coded
 accelerators; the app's configurable shortcuts (including Ctrl+K and F6/Shift+F6) remain the single shortcut path.
-The application menu replaces the duplicate in-page command groups. In a browser without the Electron bridge, a compact,
-accessible HTML command fallback remains available. Context-specific controls such as the formatting toolbar, reader
-page/zoom controls, tab close buttons, and dialog actions stay beside the content they operate on.
+By default, the application menu replaces duplicate in-page command groups and action strips, including the Markdown
+formatting toolbar. Enable **Settings → Appearance and interface → Show command/action buttons in the UI** to restore
+them. In a browser without the Electron bridge, an accessible HTML command fallback remains available. Essential
+controls such as reader page/zoom controls, tab close buttons, and dialog actions stay beside their content.
 
 The installed and portable builds use the same navigation and creation workflows. Ctrl+1 announces **Libraries**
 or the open library's name; Ctrl+2 announces **Notebooks** or **Notebooks in [library name]**; Ctrl+3 announces
@@ -344,6 +345,28 @@ rejected. DOCX annotations are not available; legacy binary `.doc` is unsupporte
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
 ## Settings
+
+Settings sections have visible semantic headings for screen-reader heading navigation: **General editing and autosave**,
+**Appearance and interface**, **Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and **Library security**.
+Scoped metadata encryption has its own heading when available, with security subsections under Library security.
+
+In **Appearance and interface**, **Show command/action buttons in the UI** restores the button-rich application
+layout. It is off by default, including for older settings files, to favor the native-menu-first design.
+The native menu remains available in either mode. Essential navigation, content, dialog, form, and Settings controls
+remain available; browser development without the native bridge retains command buttons. This preference and
+shortcut edits apply only after **Save settings**; **Cancel** discards them, and reset changes the draft.
+The saved preference survives restarts in library settings and app defaults.
+
+Every command in **Keyboard Shortcuts** has both a textbox for manual entry and a uniquely labelled **Capture Shortcut**
+button. Activate the button, then press Ctrl/Alt with a letter or number, or an F1–F12 combination (Ctrl/Alt/Shift
+modifiers are supported). The listening command and result are announced. A valid, nonconflicting combination is
+normalized into that command's draft textbox and focus returns there; it is not saved automatically.
+Modifier-only presses wait, repeats are ignored, and unsupported input, IME composition, and AltGraph leave the old
+value unchanged. Conflicting bindings, fixed aliases, and reserved navigation/editing keys are rejected with feedback;
+try again or cancel. **Escape**, **Tab**, or **Cancel capture** cancels without changing the binding; Escape during
+capture does not close Settings. Tab retains normal dialog navigation. Starting another capture replaces the old one.
+Reset, save, close, and leaving Settings stop capture. Application shortcuts and native menu accelerators are
+suspended while listening, but operating-system-reserved combinations cannot always be intercepted.
 
 **Settings** (Ctrl+Alt+S) changes autosave delay (0 disables it), dark/light/high-contrast theme, font size,
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.

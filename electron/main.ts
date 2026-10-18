@@ -12,7 +12,13 @@ import {
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
-import { IPC_CHANNELS, isMenuCommand, isNativeMenuState, type MenuCommand } from '../src/shared/ipc';
+import {
+  IPC_CHANNELS,
+  isMenuCommand,
+  isNativeMenuState,
+  type MenuCommand,
+  type NativeMenuState,
+} from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultReminderEvent } from '../src/shared/reminders';
 import { buildApplicationMenu, updateApplicationMenu } from './menu';
@@ -31,6 +37,8 @@ const rendererIndexUrl = pathToFileURL(rendererIndexPath).href;
 
 let mainWindow: BrowserWindow | null = null;
 let applicationMenu: Menu | null = null;
+let shortcutCaptureActive = false;
+let nativeMenuState: NativeMenuState | null = null;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
@@ -57,9 +65,39 @@ function isRepositoryUrl(url: string) {
 }
 
 function sendToRenderer(channel: string, payload: UpdaterStatus | MenuCommand) {
+  if (channel === IPC_CHANNELS.menuCommand && shortcutCaptureActive) return;
   if (mainWindow && !mainWindow.isDestroyed()) {
     mainWindow.webContents.send(channel, payload);
   }
+}
+
+function rebuildApplicationMenu() {
+  applicationMenu = buildApplicationMenu(
+    (command) => {
+      if (isMenuCommand(command)) sendToRenderer(IPC_CHANNELS.menuCommand, command);
+    },
+    isDevelopment,
+    () => shortcutCaptureActive,
+  );
+  if (nativeMenuState && !shortcutCaptureActive) updateApplicationMenu(applicationMenu, nativeMenuState);
+  Menu.setApplicationMenu(applicationMenu);
+}
+
+function setShortcutCaptureActive(active: boolean) {
+  shortcutCaptureActive = active;
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.setIgnoreMenuShortcuts(active);
+  }
+  rebuildApplicationMenu();
+}
+
+export function setupShortcutCaptureIpc(
+  isTrusted: (event: IpcMainEvent) => boolean,
+  setActive: (active: boolean) => void,
+) {
+  ipcMain.on(IPC_CHANNELS.shortcutCaptureActive, (event, active: unknown) => {
+    if (isTrusted(event) && typeof active === 'boolean') setActive(active);
+  });
 }
 
 export function setupPdfReadingPreferencesIpc(
@@ -103,7 +141,10 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => mainWindow?.show());
   mainWindow.on('closed', () => {
     mainWindow = null;
+    setShortcutCaptureActive(false);
   });
+  mainWindow.webContents.on('did-start-loading', () => setShortcutCaptureActive(false));
+  mainWindow.webContents.on('render-process-gone', () => setShortcutCaptureActive(false));
 
   // Never open new Electron windows. Only this project's GitHub pages may open, and
   // they open in the user's default browser.
@@ -201,15 +242,12 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
 
-    applicationMenu = buildApplicationMenu((command) => {
-      if (isMenuCommand(command)) {
-        sendToRenderer(IPC_CHANNELS.menuCommand, command);
-      }
-    }, isDevelopment);
-    Menu.setApplicationMenu(applicationMenu);
+    setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
+    rebuildApplicationMenu();
     ipcMain.on(IPC_CHANNELS.menuState, (event, value: unknown) => {
       if (!isTrustedSender(event) || !isNativeMenuState(value)) return;
-      updateApplicationMenu(applicationMenu!, value);
+      nativeMenuState = value;
+      if (applicationMenu && !shortcutCaptureActive) updateApplicationMenu(applicationMenu, value);
     });
 
     createWindow();

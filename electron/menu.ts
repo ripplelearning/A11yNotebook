@@ -4,13 +4,20 @@ import { Menu, type MenuItemConstructorOptions } from 'electron';
 import type { MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import { getCommandById, type CommandId } from '../src/shared/command-registry';
 
-export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void, isDevelopment: boolean) {
+export function buildApplicationMenu(
+  sendCommand: (command: MenuCommand) => void,
+  isDevelopment: boolean,
+  isShortcutCaptureActive: () => boolean = () => false,
+) {
+  const dispatch = (command: MenuCommand) => {
+    if (!isShortcutCaptureActive()) sendCommand(command);
+  };
   const commandItem = (id: CommandId, type?: 'checkbox'): MenuItemConstructorOptions => ({
     id,
     label: getCommandById(id)!.label,
     enabled: false,
     ...(type ? { type } : {}),
-    click: () => sendCommand(id),
+    click: () => dispatch(id),
   });
   const viewItems: MenuItemConstructorOptions[] = [
     commandItem('show-contents'),
@@ -134,6 +141,13 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     },
   ];
 
+  if (isShortcutCaptureActive()) {
+    for (const group of template) {
+      for (const item of group.submenu as MenuItemConstructorOptions[]) {
+        if (item.type !== 'separator') item.enabled = false;
+      }
+    }
+  }
   return Menu.buildFromTemplate(template);
 }
 

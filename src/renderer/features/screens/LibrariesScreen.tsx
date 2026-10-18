@@ -5,18 +5,29 @@ interface LibrariesScreenProps {
   onOpenLibrary: () => void;
   onNewLibrary?: () => void;
   disabled?: boolean;
+  showCommandButtons?: boolean;
 }
 
-export default function LibrariesScreen({ vault, onOpenLibrary, onNewLibrary, disabled }: LibrariesScreenProps) {
+export default function LibrariesScreen({
+  vault,
+  onOpenLibrary,
+  onNewLibrary,
+  disabled,
+  showCommandButtons = true,
+}: LibrariesScreenProps) {
   return (
     <section aria-labelledby="libraries-heading">
       <h2 id="libraries-heading">{vault?.name ?? 'Libraries'}</h2>
-      <button type="button" onClick={onNewLibrary} disabled={disabled || !onNewLibrary}>
-        New library
-      </button>
-      <button type="button" onClick={onOpenLibrary} disabled={disabled}>
-        Open library
-      </button>
+      {showCommandButtons && (
+        <>
+          <button type="button" onClick={onNewLibrary} disabled={disabled || !onNewLibrary}>
+            New library
+          </button>
+          <button type="button" onClick={onOpenLibrary} disabled={disabled}>
+            Open library
+          </button>
+        </>
+      )}
       {vault ? (
         <dl>
           <dt>Current library</dt>

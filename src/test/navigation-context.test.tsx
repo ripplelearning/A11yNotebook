@@ -35,7 +35,11 @@ function setup(hasLibrary = true, editByDefault = false) {
     },
     vault: {
       ...vaultExtensions(),
-      getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, defaultNoteOpenMode: editByDefault ? 'edit' : 'read' })),
+      getSettings: vi.fn(async () => ({
+        ...DEFAULT_SETTINGS,
+        showCommandButtons: true,
+        defaultNoteOpenMode: editByDefault ? 'edit' : 'read',
+      })),
       get: vi.fn(async () => (hasLibrary ? vault : null)),
       getTasks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),

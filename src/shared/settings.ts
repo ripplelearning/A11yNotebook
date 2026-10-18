@@ -4,6 +4,7 @@ export interface NotebookSettings {
   autosaveDelay: number;
   theme: 'dark' | 'light' | 'high-contrast';
   fontSize: number;
+  showCommandButtons?: boolean;
   shortcuts: Partial<Record<CommandId, string>>;
   vaultLockMinutes?: number;
   noteEditLockMinutes?: number;
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   autosaveDelay: 900,
   theme: 'dark',
   fontSize: 16,
+  showCommandButtons: false,
   shortcuts: {},
   vaultLockMinutes: 15,
   noteEditLockMinutes: 0,
@@ -96,6 +98,7 @@ export function validateSettings(value: unknown): NotebookSettings {
   const reminderSoundChoice =
     settings.reminderSoundChoice === undefined ? 'gentle-chime' : settings.reminderSoundChoice;
   const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
+  const showCommandButtons = settings.showCommandButtons === undefined ? false : settings.showCommandButtons;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -104,6 +107,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(settings.fontSize) ||
     settings.fontSize < 12 ||
     settings.fontSize > 32 ||
+    typeof showCommandButtons !== 'boolean' ||
     !Number.isInteger(vaultLockMinutes) ||
     vaultLockMinutes < 0 ||
     vaultLockMinutes > 240 ||
@@ -135,6 +139,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     autosaveDelay: settings.autosaveDelay,
     theme: settings.theme,
     fontSize: settings.fontSize,
+    showCommandButtons,
     shortcuts,
     vaultLockMinutes,
     noteEditLockMinutes,

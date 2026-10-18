@@ -25,7 +25,10 @@ and a sandboxed reader.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
 - PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub uses a paginated epub.js rendition with a nested TOC, sanitized chapters, and section text search. ePub annotations remain open.
-- Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
+- Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings, organized under semantic
+  section headings. Optional **Capture Shortcut** buttons supplement manual entry; Escape or Tab cancels capture.
+- A menu-first interface by default. **Settings → Appearance and interface → Show command/action buttons in the UI**
+  restores the button-rich layout while retaining the native menu. Browser development keeps command buttons available.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a library-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
@@ -37,6 +40,11 @@ and a sandboxed reader.
 - A Windows installer (`.exe`), a portable `.exe`, and a secure in-app updater that uses GitHub Releases.
 - Tests for library path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
 - Documentation of how HomerDev influenced the design without copying it.
+
+Native-menu coordination: the Settings preferences retain the command organization and enabled/checked state
+handling from [PR #43](https://github.com/ripplelearning/A11yNotebook/pull/43). Optional command-button surfaces
+share the same handlers as the native menu and browser fallback. Shortcut capture suspends native commands and
+accelerators, then restores the latest menu state when capture ends.
 
 ## Accessibility commitments
 

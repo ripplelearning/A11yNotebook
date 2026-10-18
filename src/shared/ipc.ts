@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   menuState: 'menu:state',
+  shortcutCaptureActive: 'menu:shortcut-capture-active',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',

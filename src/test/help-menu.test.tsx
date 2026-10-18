@@ -272,13 +272,13 @@ describe('Check for Updates', () => {
   it('closes on Escape, restores focus, and announces later progress in the status bar', () => {
     const { emit, menu } = installBridge();
     render(<App />);
-    const search = screen.getByRole('searchbox', { name: 'Global search' });
-    search.focus();
+    const opener = screen.getByRole('searchbox', { name: 'Global search' });
+    opener.focus();
     menu('check-for-updates');
     emit({ state: 'update-available', version: '9.9.9', releaseNotes: '' });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(search).toHaveFocus();
+    expect(opener).toHaveFocus();
 
     emit({ state: 'download-progress', percent: 55 });
     expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(

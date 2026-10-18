@@ -22,6 +22,8 @@ describe('native command menu', () => {
     ['&File', 'new-note'],
     ['&Insert', 'insert-link'],
     ['F&ormat', 'format-heading6'],
+    ['&Tools', 'import-file'],
+    ['&Tools', 'open-selected-external'],
     ['&Tools', 'new-task'],
     ['&Tools', 'new-asset'],
     ['&View', 'toggle-read-only-mode'],
