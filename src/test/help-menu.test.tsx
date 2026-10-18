@@ -158,11 +158,11 @@ describe('Check for Updates', () => {
   });
 
   it('walks through check, consented download with progress, and install', () => {
-    const { bridge, emit } = installBridge();
+    const { bridge, emit, menu } = installBridge();
     render(<App />);
-    const opener = within(helpMenu()).getByRole('button', { name: 'Check for Updates' });
+    const opener = screen.getByRole('searchbox', { name: 'Global search' });
     opener.focus();
-    fireEvent.click(opener);
+    menu('check-for-updates');
 
     expect(bridge.updater.check).toHaveBeenCalledTimes(1);
     const dialog = screen.getByRole('dialog', { name: 'Software update' });
@@ -203,9 +203,9 @@ describe('Check for Updates', () => {
   });
 
   it('confirms "Install on exit" only after the main process accepts it', async () => {
-    const { bridge, emit } = installBridge();
+    const { bridge, emit, menu } = installBridge();
     render(<App />);
-    fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+    menu('check-for-updates');
     emit({ state: 'update-downloaded', version: '9.9.9' });
     const dialog = screen.getByRole('dialog', { name: 'Software update' });
 
@@ -229,23 +229,23 @@ describe('Check for Updates', () => {
   });
 
   it('keeps the readable main-process error when the IPC call also rejects', async () => {
-    const { bridge, emit } = installBridge();
+    const { bridge, emit, menu } = installBridge();
     render(<App />);
     vi.mocked(bridge.updater.check).mockImplementationOnce(async () => {
       emit({ state: 'error', message: 'Could not reach GitHub.' });
       throw new Error("Error invoking remote method 'updater:check': Error: boom");
     });
     await act(async () => {
-      fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+      menu('check-for-updates');
     });
     const dialog = screen.getByRole('dialog', { name: 'Software update' });
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not reach GitHub.');
   });
 
   it('announces errors with an alert and offers a retry', () => {
-    const { bridge, emit } = installBridge();
+    const { bridge, emit, menu } = installBridge();
     render(<App />);
-    fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+    menu('check-for-updates');
     emit({ state: 'error', message: 'Could not reach GitHub.' });
     const dialog = screen.getByRole('dialog', { name: 'Software update' });
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Could not reach GitHub.');
@@ -254,11 +254,11 @@ describe('Check for Updates', () => {
   });
 
   it('closes on Escape, restores focus, and announces later progress in the status bar', () => {
-    const { emit } = installBridge();
+    const { emit, menu } = installBridge();
     render(<App />);
-    const opener = within(helpMenu()).getByRole('button', { name: 'Check for Updates' });
+    const opener = screen.getByRole('searchbox', { name: 'Global search' });
     opener.focus();
-    fireEvent.click(opener);
+    menu('check-for-updates');
     emit({ state: 'update-available', version: '9.9.9', releaseNotes: '' });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -271,9 +271,9 @@ describe('Check for Updates', () => {
   });
 
   it('ignores malformed status messages', () => {
-    const { emit } = installBridge();
+    const { emit, menu } = installBridge();
     render(<App />);
-    fireEvent.click(within(helpMenu()).getByRole('button', { name: 'Check for Updates' }));
+    menu('check-for-updates');
     emit({ state: 'update-available', version: 42 });
     expect(screen.getByRole('dialog')).not.toHaveTextContent('is available');
   });

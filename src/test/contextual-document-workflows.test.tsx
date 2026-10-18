@@ -46,6 +46,7 @@ function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settin
       createLibrary: vi.fn(async () => ({ name: 'New library', path: '/new', entries: [] })),
       getSettings: vi.fn(async () => ({
         ...DEFAULT_SETTINGS,
+        showCommandButtons: true,
         ...options.settings,
         defaultNoteOpenMode: options.mode ?? options.settings?.defaultNoteOpenMode ?? 'read',
       })),

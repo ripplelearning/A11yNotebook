@@ -73,6 +73,7 @@ function setup(
         if (!unlocked || options.failSettingsAfterUnlock) throw new Error('Settings unavailable.');
         return {
           ...DEFAULT_SETTINGS,
+          showCommandButtons: true,
           autosaveDelay: 0,
           reminderAlerts: options.reminderAlerts ?? false,
           noteEditLockMinutes: options.noteEditLockMinutes ?? 0,

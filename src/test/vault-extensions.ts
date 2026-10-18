@@ -30,7 +30,7 @@ export function vaultExtensions() {
     })),
     getImageAlt: vi.fn(async () => ''),
     saveImageAlt: vi.fn(async () => undefined),
-    getSettings: vi.fn(async () => DEFAULT_SETTINGS),
+    getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true })),
     saveSettings: vi.fn(async () => undefined),
     getReminders: vi.fn(async () => []),
     createReminder: vi.fn(async () => []),
