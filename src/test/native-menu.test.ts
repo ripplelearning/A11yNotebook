@@ -13,6 +13,8 @@ describe('native command menu', () => {
     ['&File', 'new-library'],
     ['&File', 'new-notebook'],
     ['&File', 'new-note'],
+    ['&File', 'import-file'],
+    ['&File', 'open-selected-external'],
     ['&Tools', 'new-task'],
     ['&Tools', 'new-asset'],
   ] as const)('dispatches %s / %s with its registry label and unchanged semantics', (group, id: CommandId) => {

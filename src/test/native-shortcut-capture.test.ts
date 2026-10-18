@@ -11,6 +11,7 @@ const mock = vi.hoisted(() => {
   const mainFrame = { url: '' };
   const webContents = {
     mainFrame,
+    isDestroyed: vi.fn(() => false),
     setIgnoreMenuShortcuts: vi.fn(),
     send: vi.fn(),
     setWindowOpenHandler: vi.fn(),
@@ -23,7 +24,7 @@ const mock = vi.hoisted(() => {
     loadFile: vi.fn(async (filename: string) => {
       mainFrame.url = new URL(`file://${filename}`).href;
     }),
-    isDestroyed: () => false,
+    isDestroyed: vi.fn(() => false),
   };
   return {
     contentsEvents,
@@ -168,6 +169,15 @@ describe('native shortcut capture suppression', () => {
     capture(true);
     mock.contentsEvents.get(event)!();
     expect(mock.webContents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(false);
+    expect(menuItem('New library').enabled).not.toBe(false);
+  });
+
+  it.each(['window', 'webContents'] as const)('resets capture without touching destroyed %s', (target) => {
+    capture(true);
+    mock[target].isDestroyed.mockReturnValueOnce(true);
+    mock.webContents.setIgnoreMenuShortcuts.mockClear();
+    expect(() => mock.contentsEvents.get('render-process-gone')!()).not.toThrow();
+    expect(mock.webContents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
     expect(menuItem('New library').enabled).not.toBe(false);
   });
 });

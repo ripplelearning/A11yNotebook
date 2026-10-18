@@ -10,6 +10,8 @@ export type CommandId =
   | 'new-notebook'
   | 'new-library'
   | 'new-note'
+  | 'import-file'
+  | 'open-selected-external'
   | 'new-task'
   | 'new-asset'
   | 'context-import-note'
@@ -151,6 +153,18 @@ export const COMMANDS: CommandDefinition[] = [
   },
   { id: 'new-library', label: 'New library', description: 'Create a new local library.', contexts: ['general'] },
   { id: 'new-note', label: 'New note', description: 'Create a note in the selected notebook.', contexts: ['general'] },
+  {
+    id: 'open-selected-external',
+    label: 'Open in external app',
+    description: 'Open the selected library file in its default application.',
+    contexts: ['general'],
+  },
+  {
+    id: 'import-file',
+    label: 'Import file',
+    description: 'Import an external file into the selected notebook.',
+    contexts: ['general'],
+  },
   {
     id: 'new-task',
     label: 'New task',

@@ -1925,6 +1925,25 @@ export default function App() {
       return;
     }
     if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
+    if (commandId === 'import-file') {
+      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook)
+        void window.a11yNotebook.vault
+          .importFile(treeSelection)
+          .then((updated) => updated && setVault(updated))
+          .catch(() => setStatusMessage('Could not import the selected file.'));
+      else setStatusMessage('Select a notebook before importing a file.');
+      return;
+    }
+    if (commandId === 'open-selected-external') {
+      if (isCommandDisabled(commandId) || !treeSelection) {
+        setStatusMessage('Select a file before opening it externally.');
+        return;
+      }
+      void window
+        .a11yNotebook!.vault.openExternal(treeSelection)
+        .catch(() => setStatusMessage('Could not open the selected file externally.'));
+      return;
+    }
     if (commandId === 'show-settings') {
       setActiveDialog('settings');
       return;
@@ -2276,6 +2295,12 @@ export default function App() {
   };
   const isCommandDisabled = (id: CommandId): boolean => {
     if (securityLocked || switchingVault) return true;
+    if (id === 'import-file')
+      return !window.a11yNotebook || !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
+    if (id === 'open-selected-external') {
+      const entry = findEntry(vault?.entries ?? [], treeSelection);
+      return !window.a11yNotebook || !entry || entry.kind === 'notebook';
+    }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
@@ -2465,18 +2490,8 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (
-                    treeSelection &&
-                    findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' &&
-                    window.a11yNotebook
-                  )
-                    void window.a11yNotebook.vault
-                      .importFile(treeSelection)
-                      .then((updated) => updated && setVault(updated));
-                  else setStatusMessage('Select a notebook before importing a file.');
-                }}
-                disabled={!vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook'}
+                onClick={() => handleCommand('import-file')}
+                disabled={isCommandDisabled('import-file')}
               >
                 Import file
               </button>
@@ -2489,8 +2504,8 @@ export default function App() {
               </button>
               <button
                 type="button"
-                onClick={() => treeSelection && void window.a11yNotebook?.vault.openExternal(treeSelection)}
-                disabled={!treeSelection}
+                onClick={() => handleCommand('open-selected-external')}
+                disabled={isCommandDisabled('open-selected-external')}
               >
                 Open in external app
               </button>

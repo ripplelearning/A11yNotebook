@@ -37,6 +37,8 @@ export function buildApplicationMenu(
         commandItem('new-notebook'),
         commandItem('new-note'),
         commandItem('new-from-template'),
+        commandItem('import-file'),
+        commandItem('open-selected-external'),
         commandItem('save-current-note'),
         commandItem('export-current-note'),
         commandItem('toggle-bookmark'),

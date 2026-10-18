@@ -77,7 +77,9 @@ function updateApplicationMenu() {
 
 function setShortcutCaptureActive(active: boolean) {
   shortcutCaptureActive = active;
-  mainWindow?.webContents.setIgnoreMenuShortcuts(active);
+  if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+    mainWindow.webContents.setIgnoreMenuShortcuts(active);
+  }
   updateApplicationMenu();
 }
 
