@@ -1,11 +1,21 @@
-import { app, BrowserWindow, ipcMain, Menu, protocol, session, shell, type IpcMainInvokeEvent } from 'electron';
+import {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  protocol,
+  session,
+  shell,
+  type IpcMainEvent,
+  type IpcMainInvokeEvent,
+} from 'electron';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
-import { IPC_CHANNELS, isMenuCommand, type MenuCommand } from '../src/shared/ipc';
+import { IPC_CHANNELS, isMenuCommand, isNativeMenuState, type MenuCommand } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultReminderEvent } from '../src/shared/reminders';
-import { buildApplicationMenu } from './menu';
+import { buildApplicationMenu, updateApplicationMenu } from './menu';
 import { setupUpdater } from './updater';
 import { setupVaultIpc } from './vault/ipc';
 import { getPdfReadingPreferences, setPdfReadingPreferences } from './store';
@@ -20,6 +30,7 @@ const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html')
 const rendererIndexUrl = pathToFileURL(rendererIndexPath).href;
 
 let mainWindow: BrowserWindow | null = null;
+let applicationMenu: Menu | null = null;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
@@ -30,7 +41,7 @@ function isAppUrl(url: string) {
   return url.split(/[?#]/)[0] === rendererIndexUrl;
 }
 
-function isTrustedSender(event: IpcMainInvokeEvent) {
+function isTrustedSender(event: IpcMainInvokeEvent | IpcMainEvent) {
   const frame = event.senderFrame;
   return (
     mainWindow !== null &&
@@ -190,13 +201,16 @@ if (!app.requestSingleInstanceLock()) {
       },
     );
 
-    Menu.setApplicationMenu(
-      buildApplicationMenu((command) => {
-        if (isMenuCommand(command)) {
-          sendToRenderer(IPC_CHANNELS.menuCommand, command);
-        }
-      }, isDevelopment),
-    );
+    applicationMenu = buildApplicationMenu((command) => {
+      if (isMenuCommand(command)) {
+        sendToRenderer(IPC_CHANNELS.menuCommand, command);
+      }
+    }, isDevelopment);
+    Menu.setApplicationMenu(applicationMenu);
+    ipcMain.on(IPC_CHANNELS.menuState, (event, value: unknown) => {
+      if (!isTrustedSender(event) || !isNativeMenuState(value)) return;
+      updateApplicationMenu(applicationMenu!, value);
+    });
 
     createWindow();
 

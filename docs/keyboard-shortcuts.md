@@ -47,11 +47,15 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 These are defaults; Settings can change command bindings. Help and the command palette show active bindings.
 Standard text editing and pane/tab navigation are reserved.
 
-| Context               | Keys / behavior                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------- |
-| Global context menu   | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape         |
-| Rich-text toolbar     | One tab stop; Left/Right, Home/End; Tab leaves toolbar                                                |
-| Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder                             |
-| Editable grid         | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header |
-| Details grid          | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames  |
-| Flashcards            | Tab to Show answer, then Again/Hard/Good/Easy                                                         |
+| Context             | Keys / behavior                                                                               |
+| ------------------- | --------------------------------------------------------------------------------------------- |
+| Global context menu | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape |
+| Rich-text toolbar   | One tab stop; Left/Right, Home/End; Tab leaves toolbar                                        |
+
+The Electron build uses the native Windows menu bar and its standard Alt/mnemonic navigation. Native command items do
+not register duplicate accelerators: configurable app shortcuts remain authoritative and Ctrl+K continues to open the
+command palette.
+| Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder |
+| Editable grid | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header |
+| Details grid | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames |
+| Flashcards | Tab to Show answer, then Again/Hard/Good/Easy |

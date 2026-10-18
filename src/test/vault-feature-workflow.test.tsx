@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import type { MenuCommand } from '../shared/ipc';
 import type { VaultInfo, VaultTask } from '../shared/types';
 import type { VaultChangedEvent } from '../shared/search';
 import type { VaultReminderEvent } from '../shared/reminders';
@@ -25,6 +26,7 @@ function setup(
   let content = note?.content ?? '# Note\n\ntext';
   let unlocked = !options.protectedVault;
   let listener: (event: VaultChangedEvent) => void = () => undefined;
+  let menuListener: (command: MenuCommand) => void = () => undefined;
   let lock: () => void = () => undefined;
   const reminderListeners = new Set<(event: VaultReminderEvent) => void>();
   const vault: VaultInfo = {
@@ -124,13 +126,19 @@ function setup(
       installOnExit: vi.fn(async () => undefined),
       onStatus: () => () => undefined,
     },
-    onMenuCommand: () => () => undefined,
+    onMenuCommand: (callback) => {
+      menuListener = callback;
+      return () => {
+        menuListener = () => undefined;
+      };
+    },
   };
   window.a11yNotebook = bridge;
   render(<App />);
   return {
     bridge,
     vault,
+    menu: (command: MenuCommand) => act(() => menuListener(command)),
     lock: () => lock(),
     reminder: (event: VaultReminderEvent) => reminderListeners.forEach((callback) => callback(event)),
     external: (disk: string) => {
@@ -276,9 +284,9 @@ describe('feature wiring in the application shell', () => {
   );
 
   it('creates HTML notes from the format picker', async () => {
-    const { bridge } = setup();
+    const { bridge, menu } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(within(screen.getByLabelText('Navigation pane')).getByRole('button', { name: 'New note' }));
+    menu('new-note');
     const dialog = await screen.findByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Briefing' } });
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'html' } });
@@ -318,7 +326,7 @@ describe('feature wiring in the application shell', () => {
   });
 
   it('removes reminder content and ignores stale reminder events after locking', async () => {
-    const { lock, reminder, vault } = setup();
+    const { lock, menu, reminder, vault } = setup();
     await screen.findByRole('heading', { name: 'Study' });
     const item = {
       id: 'private-reminder',
@@ -330,7 +338,7 @@ describe('feature wiring in the application shell', () => {
       originalScheduledAt: '2020-01-01T12:00:00Z',
     };
     act(() => reminder({ type: 'changed', vaultPath: vault.path, reminders: [item] }));
-    fireEvent.click(screen.getByRole('button', { name: 'Open Reminders' }));
+    menu('show-reminders');
     expect(screen.getByRole('button', { name: item.title })).toBeInTheDocument();
     act(() => lock());
     expect(screen.getByRole('dialog', { name: 'Library locked' })).toBeInTheDocument();
@@ -340,7 +348,7 @@ describe('feature wiring in the application shell', () => {
     expect(screen.queryByText(`Reminder: ${item.title}`)).not.toBeInTheDocument();
   });
   it('ignores an old-vault refresh that finishes after opening a different vault', async () => {
-    const { bridge, vault } = setup();
+    const { bridge, menu, vault } = setup();
     const editor = await editNote();
     const next: VaultInfo = {
       name: 'Next',
@@ -359,14 +367,14 @@ describe('feature wiring in the application shell', () => {
     fireEvent.change(editor, { target: { value: 'Saved content' } });
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
-    fireEvent.click(screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i }));
+    menu('open-vault');
     await screen.findByRole('treeitem', { name: /Other.md/ });
     await act(async () => finish(vault));
     expect(screen.getByRole('treeitem', { name: /Other.md/ })).toBeInTheDocument();
     expect(screen.queryByRole('treeitem', { name: /Note.md/ })).not.toBeInTheDocument();
   });
   it('pauses editing while a new vault is initialized', async () => {
-    const { bridge } = setup();
+    const { bridge, menu } = setup();
     const editor = await editNote();
     let finish: (vault: VaultInfo | null) => void = () => undefined;
     vi.mocked(bridge.vault.open).mockImplementation(
@@ -375,7 +383,7 @@ describe('feature wiring in the application shell', () => {
           finish = resolve;
         }),
     );
-    fireEvent.click(screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i }));
+    menu('open-vault');
     await screen.findByRole('dialog', { name: 'Opening library' });
     expect(editor).toBeDisabled();
     fireEvent.change(editor, { target: { value: 'late edit' } });
@@ -385,9 +393,9 @@ describe('feature wiring in the application shell', () => {
     expect(editor).toHaveValue('# Note\n\ntext');
   });
   it('opens a labelled creation dialog instead of a browser prompt', async () => {
-    const { bridge } = setup();
+    const { bridge, menu } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(within(screen.getByLabelText('Navigation pane')).getByRole('button', { name: 'New note' }));
+    menu('new-note');
     const dialog = screen.getByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'New' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));

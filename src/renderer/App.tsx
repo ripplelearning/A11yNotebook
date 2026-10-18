@@ -18,7 +18,7 @@ import {
   type CommandId,
   type MenuContext,
 } from '../shared/command-registry';
-import { isMenuCommand } from '../shared/ipc';
+import { isMenuCommand, type NativeMenuState } from '../shared/ipc';
 import type {
   AppMode,
   FocusRegion,
@@ -146,18 +146,23 @@ const REGION_LABELS: Record<FocusRegion, string> = {
 };
 
 const menuGroups: { label: string; items: CommandId[] }[] = [
-  { label: 'Library', items: ['new-contextual', 'new-library', 'open-vault', 'new-notebook', 'refresh-links'] },
   {
-    label: 'Note',
+    label: 'File',
     items: [
+      'open-vault',
+      'new-library',
+      'new-contextual',
+      'new-notebook',
       'new-note',
-      'save-current-note',
       'new-from-template',
+      'save-current-note',
       'export-current-note',
-      'annotate-selection',
-      'toggle-bookmark',
       'close-current-tab',
     ],
+  },
+  {
+    label: 'Insert',
+    items: ['insert-link', 'insert-table', 'insert-attachment', 'annotate-selection'],
   },
   {
     label: 'Format',
@@ -175,12 +180,27 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'format-checkbox',
       'format-quote',
       'format-code',
-      'insert-link',
-      'insert-table',
-      'insert-attachment',
     ],
   },
-  { label: 'Tasks', items: ['new-task', 'show-tasks', 'show-reminders', 'show-milestones'] },
+  {
+    label: 'Tools',
+    items: [
+      'new-task',
+      'new-asset',
+      'capture-webpage',
+      'import-file',
+      'reveal-selected',
+      'open-selected-external',
+      'toggle-bookmark',
+      'encrypt-current-note',
+      'convert-current-note',
+      'refresh-links',
+      'show-reminders',
+      'show-milestones',
+      'show-settings',
+      'command-search',
+    ],
+  },
   {
     label: 'View',
     items: [
@@ -190,13 +210,14 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'show-notes-files',
       'toggle-right-pane',
       'toggle-read-only-mode',
-      'show-settings',
       'show-assets',
-      'new-asset',
+      'focus-search',
+      'focus-navigation',
+      'focus-main-content',
+      'focus-right-pane',
     ],
   },
-  { label: 'Window', items: ['focus-search', 'focus-navigation', 'focus-main-content', 'focus-right-pane'] },
-  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about', 'command-search'] },
+  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about'] },
 ];
 
 export default function App() {
@@ -1916,6 +1937,43 @@ export default function App() {
       setAssetCreationVersion((version) => version + 1);
       return;
     }
+    if (commandId === 'capture-webpage') {
+      if (vault && !openNotes.some((note) => note.content !== note.saved)) setActiveDialog('web-capture');
+      else setStatusMessage('Save open notes and open a library before capturing a webpage.');
+      return;
+    }
+    if (commandId === 'import-file') {
+      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook) {
+        void window.a11yNotebook.vault.importFile(treeSelection).then((updated) => updated && setVault(updated));
+      } else setStatusMessage('Select a notebook before importing a file.');
+      return;
+    }
+    if (commandId === 'reveal-selected') {
+      if (treeSelection) void window.a11yNotebook?.vault.reveal(treeSelection);
+      return;
+    }
+    if (commandId === 'open-selected-external') {
+      if (treeSelection) void window.a11yNotebook?.vault.openExternal(treeSelection);
+      return;
+    }
+    if (commandId === 'encrypt-current-note') {
+      if (currentNote && securityEnabled && encryptedNotePath !== currentNote.path) {
+        setNotePasswordDialog({
+          action: 'encrypt',
+          entry: {
+            name: currentNote.title,
+            path: currentNote.path,
+            kind: 'note',
+            provenance: 'created',
+          },
+        });
+      }
+      return;
+    }
+    if (commandId === 'convert-current-note') {
+      if (currentNote && mode === 'edit' && currentNote.path !== encryptedNotePath) void convertActiveNoteFormat();
+      return;
+    }
     if (commandId === 'insert-attachment') {
       if (!currentNote || mode !== 'edit') {
         setStatusMessage('Open a note in edit mode first.');
@@ -2190,7 +2248,7 @@ export default function App() {
     };
   }, []);
 
-  // Commands chosen from the native Windows menu (Help menu items).
+  // Commands chosen from the native Windows menu.
   const menuCommandHandlerRef = useRef(handleCommand);
   menuCommandHandlerRef.current = handleCommand;
   useEffect(() => {
@@ -2199,7 +2257,7 @@ export default function App() {
       return undefined;
     }
     return bridge.onMenuCommand((command) => {
-      if (isMenuCommand(command) && !document.querySelector('[role="dialog"], [role="alertdialog"]')) {
+      if (isMenuCommand(command) && !document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) {
         menuCommandHandlerRef.current(command);
       }
     });
@@ -2277,14 +2335,48 @@ export default function App() {
   const isCommandDisabled = (id: CommandId): boolean => {
     if (securityLocked || switchingVault) return true;
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
+    if (id === 'save-current-note')
+      return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
+    if (id === 'close-current-tab')
+      return !tabs.some(
+        (tab) => tab.id === selectedTab && !['welcome', ...NAVIGATION_SCREENS.map((item) => item.id)].includes(tab.id),
+      );
+    if (id === 'toggle-right-pane') return false;
+    if (id === 'capture-webpage')
+      return !vault || openNotes.some((note) => note.content !== note.saved) || !!activeConflict;
+    if (id === 'import-file') return !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
+    if (id === 'reveal-selected' || id === 'open-selected-external') return !treeSelection;
+    if (id === 'encrypt-current-note')
+      return (
+        !currentNote ||
+        !securityEnabled ||
+        encryptedNotePath === currentNote.path ||
+        mode !== 'read-only' ||
+        currentNote.content !== currentNote.saved
+      );
+    if (id === 'convert-current-note') return !currentNote || mode !== 'edit' || currentNote.path === encryptedNotePath;
+    if (id.startsWith('format-') || id === 'insert-link' || id === 'insert-table' || id === 'insert-attachment')
+      return !currentNote || mode !== 'edit' || currentNoteEditLocked;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
     if (id === 'new-asset') return !vault || assetDirty || assetBusy;
     if (id === 'new-note' || id === 'new-from-template')
       return !vault || assetDirty || assetBusy || (selectedTab === 'notes-files' && !selectedNotebookPath);
-    if (['new-note', 'new-notebook', 'new-from-template', 'new-task', 'show-tasks', 'show-assets'].includes(id))
+    if (
+      [
+        'new-note',
+        'new-notebook',
+        'new-from-template',
+        'new-task',
+        'show-tasks',
+        'show-assets',
+        'show-notebooks',
+        'show-notes-files',
+      ].includes(id)
+    )
       return !vault;
-    if (id === 'new-library')
+    if (id === 'new-library' || id === 'open-vault')
       return assetDirty || assetBusy || !!activeConflict || openNotes.some((note) => note.content !== note.saved);
     return false;
   };
@@ -2342,6 +2434,29 @@ export default function App() {
         : contextMenu?.context === 'reader-link'
           ? 'Link actions'
           : 'Application actions';
+  const nativeMenuBlocked = Boolean(
+    activeDialog ||
+    itemDialog ||
+    taskDialogOpen ||
+    externalFile ||
+    notePasswordDialog ||
+    activeConflict ||
+    exportRequest ||
+    contextMenu,
+  );
+  const nativeMenuState: NativeMenuState = {
+    enabled: Object.fromEntries(COMMANDS.map(({ id }) => [id, !nativeMenuBlocked && !isCommandDisabled(id)])),
+    checked: {
+      'toggle-right-pane': rightPaneOpen,
+      'toggle-read-only-mode': mode === 'read-only',
+      'toggle-bookmark': Boolean(currentNote && bookmarks.some((bookmark) => bookmark.path === currentNote.path)),
+    },
+  };
+  const nativeMenuStateJson = JSON.stringify(nativeMenuState);
+  useEffect(() => {
+    const setMenuState = window.a11yNotebook?.setMenuState;
+    if (setMenuState) setMenuState(JSON.parse(nativeMenuStateJson) as NativeMenuState);
+  }, [nativeMenuStateJson]);
   useEffect(() => {
     document.title =
       currentNote && vault
@@ -2393,48 +2508,43 @@ export default function App() {
             placeholder="Search library, notes, tasks, files"
           />
         </div>
-        <button
-          type="button"
-          disabled={!vault || openNotes.some((note) => note.content !== note.saved)}
-          onClick={() => setActiveDialog('web-capture')}
-        >
-          Capture webpage
-        </button>
       </header>
 
-      <nav className="menu-bar" aria-label="Main menu">
-        {menuGroups.map((group) => {
-          const labelId = `menu-group-${group.label.toLowerCase()}`;
-          return (
-            <div key={group.label} className="menu-group" role="group" aria-labelledby={labelId}>
-              <span id={labelId} className="menu-label">
-                {group.label}
-              </span>
-              {group.items.map((commandId) => {
-                const command = getCommandById(commandId);
-                if (!command) return null;
-                return (
-                  <button
-                    key={command.id}
-                    type="button"
-                    className="menu-item"
-                    disabled={isCommandDisabled(command.id)}
-                    onClick={() => handleCommand(command.id)}
-                    aria-keyshortcuts={
-                      [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
-                        .filter((shortcut): shortcut is string => Boolean(shortcut))
-                        .map(toAriaKeyShortcut)
-                        .join(' ') || undefined
-                    }
-                  >
-                    {command.label}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
-      </nav>
+      {!window.a11yNotebook ? (
+        <nav className="menu-bar browser-command-menu" aria-label="Application commands">
+          {menuGroups.map((group) => {
+            const labelId = `menu-group-${group.label.toLowerCase()}`;
+            return (
+              <div key={group.label} className="menu-group" role="group" aria-labelledby={labelId}>
+                <span id={labelId} className="menu-label">
+                  {group.label}
+                </span>
+                {group.items.map((commandId) => {
+                  const command = getCommandById(commandId);
+                  if (!command) return null;
+                  return (
+                    <button
+                      key={command.id}
+                      type="button"
+                      className="menu-item"
+                      disabled={isCommandDisabled(command.id)}
+                      onClick={() => handleCommand(command.id)}
+                      aria-keyshortcuts={
+                        [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
+                          .filter((shortcut): shortcut is string => Boolean(shortcut))
+                          .map(toAriaKeyShortcut)
+                          .join(' ') || undefined
+                      }
+                    >
+                      {command.label}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })}
+        </nav>
+      ) : null}
 
       <main className="workspace" aria-label="Workspace layout">
         <aside
@@ -2445,48 +2555,6 @@ export default function App() {
           tabIndex={-1}
         >
           <h2>{vault?.name ?? 'Library'}</h2>
-          <div className="vault-actions">
-            <button type="button" onClick={() => handleCommand('show-tasks')} disabled={!vault}>
-              Open Tasks
-            </button>
-            <button type="button" onClick={() => void createNote()} disabled={!vault}>
-              New note
-            </button>
-            <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
-              New notebook
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                if (
-                  treeSelection &&
-                  findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' &&
-                  window.a11yNotebook
-                )
-                  void window.a11yNotebook.vault
-                    .importFile(treeSelection)
-                    .then((updated) => updated && setVault(updated));
-                else setStatusMessage('Select a notebook before importing a file.');
-              }}
-              disabled={!vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook'}
-            >
-              Import file
-            </button>
-            <button
-              type="button"
-              onClick={() => treeSelection && void window.a11yNotebook?.vault.reveal(treeSelection)}
-              disabled={!treeSelection}
-            >
-              Reveal in Explorer
-            </button>
-            <button
-              type="button"
-              onClick={() => treeSelection && void window.a11yNotebook?.vault.openExternal(treeSelection)}
-              disabled={!treeSelection}
-            >
-              Open in external app
-            </button>
-          </div>
           {vault ? (
             <VaultTree
               entries={vault.entries}
@@ -2499,7 +2567,7 @@ export default function App() {
               onDelete={(entryPath) => void deleteEntry(entryPath)}
             />
           ) : (
-            <p>Open a folder as a local library from the Library menu.</p>
+            <p>Open a folder as a local library from the File menu.</p>
           )}
           {vault ? (
             <SearchResults
@@ -2839,57 +2907,10 @@ export default function App() {
             ) : currentNote ? (
               <>
                 <h2>{currentNote.title}</h2>
-                {mode === 'read-only' ? (
-                  <button type="button" onClick={() => void toggleActiveBookmark()}>
-                    {bookmarks.some((bookmark) => bookmark.path === currentNote.path)
-                      ? 'Remove bookmark'
-                      : 'Bookmark note'}
-                  </button>
-                ) : null}
                 {mode === 'read-only' && securityEnabled ? (
                   encryptedNotePath === currentNote.path ? (
                     <span role="status">Encrypted note</span>
-                  ) : (
-                    <button
-                      type="button"
-                      disabled={currentNote.content !== currentNote.saved}
-                      onClick={() => {
-                        setNotePasswordDialog({
-                          action: 'encrypt',
-                          entry: {
-                            name: currentNote.title,
-                            path: currentNote.path,
-                            kind: 'note',
-                            provenance: 'created',
-                          },
-                        });
-                      }}
-                    >
-                      Encrypt note
-                    </button>
-                  )
-                ) : null}
-                <button type="button" onClick={() => void beginExport(currentNote.path)}>
-                  Export note…
-                </button>
-                {mode === 'edit' ? (
-                  <>
-                    <button type="button" onClick={() => void saveActiveNote()}>
-                      Save note
-                    </button>
-                    <button
-                      type="button"
-                      disabled={currentNote.path === encryptedNotePath}
-                      onClick={() => void convertActiveNoteFormat()}
-                    >
-                      Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
-                    </button>
-                  </>
-                ) : null}
-                {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
-                  <button type="button" onClick={() => void saveActiveNote()}>
-                    Save locked note changes
-                  </button>
+                  ) : null
                 ) : null}
                 {mode === 'edit' ? (
                   <EditorTools
