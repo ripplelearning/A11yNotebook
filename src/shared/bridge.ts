@@ -1,4 +1,4 @@
-import type { MenuCommand } from './ipc';
+import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
 import type { VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
@@ -136,4 +136,5 @@ export interface NotebookBridge {
   onPdfReadingPreferencesChanged?(callback: (preferences: PdfReadingPreferences) => void): () => void;
   /** Subscribe to commands chosen from the native application menu. Returns an unsubscribe function. */
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
+  setMenuState?: (state: NativeMenuState) => void;
 }

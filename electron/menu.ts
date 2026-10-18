@@ -1,15 +1,35 @@
-// Native Windows application menu. Help items forward a whitelisted command to the
-// renderer so native and in-app menus share one implementation.
+// Native Windows application menu. Renderer commands remain registry-backed and
+// are forwarded through the fixed menu-command IPC channel.
 import { Menu, type MenuItemConstructorOptions } from 'electron';
-import type { MenuCommand } from '../src/shared/ipc';
+import type { MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import { getCommandById, type CommandId } from '../src/shared/command-registry';
 
 export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void, isDevelopment: boolean) {
-  const commandItem = (id: CommandId): MenuItemConstructorOptions => ({
+  const commandItem = (id: CommandId, type?: 'checkbox'): MenuItemConstructorOptions => ({
+    id,
     label: getCommandById(id)!.label,
+    enabled: false,
+    ...(type ? { type } : {}),
     click: () => sendCommand(id),
   });
   const viewItems: MenuItemConstructorOptions[] = [
+    commandItem('show-contents'),
+    commandItem('show-libraries'),
+    commandItem('show-notebooks'),
+    commandItem('show-notes-files'),
+    commandItem('show-tasks'),
+    commandItem('show-assets'),
+    commandItem('show-reminders'),
+    commandItem('show-milestones'),
+    { type: 'separator' },
+    commandItem('toggle-right-pane', 'checkbox'),
+    commandItem('toggle-read-only-mode', 'checkbox'),
+    { type: 'separator' },
+    commandItem('focus-search'),
+    commandItem('focus-navigation'),
+    commandItem('focus-main-content'),
+    commandItem('focus-right-pane'),
+    { type: 'separator' },
     { role: 'resetZoom' },
     { role: 'zoomIn' },
     { role: 'zoomOut' },
@@ -24,13 +44,17 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     {
       label: '&File',
       submenu: [
-        commandItem('new-contextual'),
-        commandItem('new-library'),
         commandItem('open-vault'),
+        commandItem('new-library'),
+        { type: 'separator' },
+        commandItem('new-contextual'),
         commandItem('new-notebook'),
         commandItem('new-note'),
         commandItem('new-from-template'),
+        { type: 'separator' },
         commandItem('save-current-note'),
+        commandItem('export-current-note'),
+        commandItem('close-current-tab'),
         { type: 'separator' },
         { role: 'quit', label: 'E&xit' },
       ],
@@ -48,18 +72,12 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
       ],
     },
     {
-      label: 'F&ormat',
+      label: '&View',
+      submenu: viewItems,
+    },
+    {
+      label: '&Insert',
       submenu: [
-        commandItem('format-bold'),
-        commandItem('format-italic'),
-        commandItem('format-heading1'),
-        commandItem('format-heading2'),
-        commandItem('format-heading3'),
-        commandItem('format-bullet'),
-        commandItem('format-numbered'),
-        commandItem('format-checkbox'),
-        commandItem('format-quote'),
-        commandItem('format-code'),
         commandItem('insert-link'),
         commandItem('insert-table'),
         commandItem('insert-attachment'),
@@ -67,41 +85,65 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
       ],
     },
     {
+      label: 'F&ormat',
+      submenu: [
+        commandItem('format-bold'),
+        commandItem('format-italic'),
+        { type: 'separator' },
+        commandItem('format-heading1'),
+        commandItem('format-heading2'),
+        commandItem('format-heading3'),
+        commandItem('format-heading4'),
+        commandItem('format-heading5'),
+        commandItem('format-heading6'),
+        { type: 'separator' },
+        commandItem('format-bullet'),
+        commandItem('format-numbered'),
+        commandItem('format-checkbox'),
+        commandItem('format-quote'),
+        commandItem('format-code'),
+      ],
+    },
+    {
       label: '&Tools',
       submenu: [
         commandItem('new-task'),
         commandItem('new-asset'),
-        commandItem('show-reminders'),
-        commandItem('show-milestones'),
-        commandItem('show-assets'),
+        commandItem('capture-webpage'),
+        commandItem('import-file'),
+        commandItem('reveal-selected'),
+        commandItem('open-selected-external'),
+        { type: 'separator' },
+        commandItem('toggle-bookmark', 'checkbox'),
+        commandItem('encrypt-current-note'),
+        commandItem('convert-current-note'),
+        { type: 'separator' },
+        commandItem('refresh-links'),
         commandItem('show-settings'),
-      ],
-    },
-    {
-      label: '&View',
-      submenu: [
-        commandItem('show-contents'),
-        commandItem('show-libraries'),
-        commandItem('show-notebooks'),
-        commandItem('show-notes-files'),
-        commandItem('show-tasks'),
-        commandItem('show-assets'),
-        { type: 'separator' },
-        commandItem('toggle-right-pane'),
-        { type: 'separator' },
-        ...viewItems,
+        commandItem('command-search'),
       ],
     },
     {
       label: '&Help',
       submenu: [
-        { label: 'Check for &Updates…', click: () => sendCommand('check-for-updates') },
-        { label: '&Keyboard Shortcuts', click: () => sendCommand('show-keyboard-shortcuts') },
+        commandItem('check-for-updates'),
+        commandItem('show-keyboard-shortcuts'),
         { type: 'separator' },
-        { label: '&About A11y Notebook', click: () => sendCommand('show-about') },
+        commandItem('show-about'),
       ],
     },
   ];
 
   return Menu.buildFromTemplate(template);
+}
+
+export function updateApplicationMenu(menu: Menu, state: NativeMenuState) {
+  for (const [id, enabled] of Object.entries(state.enabled)) {
+    const item = menu.getMenuItemById(id);
+    if (item) item.enabled = enabled;
+  }
+  for (const [id, checked] of Object.entries(state.checked)) {
+    const item = menu.getMenuItemById(id);
+    if (item?.type === 'checkbox') item.checked = checked;
+  }
 }

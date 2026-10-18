@@ -1,8 +1,9 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
+import type { MenuCommand } from '../shared/ipc';
 import { vaultExtensions } from './vault-extensions';
 
 const vault: VaultInfo = {
@@ -25,6 +26,7 @@ afterEach(() => {
 
 describe('local vault workflow', () => {
   it('opens a note, edits its Markdown source, and saves through the typed bridge', async () => {
+    let menuListener: ((command: MenuCommand) => void) | undefined;
     const bridge: NotebookBridge = {
       updater: {
         check: vi.fn(async () => undefined),
@@ -77,7 +79,12 @@ describe('local vault workflow', () => {
           },
         ]),
       },
-      onMenuCommand: vi.fn(() => () => undefined),
+      onMenuCommand: (callback) => {
+        menuListener = callback;
+        return () => {
+          menuListener = undefined;
+        };
+      },
     };
     window.a11yNotebook = bridge;
     render(<App />);
@@ -88,29 +95,28 @@ describe('local vault workflow', () => {
     fireEvent.click(screen.getByRole('treeitem', { name: /Week 1.md/ }));
     expect(await screen.findByRole('heading', { name: 'Week 1', level: 2 })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Bookmark note' }));
+    act(() => menuListener?.('toggle-bookmark'));
     await waitFor(() => expect(bridge.vault.toggleBookmark).toHaveBeenCalledWith('Class notes/Week 1.md'));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Note bookmarked.');
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     fireEvent.change(editor, { target: { value: '# Week 1\n\nUpdated.\n- [ ] Submit' } });
+    (editor as HTMLTextAreaElement).setSelectionRange(10, 18);
+    act(() => menuListener?.('format-bold'));
+    expect(editor).toHaveValue('# Week 1\n\n**Updated.**\n- [ ] Submit');
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() =>
       expect(bridge.vault.saveNote).toHaveBeenCalledWith(
         'Class notes/Week 1.md',
-        '# Week 1\n\nUpdated.\n- [ ] Submit',
+        '# Week 1\n\n**Updated.**\n- [ ] Submit',
         '# Week 1\n\nImportant material\n- [ ] Submit',
       ),
     );
     expect(
       within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }),
     ).toHaveAttribute('aria-selected', 'true');
-    fireEvent.click(
-      within(screen.getByRole('complementary', { name: 'Navigation pane' })).getByRole('button', {
-        name: 'Open Tasks',
-      }),
-    );
+    act(() => menuListener?.('show-tasks'));
     const taskTable = await screen.findByRole('table', {
       name: 'Markdown and HTML checklist tasks in the open library',
     });
@@ -126,8 +132,7 @@ describe('local vault workflow', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), {
       target: { value: '# Week 1\n\nUnsaved changes.' },
     });
-    const openVault = screen.getByRole('button', { name: /^(?:Open vault|Open library)$/i });
-    fireEvent.click(openVault);
+    act(() => menuListener?.('open-vault'));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent(
       'Save or resolve unsaved changes before opening another library.',
     );
@@ -139,7 +144,7 @@ describe('local vault workflow', () => {
         within(screen.getByRole('tablist', { name: 'Open tabs' })).getByRole('tab', { name: 'Week 1' }),
       ).toHaveAttribute('aria-selected', 'true'),
     );
-    fireEvent.click(openVault);
+    act(() => menuListener?.('open-vault'));
     await waitFor(() => expect(bridge.vault.open).toHaveBeenCalledTimes(1));
   });
 });

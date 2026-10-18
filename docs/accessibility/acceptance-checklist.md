@@ -13,7 +13,8 @@
 - [ ] F6 and Shift+F6 move real keyboard focus (not just highlighting) and skip the hidden right pane.
 - [ ] Every modal dialog moves focus inside on open, keeps Tab inside, closes on Escape, and returns focus.
 - [ ] The tab list follows the WAI-ARIA tabs pattern (arrow keys, Home and End, roving tabindex, labelled tab panel).
-- [ ] The Help menu (in-app and native Windows menu) is keyboard operable, and each item has a clear, unique name.
+- [ ] The native Windows menu has logical mnemonic groups, separators, keyboard navigation, and correct enabled/checked state; browser-only development has an accessible command fallback.
+- [ ] Native menu commands dispatch once, preserve the active note and editor selection, are blocked during dialogs, and restore focus after a dialog closes.
 - [ ] Check for Updates opens a labelled modal update dialog that describes the current state in text.
 - [ ] Update download progress is exposed as a progress bar with its value and announced politely about every 10 percent, never on every tick and never twice.
 - [ ] Update errors are announced as alerts and shown as readable text, never only visually.

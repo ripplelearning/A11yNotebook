@@ -76,8 +76,8 @@ function setup(withNote = false) {
 async function ready() {
   await screen.findByRole('heading', { name: 'Planning' });
 }
-async function openMilestones() {
-  fireEvent.click(screen.getByRole('button', { name: 'Open Milestones' }));
+async function openMilestones(menu: (command: MenuCommand) => void) {
+  menu('show-milestones');
   await waitFor(() => expect(screen.getByRole('button', { name: 'Create milestone' })).toBeEnabled());
 }
 function deferred<T>() {
@@ -137,7 +137,7 @@ describe('milestone shell wiring', () => {
     await ready();
     const pending = deferred<Milestone[]>();
     vi.mocked(f.bridge.vault.getMilestones!).mockReturnValueOnce(pending.promise);
-    fireEvent.click(screen.getByRole('button', { name: 'Open Milestones' }));
+    f.menu('show-milestones');
     await waitFor(() => expect(f.bridge.vault.getMilestones).toHaveBeenCalledTimes(1));
     const picker = deferred<typeof f.vault | null>();
     vi.mocked(f.bridge.vault.open).mockReturnValueOnce(picker.promise);
@@ -153,7 +153,7 @@ describe('milestone shell wiring', () => {
   it('clears a draft on lock, suppresses pending writes, and reloads after unlock', async () => {
     const f = setup();
     await ready();
-    await openMilestones();
+    await openMilestones(f.menu);
     const pending = deferred<Milestone>();
     vi.mocked(f.bridge.vault.createMilestone!).mockReturnValueOnce(pending.promise);
     fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
@@ -178,7 +178,7 @@ describe('milestone shell wiring', () => {
       { ...record, title: 'Release', notePaths: ['Plan.md'] },
     ]);
     await ready();
-    await openMilestones();
+    await openMilestones(f.menu);
     fireEvent.click(screen.getByRole('button', { name: 'Release' }));
     const note = screen.getByRole('button', { name: 'Plan.md' });
     note.focus();
@@ -193,7 +193,7 @@ describe('milestone shell wiring', () => {
     vi.mocked(f.bridge.vault.getMilestones!).mockResolvedValue([record]);
     vi.mocked(f.bridge.vault.createMilestone!).mockResolvedValue(record);
     await ready();
-    await openMilestones();
+    await openMilestones(f.menu);
     fireEvent.click(screen.getByRole('button', { name: 'Create milestone' }));
     fireEvent.change(screen.getByLabelText('Milestone title'), { target: { value: record.title } });
     fireEvent.change(screen.getByLabelText('Due date'), { target: { value: record.dueDate } });
@@ -218,7 +218,7 @@ describe('milestone shell wiring', () => {
         { ...record, title: 'Release', notePaths: ['Plan.md'] },
       ]);
       await ready();
-      await openMilestones();
+      await openMilestones(f.menu);
       fireEvent.click(screen.getByRole('button', { name: 'Release' }));
       let finish!: (value: string) => void;
       let fail!: (reason: Error) => void;

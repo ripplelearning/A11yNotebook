@@ -7,6 +7,7 @@ import NotebooksScreen from '../renderer/features/screens/NotebooksScreen';
 import NotesFilesScreen from '../renderer/features/screens/NotesFilesScreen';
 import VaultTree from '../renderer/features/vault/VaultTree';
 import type { NotebookBridge } from '../shared/bridge';
+import type { MenuCommand } from '../shared/ipc';
 import type { VaultEntry, VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
 
@@ -63,6 +64,7 @@ function renderLibrary() {
       { name: 'Root.md', path: 'Root.md', kind: 'note', provenance: 'created' },
     ],
   };
+  let menuListener: ((command: MenuCommand) => void) | undefined;
   const bridge = {
     updater: {
       check: vi.fn(async () => undefined),
@@ -87,11 +89,16 @@ function renderLibrary() {
       onSecurityLocked: vi.fn(() => () => undefined),
       unlockVault: vi.fn(async () => vault),
     },
-    onMenuCommand: vi.fn(() => () => undefined),
+    onMenuCommand: (callback: (command: MenuCommand) => void) => {
+      menuListener = callback;
+      return () => {
+        menuListener = undefined;
+      };
+    },
   } as unknown as NotebookBridge;
   window.a11yNotebook = bridge;
   render(<App />);
-  return { vault, bridge };
+  return { vault, bridge, menu: (command: MenuCommand) => act(() => menuListener?.(command)) };
 }
 
 function navigate(shortcut: string) {
@@ -290,17 +297,16 @@ describe('accessible details view', () => {
     { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
     { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report.txt' },
   ])('preserves notebook context when selecting and opening $name', async ({ name, path, heading }) => {
-    const { bridge } = renderLibrary();
+    const { bridge, menu } = renderLibrary();
 
     await screen.findByRole('heading', { name: 'Study', level: 2 });
-    const viewMenu = screen.getByRole('group', { name: 'View' });
-    fireEvent.click(within(viewMenu).getByRole('button', { name: 'Contents' }));
+    menu('show-contents');
     expect(screen.getByRole('heading', { name: 'Contents in Study' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Libraries (1)' }));
     expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: 'Study' })).toBeInTheDocument();
     expect(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Open library' })).toBeInTheDocument();
 
-    fireEvent.click(within(viewMenu).getByRole('button', { name: 'Notebooks' }));
+    menu('show-notebooks');
     const notebooks = screen.getByRole('grid', { name: 'Notebooks' });
     const research = within(notebooks).getByRole('gridcell', { name: 'Research' });
     fireEvent.keyDown(research, { key: 'ContextMenu' });
@@ -323,7 +329,7 @@ describe('accessible details view', () => {
 
     navigate('3');
     expectResearchContext();
-    fireEvent.click(screen.getByRole('button', { name: 'Refresh links' }));
+    menu('refresh-links');
     await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
     expectResearchContext();
     navigate('0');
@@ -487,7 +493,7 @@ describe('accessible details view', () => {
     { change: 'replaced by a file', source: 'refresh' },
     { change: 'removed', source: 'watcher' },
   ] as const)('clears notebook context when notebook is $change ($source)', async ({ change, source }) => {
-    const { vault, bridge } = renderLibrary();
+    const { vault, bridge, menu } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
     navigate('2');
     fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
@@ -502,7 +508,7 @@ describe('accessible details view', () => {
           : []),
       ],
     });
-    if (source === 'refresh') fireEvent.click(screen.getByRole('button', { name: 'Refresh links' }));
+    if (source === 'refresh') menu('refresh-links');
     else {
       const changed = vi.mocked(bridge.vault.onChanged).mock.calls[0][0];
       await act(async () => changed({ vaultPath: vault.path, paths: ['Research'] }));

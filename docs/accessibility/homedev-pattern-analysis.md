@@ -224,7 +224,7 @@ HomerDev (section 4) handles keys at the layer that owns them. It keeps focus on
 - Dialogs handle their own keys (Tab trapping and Escape). Global shortcuts are ignored while a dialog is open.
 - Command results that focus does not convey (for example, "Right pane opened.") go to the status bar's polite live region.
 - The update dialog makes its own announcements while it is open. The status bar takes over when it is closed, so screen readers never hear the same message twice.
-- The Help menu is a group of native buttons. A11y Notebook does not build a custom ARIA `menubar`, because native buttons need no extra keyboard model and are exposed reliably to UI Automation. The native Windows menu (Alt, H) offers the same Help commands.
+- The installed Electron app uses Electron's native application menu, not a styled HTML toolbar or custom ARIA `menubar`. Windows supplies standard Alt/mnemonic and arrow-key behavior. Browser-only development uses an accessible HTML command fallback because no native menu is available.
 
 ### Compatibility considerations
 

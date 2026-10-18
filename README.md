@@ -6,7 +6,7 @@ and a sandboxed reader.
 
 ## Current scope
 
-- An accessible shell with a header, menu bar, navigation pane, tabs, main content pane, right pane, and status bar.
+- An accessible shell with a header, native Windows/Electron menu bar, navigation pane, tabs, main content pane, right pane, and status bar.
 - Local library folders with notebooks as subfolders, Markdown and HTML notes, and attachments. Library metadata is stored as
   readable JSON under `.a11ynotebook/`.
 - Keyboard-operable tree navigation, note creation, rename and deletion (to the OS Recycle Bin), file import,
@@ -29,11 +29,11 @@ and a sandboxed reader.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a library-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
-- A command registry that drives the menu bar, keyboard shortcuts, and a modal command palette (Ctrl+K).
+- A shared command registry that drives grouped File, Edit, View, Insert, Format, Tools, and Help menus, customizable keyboard shortcuts, and a modal command palette (Ctrl+K).
 - One context-aware menu driven by the command registry, available with Shift+F10, the Applications key, and right-click.
 - Closable tabs that follow the WAI-ARIA tabs pattern (arrow keys, Home, End, roving focus).
 - Switching between read-only and edit mode, with announcements in the status bar.
-- A Help menu with **Check for Updates**, **Keyboard Shortcuts**, and **About A11y Notebook**.
+- Native Help commands for **Check for Updates**, **Keyboard Shortcuts**, and **About A11y Notebook**. Browser-only development keeps a compact accessible command fallback instead of the desktop menu.
 - A Windows installer (`.exe`), a portable `.exe`, and a secure in-app updater that uses GitHub Releases.
 - Tests for library path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
 - Documentation of how HomerDev influenced the design without copying it.
