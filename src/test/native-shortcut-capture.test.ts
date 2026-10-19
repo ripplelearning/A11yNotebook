@@ -44,6 +44,7 @@ vi.mock('electron', () => ({
     requestSingleInstanceLock: () => true,
     whenReady: () => Promise.resolve(),
     on: vi.fn(),
+    setAppUserModelId: vi.fn(),
   },
   BrowserWindow: Object.assign(
     vi.fn(function () {
@@ -100,7 +101,6 @@ function menuItem(label: string) {
 }
 
 beforeEach(() => {
-  capture(false);
   vi.clearAllMocks();
 });
 
