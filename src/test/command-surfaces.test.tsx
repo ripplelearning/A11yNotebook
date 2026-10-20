@@ -72,9 +72,13 @@ describe('command surface visibility', () => {
       for (const path of ['Idea.md', 'Page.html']) {
         fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(path.replace('.', '\\.')) }));
         if (surface === 'menu') menu('open-selected-external');
-        else {
-          if (surface === 'palette') menu('command-search');
+        else if (surface === 'palette') {
+          menu('command-search');
           fireEvent.click(screen.getByRole('button', { name: 'Open in external app' }));
+        } else {
+          fireEvent.click(
+            within(container.querySelector('.vault-actions')!).getByRole('button', { name: 'Open in external app' }),
+          );
         }
         await waitFor(() => expect(bridge.vault.openExternal).toHaveBeenLastCalledWith(path));
         expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
@@ -141,9 +145,13 @@ describe('command surface visibility', () => {
       });
       const runImport = () => {
         if (surface === 'menu') menu('import-file');
-        else {
-          if (surface === 'palette') menu('command-search');
+        else if (surface === 'palette') {
+          menu('command-search');
           fireEvent.click(screen.getByRole('button', { name: 'Import file' }));
+        } else {
+          fireEvent.click(
+            within(container.querySelector('.vault-actions')!).getByRole('button', { name: 'Import file' }),
+          );
         }
       };
       runImport();

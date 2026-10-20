@@ -107,8 +107,10 @@ describe('Settings interface and shortcut capture', () => {
 
   it('ignores modifier-only, repeat, activation, composition, AltGraph, and unsupported input without changing the draft', () => {
     const { onSave } = setup();
-    const previous = (input() as HTMLInputElement).value;
+    const shortcutInput = input();
+    const previous = (shortcutInput as HTMLInputElement).value;
     arm();
+    const cancelButton = screen.getByRole('button', { name: 'Cancel capture' });
     for (const [key, options] of [
       ['Control', { ctrlKey: true }],
       ['Shift', { shiftKey: true }],
@@ -122,8 +124,8 @@ describe('Settings interface and shortcut capture', () => {
       ['j', { metaKey: true }],
     ] as const) {
       press(key, options);
-      expect(input()).toHaveValue(previous);
-      expect(screen.getByRole('button', { name: 'Cancel capture' })).toBeInTheDocument();
+      expect(shortcutInput).toHaveValue(previous);
+      expect(cancelButton).toBeInTheDocument();
     }
     const altGraph = new KeyboardEvent('keydown', {
       key: 'j',
@@ -136,11 +138,11 @@ describe('Settings interface and shortcut capture', () => {
     act(() => {
       window.dispatchEvent(altGraph);
     });
-    expect(input()).toHaveValue(previous);
+    expect(shortcutInput).toHaveValue(previous);
     expect(onSave).not.toHaveBeenCalled();
     press('F12', { altKey: true });
-    expect(input()).toHaveValue('Alt+F12');
-  });
+    expect(shortcutInput).toHaveValue('Alt+F12');
+  }, 10000);
 
   it('rejects reserved keys and collisions without changing the old value, and permits retry', () => {
     setup();

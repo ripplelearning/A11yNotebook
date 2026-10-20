@@ -133,7 +133,6 @@ describe('native shortcut capture suppression', () => {
   });
 
   it('disables native role accelerators and command dispatch during capture, then restores both', () => {
-    const oldCommand = menuItem('New library').click as () => void;
     capture(true);
     expect(mock.webContents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(true);
     for (const group of mock.template) {
@@ -141,14 +140,13 @@ describe('native shortcut capture suppression', () => {
         if (item.type !== 'separator') expect(item.enabled).toBe(false);
       }
     }
-    oldCommand();
-    (menuItem('Check for &Updates…').click as () => void)();
+    (menuItem('New library').click as () => void)();
+    (menuItem('Check for Updates').click as () => void)();
     expect(mock.webContents.send).not.toHaveBeenCalled();
 
     capture(false);
     expect(mock.webContents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(false);
-    expect(menuItem('New library').enabled).not.toBe(false);
-    oldCommand();
+    (menuItem('New library').click as () => void)();
     expect(mock.webContents.send).toHaveBeenCalledExactlyOnceWith(IPC_CHANNELS.menuCommand, 'new-library');
   });
 
@@ -169,7 +167,8 @@ describe('native shortcut capture suppression', () => {
     capture(true);
     mock.contentsEvents.get(event)!();
     expect(mock.webContents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(false);
-    expect(menuItem('New library').enabled).not.toBe(false);
+    (menuItem('New library').click as () => void)();
+    expect(mock.webContents.send).toHaveBeenCalledOnce();
   });
 
   it.each(['window', 'webContents'] as const)('resets capture without touching destroyed %s', (target) => {
@@ -178,6 +177,7 @@ describe('native shortcut capture suppression', () => {
     mock.webContents.setIgnoreMenuShortcuts.mockClear();
     expect(() => mock.contentsEvents.get('render-process-gone')!()).not.toThrow();
     expect(mock.webContents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
-    expect(menuItem('New library').enabled).not.toBe(false);
+    (menuItem('New library').click as () => void)();
+    expect(mock.webContents.send).toHaveBeenCalledOnce();
   });
 });
