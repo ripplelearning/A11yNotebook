@@ -1,0 +1,8 @@
+/.github/workflows/ci.yml text eol=lf
+/.github/workflows/release.yml text eol=lf
+/scripts/verify-release.mjs text eol=lf
+/src/test/release-validation.test.ts text eol=lf
+/docs/updater.md text eol=lf
+/docs/keyboard-shortcuts.md text eol=lf
+/package.json text eol=lf
+/package-lock.json text eol=lf

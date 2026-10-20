@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -10,6 +10,14 @@ const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe('exact-tag candidate validation', () => {
+  it('keeps package and lockfile versions aligned with a valid release tag', () => {
+    const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
+    const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+    expect(lock.version).toBe(version);
+    expect(lock.packages[''].version).toBe(version);
+    expect(() => verifyTag(`v${version}`, version, 'abc', 'abc')).not.toThrow();
+  });
+
   it('rejects branches, mismatched versions and wrong checkouts', () => {
     expect(() => verifyTag('v1.1.2-rc.1', '1.1.2-rc.1', 'abc', 'abc')).not.toThrow();
     expect(() => verifyTag('main', '1.1.2-rc.1', 'abc', 'abc')).toThrow();
