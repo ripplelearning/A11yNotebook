@@ -4,13 +4,20 @@ import { Menu, type MenuItemConstructorOptions } from 'electron';
 import type { MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import { getCommandById, type CommandId } from '../src/shared/command-registry';
 
-export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void, isDevelopment: boolean) {
+export function buildApplicationMenu(
+  sendCommand: (command: MenuCommand) => void,
+  isDevelopment: boolean,
+  isShortcutCaptureActive: () => boolean = () => false,
+) {
+  const dispatch = (command: MenuCommand) => {
+    if (!isShortcutCaptureActive()) sendCommand(command);
+  };
   const commandItem = (id: CommandId, type?: 'checkbox'): MenuItemConstructorOptions => ({
     id,
     label: getCommandById(id)!.label,
     enabled: false,
     ...(type ? { type } : {}),
-    click: () => sendCommand(id),
+    click: () => dispatch(id),
   });
   const viewItems: MenuItemConstructorOptions[] = [
     commandItem('show-contents'),
@@ -24,11 +31,6 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     { type: 'separator' },
     commandItem('toggle-right-pane', 'checkbox'),
     commandItem('toggle-read-only-mode', 'checkbox'),
-    { type: 'separator' },
-    commandItem('focus-search'),
-    commandItem('focus-navigation'),
-    commandItem('focus-main-content'),
-    commandItem('focus-right-pane'),
     { type: 'separator' },
     { role: 'resetZoom' },
     { role: 'zoomIn' },
@@ -124,6 +126,15 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
       ],
     },
     {
+      label: '&Window',
+      submenu: [
+        commandItem('focus-search'),
+        commandItem('focus-navigation'),
+        commandItem('focus-main-content'),
+        commandItem('focus-right-pane'),
+      ],
+    },
+    {
       label: '&Help',
       submenu: [
         commandItem('check-for-updates'),
@@ -134,6 +145,13 @@ export function buildApplicationMenu(sendCommand: (command: MenuCommand) => void
     },
   ];
 
+  if (isShortcutCaptureActive()) {
+    for (const group of template) {
+      for (const item of group.submenu as MenuItemConstructorOptions[]) {
+        if (item.type !== 'separator') item.enabled = false;
+      }
+    }
+  }
   return Menu.buildFromTemplate(template);
 }
 

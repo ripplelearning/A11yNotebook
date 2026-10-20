@@ -11,7 +11,7 @@ describe('renderer shell', () => {
     render(<App />);
     expect(screen.getByRole('heading', { name: 'A11y Notebook' })).toBeTruthy();
     expect(screen.getByLabelText('Application header')).toBeTruthy();
-    expect(screen.getByLabelText('Application commands')).toBeTruthy();
+    expect(screen.getByLabelText('Main menu')).toBeTruthy();
     expect(screen.getByLabelText('Status bar')).toBeTruthy();
   });
 });

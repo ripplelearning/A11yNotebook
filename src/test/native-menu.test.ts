@@ -20,11 +20,17 @@ describe('native command menu', () => {
     ['&File', 'new-library'],
     ['&File', 'new-notebook'],
     ['&File', 'new-note'],
+    ['&Tools', 'import-file'],
+    ['&Tools', 'open-selected-external'],
     ['&Insert', 'insert-link'],
     ['F&ormat', 'format-heading6'],
     ['&Tools', 'new-task'],
     ['&Tools', 'new-asset'],
     ['&View', 'toggle-read-only-mode'],
+    ['&Window', 'focus-search'],
+    ['&Window', 'focus-navigation'],
+    ['&Window', 'focus-main-content'],
+    ['&Window', 'focus-right-pane'],
     ['&Help', 'show-keyboard-shortcuts'],
   ] as const)('dispatches %s / %s with its registry label exactly once', (group, id: CommandId) => {
     const sendCommand = vi.fn();
@@ -47,6 +53,7 @@ describe('native command menu', () => {
       '&Insert',
       'F&ormat',
       '&Tools',
+      '&Window',
       '&Help',
     ]);
 

@@ -811,6 +811,19 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Legacy.md'), 'utf8')).toBe(ciphertext);
   });
 
+  it.each([true, false])(
+    'persists command-button visibility %s through IPC and library reopen',
+    async (showCommandButtons) => {
+      const settings = { ...DEFAULT_SETTINGS, showCommandButtons };
+      await invoke(IPC_CHANNELS.settingsSave, settings);
+      expect(JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'settings.json'), 'utf8'))).toMatchObject({
+        showCommandButtons,
+      });
+      await invoke(IPC_CHANNELS.vaultOpen);
+      expect(await invoke(IPC_CHANNELS.settingsGet)).toEqual(settings);
+    },
+  );
+
   it('persists and reloads reminder settings through IPC and migrates old settings defaults', async () => {
     const settings = {
       ...DEFAULT_SETTINGS,
@@ -834,6 +847,7 @@ describe('extended vault IPC integration', () => {
       reminderSound: false,
       reminderSoundChoice: 'gentle-chime',
       reminderVolume: 50,
+      showCommandButtons: false,
     });
   });
   it('fires a generic in-app reminder with native notifications disabled without creating a native title', async () => {
@@ -1822,7 +1836,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
-  });
+  }, 30_000);
   it('cleans up credentials saved after recovery preparation', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');

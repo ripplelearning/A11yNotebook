@@ -10,6 +10,7 @@ export const IPC_CHANNELS = {
   updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
+  shortcutCaptureActive: 'menu:shortcut-capture-active',
   menuState: 'menu:state',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',

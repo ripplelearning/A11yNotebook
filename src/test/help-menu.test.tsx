@@ -178,6 +178,8 @@ describe('Check for Updates', () => {
   it('walks through check, consented download with progress, and install', () => {
     const { bridge, emit, menu } = installBridge();
     render(<App />);
+    const opener = screen.getByRole('searchbox', { name: 'Global search' });
+    opener.focus();
     menu('check-for-updates');
 
     expect(bridge.updater.check).toHaveBeenCalledTimes(1);

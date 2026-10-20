@@ -25,7 +25,10 @@ and a sandboxed reader.
 - Reminders, native notifications while the app runs, a grouped agenda, and notebook task progress.
 - Sandboxed HTML, plain-text/CSV, and local raster-image previews, including saved image descriptions.
 - PDF.js page reading with selectable text, zoom/rotation, semantic navigation/search, and stable persisted annotations; ePub uses a paginated epub.js rendition with a nested TOC, sanitized chapters, and section text search. ePub annotations remain open.
-- Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings.
+- Persisted autosave, appearance, font-size, and conflict-checked keyboard-shortcut settings, organized under semantic
+  section headings. Optional **Capture Shortcut** buttons supplement manual entry; Escape or Tab cancels capture.
+- A menu-first interface by default. **Settings → Appearance and interface → Show command/action buttons in the UI**
+  restores the button-rich layout while retaining the native menu. Browser development keeps command buttons available.
 - Checkbox tasks indexed from Markdown and semantic HTML. HTML tasks use stable `data-a11y-task-id` identity, completion, due-date and priority attributes; both formats support filters, sorting, reminders and progress summaries.
 - Wiki and relative Markdown links with a library-wide forward/backlink index, plus persisted note bookmarks.
 - Real focus movement between panes with F6 and Shift+F6. The right pane is skipped when it is hidden.
@@ -37,6 +40,14 @@ and a sandboxed reader.
 - A Windows installer (`.exe`), a portable `.exe`, and a secure in-app updater that uses GitHub Releases.
 - Tests for library path validation, tree keyboard behavior, Markdown sanitization, focus management, dialogs, and updater logic.
 - Documentation of how HomerDev influenced the design without copying it.
+
+Native-menu coordination: this Settings follow-up was developed against main revision
+`6340628fa9990d2e6d4d96a6bfe89be8dbead187`. Draft [PR #43](https://github.com/ripplelearning/A11yNotebook/pull/43)
+had no committed file changes when inspected (head `e8f4d269b289d3736352632e228b793c30394311`).
+It has not been merged here. When combining the work, preserve `showCommandButtons` gates around consolidated
+command surfaces, the browser fallback, and the Settings shortcut-capture suspension bridge. Expected integration
+overlap is in `App.tsx`, the editor/screen action strips, and Electron menu/main/preload/bridge files; retain the
+menu PR's command organization and state handling rather than restoring unconditional strips.
 
 ## Accessibility commitments
 

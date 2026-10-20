@@ -52,7 +52,12 @@ function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
       getTasks: vi.fn(async (): Promise<VaultTask[]> => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
-      getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, autosaveDelay: 0, defaultNoteOpenMode })),
+      getSettings: vi.fn(async () => ({
+        ...DEFAULT_SETTINGS,
+        showCommandButtons: true,
+        autosaveDelay: 0,
+        defaultNoteOpenMode,
+      })),
       getSecurityStatus: vi.fn(async () => ({ enabled: false, locked: false, recoveryAvailable: false })),
       isNoteEncrypted: vi.fn(async () => false),
     },
@@ -303,6 +308,7 @@ describe('default note opening mode', () => {
     const { bridge } = setup('edit');
     bridge.vault.getSettings.mockResolvedValue({
       ...DEFAULT_SETTINGS,
+      showCommandButtons: true,
       autosaveDelay: 0,
       defaultNoteOpenMode: 'edit',
       noteEditLockMinutes: 1,
