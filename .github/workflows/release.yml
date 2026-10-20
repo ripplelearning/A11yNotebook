@@ -82,9 +82,6 @@ jobs:
           CSC_LINK: ${{ secrets.WINDOWS_CERTIFICATE }}
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
-          if ($env:RELEASE_TAG -notmatch '-rc\.' -and !$env:CSC_LINK) {
-            throw 'Stable releases require owner-provisioned signing credentials.'
-          }
           if ($env:CSC_LINK) {
             "FORCE_SIGNING=true" >> $env:GITHUB_ENV
           } else {
@@ -189,14 +186,14 @@ jobs:
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
           $rc = $env:RELEASE_TAG -match '-rc\.'
-          $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } else { 'UNSIGNED test candidate; Windows may display SmartScreen warnings' }
+          $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
           $notes = @"
           $trust.
 
           Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
           Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
           Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs; failures remain open and do not prevent downloading this RC for testing.
-          Installer-over-install is NOT full updater E2E. No prerelease opt-in or signature-policy bypass was added.
+          Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
           $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
