@@ -7,7 +7,7 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 ## Automated DOM accessibility checks
 
 - Use React Testing Library and Vitest for rendering and interaction checks.
-- Validate the shell elements and options that matter most: menu bar, search input, nav pane, tabs, content pane, info pane, status bar, and command palette.
+- Validate the shell elements and options that matter most: native Electron menu (including checked/disabled state), browser-only command fallback, search input, nav pane, tabs, content pane, info pane, status bar, and command palette.
 - Verify accessible names and labels on each major control.
 - Confirm focus-target states and active region toggles are present.
 
@@ -16,7 +16,7 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 - F6 and Shift+F6 move real keyboard focus through navigation → tabs → main → right pane → status bar and wrap. Shift+F6 moves back exactly one pane, and the hidden right pane is skipped (`src/test/focus-management.test.tsx`).
 - Ctrl+K opens the command palette and focuses its search box. Tab and Shift+Tab stay inside it, and Escape closes it and returns focus to where it was.
 - Tabs follow the WAI-ARIA tabs pattern: arrow keys, Home, and End move focus and selection, and tabindex is roving.
-- The Help menu's Check for Updates, Keyboard Shortcuts, and About dialogs are modal, keep focus inside, close on Escape, and return focus (`src/test/help-menu.test.tsx`).
+- Native menu commands route through the typed command bridge; modal dialogs block subsequent menu commands, keep focus inside, close on Escape, and restore renderer focus (`src/test/help-menu.test.tsx`).
 - The update dialog walks through check → available → consented download → progress → install. Progress is announced every 10 percent and errors are announced as alerts.
 - Read-only/edit mode toggles produce visible status and mode updates.
 - Search and command actions retain keyboard operability.
@@ -61,24 +61,27 @@ Recommended manual checks:
 - Read-only and edit mode transitions
 - Status bar reading and command feedback
 
-### Help menu and updater dialog
+### Native menu and updater dialog
 
-Run each check with JAWS, NVDA, and Narrator on Windows 11, using the installed (NSIS) build.
+Run each check with JAWS, NVDA, and Narrator on Windows 11, using the installed (NSIS) build. These are manual checks to run; they have not been performed in this environment.
 
-| Check                                                      | Expected result                                                                                                                                                |
-| ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Tab to the in-app Help group                               | The screen reader announces the "Help" group. The buttons read as "Check for Updates", "Keyboard Shortcuts", "About A11y Notebook", and "Open command search". |
-| Native menu: press Alt, then H                             | The Windows Help menu opens with Check for Updates…, Keyboard Shortcuts, and About A11y Notebook. Each opens the matching in-app dialog.                       |
-| Activate Check for Updates                                 | The "Software update" dialog is announced with its description. Focus is on the dialog's main button.                                                          |
-| No update available                                        | "You are using the latest version (X.Y.Z)" is announced once.                                                                                                  |
-| Update available                                           | The new version is announced. Focus lands on **Download**. The release-note summary can be read in browse or virtual mode.                                     |
-| Download                                                   | Progress is announced politely about every 10 percent, not on every tick. The progress bar reports its value when focus or the virtual cursor reaches it.      |
-| Hide the dialog during a download                          | Focus returns to the control that opened it. Progress is then announced from the status bar, and never twice.                                                  |
-| Downloaded                                                 | Focus lands on **Restart and install**. **Install on exit** is reachable with Tab.                                                                             |
-| Error (for example, disconnect the network)                | The error text is announced as an alert. Focus lands on **Try again**.                                                                                         |
-| Escape in any updater, About, or Keyboard Shortcuts dialog | The dialog closes and focus returns to the control that opened it.                                                                                             |
-| Tab and Shift+Tab in any dialog                            | Focus stays inside the dialog.                                                                                                                                 |
-| Development build (`npm run dev`)                          | "Updates are only available in the installed build." is announced.                                                                                             |
+| Check                                                                               | Expected result                                                                                                                                           |
+| ----------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Press Alt, then use the underlined File/Edit/View/Insert/Format/Tools/Help mnemonic | The native menu opens; arrows move among items, Enter invokes, and Escape closes. No duplicate HTML desktop menubar is present.                           |
+| Open File, View, Insert, Format, and Tools                                          | Commands are grouped logically with separators; native state disables unavailable operations and checks read/edit, bookmark, and pane toggles.            |
+| Select editor text, open Format, and apply a command                                | The selection and active note remain the target; Undo/Redo and Ctrl+S still work.                                                                         |
+| Open a dialog from Help, close with Escape                                          | Focus returns to the renderer control that had focus before the native menu opened; another menu command cannot bypass the modal dialog.                  |
+| Browser-only development without Electron                                           | The compact accessible command fallback exposes app actions; it does not create a second desktop menu.                                                    |
+| Activate Check for Updates                                                          | The "Software update" dialog is announced with its description. Focus is on the dialog's main button.                                                     |
+| No update available                                                                 | "You are using the latest version (X.Y.Z)" is announced once.                                                                                             |
+| Update available                                                                    | The new version is announced. Focus lands on **Download**. The release-note summary can be read in browse or virtual mode.                                |
+| Download                                                                            | Progress is announced politely about every 10 percent, not on every tick. The progress bar reports its value when focus or the virtual cursor reaches it. |
+| Hide the dialog during a download                                                   | Focus returns to the control that opened it. Progress is then announced from the status bar, and never twice.                                             |
+| Downloaded                                                                          | Focus lands on **Restart and install**. **Install on exit** is reachable with Tab.                                                                        |
+| Error (for example, disconnect the network)                                         | The error text is announced as an alert. Focus lands on **Try again**.                                                                                    |
+| Escape in any updater, About, or Keyboard Shortcuts dialog                          | The dialog closes and focus returns to the control that opened it.                                                                                        |
+| Tab and Shift+Tab in any dialog                                                     | Focus stays inside the dialog.                                                                                                                            |
+| Development build (`npm run dev`)                                                   | "Updates are only available in the installed build." is announced.                                                                                        |
 
 ## Important limitation
 

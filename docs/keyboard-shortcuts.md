@@ -74,3 +74,7 @@ while listening. Operating-system-reserved combinations may not reach the app an
 Under **Appearance and interface**, **Show command/action buttons in the UI** restores the button-rich layout.
 It defaults off (also for older settings), keeps the native menu in either mode, and applies on Save settings.
 Browser-only development retains accessible command buttons without a native menu.
+
+The Electron build uses the native Windows menu bar and its standard Alt/mnemonic navigation. Native command items do
+not register duplicate accelerators: configurable app shortcuts remain authoritative and Ctrl+K continues to open the
+command palette.

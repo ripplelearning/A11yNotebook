@@ -11,6 +11,7 @@ export const IPC_CHANNELS = {
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   shortcutCaptureActive: 'menu:shortcut-capture-active',
+  menuState: 'menu:state',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
@@ -206,4 +207,22 @@ export type MenuCommand = CommandId;
 
 export function isMenuCommand(value: unknown): value is MenuCommand {
   return typeof value === 'string' && (MENU_COMMANDS as readonly string[]).includes(value);
+}
+
+export type NativeMenuState = {
+  enabled: Partial<Record<MenuCommand, boolean>>;
+  checked: Partial<Record<MenuCommand, boolean>>;
+};
+
+export function isNativeMenuState(value: unknown): value is NativeMenuState {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  for (const property of ['enabled', 'checked'] as const) {
+    const states = candidate[property];
+    if (!states || typeof states !== 'object' || Array.isArray(states)) return false;
+    for (const [command, state] of Object.entries(states)) {
+      if (!isMenuCommand(command) || typeof state !== 'boolean') return false;
+    }
+  }
+  return Object.keys(candidate).every((key) => key === 'enabled' || key === 'checked');
 }

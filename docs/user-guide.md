@@ -2,7 +2,7 @@
 
 ## Open a library
 
-Choose **Library → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
+Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
 as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
 
 ## Create in the current view
@@ -19,8 +19,8 @@ as notebooks, managed `.md` and `.html` files as notes, and other files as attac
 | Note tabs, Contents, Reminders, Milestones, previews, and Welcome | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
 
 The explicit **New notebook** command still creates a notebook; it has not been redefined to mean contextual New.
-Settings can change or disable New's shortcut, with conflict validation. Menus and the command palette expose the
-same commands. Cancel leaves existing files and unsaved edits intact; save or resolve pending edits when requested.
+Settings can change or disable New's shortcut, with conflict validation. The native File menu and command palette expose
+the same commands. Cancel leaves existing files and unsaved edits intact; save or resolve pending edits when requested.
 New notes use Markdown by default; the creation dialog also offers HTML. Views that need an open library explain
 that prerequisite rather than silently creating a different kind of item.
 
@@ -32,9 +32,16 @@ managed note or a supported managed preview. External or unknown-origin document
 silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving it
 to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
 
-Use **New note**, **New notebook**, or **Import file** in the navigation pane. Imported files are copied into the
-selected notebook. The tree's filesystem context may be revealed in Explorer or opened in its default external app
-using the corresponding library actions.
+Use **File → New note**, **File → New notebook**, or **Tools → Import file**. Imported files are copied into the
+selected notebook. Select a tree item before using **Tools → Reveal selected item in Explorer** or **Open selected item
+in external app**. These commands use the current selection, not a previously selected item.
+
+The Windows/Electron build has a native menu bar with **File**, **Edit**, **View**, **Insert**, **Format**, **Tools**, and
+**Help**. Use Alt and the underlined mnemonic, then the arrow keys, Enter, or Escape. Menu commands have no hard-coded
+accelerators; the app's configurable shortcuts (including Ctrl+K and F6/Shift+F6) remain the single shortcut path.
+The application menu replaces the duplicate in-page command groups. In a browser without the Electron bridge, a compact,
+accessible HTML command fallback remains available. Context-specific controls such as the formatting toolbar, reader
+page/zoom controls, tab close buttons, and dialog actions stay beside the content they operate on.
 
 The installed and portable builds use the same navigation and creation workflows. Ctrl+1 announces **Libraries**
 or the open library's name; Ctrl+2 announces **Notebooks** or **Notebooks in [library name]**; Ctrl+3 announces
@@ -120,7 +127,7 @@ library, check both the installed and portable builds:
 - Import compatible external files, including HTML with active content. Confirm the copy opens internally,
   unsafe HTML is removed, the original is unchanged, and rename/move/reopen retain the copy's provenance.
 
-The Format menu and formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
+The native Format menu and contextual formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
 Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
 rows and columns. Insert image or attachment chooses an already imported library file and requires a text description.
 Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
@@ -147,7 +154,7 @@ extracted text, are searchable. Unsupported or invalid attachments are searchabl
 
 ## Tasks
 
-Choose **Open Tasks** in the navigation pane or command palette. Markdown checkboxes and semantic HTML tasks appear
+Choose **View → Tasks** or use the command palette. Markdown checkboxes and semantic HTML tasks appear
 in a sortable table; status, due-date, priority, and notebook filters narrow the list. Checking/unchecking a Markdown
 task updates its source checkbox. HTML tasks update only the completion attribute on the matching stable task ID;
 stale note revisions or duplicate/missing IDs fail safely. Markdown optional dates use `due:YYYY-MM-DD` or
@@ -304,7 +311,7 @@ Locking/switching clears the editor and rejects stale checkpoint requests. Save 
 
 ## Export and web capture
 
-Use **Export note…** on an open note, **Export current note…** in the command palette/menu, or **Export note…** in
+Use **File → Export current note…** on an open note, or **Export note…** in
 the note context menu. Choose standalone HTML or Markdown and then a location in the native save dialog. The source is
 never changed; overwrites require native confirmation and the original source cannot be selected as the destination.
 HTML output is sanitized in the main process, contains no scripts/forms/remote resources, and embeds bounded local

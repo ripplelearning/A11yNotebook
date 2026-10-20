@@ -12,10 +12,16 @@ import {
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { REPOSITORY_URL } from '../src/shared/app-info';
-import { IPC_CHANNELS, isMenuCommand, type MenuCommand } from '../src/shared/ipc';
+import {
+  IPC_CHANNELS,
+  isMenuCommand,
+  isNativeMenuState,
+  type MenuCommand,
+  type NativeMenuState,
+} from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultReminderEvent } from '../src/shared/reminders';
-import { buildApplicationMenu } from './menu';
+import { buildApplicationMenu, updateApplicationMenu as applyNativeMenuState } from './menu';
 import { setupUpdater } from './updater';
 import { setupVaultIpc } from './vault/ipc';
 import { getPdfReadingPreferences, setPdfReadingPreferences } from './store';
@@ -31,6 +37,8 @@ const rendererIndexUrl = pathToFileURL(rendererIndexPath).href;
 
 let mainWindow: BrowserWindow | null = null;
 let shortcutCaptureActive = false;
+let applicationMenu: Menu | null = null;
+let nativeMenuState: NativeMenuState | null = null;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
@@ -63,16 +71,18 @@ function sendToRenderer(channel: string, payload: UpdaterStatus | MenuCommand) {
   }
 }
 
-function updateApplicationMenu() {
-  Menu.setApplicationMenu(
-    buildApplicationMenu(
-      (command) => {
-        if (isMenuCommand(command)) sendToRenderer(IPC_CHANNELS.menuCommand, command);
-      },
-      isDevelopment,
-      () => shortcutCaptureActive,
-    ),
+function rebuildApplicationMenu() {
+  applicationMenu = buildApplicationMenu(
+    (command) => {
+      if (isMenuCommand(command)) sendToRenderer(IPC_CHANNELS.menuCommand, command);
+    },
+    isDevelopment,
+    () => shortcutCaptureActive,
   );
+  Menu.setApplicationMenu(applicationMenu);
+  if (nativeMenuState && !shortcutCaptureActive) {
+    applyNativeMenuState(applicationMenu, nativeMenuState);
+  }
 }
 
 function setShortcutCaptureActive(active: boolean) {
@@ -80,7 +90,7 @@ function setShortcutCaptureActive(active: boolean) {
   if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
     mainWindow.webContents.setIgnoreMenuShortcuts(active);
   }
-  updateApplicationMenu();
+  rebuildApplicationMenu();
 }
 
 export function setupShortcutCaptureIpc(
@@ -235,7 +245,14 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
-    updateApplicationMenu();
+    rebuildApplicationMenu();
+    ipcMain.on(IPC_CHANNELS.menuState, (event, value: unknown) => {
+      if (!isTrustedSender(event) || !isNativeMenuState(value)) return;
+      nativeMenuState = value;
+      if (applicationMenu && !shortcutCaptureActive) {
+        applyNativeMenuState(applicationMenu, nativeMenuState);
+      }
+    });
 
     createWindow();
 

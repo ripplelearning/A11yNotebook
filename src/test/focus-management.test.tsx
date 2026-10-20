@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import type { MenuCommand } from '../shared/ipc';
 import type { VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
 
@@ -169,9 +170,15 @@ describe('tabs', () => {
       path: '/study',
       entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' }],
     };
+    let menuListener: ((command: MenuCommand) => void) | undefined;
     window.a11yNotebook = {
       updater: { onStatus: () => () => undefined },
-      onMenuCommand: () => () => undefined,
+      onMenuCommand: (callback: (command: MenuCommand) => void) => {
+        menuListener = callback;
+        return () => {
+          menuListener = undefined;
+        };
+      },
       vault: {
         ...vaultExtensions(),
         get: async () => vault,
@@ -185,7 +192,8 @@ describe('tabs', () => {
 
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
     const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
-    fireEvent.click(await within(navigation).findByRole('button', { name: 'Open Tasks' }));
+    await within(navigation).findByRole('tree');
+    act(() => menuListener?.('show-tasks'));
     const noteItem = await screen.findByRole('treeitem', { name: /Note\.md/ });
     await act(async () => {
       fireEvent.click(noteItem);

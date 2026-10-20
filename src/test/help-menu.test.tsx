@@ -3,7 +3,7 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import { vaultExtensions } from './vault-extensions';
-import type { MenuCommand } from '../shared/ipc';
+import type { MenuCommand, NativeMenuState } from '../shared/ipc';
 import type { UpdaterStatus } from '../shared/updater';
 import { KeyboardShortcutsDialog } from '../renderer/components/HelpDialogs';
 import { getKeyboardShortcuts } from '../shared/command-registry';
@@ -51,6 +51,7 @@ function installBridge() {
         menuListener = null;
       };
     },
+    setMenuState: vi.fn(),
   };
   window.a11yNotebook = bridge;
   return {
@@ -67,12 +68,23 @@ afterEach(() => {
 const helpMenu = () => screen.getByRole('group', { name: 'Help' });
 
 describe('Help menu', () => {
-  it('contains keyboard-operable Help commands with clear names', () => {
+  it('provides a browser-only command fallback with clear Help commands', () => {
     render(<App />);
     const help = helpMenu();
     for (const name of ['Check for Updates', 'Keyboard Shortcuts', 'About A11y Notebook']) {
       expect(within(help).getByRole('button', { name })).toBeInTheDocument();
     }
+  });
+
+  it('uses the native menu without rendering a duplicate desktop command bar and syncs state', () => {
+    const { bridge } = installBridge();
+    render(<App />);
+    expect(screen.queryByRole('navigation', { name: 'Application commands' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Capture webpage' })).not.toBeInTheDocument();
+    const state = vi.mocked(bridge.setMenuState!).mock.calls.at(-1)?.[0] as NativeMenuState;
+    expect(state.enabled['new-note']).toBe(false);
+    expect(state.enabled['check-for-updates']).toBe(true);
+    expect(state.checked['toggle-right-pane']).toBe(true);
   });
 
   it('shows the About dialog with name, version, and repository link', () => {
@@ -87,6 +99,16 @@ describe('Help menu', () => {
     ).toHaveAttribute('href', 'https://github.com/ripplelearning/A11yNotebook');
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(opener).toHaveFocus();
+  });
+
+  it('opens and closes a dialog from the native menu without losing renderer focus', () => {
+    const { menu } = installBridge();
+    render(<App />);
+    const search = screen.getByRole('searchbox', { name: 'Global search' });
+    search.focus();
+    menu('show-about');
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'About A11y Notebook' }), { key: 'Escape' });
+    expect(search).toHaveFocus();
   });
 
   it('lists keyboard shortcuts including F6 and Shift+F6', () => {
@@ -113,17 +135,14 @@ describe('Help menu', () => {
   });
 
   it('uses the accessible notebook-name dialog from both notebook entry points', async () => {
-    const { bridge } = installBridge();
+    const { bridge, menu } = installBridge();
     vi.mocked(bridge.vault.get).mockResolvedValue({ name: 'Vault', path: '/vault', entries: [] });
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Vault' });
-    const navigationAction = within(screen.getByRole('complementary', { name: 'Navigation pane' })).getByRole(
-      'button',
-      { name: 'New notebook' },
-    );
-    navigationAction.focus();
-    fireEvent.click(navigationAction);
+    const search = screen.getByRole('searchbox', { name: 'Global search' });
+    search.focus();
+    menu('new-notebook');
     let dialog = screen.getByRole('dialog', { name: 'New notebook' });
     const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
     expect(nameInput).toHaveFocus();
@@ -134,17 +153,16 @@ describe('Help menu', () => {
     });
     expect(bridge.vault.createNotebook).toHaveBeenCalledWith('Research');
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notebook created.'));
-    expect(navigationAction).toHaveFocus();
+    expect(search).toHaveFocus();
 
-    const menuAction = within(screen.getByRole('group', { name: 'Library' })).getByRole('button', {
-      name: 'New notebook',
-    });
-    menuAction.focus();
-    fireEvent.click(menuAction);
+    menu('show-notebooks');
+    const screenAction = within(screen.getByRole('tabpanel')).getByRole('button', { name: 'New notebook' });
+    screenAction.focus();
+    fireEvent.click(screenAction);
     dialog = screen.getByRole('dialog', { name: 'New notebook' });
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(menuAction).toHaveFocus();
+    expect(screenAction).toHaveFocus();
   });
 });
 
@@ -256,13 +274,13 @@ describe('Check for Updates', () => {
   it('closes on Escape, restores focus, and announces later progress in the status bar', () => {
     const { emit, menu } = installBridge();
     render(<App />);
-    const opener = screen.getByRole('searchbox', { name: 'Global search' });
-    opener.focus();
+    const search = screen.getByRole('searchbox', { name: 'Global search' });
+    search.focus();
     menu('check-for-updates');
     emit({ state: 'update-available', version: '9.9.9', releaseNotes: '' });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(opener).toHaveFocus();
+    expect(search).toHaveFocus();
 
     emit({ state: 'download-progress', percent: 55 });
     expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(
@@ -284,6 +302,8 @@ describe('Check for Updates', () => {
     menu('check-for-updates');
     expect(screen.getByRole('dialog', { name: 'Software update' })).toBeInTheDocument();
     expect(bridge.updater.check).toHaveBeenCalledTimes(1);
+    menu('show-about');
+    expect(screen.queryByRole('dialog', { name: 'About A11y Notebook' })).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
 
     menu('not-a-real-command');

@@ -519,7 +519,6 @@ describe('contextual shell document workflows', () => {
     for (const key of ['0', '1', '2', '3', '4', '5']) {
       shortcut(key);
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
-      expect(screen.getByRole('button', { name: 'Toggle read-only/edit mode' })).toBeDisabled();
     }
     shortcut('e');
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('no note editor');
@@ -542,7 +541,6 @@ describe('contextual shell document workflows', () => {
       await screen.findByRole('heading', { name: 'Study' });
       fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(`Guide\\.${extension}`) }));
       await screen.findByRole('tab', { name: path });
-      expect(screen.getByRole('button', { name: 'Toggle read-only/edit mode' })).toBeDisabled();
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
       shortcut('e');
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('no note editor');

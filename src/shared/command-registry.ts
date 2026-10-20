@@ -77,7 +77,13 @@ export type CommandId =
   | 'context-open-source'
   | 'context-encrypt-note'
   | 'context-export-note'
-  | 'export-current-note';
+  | 'export-current-note'
+  | 'capture-webpage'
+  | 'import-file'
+  | 'reveal-selected'
+  | 'open-selected-external'
+  | 'encrypt-current-note'
+  | 'convert-current-note';
 
 export type MenuContext =
   | 'general'
@@ -342,6 +348,24 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Export current note…',
     description: 'Export the current note as standalone HTML or Markdown.',
     contexts: ['general'],
+  },
+  { id: 'capture-webpage', label: 'Capture webpage…', description: 'Save a webpage into the current library.' },
+  { id: 'import-file', label: 'Import file…', description: 'Import a file into the selected notebook.' },
+  { id: 'reveal-selected', label: 'Reveal selected item in Explorer', description: 'Reveal the selected item.' },
+  {
+    id: 'open-selected-external',
+    label: 'Open selected item in external app',
+    description: 'Open the selected item in its associated application.',
+  },
+  {
+    id: 'encrypt-current-note',
+    label: 'Encrypt current note…',
+    description: 'Protect the active note with a password.',
+  },
+  {
+    id: 'convert-current-note',
+    label: 'Convert current note to another format…',
+    description: 'Create a Markdown or HTML copy of the active note.',
   },
   {
     id: 'insert-attachment',

@@ -2,7 +2,7 @@
 // from src/shared below is type-only and erased at compile time.
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
 import type { NotebookBridge } from '../src/shared/bridge';
-import type { IPC_CHANNELS as SharedChannels, MenuCommand } from '../src/shared/ipc';
+import type { IPC_CHANNELS as SharedChannels, MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultChangedEvent } from '../src/shared/search';
 import type { VaultReminderEvent } from '../src/shared/reminders';
@@ -17,6 +17,7 @@ const CHANNELS: typeof SharedChannels = {
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   shortcutCaptureActive: 'menu:shortcut-capture-active',
+  menuState: 'menu:state',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
@@ -234,6 +235,7 @@ const bridge: NotebookBridge = {
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),
   },
   onMenuCommand: (callback) => subscribe<MenuCommand>(CHANNELS.menuCommand, callback),
+  setMenuState: (state: NativeMenuState) => ipcRenderer.send(CHANNELS.menuState, state),
 };
 
 contextBridge.exposeInMainWorld('a11yNotebook', bridge);
