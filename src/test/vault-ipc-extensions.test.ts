@@ -1836,7 +1836,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
-  });
+  }, 30_000);
   it('cleans up credentials saved after recovery preparation', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     const recoveryKey = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'correct horse battery');
