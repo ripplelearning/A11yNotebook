@@ -1944,7 +1944,10 @@ export default function App() {
     }
     if (commandId === 'import-file') {
       if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook) {
-        void window.a11yNotebook.vault.importFile(treeSelection).then((updated) => updated && setVault(updated));
+        void window.a11yNotebook.vault
+          .importFile(treeSelection)
+          .then((updated) => updated && setVault(updated))
+          .catch(() => setStatusMessage('Could not import the selected file.'));
       } else setStatusMessage('Select a notebook before importing a file.');
       return;
     }
@@ -1953,7 +1956,13 @@ export default function App() {
       return;
     }
     if (commandId === 'open-selected-external') {
-      if (treeSelection) void window.a11yNotebook?.vault.openExternal(treeSelection);
+      if (isCommandDisabled(commandId) || !treeSelection) {
+        setStatusMessage('Select a file before opening it externally.');
+        return;
+      }
+      void window
+        .a11yNotebook!.vault.openExternal(treeSelection)
+        .catch(() => setStatusMessage('Could not open the selected file externally.'));
       return;
     }
     if (commandId === 'encrypt-current-note') {
@@ -1983,25 +1992,6 @@ export default function App() {
       return;
     }
     if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
-    if (commandId === 'import-file') {
-      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook)
-        void window.a11yNotebook.vault
-          .importFile(treeSelection)
-          .then((updated) => updated && setVault(updated))
-          .catch(() => setStatusMessage('Could not import the selected file.'));
-      else setStatusMessage('Select a notebook before importing a file.');
-      return;
-    }
-    if (commandId === 'open-selected-external') {
-      if (isCommandDisabled(commandId) || !treeSelection) {
-        setStatusMessage('Select a file before opening it externally.');
-        return;
-      }
-      void window
-        .a11yNotebook!.vault.openExternal(treeSelection)
-        .catch(() => setStatusMessage('Could not open the selected file externally.'));
-      return;
-    }
     if (commandId === 'show-settings') {
       setActiveDialog('settings');
       return;
@@ -2370,8 +2360,7 @@ export default function App() {
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')
       return !vault || openNotes.some((note) => note.content !== note.saved) || !!activeConflict;
-    if (id === 'import-file') return !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
-    if (id === 'reveal-selected' || id === 'open-selected-external') return !treeSelection;
+    if (id === 'reveal-selected') return !treeSelection;
     if (id === 'encrypt-current-note')
       return (
         !currentNote ||
