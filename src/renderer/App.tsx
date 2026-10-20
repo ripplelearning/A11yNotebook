@@ -1942,18 +1942,8 @@ export default function App() {
       else setStatusMessage('Save open notes and open a library before capturing a webpage.');
       return;
     }
-    if (commandId === 'import-file') {
-      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook) {
-        void window.a11yNotebook.vault.importFile(treeSelection).then((updated) => updated && setVault(updated));
-      } else setStatusMessage('Select a notebook before importing a file.');
-      return;
-    }
     if (commandId === 'reveal-selected') {
       if (treeSelection) void window.a11yNotebook?.vault.reveal(treeSelection);
-      return;
-    }
-    if (commandId === 'open-selected-external') {
-      if (treeSelection) void window.a11yNotebook?.vault.openExternal(treeSelection);
       return;
     }
     if (commandId === 'encrypt-current-note') {
@@ -2370,8 +2360,7 @@ export default function App() {
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')
       return !vault || openNotes.some((note) => note.content !== note.saved) || !!activeConflict;
-    if (id === 'import-file') return !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
-    if (id === 'reveal-selected' || id === 'open-selected-external') return !treeSelection;
+    if (id === 'reveal-selected') return !treeSelection;
     if (id === 'encrypt-current-note')
       return (
         !currentNote ||

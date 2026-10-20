@@ -350,13 +350,7 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   { id: 'capture-webpage', label: 'Capture webpage…', description: 'Save a webpage into the current library.' },
-  { id: 'import-file', label: 'Import file…', description: 'Import a file into the selected notebook.' },
   { id: 'reveal-selected', label: 'Reveal selected item in Explorer', description: 'Reveal the selected item.' },
-  {
-    id: 'open-selected-external',
-    label: 'Open selected item in external app',
-    description: 'Open the selected item in its associated application.',
-  },
   {
     id: 'encrypt-current-note',
     label: 'Encrypt current note…',
