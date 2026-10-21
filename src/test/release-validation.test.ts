@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -9,6 +9,121 @@ import { verifyArtifacts, verifyMetadata, verifyPackageVersions, verifyTag } fro
 
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
+
+describe('release workflow publication', () => {
+  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const publish = workflow.split('      - name: Publish or update release only after validation\n')[1];
+  const script = publish?.split('        run: |\n')[1]?.replace(/^ {10}/gm, '');
+  const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+
+  it('keeps exact-tag and main ancestry validation without rejecting existing release metadata', () => {
+    const verify = workflow.split('      - name: Verify exact merged tag\n')[1]?.split('      - name:')[0];
+    expect(verify).toContain('node scripts/verify-release.mjs tag "$env:RELEASE_TAG"');
+    expect(verify).toContain('git merge-base --is-ancestor HEAD origin/main');
+    expect(verify).not.toContain('gh ');
+    expect(script).toBeDefined();
+  });
+
+  const runPublication = (existing: boolean, rc: boolean, failure = '', state = {}) => {
+    const directory = mkdtempSync(join(tmpdir(), 'a11y-publish-'));
+    directories.push(directory);
+    mkdirSync(join(directory, 'release'));
+    writeFileSync(join(directory, 'release', 'installer.exe'), 'installer');
+    const callsPath = join(directory, 'calls.jsonl');
+    const scriptPath = join(directory, 'publish.ps1');
+    writeFileSync(
+      scriptPath,
+      `
+$ErrorActionPreference = 'Stop'
+function gh {
+  ConvertTo-Json -InputObject @($args) -Compress | Add-Content $env:CALLS_PATH
+  $global:LASTEXITCODE = 0
+  $action = $args[1]
+  if ($action -eq 'view' -and "$($args[-1])" -eq 'url') {
+    if ($env:EXISTING_RELEASE -eq 'false') { $global:LASTEXITCODE = 1 }
+    return
+  }
+  if ($action -eq $env:FAIL_ACTION) { $global:LASTEXITCODE = 1; return }
+  if ($action -eq 'view') { return $env:RELEASE_STATE }
+}
+${script}`,
+    );
+    const result = spawnSync('pwsh', ['-NoProfile', '-File', scriptPath], {
+      cwd: directory,
+      encoding: 'utf8',
+      env: {
+        ...process.env,
+        RELEASE_TAG: rc ? 'v1.1.5-rc.1' : 'v1.1.5',
+        GITHUB_REPOSITORY: 'example/repository',
+        RUNNER_TEMP: directory,
+        GITHUB_STEP_SUMMARY: join(directory, 'summary.txt'),
+        CALLS_PATH: callsPath,
+        EXISTING_RELEASE: String(existing),
+        FAIL_ACTION: failure,
+        RELEASE_STATE: JSON.stringify({
+          isDraft: false,
+          isPrerelease: rc,
+          assets: [{ name: 'installer.exe', size: 9 }],
+          url: 'https://example.com/release',
+          ...state,
+        }),
+      },
+    });
+    const calls: string[][] = existsSync(callsPath)
+      ? readFileSync(callsPath, 'utf8')
+          .trim()
+          .split(/\r?\n/)
+          .map((line) => JSON.parse(line))
+      : [];
+    return { ...result, calls };
+  };
+
+  describe.skipIf(!hasPowerShell)('PowerShell publish script with mocked gh', () => {
+    it.each([
+      [false, false],
+      [true, false],
+      [false, true],
+      [true, true],
+    ])('publishes with existing=%s and rc=%s without overwriting assets', (existing, rc) => {
+      const result = runPublication(existing, rc);
+      expect(result.status, result.stderr).toBe(0);
+      expect(result.calls.map((call) => call[1])).toEqual(['view', existing ? 'edit' : 'create', 'upload', 'view']);
+      const metadata = result.calls[1];
+      expect(metadata).toContain('--title');
+      expect(metadata).toContain('--notes-file');
+      expect(metadata).toContain(rc ? '--prerelease' : '--prerelease=false');
+      expect(metadata).toContain(rc ? '--latest=false' : '--latest');
+      expect(metadata).toContain(existing ? '--draft=false' : '--verify-tag');
+      expect(metadata.some((argument) => argument.endsWith('installer.exe'))).toBe(false);
+      expect(result.calls[2]).toContain('--clobber=false');
+      expect(result.calls[2]).toEqual(expect.arrayContaining([expect.stringMatching(/installer\.exe$/)]));
+    });
+
+    it.each([false, true])('fails on an asset name collision with existing=%s', (existing) => {
+      const result = runPublication(existing, false, 'upload');
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Asset upload failed; never overwrite release assets.');
+      expect(result.calls.at(-1)?.[1]).toBe('upload');
+    });
+
+    it.each([false, true])('stops before uploading if metadata publication fails with existing=%s', (existing) => {
+      const result = runPublication(existing, false, existing ? 'edit' : 'create');
+      expect(result.status).not.toBe(0);
+      expect(result.calls.map((call) => call[1])).toEqual(['view', existing ? 'edit' : 'create']);
+    });
+
+    it.each([
+      { isDraft: true },
+      { isPrerelease: true },
+      { assets: [] },
+      { assets: [{ name: 'installer.exe', size: 8 }] },
+    ])('rejects incorrect published state or assets: %j', (state) => {
+      const result = runPublication(true, false, '', state);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toMatch(/Published release state is incorrect|Published asset missing or wrong size/);
+    });
+  });
+});
 
 describe('exact-tag candidate validation', () => {
   it('runs package-only CLI validation without git or dependencies and propagates validation failures', () => {

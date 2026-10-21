@@ -41,18 +41,13 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Verify exact merged tag and unused release
+      - name: Verify exact merged tag
         shell: pwsh
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           node scripts/verify-release.mjs tag "$env:RELEASE_TAG"
           if ($LASTEXITCODE -ne 0) { throw 'Tag verification failed.' }
           git merge-base --is-ancestor HEAD origin/main
           if ($LASTEXITCODE -ne 0) { throw 'Release source must already be merged into main.' }
-          $tags = gh api --paginate "repos/$env:GITHUB_REPOSITORY/releases" --jq '.[].tag_name'
-          if ($LASTEXITCODE -ne 0) { throw 'Unable to inspect existing releases.' }
-          if ($tags -contains $env:RELEASE_TAG) { throw 'Release already exists; never overwrite assets.' }
 
       - name: Install dependencies
         run: npm ci
@@ -178,7 +173,7 @@ jobs:
         if: ${{ !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
         run: throw 'Stable promotion requires passing Windows desktop validation.'
 
-      - name: Publish new release only after validation
+      - name: Publish or update release only after validation
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -200,12 +195,20 @@ jobs:
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
           $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
-          $assets = Get-ChildItem release -File | Where-Object {
+          $assets = @(Get-ChildItem release -File | Where-Object {
             $_.Name -match '\.(exe|blockmap|yml)$' -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
-          } | ForEach-Object FullName
-          $options = if ($rc) { @('--prerelease', '--latest=false') } else { @('--latest') }
-          gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" @options @assets
-          if ($LASTEXITCODE -ne 0) { throw 'Publication failed; do not overwrite an existing release.' }
+          } | ForEach-Object FullName)
+          $options = if ($rc) { @('--prerelease', '--latest=false') } else { @('--prerelease=false', '--latest') }
+          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json url | Out-Null
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" --draft=false @options
+            if ($LASTEXITCODE -ne 0) { throw 'Release metadata update failed.' }
+          } else {
+            gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" @options
+            if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          }
+          gh release upload "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" @assets --clobber=false
+          if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; never overwrite release assets.' }
           $release = gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json isDraft,isPrerelease,assets,url | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0 -or $release.isDraft -or $release.isPrerelease -ne $rc) { throw 'Published release state is incorrect.' }
           foreach ($path in $assets) {
