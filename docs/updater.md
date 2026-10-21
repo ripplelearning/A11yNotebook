@@ -258,6 +258,12 @@ repository-wide `format:check`, build, and generated-shortcut drift verification
 `node scripts/verify-release.mjs package` also passed directly.
 Windows packaging was not repeated locally; the Windows results above come from the identified upstream job.
 
+At preparation commit `1b2c624eb55a5fd0603082028788d0179919610c`, both the package CLI and
+`node scripts/verify-release.mjs tag v1.1.3` passed with a temporary local tag on that exact clean checkout.
+The tag was deleted immediately and never pushed; it was not a published candidate.
+The artifacts CLI with that tag correctly failed on missing local release files, not an end-to-end pass.
+Actual upstream artifacts were checked separately as recorded above; signature/desktop evidence remains absent.
+
 ### Outstanding evidence before publication
 
 - Merge this preparation and confirm both CI job conclusions for the new merged SHA; upstream results above
