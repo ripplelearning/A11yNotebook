@@ -61,11 +61,16 @@ export function verifyArtifacts(directory, version) {
   return required;
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+function main() {
   const [, , command, tag] = process.argv;
   const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
   const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
   verifyPackageVersions(version, lock);
+  if (command === 'package') {
+    assert.equal(tag, undefined, 'Package-only validation does not accept a tag');
+    return;
+  }
+  assert.ok(command === 'tag' || command === 'artifacts', 'Expected package, tag or artifacts command');
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
   const commit = git('rev-parse', 'HEAD');
   verifyTag(tag, version, commit, git('rev-parse', `refs/tags/${tag}^{commit}`));
@@ -104,7 +109,9 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
         )
         .join(''),
     );
-  } else {
-    assert.equal(command, 'tag', 'Expected tag or artifacts command');
   }
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main();
 }

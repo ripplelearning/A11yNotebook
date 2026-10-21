@@ -96,7 +96,8 @@ library-specific operations and their data model. Internal `vault` identifiers r
 
 ## Code signing
 
-Sign production releases.
+Sign production releases. The workflow currently permits explicitly labelled unsigned stable releases when
+certificate secrets are absent; that capability is not evidence of production readiness.
 
 - Unsigned installers trigger Windows SmartScreen ("Windows protected your PC") and have no publisher identity.
 - When the installer is signed (set `CSC_LINK` / `CSC_KEY_PASSWORD` in the release workflow, see
@@ -139,30 +140,28 @@ Sign production releases.
 
 ## Preparing a downloadable Windows release candidate
 
-The next candidate is **1.1.2-rc.1**, following the existing stable `v1.1.1`.
-It is not a final production release. Do not retag or replace the existing `1.1.1` or `v1.1.1` releases.
+The intended next version is **1.1.3**, already set in both package files. See the
+[release-preparation assessment](#113-release-preparation-assessment-2026-10-21) before publication.
+Do not retag old commits or replace existing releases.
 Manual screen-reader validation is a **promotion** gate, not a prerequisite for providing a test executable.
 Signing happens during the build; it does not require installation on the tester's PC.
 
-After this PR is reviewed and merged through normal branch protection:
+After release preparation is reviewed and merged through normal branch protection:
 
-1. Check out the merged source, run `npm ci`, and confirm `package.json` and `package-lock.json` both say
-   `1.1.2-rc.1`. Ensure the chosen tag and release do not already exist.
-2. An authorized maintainer creates and pushes the **new** tag on that merged commit:
-
-   ```sh
-   git tag -a v1.1.2-rc.1 <merged-commit-sha> -m "Windows release candidate 1.1.2-rc.1"
-   git push origin refs/tags/v1.1.2-rc.1
-   ```
-
-3. The Release workflow checks out `refs/tags/v1.1.2-rc.1` explicitly, verifies its commit and package version,
-   requires ancestry in `main`, and refuses to overwrite an existing release.
-   If tag-triggered execution needs to be retried **before publication**, an authorized maintainer can run:
-
-   ```sh
-   gh workflow run release.yml --ref main -f tag=v1.1.2-rc.1
-   ```
-
+1. Check out the merged source. Before `npm ci`, run `node scripts/verify-release.mjs package`.
+   This dependency-free check requires no tag and uses the same package/lockfile validation as release checks.
+   Package versions must be `X.Y.Z` or `X.Y.Z-rc.N`, without a `v` prefix; both lockfile version fields must match.
+   Ensure the selected version, tag and release are unused. If an RC is desired, choose an unused `X.Y.Z-rc.N`
+   and update both package files in a reviewed change first; do not tag stable package contents as an RC.
+2. Only after readiness checks and explicit publication approval, an authorized maintainer creates and pushes
+   the **new** `v<package-version>` tag on the exact merged commit.
+   Tag pushes trigger publication, not a dry run. No tag is created or pushed by this preparation work.
+3. The Release workflow checks out that exact tag, verifies its commit and package version,
+   requires ancestry in `main`, and refuses to overwrite an existing release. The commands
+   `node scripts/verify-release.mjs tag <tag>` and `node scripts/verify-release.mjs artifacts <tag>`
+   still require an existing tag on the exact checkout; package-only validation does not bypass them.
+   If execution needs to be retried **before publication**, an authorized maintainer can dispatch `release.yml`
+   from reviewed `main` with its `tag` input set to the existing tag. This can publish; never dispatch it as a test.
    The dispatch ref selects the reviewed workflow; its checkout still uses the exact release tag.
    Do not retry publication over a partial/existing release: inspect it and use a new version/tag if needed.
 
@@ -173,8 +172,9 @@ After this PR is reviewed and merged through normal branch protection:
    Existing stable installations retain `allowPrerelease = false`; they will not offer this RC.
 5. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
    requires signing and verifies Authenticode on the installer, portable and unpacked app.
-   Without the certificate, an RC is explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
-   Stable releases require signing credentials and valid signatures. Never send credentials in chat.
+   Without the certificate, both RC and stable builds are explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
+   Stable publication still requires passing desktop checks. Signed production distribution remains recommended;
+   unsigned publication does not satisfy signed-updater/publisher validation. Never send credentials in chat.
 6. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
    are attached as `desktop-validation.json`, including failures (hosted runners may lack a usable desktop).
    An RC remains downloadable if these desktop checks fail; stable promotion does not.
@@ -184,13 +184,10 @@ After this PR is reviewed and merged through normal branch protection:
    `provenance.json` (exact commit/tag and run URL). Use the release page and verify the attached checksums
    before running downloaded executables. Publication verifies asset sizes against the local build.
 
-No candidate assets have been produced merely by preparing this PR. The new workflow must first be merged
-and run by an authorized maintainer; do not mistake the old stable downloads for this candidate.
-For testing before merge, approve this PR's Windows CI run and download its `windows-test-build` Actions artifact.
+Preparation does not publish candidate assets. For testing before merge, approve the PR's Windows CI run
+and download its `windows-test-build` Actions artifact.
 That artifact records the actual tested commit (which can be a PR merge commit), not a release tag; it is explicitly
 a CI test build rather than evidence that the exact-tag release flow passed.
-The actual download page, once successfully published, will be
-`https://github.com/ripplelearning/A11yNotebook/releases/tag/v1.1.2-rc.1`.
 
 ### Remaining production-promotion checks
 
@@ -204,3 +201,86 @@ The actual download page, once successfully published, will be
 - Review any failed Windows desktop checks recorded in the release artifacts before production promotion.
 
 Whole-library encryption and unrelated roadmap features are not requirements for distributing this test candidate.
+
+## 1.1.3 release-preparation assessment (2026-10-21)
+
+**NO-GO for publication.** Main CI is green, but this is release preparation, not approval to ship.
+No release workflow was dispatched, no release was published, and no remote tag was created.
+
+### Brief maintenance notes
+
+- [#48](https://github.com/ripplelearning/A11yNotebook/pull/48) rejects `v`-prefixed package versions,
+  including both lockfile version fields; release tags retain the `v` prefix.
+- [#49](https://github.com/ripplelearning/A11yNotebook/pull/49) migrates GitHub Actions to Node 24-capable
+  action versions and pins Ubuntu CI to `ubuntu-24.04`. The **action runtime** is separate from the
+  **project Node version**: CI and Release still request Node 22 via `setup-node`.
+- This preparation adds the shared validator's package-only CLI check before dependency installation on both
+  CI platforms, with CLI regression coverage; it does not change exact-tag checks or publication gates.
+
+### Verified upstream evidence
+
+Latest `main` at inspection: `8191dc55240286202bffd955dbc4bf8eb8d221f8` (merge of #49).
+[CI #195](https://github.com/ripplelearning/A11yNotebook/actions/runs/39545977736) explicitly concluded **success**:
+
+| Job                                                                                                      | Conclusion | Verified scope                                                                                     |
+| -------------------------------------------------------------------------------------------------------- | ---------- | -------------------------------------------------------------------------------------------------- |
+| [Ubuntu 24.04](https://github.com/ripplelearning/A11yNotebook/actions/runs/39545977736/job/119044123775) | success    | Dependency install, typecheck, lint, 1,030 tests (including 5 release-validation tests), build     |
+| [Windows](https://github.com/ripplelearning/A11yNotebook/actions/runs/39545977736/job/119044124131)      | success    | Same checks, non-publishing installer/portable packaging, provenance/SHA-256 generation and upload |
+
+Both jobs tested that exact SHA and used project Node `22.23.3`. Complete job logs contained no emitted Node 20
+deprecation or runner-image migration warning; this does not assert that every repository workflow was exercised.
+Windows-only steps were **skipped** on Ubuntu, not passed. Windows signatures and desktop checks were **not run**
+by this CI workflow. The [Windows test build](https://github.com/ripplelearning/A11yNotebook/actions/runs/39545977736/artifacts/12321389292)
+is not an exact-tag release candidate. Build logs retain a Vite large-chunk warning.
+
+The uploaded Windows ZIP was downloaded without executing its binaries. Its SHA-256 matched the upload log
+(`ab91cfd9b2e397c92c3ed815dba3d63e13e14867ecb97c36b5781420e0c275b9`); every entry in its
+`SHA256SUMS.txt` matched, and provenance recorded the main SHA above with `releaseTag: null`.
+The shared `verifyArtifacts` validator passed on its actual installer, portable, blockmap and `latest.yml`,
+including installer size and SHA-512 metadata. This is real CI artifact validation, not a fixture test,
+but does not exercise the exact-tag artifacts CLI's signature/provenance path.
+
+The complete current listings (7 tags, 5 releases; no further pages) contain tags `v0.1.0`, `v1.1.0`,
+`1.1.1`, `v1.1.1`, `v1.1.2-rc.2`, `1.1.2-rc.3`, `v1.1.2`, and releases `v1.1.0`, `1.1.1`,
+`v1.1.1`, `1.1.2-rc.3`, `v1.1.2`. Neither `1.1.3` nor `v1.1.3` exists as a tag/release.
+Keep the already intended package version `1.1.3`; no speculative bump or historical retagging is needed.
+Recheck history immediately before any later publication.
+
+Open-issue listing and related version-format/runtime-migration issue search returned **no actual issues**.
+#48 and #49 are merged PRs, linked above. Unrelated open PRs #5, #24 and #34 remain untouched;
+there is no verified issue closure to perform.
+
+### Local preparation checks
+
+On Linux with Node `24.21.0` (not the workflow's project Node 22), the changed working tree passed:
+targeted release-validation tests (6), full tests (89 files, 1,031 tests), typecheck (both configs), lint,
+repository-wide `format:check`, build, and generated-shortcut drift verification.
+`node scripts/verify-release.mjs package` also passed directly.
+Windows packaging was not repeated locally; the Windows results above come from the identified upstream job.
+
+At preparation commit `1b2c624eb55a5fd0603082028788d0179919610c`, both the package CLI and
+`node scripts/verify-release.mjs tag v1.1.3` passed with a temporary local tag on that exact clean checkout.
+The tag was deleted immediately and never pushed; it was not a published candidate.
+The artifacts CLI with that tag correctly failed on missing local release files, not an end-to-end pass.
+Actual upstream artifacts were checked separately as recorded above; signature/desktop evidence remains absent.
+
+### Outstanding evidence before publication
+
+- Merge this preparation and confirm both CI job conclusions for the new merged SHA; upstream results above
+  do not cover these new changes.
+- Review dependency advisories: local locked `npm ci` / `npm audit` reported 14 existing advisories
+  (8 moderate, 4 high, 2 critical), including direct `markdown-it`, `vite` and `concurrently` findings.
+  No dependencies were changed here; resolve or explicitly assess these before production distribution.
+- On Windows, run non-publishing packaging for the selected exact source, verify Authenticode status under the
+  configured signing policy, then validate actual installer/portable/blockmap/channel metadata and hashes.
+  Record exact source and results. This Linux editing environment cannot execute Windows binaries,
+  Authenticode, UI Automation or installed-upgrade checks; they remain **blocked/not run locally**.
+  Existing PR Windows CI supplies a safe non-publishing build route, but not all release gates.
+- Obtain passing Windows desktop UIA and installed-upgrade outcomes; do not bypass stable promotion gates.
+  Complete and record JAWS, NVDA, Narrator, keyboard-only, enlarged-text and forced-colors acceptance using the
+  [accessibility checklist](accessibility/acceptance-checklist.md).
+- Record a real consented installed-updater transition, persistence and same-publisher enforcement as described
+  above. Fixture/unit tests and installer-over-install smoke are **not full updater E2E**.
+- Only after blockers are cleared and an authorized maintainer approves publication, select the unused exact
+  merged version tag and run the release process. Verify attached provenance, signatures, checksums and assets;
+  never overwrite a partial release.
