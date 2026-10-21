@@ -187,12 +187,15 @@ jobs:
         run: |
           $rc = $env:RELEASE_TAG -match '-rc\.'
           $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
+          $desktopPolicy = if ($rc) { 'Desktop failures remain open and do not prevent downloading this RC for testing.' } else { 'Both automated desktop checks passed, as required for stable publication.' }
           $notes = @"
           $trust.
 
+          Stabilization: PDF annotation integration checks now separate cold engine/worker startup from tagged and natively rotated document checks, retaining document identity and verified-anchor assertions.
+
           Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
           Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
-          Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs; failures remain open and do not prevent downloading this RC for testing.
+          Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs. $desktopPolicy
           Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
