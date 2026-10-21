@@ -1,5 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { Profiler } from 'react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { VaultEntry, VaultInfo } from '../shared/types';
@@ -13,7 +14,17 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settings?: Partial<NotebookSettings> } = {}) {
+function setup(
+  options: {
+    mode?: 'read' | 'edit';
+    entries?: VaultEntry[];
+    settings?: Partial<NotebookSettings>;
+    loadVault?: (vault: VaultInfo) => Promise<VaultInfo | null>;
+    loadSettings?: (settings: NotebookSettings) => Promise<NotebookSettings>;
+    getSecurityStatus?: NotebookBridge['vault']['getSecurityStatus'];
+    onRender?: () => void;
+  } = {},
+) {
   const vault: VaultInfo = {
     path: '/study',
     name: 'Study',
@@ -41,15 +52,19 @@ function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settin
     onMenuCommand: vi.fn(() => () => {}),
     vault: {
       ...vaultExtensions(),
-      get: vi.fn(async () => vault),
+      get: vi.fn(async () => (options.loadVault ? options.loadVault(vault) : vault)),
       open: vi.fn(async () => vault),
       createLibrary: vi.fn(async () => ({ name: 'New library', path: '/new', entries: [] })),
-      getSettings: vi.fn(async () => ({
-        ...DEFAULT_SETTINGS,
-        showCommandButtons: true,
-        ...options.settings,
-        defaultNoteOpenMode: options.mode ?? options.settings?.defaultNoteOpenMode ?? 'read',
-      })),
+      getSettings: vi.fn(async () => {
+        const settings = {
+          ...DEFAULT_SETTINGS,
+          showCommandButtons: true,
+          ...options.settings,
+          defaultNoteOpenMode: options.mode ?? options.settings?.defaultNoteOpenMode ?? 'read',
+        } as NotebookSettings;
+        return options.loadSettings ? options.loadSettings(settings) : settings;
+      }),
+      ...(options.getSecurityStatus ? { getSecurityStatus: vi.fn(options.getSecurityStatus) } : {}),
       getTasks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
@@ -67,12 +82,24 @@ function setup(options: { mode?: 'read' | 'edit'; entries?: VaultEntry[]; settin
     },
   };
   window.a11yNotebook = bridge as unknown as NotebookBridge;
-  render(<App />);
+  render(
+    <Profiler id="app" onRender={() => options.onRender?.()}>
+      <App />
+    </Profiler>,
+  );
   return { bridge, vault };
 }
 
 function shortcut(key: string, extra = {}) {
   fireEvent.keyDown(document.body, { key, ctrlKey: true, ...extra });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
 }
 
 function newAssociatedTask() {
@@ -141,11 +168,105 @@ describe('contextual shell document workflows', () => {
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
     shortcut('3');
+    expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
     shortcut('n');
     expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
     shortcut('n', { altKey: true });
     expect(screen.getByRole('dialog', { name: 'New note' })).toBeInTheDocument();
+  });
+
+  it.each(['settings-first', 'library-first'] as const)(
+    'preserves notebook context with deferred initialization (%s)',
+    async (ordering) => {
+      const library = deferred<void>();
+      const initialSettings = deferred<NotebookSettings>();
+      const librarySettings = deferred<NotebookSettings>();
+      const security = deferred<Awaited<ReturnType<NonNullable<NotebookBridge['vault']['getSecurityStatus']>>>>();
+      const customized = {
+        ...DEFAULT_SETTINGS,
+        shortcuts: { 'new-contextual': 'Ctrl+Alt+N', 'new-notebook': 'Ctrl+N' },
+      };
+      let settingsCalls = 0;
+      const { bridge } = setup({
+        loadVault: async (vault) => {
+          await library.promise;
+          return vault;
+        },
+        loadSettings: () => (++settingsCalls === 1 ? initialSettings.promise : librarySettings.promise),
+        getSecurityStatus: () => security.promise,
+      });
+      expect(screen.queryByRole('treeitem')).not.toBeInTheDocument();
+      if (ordering === 'settings-first') await act(async () => initialSettings.resolve(customized));
+      await act(async () => library.resolve());
+      const notebook = screen.getByRole('treeitem', { name: /Research/ });
+      fireEvent.click(notebook);
+      shortcut('3');
+      expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
+      await act(async () => {
+        librarySettings.resolve(customized);
+        security.resolve({ enabled: false, locked: false, recoveryAvailable: false });
+      });
+      if (ordering === 'library-first') await act(async () => initialSettings.resolve(DEFAULT_SETTINGS));
+      expect(notebook).toHaveAttribute('aria-selected', 'true');
+      expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
+      const search = screen.getByRole('searchbox', { name: 'Global search' });
+      search.focus();
+      shortcut('n');
+      expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
+      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(search).toHaveFocus();
+      shortcut('n', { altKey: true });
+      const dialog = screen.getByRole('dialog', { name: 'New note' });
+      fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Deferred' } });
+      fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
+      await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Research/Deferred.md'));
+      expect(bridge.vault.createNotebook).not.toHaveBeenCalled();
+    },
+  );
+
+  it('retains a notebook selected on the first library commit before passive startup effects', async () => {
+    let selected = false;
+    setup({
+      settings: { shortcuts: { 'new-contextual': 'Ctrl+Alt+N', 'new-notebook': 'Ctrl+N' } },
+      onRender: () => {
+        const notebook = screen.queryByRole('treeitem', { name: /Research/ });
+        if (notebook && !selected) {
+          selected = true;
+          // Model interaction after commit but before passive library-reset effects.
+          notebook.click();
+        }
+      },
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    expect(selected).toBe(true);
+    expect(screen.getByRole('treeitem', { name: /Research/ })).toHaveAttribute('aria-selected', 'true');
+    shortcut('3');
+    expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
+    shortcut('n');
+    expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    shortcut('n', { altKey: true });
+    expect(screen.getByRole('dialog', { name: 'New note' })).toBeInTheDocument();
+  });
+
+  it('keeps contextual New disabled without a notebook after delayed settings load', async () => {
+    const settings = deferred<NotebookSettings>();
+    setup({ loadSettings: () => settings.promise });
+    await screen.findByRole('heading', { name: 'Study' });
+    await act(async () =>
+      settings.resolve({
+        ...DEFAULT_SETTINGS,
+        shortcuts: { 'new-contextual': 'Ctrl+Alt+N', 'new-notebook': 'Ctrl+N' },
+      }),
+    );
+    shortcut('3');
+    expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Study' })).toBeInTheDocument();
+    shortcut('n', { altKey: true });
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    shortcut('n');
+    expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
   });
 
   it('can disable contextual New without moving its default binding to another command', async () => {

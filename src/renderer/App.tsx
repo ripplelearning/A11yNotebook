@@ -1,6 +1,7 @@
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
@@ -477,7 +478,7 @@ export default function App() {
     };
   }, [vault?.path, securityLocked]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setSelectedNotebookPath(undefined);
   }, [vault?.path, securityLocked]);
 

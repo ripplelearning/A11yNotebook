@@ -1,9 +1,9 @@
 // @vitest-environment node
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, open, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdtemp, open, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createProtectedMetadataStore, writeProtectedSecurityConfig } from '../../electron/vault/metadata-protection';
 import {
   createVaultSecurityConfig,
@@ -16,18 +16,30 @@ import {
 } from '../../electron/vault/security';
 
 const folders: string[] = [];
+const keys: Buffer[] = [];
+const password = 'correct horse battery';
+const recovery = generateVaultRecoveryKey();
+let security: Awaited<ReturnType<typeof prepareVaultRecovery>>;
+beforeAll(async () => {
+  // Exercise real password/recovery setup once; store tests get isolated copies below.
+  const legacy = await createVaultSecurityConfig(password);
+  try {
+    security = await prepareVaultRecovery(legacy.config, password, recovery, null);
+  } finally {
+    legacy.key.fill(0);
+  }
+});
+afterAll(() => security?.key.fill(0));
 afterEach(async () => {
+  for (const key of keys.splice(0)) key.fill(0);
   await Promise.all(folders.splice(0).map((folder) => rm(folder, { recursive: true, force: true })));
 });
 async function fixture() {
   const folder = await mkdtemp(path.join(tmpdir(), 'a11y-metadata-protection-'));
   folders.push(folder);
-  const password = 'correct horse battery';
-  const legacy = await createVaultSecurityConfig(password);
-  const recovery = generateVaultRecoveryKey();
-  const prepared = await prepareVaultRecovery(legacy.config, password, recovery, null);
-  legacy.key.fill(0);
-  let config: VaultSecurityConfig = prepared.config;
+  const key = Buffer.from(security.key);
+  keys.push(key);
+  let config: VaultSecurityConfig = structuredClone(security.config);
   let locked = false;
   let failCommit = false;
   let failCleanup = false;
@@ -44,7 +56,7 @@ async function fixture() {
     },
   };
   const access = () => ({
-    key: prepared.key,
+    key,
     assertCurrent: () => {
       if (locked) throw new Error('locked');
     },
@@ -64,7 +76,7 @@ async function fixture() {
     folder,
     password,
     recovery,
-    key: prepared.key,
+    key,
     content,
     store,
     config: () => config,
@@ -86,6 +98,19 @@ async function fixture() {
   };
 }
 describe('scoped encrypted metadata storage', () => {
+  it('isolates fixture keys and security configuration', async () => {
+    const first = await fixture();
+    const second = await fixture();
+    expect(first.key).toEqual(second.key);
+    expect(first.key).not.toBe(second.key);
+    expect(first.config()).toEqual(second.config());
+    expect(first.config()).not.toBe(second.config());
+    await first.store.enable();
+    expect(second.store.enabled()).toBe(false);
+    first.key.fill(0);
+    await second.store.enable();
+    expect(await second.store.read('annotations')).toEqual(second.content);
+  });
   it.each([`pending-${randomUUID()}.json`, 'pending-annotations-old.json'])(
     'refuses legacy plaintext staging %s',
     async (name) => {
@@ -188,13 +213,16 @@ describe('scoped encrypted metadata storage', () => {
   it('rejects protected container symlinks even with a permissive resolver', async () => {
     const f = await fixture();
     await f.store.enable();
+    expect(await f.store.read('annotations')).toEqual(f.content);
     const name = (await readdir(f.folder)).find((item) => item.startsWith('protected-annotations'))!;
     const destination = path.join(f.folder, name);
     const moved = path.join(f.folder, 'copied-container.json');
     await writeFile(moved, await readFile(destination));
     await unlink(destination);
     await symlink(moved, destination);
-    await expect(f.store.read('annotations')).rejects.toThrow();
+    expect((await lstat(destination)).isSymbolicLink()).toBe(true);
+    await writeFile(path.join(f.folder, 'annotations.json'), JSON.stringify(f.content));
+    await expect(f.store.read('annotations')).rejects.toThrow('Invalid protected metadata container.');
     f.key.fill(0);
   });
   it('rejects stale cross-generation ciphertext, truncation and oversized containers', async () => {
@@ -230,10 +258,12 @@ describe('scoped encrypted metadata storage', () => {
     delete removed.metadataProtection;
     await expect(unlockVault(removed, f.password)).rejects.toThrow();
     const reset = await resetVaultPasswordWithRecovery(original, f.recovery, 'new vault password');
+    keys.push(reset.key);
     expect(reset.config.version === 3 && reset.config.metadataProtection).toEqual(pointer);
     const revoked = rotateVaultRecoveryKey(reset.config, reset.key, null);
     expect(revoked.metadataProtection).toEqual(pointer);
     const unlocked = await unlockVault(revoked, 'new vault password');
+    keys.push(unlocked);
     expect(unlocked.equals(f.key)).toBe(true);
     f.lock();
     await expect(f.store.read('annotations')).rejects.toThrow('locked');
