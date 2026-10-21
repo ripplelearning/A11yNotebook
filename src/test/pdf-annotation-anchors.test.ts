@@ -1,11 +1,11 @@
 // @vitest-environment node
 import type { PDFPageProxy, TextItem } from 'pdfjs-dist/types/src/display/api';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeAll, describe, expect, it, vi } from 'vitest';
 import type { PdfAnnotationTarget, PdfDocumentIdentity } from '../shared/pdf-annotation';
 import { PDF_MALFORMED_GROUPED_TARGET_REASON, PDF_MALFORMED_TARGET_REASON } from '../shared/pdf-annotation';
 import { PdfDocument, PdfPage } from '../renderer/pdf-semantic/pdf-document';
 import { TextModel } from '../renderer/pdf-semantic/text-model';
-import { rotatedPage, taggedReport } from './fixtures/pdf-fixtures';
+import { rotatedPage, scannedPage, taggedReport } from './fixtures/pdf-fixtures';
 
 const identity: PdfDocumentIdentity = {
   fingerprint: 'fingerprint',
@@ -466,24 +466,44 @@ describe('stable PDF annotation anchors', () => {
     expect(other.getPage).not.toHaveBeenCalled();
   });
 
-  it('supplies actual loaded document identity to pages and resolves native rotated PDFs', async () => {
-    for (const bytes of [taggedReport(), rotatedPage()]) {
-      const document = new PdfDocument(bytes, 'fixture-hash', 'Reports/fixture.pdf');
+  describe('real PDF document identity', () => {
+    beforeAll(async () => {
+      // Cold engine/Node worker imports can dominate under Windows CI contention.
+      // Keep startup bounded separately from the per-document anchor assertions.
+      const document = new PdfDocument(scannedPage(), 'warmup-hash', 'Reports/warmup.pdf');
       try {
-        const page = await document.getPage(1);
-        const anchor = page.createAnnotationAnchor(0, page.textModel.fullText.length);
-        expect(anchor.documentIdentity).toEqual(document.documentIdentity);
-        expect(anchor.documentIdentity.fingerprint).toMatch(/^[\da-f]+$/);
-        expect(await document.resolveAnnotationAnchor(anchor)).toMatchObject({
-          page: 1,
-          offset: 0,
-          length: page.textModel.fullText.length,
-          classification: 'exact',
-          verification: 'verified',
-        });
+        await document.ready;
       } finally {
         await document.destroy();
       }
-    }
-  }, 15_000);
+    }, 30_000);
+
+    it.each([
+      { name: 'tagged', fixture: taggedReport, rotation: 0 },
+      { name: 'natively rotated', fixture: rotatedPage, rotation: 90 },
+    ])(
+      'supplies actual loaded document identity and resolves anchors in $name PDFs',
+      async ({ fixture, rotation }) => {
+        const document = new PdfDocument(fixture(), 'fixture-hash', 'Reports/fixture.pdf');
+        try {
+          const page = await document.getPage(1);
+          expect(page.canRotate).toBe(rotation);
+          expect(page.textModel.fullText.length).toBeGreaterThan(0);
+          const anchor = page.createAnnotationAnchor(0, page.textModel.fullText.length);
+          expect(anchor.documentIdentity).toEqual(document.documentIdentity);
+          expect(anchor.documentIdentity.fingerprint).toMatch(/^[\da-f]+$/);
+          expect(await document.resolveAnnotationAnchor(anchor)).toMatchObject({
+            page: 1,
+            offset: 0,
+            length: page.textModel.fullText.length,
+            classification: 'exact',
+            verification: 'verified',
+          });
+        } finally {
+          await document.destroy();
+        }
+      },
+      15_000,
+    );
+  });
 });

@@ -140,8 +140,14 @@ certificate secrets are absent; that capability is not evidence of production re
 
 ## Preparing a downloadable Windows release candidate
 
-The intended next version is **1.1.3**, already set in both package files. See the
-[release-preparation assessment](#113-release-preparation-assessment-2026-10-21) before publication.
+The intended next version is **1.1.4**, set in both package files. The `v1.1.3` release attempt failed
+before packaging: the real-PDF annotation test exhausted its combined 15-second startup/document deadline
+on Windows. The follow-up separates bounded cold pdf.js engine/Node worker startup from independent
+tagged/rotated PDF cases, retaining identity, exact-match, verified-anchor and cleanup assertions.
+The standard-font warning is a separate missing-font-data configuration warning, not evidence of a network stall.
+No production PDF behavior, global test timeout, shortcut assertions or symlink protections are changed.
+See the [prior release-preparation assessment](#113-release-preparation-assessment-2026-10-21) for historical
+evidence only; it does not validate `1.1.4`. Publication still requires new CI and exact-tag release checks.
 Do not retag old commits or replace existing releases.
 Manual screen-reader validation is a **promotion** gate, not a prerequisite for providing a test executable.
 Signing happens during the build; it does not require installation on the tester's PC.
