@@ -140,14 +140,32 @@ certificate secrets are absent; that capability is not evidence of production re
 
 ## Preparing a downloadable Windows release candidate
 
-The intended next version is **1.1.4**, set in both package files. The `v1.1.3` release attempt failed
-before packaging: the real-PDF annotation test exhausted its combined 15-second startup/document deadline
-on Windows. The follow-up separates bounded cold pdf.js engine/Node worker startup from independent
-tagged/rotated PDF cases, retaining identity, exact-match, verified-anchor and cleanup assertions.
-The standard-font warning is a separate missing-font-data configuration warning, not evidence of a network stall.
-No production PDF behavior, global test timeout, shortcut assertions or symlink protections are changed.
+The intended next version is **1.1.5**, set in both package files and unused when prepared.
+Recheck remote tags and releases before publication. The immutable `v1.1.4` tag points to
+`7e67edcb4ccfb7ae97c86600b9097e90a05dfdb9`: rerunning it cannot pick up this fix.
+[Release run #7, attempt 2](https://github.com/ripplelearning/A11yNotebook/actions/runs/39676673070)
+passed the duplicate-release gate but stopped before packaging: 88 test files passed and the
+PDF annotation consent/encrypted-move/recovery case hit its implicit 5-second deadline.
+Its reported 5466 ms duration does not identify exact body time or the slow operation.
+
+That case now uses the adjacent recovery case's explicit 30-second integration budget.
+It performs six real async scrypt derivations (N=32768, r=8, p=1, maxmem=64 MiB), plus
+durable encrypted-storage, audit and move operations. An isolated Linux/Node 24 trace measured
+1717 filesystem requests with 266 ms summed request latency in the captured trace,
+including setup/import work (not a complete per-body filesystem accounting).
+Temporary callback instrumentation on Node 22 measured all six KDFs at 74.2–76.4 ms each
+(452 ms total); with five related files running and one libuv worker per process, those
+requests took 85.6–115.4 ms each (581 ms total). Instrumentation was removed after measuring.
+These are not Windows failure instrumentation: CPU/worker
+contention and libuv queueing are plausible contributors, not an established precise cause.
+CI and Release both use Node 22, Windows and the same isolated `npm test` configuration.
+Closely related metadata-pointer, recovery-primitive and encrypted IPC lifecycles with four
+or more sequential password derivations now have the same scoped budget; shorter cases keep
+their defaults. PDF IPC teardown awaits the test body even after timeout, then actual service
+disposal before deleting fixtures, under a separate 30-second hook deadline instead of a sleep.
+No production KDF, assertions, global timeout, isolation or retry policy is changed.
 See the [prior release-preparation assessment](#113-release-preparation-assessment-2026-10-21) for historical
-evidence only; it does not validate `1.1.4`. Publication still requires new CI and exact-tag release checks.
+evidence only; it does not validate `1.1.5`. Publication still requires new CI and exact-tag release checks.
 Do not retag old commits or replace existing releases.
 Manual screen-reader validation is a **promotion** gate, not a prerequisite for providing a test executable.
 Signing happens during the build; it does not require installation on the tester's PC.
@@ -170,6 +188,35 @@ After release preparation is reviewed and merged through normal branch protectio
    from reviewed `main` with its `tag` input set to the existing tag. This can publish; never dispatch it as a test.
    The dispatch ref selects the reviewed workflow; its checkout still uses the exact release tag.
    Do not retry publication over a partial/existing release: inspect it and use a new version/tag if needed.
+
+   For this preparation, after normal review, merge and passing Windows/Ubuntu CI, a maintainer
+   can use the following commands from the repository root (substitute the reviewed merged SHA):
+
+   ```sh
+   git fetch origin main --tags
+   git checkout --detach <reviewed-merged-SHA>
+   git merge-base --is-ancestor HEAD origin/main
+   node scripts/verify-release.mjs package
+   git ls-remote origin refs/tags/v1.1.5
+   gh api --paginate repos/ripplelearning/A11yNotebook/releases --jq '.[].tag_name'
+   ```
+
+   Stop if any check fails, the package version is not `1.1.5`, the tag lookup returns a ref,
+   or the release list already contains `v1.1.5` (including a draft). Only then:
+
+   ```sh
+   git tag v1.1.5 <reviewed-merged-SHA>
+   git push origin refs/tags/v1.1.5
+   ```
+
+   The tag push is the normal publication entry point. If that event did not run, the supported
+   manual alternative is `gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag=v1.1.5`
+   with the existing exact merged tag; do not dispatch a branch as the tag input or run both routes
+   concurrently. Never pre-create an empty release, move/delete `v1.1.4`, delete releases or overwrite assets.
+   This agent preparation cannot create/push tags or promise publication.
+   A successful PR/CI build is not release success: wait for the **v1.1.5** Release run to succeed,
+   inspect its provenance, download the actual release assets and verify `SHA256SUMS.txt`.
+   Packaging, signing status, desktop checks and downloadable assets remain unverified until then.
 
 4. The Windows job runs typecheck, lint, tests, release-tool formatting, generated-document drift checks, build and packaging
    without publishing. It requires nonempty installer, portable, blockmap and channel metadata; verifies the

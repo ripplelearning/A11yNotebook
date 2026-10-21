@@ -246,6 +246,7 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.read('annotations')).rejects.toThrow('container');
     f.key.fill(0);
   });
+  // Recovery and tamper checks use four real password derivations, not mocked keys.
   it('rejects locked reads and publication and authenticates the pointer across recovery changes', async () => {
     const f = await fixture();
     await f.store.enable();
@@ -269,5 +270,5 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.read('annotations')).rejects.toThrow('locked');
     await expect(f.store.write('annotations', { secret: 'never published' })).rejects.toThrow('locked');
     for (const key of [f.key, reset.key, unlocked]) key.fill(0);
-  });
+  }, 30_000);
 });

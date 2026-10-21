@@ -1042,7 +1042,7 @@ describe('extended vault IPC integration', () => {
       '{}',
     );
     await expect(invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Plan.outline.md')).rejects.toThrow();
-  });
+  }, 30_000);
 
   it('audits security, credentials and cancelled exports without secrets or paths', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'audit-test-password');
@@ -1087,6 +1087,7 @@ describe('extended vault IPC integration', () => {
     ]);
   });
 
+  // Multi-KDF recovery/encrypted-storage cases share the explicit recovery integration budget.
   it('audits recovery preparation, cancellation, migration, password reset and revocation without keys', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'recovery-audit-test-password');
     const discarded = await invoke(IPC_CHANNELS.vaultSecurityPrepareRecovery, 'recovery-audit-test-password');
@@ -1109,7 +1110,7 @@ describe('extended vault IPC integration', () => {
       expect.objectContaining({ operation: 'recovery.reset-password', outcome: 'succeeded' }),
       expect.objectContaining({ operation: 'recovery.revoke', outcome: 'succeeded' }),
     ]);
-  });
+  }, 30_000);
 
   it('rejects an untrusted audited call without adding an entry', async () => {
     await expect(mock.handlers.get(IPC_CHANNELS.vaultSecuritySetup)!({}, 'test-password')).rejects.toThrow(
@@ -1543,7 +1544,7 @@ describe('extended vault IPC integration', () => {
     await invoke(IPC_CHANNELS.vaultSaveNote, 'Topic.md', '# Updated\n', original);
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).not.toContain('Updated');
     await expect(invoke(IPC_CHANNELS.vaultReadNote, 'Topic.md')).resolves.toBe('# Updated\n');
-  });
+  }, 30_000);
   it.each([false, true])(
     'serializes concurrent credential saves, reads and deletes (recovery envelope: %s)',
     async (recovery) => {
@@ -1644,7 +1645,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'original', username: 'alice', password: 'secret' },
     ]);
-  });
+  }, 30_000);
 
   it.each(['encrypt', 'unlock'])('discards a note key derived after vault locking (%s)', async (action) => {
     const original = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
@@ -1850,7 +1851,7 @@ describe('extended vault IPC integration', () => {
     ]);
     await invoke(IPC_CHANNELS.vaultCredentialsDelete, 'example');
     expect(await invoke(IPC_CHANNELS.vaultCredentialsRead)).toEqual([]);
-  });
+  }, 30_000);
   it('keeps the legacy security record and credentials when atomic recovery migration fails', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'correct horse battery');
     mock.securityWriteCount = 0;
@@ -1871,7 +1872,7 @@ describe('extended vault IPC integration', () => {
     await expect(invoke(IPC_CHANNELS.vaultCredentialsRead)).resolves.toEqual([
       { id: 'example', username: 'alice', password: 'secret' },
     ]);
-  });
+  }, 30_000);
   it('defers credential-copy cleanup until recovery unlock after an interrupted migration', async () => {
     const oldPassword = 'correct horse battery';
     await invoke(IPC_CHANNELS.vaultSecuritySetup, oldPassword);
