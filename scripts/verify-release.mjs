@@ -5,6 +5,17 @@ import { readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import process from 'node:process';
 
+export function verifyPackageVersions(version, lock) {
+  // Package files hold plain semver; only the git tag carries the "v" prefix.
+  assert.match(
+    version,
+    /^\d+\.\d+\.\d+(?:-rc\.\d+)?$/,
+    'Package version must be X.Y.Z or X.Y.Z-rc.N without a "v" prefix',
+  );
+  assert.equal(lock.version, version, 'Lockfile version must match package version');
+  assert.equal(lock.packages[''].version, version, 'Lockfile root package version must match');
+}
+
 export function verifyTag(tag, version, head, taggedCommit) {
   assert.match(tag, /^v\d+\.\d+\.\d+(?:-rc\.\d+)?$/);
   assert.equal(tag, `v${version}`, 'Tag must match package version');
@@ -54,8 +65,7 @@ if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) 
   const [, , command, tag] = process.argv;
   const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
   const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
-  assert.equal(lock.version, version, 'Lockfile version must match package version');
-  assert.equal(lock.packages[''].version, version, 'Lockfile root package version must match');
+  verifyPackageVersions(version, lock);
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
   const commit = git('rev-parse', 'HEAD');
   verifyTag(tag, version, commit, git('rev-parse', `refs/tags/${tag}^{commit}`));
