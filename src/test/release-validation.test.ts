@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error Release tooling is a standalone Node module.
-import { verifyArtifacts, verifyMetadata, verifyTag } from '../../scripts/verify-release.mjs';
+import { verifyArtifacts, verifyMetadata, verifyPackageVersions, verifyTag } from '../../scripts/verify-release.mjs';
 
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
@@ -13,9 +13,23 @@ describe('exact-tag candidate validation', () => {
   it('keeps package and lockfile versions aligned with a valid release tag', () => {
     const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
     const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
+    expect(() => verifyPackageVersions(version, lock)).not.toThrow();
     expect(lock.version).toBe(version);
     expect(lock.packages[''].version).toBe(version);
     expect(() => verifyTag(`v${version}`, version, 'abc', 'abc')).not.toThrow();
+  });
+
+  it('requires plain semver package versions without a v prefix', () => {
+    const lockFor = (version: string) => ({ version, packages: { '': { version } } });
+    expect(() => verifyPackageVersions('1.1.3', lockFor('1.1.3'))).not.toThrow();
+    expect(() => verifyPackageVersions('1.1.2-rc.1', lockFor('1.1.2-rc.1'))).not.toThrow();
+    expect(() => verifyPackageVersions('v1.1.3', lockFor('v1.1.3'))).toThrow(/without a "v" prefix/);
+    expect(() => verifyPackageVersions('v1.1.3', lockFor('1.1.3'))).toThrow(/without a "v" prefix/);
+    expect(() => verifyPackageVersions('1.1.3', lockFor('v1.1.3'))).toThrow(/Lockfile version/);
+    expect(() => verifyPackageVersions('1.1.3', { version: '1.1.3', packages: { '': { version: 'v1.1.3' } } })).toThrow(
+      /Lockfile root package/,
+    );
+    expect(() => verifyTag('vv1.1.3', 'v1.1.3', 'abc', 'abc')).toThrow();
   });
 
   it('rejects branches, mismatched versions and wrong checkouts', () => {
