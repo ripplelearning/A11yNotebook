@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
+import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error Release tooling is a standalone Node module.
 import { verifyArtifacts, verifyMetadata, verifyPackageVersions, verifyTag } from '../../scripts/verify-release.mjs';
@@ -10,6 +11,30 @@ const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
 describe('exact-tag candidate validation', () => {
+  it('runs package-only CLI validation without git or dependencies and propagates validation failures', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'a11y-package-'));
+    directories.push(directory);
+    const version = '1.1.3';
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({ version }));
+    const lock = { version, packages: { '': { version } } };
+    writeFileSync(join(directory, 'package-lock.json'), JSON.stringify(lock));
+    const cli = (...args: string[]) =>
+      spawnSync(process.execPath, [resolve('scripts/verify-release.mjs'), ...args], {
+        cwd: directory,
+        encoding: 'utf8',
+      });
+    expect(cli('package').status).toBe(0);
+    expect(cli('package', `v${version}`).status).not.toBe(0);
+    expect(cli('tag', `v${version}`).status).not.toBe(0);
+    expect(cli('artifacts', `v${version}`).status).not.toBe(0);
+    expect(cli('unknown').status).not.toBe(0);
+    lock.packages[''].version = '1.1.2';
+    writeFileSync(join(directory, 'package-lock.json'), JSON.stringify(lock));
+    const result = cli('package');
+    expect(result.status).not.toBe(0);
+    expect(result.stderr).toContain('Lockfile root package version must match');
+  });
+
   it('keeps package and lockfile versions aligned with a valid release tag', () => {
     const { version } = JSON.parse(readFileSync('package.json', 'utf8'));
     const lock = JSON.parse(readFileSync('package-lock.json', 'utf8'));
