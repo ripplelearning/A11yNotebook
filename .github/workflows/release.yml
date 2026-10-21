@@ -31,12 +31,12 @@ jobs:
             throw 'Use an exact vX.Y.Z or vX.Y.Z-rc.N tag.'
           }
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           ref: refs/tags/${{ env.RELEASE_TAG }}
           fetch-depth: 0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: npm
@@ -161,7 +161,7 @@ jobs:
           Get-Content release/desktop-validation.json >> $env:GITHUB_STEP_SUMMARY
 
       - name: Retain verified build even if publication fails
-        uses: actions/upload-artifact@v4.6.2
+        uses: actions/upload-artifact@v7
         with:
           name: windows-${{ env.RELEASE_TAG }}
           path: |
