@@ -22,6 +22,7 @@ import {
 } from '../../electron/vault/security';
 
 describe('vault security primitives', () => {
+  // Multi-KDF recovery lifecycles retain real scrypt and use the integration recovery budget.
   it('derives a vault key and authenticates the password', async () => {
     const { config, key } = await createVaultSecurityConfig('correct horse battery');
     const unlocked = await unlockVault(config, 'correct horse battery');
@@ -54,7 +55,7 @@ describe('vault security primitives', () => {
     legacyKey.fill(0);
     key.fill(0);
     reopened.fill(0);
-  });
+  }, 30_000);
 
   it('authenticates, rotates, revokes, and resets access with recovery material', async () => {
     const { config: passwordConfig, key: legacyKey } = await createVaultSecurityConfig('old vault password');
@@ -73,7 +74,7 @@ describe('vault security primitives', () => {
     const revoked = rotateVaultRecoveryKey(reset.config, reset.key, null);
     expect(() => unlockVaultWithRecovery(revoked, rotatedRecoveryKey)).toThrow(/not configured/);
     for (const item of [legacyKey, key, recovered, reset.key]) item.fill(0);
-  });
+  }, 30_000);
 
   it('rejects malformed and tampered recovery envelopes', async () => {
     const { config, key } = await createVaultSecurityConfig('correct horse battery');
@@ -112,7 +113,7 @@ describe('vault security primitives', () => {
     const revoked = revokeVaultRecoveryKey(reset.config);
     expect(() => unlockVaultWithRecovery(revoked, rotated.recoveryKey)).toThrow(/not configured/);
     for (const item of [key, recovered, reset.key]) item.fill(0);
-  });
+  }, 30_000);
 
   it('rejects malformed and tampered version-2 recovery envelopes', async () => {
     const { config, key } = await createVaultSecurityConfig('correct horse battery');
@@ -184,7 +185,7 @@ describe('vault security primitives', () => {
     recovered.fill(0);
     migrated.key.fill(0);
     legacy.key.fill(0);
-  });
+  }, 30_000);
 
   it('resets the password and supports recovery-key rotation and revocation', async () => {
     const legacy = await createVaultSecurityConfig('correct horse battery');
@@ -202,7 +203,7 @@ describe('vault security primitives', () => {
     reset.key.fill(0);
     migrated.key.fill(0);
     legacy.key.fill(0);
-  });
+  }, 30_000);
 
   it('encrypts notes with independent passwords and authenticates subsequent edits', async () => {
     const { record, key } = await encryptNoteWithPassword('note-specific password', 'private note', 'note-1');

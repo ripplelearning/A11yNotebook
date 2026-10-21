@@ -2,7 +2,7 @@
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from 'vitest';
 import { IPC_CHANNELS } from '../shared/ipc';
 import type { NewPdfAnnotation, PdfAnnotation } from '../shared/pdf-annotation';
 import { untaggedReport } from './fixtures/pdf-fixtures';
@@ -12,6 +12,7 @@ const mock = vi.hoisted(() => ({
   quit: [] as (() => void)[],
   root: '',
   app: '',
+  disposals: [] as Promise<void>[],
 }));
 vi.mock('electron', () => ({
   app: { getPath: () => mock.app, on: (_name: string, callback: () => void) => mock.quit.push(callback) },
@@ -29,6 +30,22 @@ vi.mock('electron', () => ({
 vi.mock('../../electron/vault/watcher', () => ({
   createVaultWatcher: async () => ({ dispose: async () => undefined }),
 }));
+vi.mock('../../electron/vault/service', async (original) => {
+  const actual = await original<typeof import('../../electron/vault/service')>();
+  return {
+    ...actual,
+    createVaultService: (...args: Parameters<typeof actual.createVaultService>) => {
+      const service = actual.createVaultService(...args);
+      const dispose = service.dispose;
+      service.dispose = () => {
+        const pending = dispose();
+        mock.disposals.push(pending);
+        return pending;
+      };
+      return service;
+    },
+  };
+});
 
 const trusted = {};
 const invoke = (channel: string, ...args: unknown[]) => mock.handlers.get(channel)!(trusted, ...args);
@@ -52,10 +69,25 @@ const input: NewPdfAnnotation = {
   comment: 'Study',
 };
 let folder = '';
+let testBody: Promise<void> | undefined;
+let cleanup = Promise.resolve();
+function test(name: string, body: (context: TestContext) => Promise<void>, timeout?: number) {
+  it(
+    name,
+    (context) => {
+      testBody = body(context);
+      return testBody;
+    },
+    timeout,
+  );
+}
 beforeEach(async () => {
+  await cleanup;
   vi.resetModules();
   mock.handlers.clear();
   mock.quit = [];
+  mock.disposals = [];
+  testBody = undefined;
   folder = await mkdtemp(path.join(tmpdir(), 'a11y-pdf-annotation-ipc-test-'));
   mock.root = path.join(folder, 'vault');
   mock.app = path.join(folder, 'app');
@@ -72,14 +104,38 @@ beforeEach(async () => {
   );
   await invoke(IPC_CHANNELS.vaultOpen);
 });
-afterEach(async () => {
-  mock.quit.forEach((callback) => callback());
-  await new Promise((resolve) => setTimeout(resolve, 30));
-  await rm(folder, { recursive: true, force: true });
-});
+afterEach(() => {
+  cleanup = (async () => {
+    // A Vitest deadline does not cancel an in-flight scrypt/IPC body.
+    await testBody?.catch(() => undefined);
+    mock.quit.forEach((callback) => callback());
+    await Promise.all(mock.disposals);
+    await rm(folder, { recursive: true, force: true });
+  })();
+  return cleanup;
+}, 30_000);
 
 describe('PDF annotation IPC security and persistence', () => {
-  it('opts in only with explicit consent and keeps annotations encrypted across move and recovery', async () => {
+  test('awaits asynchronous disposal before removing the fixture', async ({ onTestFinished }) => {
+    const marker = path.join(folder, 'disposal-finished');
+    let disposed = false;
+    mock.quit.push(() => {
+      mock.disposals.push(
+        (async () => {
+          await new Promise((resolve) => setTimeout(resolve, 60));
+          await writeFile(marker, 'done');
+          disposed = true;
+        })(),
+      );
+    });
+    onTestFinished(async () => {
+      expect(disposed).toBe(true);
+      await expect(readFile(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    });
+  });
+
+  // Six real scrypt derivations plus durable encrypted metadata/move writes, like the recovery case below.
+  test('opts in only with explicit consent and keeps annotations encrypted across move and recovery', async () => {
     const added = await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input);
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'old vault password');
     await expect(invoke(IPC_CHANNELS.vaultMetadataProtectionEnable, { acknowledgeExclusions: true })).rejects.toThrow();
@@ -110,9 +166,9 @@ describe('PDF annotation IPC security and persistence', () => {
     await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'new vault password');
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).toHaveLength(1);
     expect(await readdir(directory)).not.toContain('annotations.json');
-  });
+  }, 30_000);
 
-  it('supports explicit CRUD methods and preserves identities when moved', async () => {
+  test('supports explicit CRUD methods and preserves identities when moved', async () => {
     const added = (await invoke(IPC_CHANNELS.vaultPdfAnnotationAdd, input)) as PdfAnnotation;
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([added]);
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotationUpdate, input.path, added.id, { color: 'none' })).toMatchObject({
@@ -127,7 +183,7 @@ describe('PDF annotation IPC security and persistence', () => {
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).toEqual([]);
   });
 
-  it('rejects untrusted senders, unsafe document paths and mismatched identities', async () => {
+  test('rejects untrusted senders, unsafe document paths and mismatched identities', async () => {
     await expect(mock.handlers.get(IPC_CHANNELS.vaultPdfAnnotationAdd)!({}, input)).rejects.toThrow('Untrusted');
     await expect(invoke(IPC_CHANNELS.vaultPdfAnnotations, '../Research.pdf')).rejects.toThrow();
     await expect(invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Idea.md')).rejects.toThrow();
@@ -141,7 +197,7 @@ describe('PDF annotation IPC security and persistence', () => {
     ).rejects.toThrow();
   });
 
-  it('preserves PDF annotations and credentials across recovery reset and revocation', async () => {
+  test('preserves PDF annotations and credentials across recovery reset and revocation', async () => {
     const password = 'long-password-for-testing';
     const newPassword = 'new-password-for-testing';
     const credential = { id: 'research', username: 'reader', password: 'test-credential' };
@@ -178,7 +234,7 @@ describe('PDF annotation IPC security and persistence', () => {
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, input.path)).toEqual([second]);
   }, 30_000);
 
-  it('rejects protected content even in an unlocked vault and blocks all PDF operations while locked', async () => {
+  test('rejects protected content even in an unlocked vault and blocks all PDF operations while locked', async () => {
     await writeFile(
       path.join(mock.root, 'Protected.pdf'),
       JSON.stringify({ format: 'a11ynotebook-password-note-v1', ciphertext: 'secret' }),
