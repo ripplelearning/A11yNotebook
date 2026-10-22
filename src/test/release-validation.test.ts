@@ -375,7 +375,9 @@ describe.skipIf(!hasPowerShell)('Windows smoke PowerShell helpers', () => {
     const uiScript = readFileSync(script, 'utf8');
     const upgradeScript = readFileSync('scripts/windows-installed-upgrade.ps1', 'utf8');
     expect(result.stderr).not.toContain('Join-Path');
-    expect(result.stderr).toContain('requires Windows UI Automation');
+    expect(result.stderr).toContain(
+      process.platform === 'win32' ? 'Packaged application not found' : 'requires Windows UI Automation',
+    );
     expect(uiScript).toContain('PSScriptRoot and PSCommandPath are empty');
     expect(upgradeScript).toContain('PSScriptRoot and PSCommandPath are empty');
   });
