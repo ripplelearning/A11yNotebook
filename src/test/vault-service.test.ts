@@ -26,7 +26,9 @@ describe('vault filesystem service', () => {
     await expect(service.readNote(path.join(temporaryDirectory, 'outside.md'))).rejects.toThrow(
       'not valid inside this library',
     );
-    await expect(service.saveNote('note.txt', 'unsafe')).rejects.toThrow('Only Markdown and HTML notes can be edited');
+    await expect(service.saveNote('note.rtf', 'unsafe')).rejects.toThrow(
+      'Only Markdown, HTML, and plain-text notes can be edited',
+    );
   });
 
   it('creates, reads, saves, and lists HTML notes as notes', async () => {
