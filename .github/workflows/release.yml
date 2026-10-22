@@ -10,11 +10,6 @@ on:
         description: 'Existing merged version tag (for example v1.1.2-rc.1); never a branch'
         required: true
         type: string
-      allow_desktop_validation_failure:
-        description: 'Allow stable publication despite failed Windows desktop checks; failures remain recorded'
-        required: false
-        default: false
-        type: boolean
 
 permissions:
   contents: write
@@ -28,8 +23,6 @@ jobs:
     runs-on: windows-latest
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
-      RELEASE_EVENT_NAME: ${{ github.event_name }}
-      ALLOW_DESKTOP_VALIDATION_FAILURE: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_desktop_validation_failure == true }}
     steps:
       - name: Validate tag input
         shell: pwsh
@@ -154,7 +147,6 @@ jobs:
           UIA_OUTCOME: ${{ steps.uia.outcome }}
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
-          $overrideRequested = $env:RELEASE_EVENT_NAME -ceq 'workflow_dispatch' -and $env:ALLOW_DESKTOP_VALIDATION_FAILURE -ceq 'true'
           $uiAutomation = if ([string]::IsNullOrWhiteSpace($env:UIA_OUTCOME)) { 'not run' } else { $env:UIA_OUTCOME }
           $installerOverInstall = if ([string]::IsNullOrWhiteSpace($env:UPGRADE_OUTCOME)) { 'not run' } else { $env:UPGRADE_OUTCOME }
           $failedChecks = @(
@@ -162,24 +154,19 @@ jobs:
             if ($installerOverInstall -cne 'success') { [ordered]@{ name = 'Installed upgrade smoke'; outcome = $installerOverInstall } }
           )
           $isRc = $env:RELEASE_TAG -match '-rc\.'
-          $overrideUsed = $overrideRequested -and -not $isRc -and $failedChecks.Count -gt 0
           $warning = $null
           if ($failedChecks.Count -gt 0) {
             $failedNames = ($failedChecks | ForEach-Object { "$($_.name) ($($_.outcome))" }) -join ', '
-            if ($overrideUsed) {
-              $warning = "WARNING: Stable publication is proceeding despite failed desktop checks because workflow_dispatch explicitly set allow_desktop_validation_failure=true. Failed checks: $failedNames. These checks remain failed, were not overridden to passing, and require manual review."
-            } elseif ($isRc) {
+            if ($isRc) {
               $warning = "WARNING: Desktop checks did not pass ($failedNames). RC policy allows publication without passing these checks; they remain failed and require manual review."
             } else {
-              $warning = "WARNING: Desktop checks did not pass ($failedNames). Stable publication is blocked unless this workflow is manually dispatched with allow_desktop_validation_failure=true."
+              $warning = "WARNING: Desktop checks did not pass ($failedNames). These checks require an interactive Windows desktop and cannot run on GitHub-hosted runners (session 0), so they do not block publication. They remain failed, are disclosed in the release notes, and must be run on a real Windows desktop before production promotion."
             }
           }
           [ordered]@{
             uiAutomation = $uiAutomation
             installerOverInstall = $installerOverInstall
             updaterEndToEnd = 'not exercised; stable clients do not opt into RC updates'
-            overrideRequested = $overrideRequested
-            overrideUsed = $overrideUsed
             failedChecks = @($failedChecks)
             warning = $warning
           } | ConvertTo-Json -Depth 5 | Set-Content release/desktop-validation.json
@@ -204,22 +191,6 @@ jobs:
             release/desktop-validation.json
           if-no-files-found: error
 
-      - name: Require passing desktop checks or explicit manual override
-        if: ${{ success() && !cancelled() && !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
-        shell: pwsh
-        run: |
-          $overrideRequested = $env:RELEASE_EVENT_NAME -ceq 'workflow_dispatch' -and $env:ALLOW_DESKTOP_VALIDATION_FAILURE -ceq 'true'
-          if (-not $overrideRequested) {
-            throw 'Stable publication requires passing Windows desktop validation. The override is available only when workflow_dispatch explicitly sets allow_desktop_validation_failure=true.'
-          }
-          $failedChecks = @()
-          $uiAutomationOutcome = '${{ steps.uia.outcome }}'
-          $upgradeOutcome = '${{ steps.upgrade.outcome }}'
-          if ($uiAutomationOutcome -cne 'success') { $failedChecks += "Windows desktop UI Automation ($uiAutomationOutcome)" }
-          if ($upgradeOutcome -cne 'success') { $failedChecks += "Installed upgrade smoke ($upgradeOutcome)" }
-          Write-Warning "Proceeding with stable publication under the explicit manual override. Failed checks remain failed: $($failedChecks -join ', ')."
-          "WARNING: Stable publication is proceeding despite failed desktop validation because workflow_dispatch explicitly set allow_desktop_validation_failure=true. Failed checks remain failures: $($failedChecks -join ', ')." >> $env:GITHUB_STEP_SUMMARY
-
       - name: Publish or update release only after validation
         shell: pwsh
         env:
@@ -229,16 +200,13 @@ jobs:
           $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
           $desktopValidation = Get-Content release/desktop-validation.json -Raw | ConvertFrom-Json
           $desktopOutcomes = "Windows desktop UI Automation: $($desktopValidation.uiAutomation). Installer-over-install smoke: $($desktopValidation.installerOverInstall)."
-          $desktopPolicy = if ($desktopValidation.overrideUsed) {
-            'WARNING: Stable publication proceeded under the explicit workflow_dispatch allow_desktop_validation_failure=true override. Failed checks remain failed; review desktop-validation.json before production promotion.'
-          } elseif ($desktopValidation.failedChecks.Count -gt 0 -and $rc) {
+          $desktopPolicy = if ($desktopValidation.failedChecks.Count -gt 0 -and $rc) {
             'WARNING: Desktop checks did not pass; RC policy allows publication for testing, and the failures remain recorded in desktop-validation.json.'
           } elseif ($desktopValidation.failedChecks.Count -gt 0) {
-            'WARNING: Desktop checks did not pass. Stable publication policy blocks these failures unless the explicit manual override was used.'
+            'WARNING: Desktop checks did not pass. These checks require an interactive Windows desktop and cannot run on GitHub-hosted runners (session 0), so they do not block publication; they remain recorded in desktop-validation.json and must be run on a real Windows desktop before production promotion.'
           } else {
             'Both automated desktop checks passed.'
           }
-          $overrideRecord = "Desktop failure override requested: $($desktopValidation.overrideRequested); used: $($desktopValidation.overrideUsed)."
           $notes = @"
           $trust.
 
@@ -246,13 +214,13 @@ jobs:
 
           Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
           Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
-          $desktopOutcomes $overrideRecord See desktop-validation.json and workflow logs. $desktopPolicy
+          $desktopOutcomes See desktop-validation.json and workflow logs. $desktopPolicy
           Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
           $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
           $assets = @(Get-ChildItem release -File | Where-Object {
-            $_.Name -match '\.(exe|blockmap|yml)$' -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
+            ($_.Name -match '\.(exe|blockmap|yml)$' -and $_.Name -ne 'builder-debug.yml') -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
           } | ForEach-Object FullName)
           $options = if ($rc) { @('--prerelease', '--latest=false') } else { @('--prerelease=false', '--latest') }
           gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json url | Out-Null
