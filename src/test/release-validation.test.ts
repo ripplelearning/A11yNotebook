@@ -17,8 +17,8 @@ describe('release workflow publication', () => {
   const publish = workflow.split('      - name: Publish or update release only after validation\n')[1];
   const script = publish?.split('        run: |\n')[1]?.replace(/^ {10}/gm, '');
 
-  it('runs the Windows UI smoke under PowerShell Core', () => {
-    expect(packageJson.scripts['test:ui-smoke']).toMatch(/^pwsh /);
+  it('runs the Windows UI smoke with Windows PowerShell', () => {
+    expect(packageJson.scripts['test:ui-smoke']).toMatch(/^powershell /);
   });
 
   it('validates Windows candidate artifacts after packaging in CI', () => {
@@ -382,7 +382,8 @@ describe.skipIf(!hasPowerShell)('Windows smoke PowerShell helpers', () => {
 
   it('does not evaluate an empty PSScriptRoot while binding UI smoke parameters', () => {
     const script = resolve('scripts/windows-ui-automation-smoke.ps1');
-    const result = spawnSync('pwsh', ['-NoProfile', '-File', script], { encoding: 'utf8' });
+    const powershell = process.platform === 'win32' ? 'powershell' : 'pwsh';
+    const result = spawnSync(powershell, ['-NoProfile', '-File', script], { encoding: 'utf8' });
     const uiScript = readFileSync(script, 'utf8');
     const upgradeScript = readFileSync('scripts/windows-installed-upgrade.ps1', 'utf8');
     expect(result.stderr).not.toContain('Join-Path');

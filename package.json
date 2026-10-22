@@ -34,7 +34,7 @@
     "test:watch": "vitest",
     "package:win": "npm run build && electron-builder --win --publish never",
     "release:win": "npm run build && electron-builder --win --publish always",
-    "test:ui-smoke": "pwsh -NoProfile -ExecutionPolicy Bypass -File scripts/windows-ui-automation-smoke.ps1"
+    "test:ui-smoke": "powershell -ExecutionPolicy Bypass -File scripts/windows-ui-automation-smoke.ps1"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",
