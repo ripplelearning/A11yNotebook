@@ -140,8 +140,11 @@ certificate secrets are absent; that capability is not evidence of production re
 
 ## Preparing a downloadable Windows release candidate
 
-The intended next version is **1.1.5**, set in both package files and unused when prepared.
-Recheck remote tags and releases before publication. The immutable `v1.1.4` tag points to
+The version-specific preparation notes below are historical and are not current release instructions.
+Current `main` is at package version `1.1.6`; [Release run #9](https://github.com/ripplelearning/A11yNotebook/actions/runs/39716156648)
+failed its stable desktop gate. UI Automation hit an empty `$PSScriptRoot` while binding its default executable path,
+and the installed-upgrade check rejected the Windows product version `1.1.1.0` against expected `1.1.1`.
+The immutable `v1.1.4` tag points to
 `7e67edcb4ccfb7ae97c86600b9097e90a05dfdb9`: rerunning it cannot pick up this fix.
 [Release run #7, attempt 2](https://github.com/ripplelearning/A11yNotebook/actions/runs/39676673070)
 passed the duplicate-release gate but stopped before packaging: 88 test files passed and the
@@ -189,32 +192,58 @@ After release preparation is reviewed and merged through normal branch protectio
    The dispatch ref selects the reviewed workflow; its checkout still uses the exact release tag.
    Do not retry publication over a partial/existing release: inspect it and use a new version/tag if needed.
 
-   For this preparation, after normal review, merge and passing Windows/Ubuntu CI, a maintainer
-   can use the following commands from the repository root (substitute the reviewed merged SHA):
+   Desktop validation is strict by default. For a deliberate stable-publication exception, an authorized maintainer
+   may manually dispatch the workflow from reviewed `main` with
+   `allow_desktop_validation_failure` explicitly set to `true`:
 
    ```sh
+   gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main \
+     -f tag=vX.Y.Z -f allow_desktop_validation_failure=true
+   ```
+
+   The input defaults to `false`; tag pushes and manual dispatches without explicit `true` retain the strict stable
+   gate. The override can waive only failed Windows desktop checks, never a cancellation or any build, test,
+   security, signing, tag, ancestry, checksum, or publication-safety gate. Failed and not-run checks remain failures
+   in `desktop-validation.json`; the workflow summary, release notes and uploaded artifacts state whether the
+   override was requested and actually used, and warn that overridden checks did not pass.
+
+   The dispatch ref selects the workflow definition, but the workflow checks out the exact commit named by `tag`.
+   Dispatching from updated `main` with an older tag does **not** make that tag use newer PowerShell smoke scripts.
+   To exercise a fix in the release scripts, use a new reviewed, merged commit with a new matching package version
+   and unused tag; never move or replace an existing tag. If a prior run left a partial release, inspect it first
+   and do not overwrite its assets; prepare a new version/tag when recovery requires different build contents.
+
+   After normal review, merge and passing Windows/Ubuntu CI, choose a new plain-semver version higher than the
+   current package version, then verify that both its tag and release are unused. These placeholders are not
+   publication approval:
+
+   ```sh
+   VERSION='X.Y.Z' # replace with the reviewed, unused version
+   TAG="v$VERSION"
    git fetch origin main --tags
    git checkout --detach <reviewed-merged-SHA>
    git merge-base --is-ancestor HEAD origin/main
    node scripts/verify-release.mjs package
-   git ls-remote origin refs/tags/v1.1.5
+   git ls-remote origin "refs/tags/$TAG"
    gh api --paginate repos/ripplelearning/A11yNotebook/releases --jq '.[].tag_name'
    ```
 
-   Stop if any check fails, the package version is not `1.1.5`, the tag lookup returns a ref,
-   or the release list already contains `v1.1.5` (including a draft). Only then:
+   Stop if any check fails, the package version does not match the selected version, the tag lookup returns a ref,
+   or the release list already contains `$TAG` (including a draft). Only after review and explicit publication
+   approval may an authorized maintainer create and push that **new** tag on the merged commit:
 
    ```sh
-   git tag v1.1.5 <reviewed-merged-SHA>
-   git push origin refs/tags/v1.1.5
+   git tag "$TAG" <reviewed-merged-SHA>
+   git push origin "refs/tags/$TAG"
    ```
 
    The tag push is the normal publication entry point. If that event did not run, the supported
-   manual alternative is `gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag=v1.1.5`
-   with the existing exact merged tag; do not dispatch a branch as the tag input or run both routes
+   manual alternative is `gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag="$TAG"`
+   with the existing exact merged tag; the desktop-failure override is not set and defaults to false. Do not
+   dispatch a branch as the tag input or run both routes
    concurrently. Never pre-create an empty release, move/delete `v1.1.4`, delete releases or overwrite assets.
    This agent preparation cannot create/push tags or promise publication.
-   A successful PR/CI build is not release success: wait for the **v1.1.5** Release run to succeed,
+   A successful PR/CI build is not release success: wait for the matching Release run to succeed,
    inspect its provenance, download the actual release assets and verify `SHA256SUMS.txt`.
    Packaging, signing status, desktop checks and downloadable assets remain unverified until then.
 
@@ -226,11 +255,13 @@ After release preparation is reviewed and merged through normal branch protectio
 5. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
    requires signing and verifies Authenticode on the installer, portable and unpacked app.
    Without the certificate, both RC and stable builds are explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
-   Stable publication still requires passing desktop checks. Signed production distribution remains recommended;
+   Stable publication requires passing desktop checks by default; only the explicit manual workflow override above
+   can waive those checks. Signed production distribution remains recommended;
    unsigned publication does not satisfy signed-updater/publisher validation. Never send credentials in chat.
 6. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
-   are attached as `desktop-validation.json`, including failures (hosted runners may lack a usable desktop).
-   An RC remains downloadable if these desktop checks fail; stable promotion does not.
+   are attached as `desktop-validation.json`, including failures and not-run outcomes (hosted runners may lack a usable
+   desktop). An RC remains downloadable if these desktop checks fail; stable publication is blocked unless the
+   explicit manual override is used. An override is a recorded exception, not a passing result.
    These are not JAWS/NVDA/Narrator tests, and installer-over-install is **not** full updater E2E.
 7. The workflow retains downloadable Actions artifacts, then creates a new GitHub prerelease with installer,
    portable executable, update metadata, `SHA256SUMS.txt`, `signatures.json`, `desktop-validation.json` and
