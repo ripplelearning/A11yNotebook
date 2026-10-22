@@ -7,7 +7,7 @@ DevTools, or an untouched filesystem sentinel.
 #>
 [CmdletBinding()]
 param(
-  [string]$ExecutablePath = (Join-Path $PSScriptRoot '..\release\win-unpacked\A11y Notebook.exe'),
+  [string]$ExecutablePath,
   [string]$ExpectedVersion,
   [string]$UserDataDirectory,
   [ValidateRange(5, 300)][int]$TimeoutSeconds = 60,
@@ -19,27 +19,57 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$scriptDirectory = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptDirectory) -and -not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+  $scriptDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($PSCommandPath))
+}
+if ([string]::IsNullOrWhiteSpace($scriptDirectory)) {
+  throw 'Cannot resolve the UI smoke script directory. PSScriptRoot and PSCommandPath are empty; run the .ps1 file with -File or invoke its path instead of pasting or evaluating its contents inline.'
+}
+$commonScript = [IO.Path]::Combine($scriptDirectory, 'windows-smoke-common.ps1')
+if (-not (Test-Path -LiteralPath $commonScript -PathType Leaf)) {
+  throw "Windows smoke helpers not found at '$commonScript'. Run the checked-out script together with its scripts directory."
+}
+. $commonScript
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   throw 'This smoke test requires Windows UI Automation; it cannot run on Linux.'
 }
 if (-not [Environment]::UserInteractive -or (Get-Process -Id $PID).SessionId -eq 0) {
   throw 'Run on an unlocked interactive Windows desktop, not a service/session-0 runner.'
 }
+if ($PSBoundParameters.ContainsKey('ExecutablePath') -and [string]::IsNullOrWhiteSpace($ExecutablePath)) {
+  throw 'ExecutablePath was explicitly supplied as an empty path. Supply a packaged executable or omit the parameter to use the release build default.'
+}
+if (-not $PSBoundParameters.ContainsKey('ExecutablePath')) {
+  $ExecutablePath = Join-SmokePath $scriptDirectory '..\release\win-unpacked\A11y Notebook.exe' 'default executable'
+}
 if (-not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
   throw "Packaged application not found: $ExecutablePath. Run npm run package:win first."
 }
 $ExecutablePath = (Resolve-Path -LiteralPath $ExecutablePath).Path
-if ($ExpectedVersion) {
-  $actualVersion = (Get-Item -LiteralPath $ExecutablePath).VersionInfo.ProductVersion
-  if (($actualVersion -replace '\+.*$', '') -cne $ExpectedVersion) {
-    throw "Product version mismatch: expected '$ExpectedVersion', got '$actualVersion'."
+if ($PSBoundParameters.ContainsKey('ExpectedVersion')) {
+  if ([string]::IsNullOrWhiteSpace($ExpectedVersion)) {
+    throw 'ExpectedVersion was explicitly supplied as an empty value.'
   }
+  $actualVersion = (Get-Item -LiteralPath $ExecutablePath).VersionInfo.ProductVersion
+  Assert-SmokeProductVersion $ExpectedVersion $actualVersion 'Packaged executable'
   Write-Output "Verified executable product version: $actualVersion"
+}
+foreach ($pathParameter in @('UserDataDirectory', 'LibraryDirectory')) {
+  if ($PSBoundParameters.ContainsKey($pathParameter) -and [string]::IsNullOrWhiteSpace((Get-Variable -Name $pathParameter -ValueOnly))) {
+    throw "$pathParameter was explicitly supplied as an empty path. Supply a valid directory or omit the parameter."
+  }
 }
 if ($LibraryDirectory -and -not $PSBoundParameters.ContainsKey('ExpectedNoteContent')) {
   throw 'LibraryDirectory requires ExpectedNoteContent for a real application read assertion.'
 }
-if ($NoteName -ne [IO.Path]::GetFileName($NoteName)) { throw 'NoteName must be a filename.' }
+if ([string]::IsNullOrWhiteSpace($NoteName) -or $NoteName -ne [IO.Path]::GetFileName($NoteName)) { throw 'NoteName must be a non-empty filename.' }
+if ($PSBoundParameters.ContainsKey('LibraryDirectory')) {
+  $LibraryDirectory = Get-SmokeFullPath $LibraryDirectory 'library'
+  if (-not (Test-Path -LiteralPath $LibraryDirectory -PathType Container)) {
+    throw "LibraryDirectory must be an existing directory: '$LibraryDirectory'."
+  }
+}
 
 Add-Type -AssemblyName UIAutomationClient
 Add-Type -AssemblyName UIAutomationTypes
@@ -87,9 +117,12 @@ function Read-SmokeEditor($Editor) {
 
 function ConvertTo-SmokeText([string]$Text) { $Text.Replace("`r`n", "`n").TrimEnd("`r", "`n") }
 
-$ownsProfile = -not $UserDataDirectory
-if ($ownsProfile) { $UserDataDirectory = Join-Path ([IO.Path]::GetTempPath()) "a11y-windows-ui-smoke-$([guid]::NewGuid().ToString('N'))" }
-$UserDataDirectory = [IO.Path]::GetFullPath($UserDataDirectory)
+$ownsProfile = -not $PSBoundParameters.ContainsKey('UserDataDirectory')
+if ($ownsProfile) {
+  $UserDataDirectory = Join-SmokePath (Get-SmokeTempDirectory 'UI smoke profile') "a11y-windows-ui-smoke-$([guid]::NewGuid().ToString('N'))" 'temporary profile'
+} else {
+  $UserDataDirectory = Get-SmokeFullPath $UserDataDirectory 'profile'
+}
 if ($UserDataDirectory.Contains('"')) { throw 'Profile paths may not contain quotes.' }
 $script:appProcess = $null
 try {
@@ -165,7 +198,7 @@ try {
       } 'the edited note content'
       $save = Wait-SmokeCondition { Find-SmokeElement 'Save note' } 'Save note'
       $save.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
-      $notePath = Join-Path $LibraryDirectory $NoteName
+      $notePath = Join-SmokePath $LibraryDirectory $NoteName 'smoke note'
       $null = Wait-SmokeCondition {
         (Test-Path -LiteralPath $notePath) -and
           (ConvertTo-SmokeText ([IO.File]::ReadAllText($notePath))) -ceq (ConvertTo-SmokeText $ReplacementNoteContent)

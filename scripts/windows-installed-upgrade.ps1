@@ -25,14 +25,30 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+$scriptDirectory = $PSScriptRoot
+if ([string]::IsNullOrWhiteSpace($scriptDirectory) -and -not [string]::IsNullOrWhiteSpace($PSCommandPath)) {
+  $scriptDirectory = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($PSCommandPath))
+}
+if ([string]::IsNullOrWhiteSpace($scriptDirectory)) {
+  throw 'Cannot resolve the installed-upgrade script directory. PSScriptRoot and PSCommandPath are empty; run the .ps1 file with -File or invoke its path instead of pasting or evaluating its contents inline.'
+}
+$commonScript = [IO.Path]::Combine($scriptDirectory, 'windows-smoke-common.ps1')
+if (-not (Test-Path -LiteralPath $commonScript -PathType Leaf)) {
+  throw "Windows smoke helpers not found at '$commonScript'. Run the checked-out script together with its scripts directory."
+}
+. $commonScript
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   throw 'The installed-upgrade smoke requires a real Windows interactive desktop.'
 }
 if (-not [Environment]::UserInteractive -or (Get-Process -Id $PID).SessionId -eq 0) {
   throw 'Use an unlocked desktop in a disposable Windows user/VM, not session 0.'
 }
+$null = ConvertTo-SmokeVersionIdentity $CandidateVersion -Context 'Candidate'
 if ([version]($CandidateVersion -split '-', 2)[0] -le [version]'1.1.1') {
   throw 'CandidateVersion must be newer than stable 1.1.1.'
+}
+if ([string]::IsNullOrWhiteSpace($CandidateInstallerPath)) {
+  throw 'CandidateInstallerPath is empty. Supply a verified installer file path.'
 }
 $CandidateInstallerPath = (Resolve-Path -LiteralPath $CandidateInstallerPath).Path
 if (-not (Test-Path -LiteralPath $CandidateInstallerPath -PathType Leaf)) { throw 'Candidate installer must be a file.' }
@@ -55,7 +71,7 @@ foreach ($registryRoot in $uninstallRoots) {
 }
 foreach ($folder in @('DesktopDirectory', 'CommonDesktopDirectory', 'Programs', 'CommonPrograms')) {
   $base = [Environment]::GetFolderPath([Environment+SpecialFolder]$folder)
-  if ($base -and (Test-Path -LiteralPath (Join-Path $base 'A11y Notebook.lnk'))) {
+  if (-not [string]::IsNullOrWhiteSpace($base) -and (Test-Path -LiteralPath (Join-SmokePath $base 'A11y Notebook.lnk' 'shortcut'))) {
     throw 'Existing A11y Notebook shortcuts found. Use a clean disposable Windows user/VM.'
   }
 }
@@ -81,9 +97,7 @@ function Assert-SmokeInstalledVersion([string]$Expected) {
     throw "Installed executable missing: $installedExe"
   }
   $actual = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
-  if (($actual -replace '\+.*$', '') -cne $Expected) {
-    throw "Installed executable product version: expected '$Expected', got '$actual'."
-  }
+  Assert-SmokeProductVersion $Expected $actual 'Installed executable'
   Write-Output "Verified installed executable product version: $actual"
 }
 
@@ -105,12 +119,12 @@ function Get-SmokePriorDigest($Asset, [string]$PinnedHash) {
 }
 
 # Runtime artifacts belong to the disposable Windows account, never the checkout.
-$workRoot = Join-Path ([IO.Path]::GetTempPath()) "a11y-windows-installed-upgrade-$([guid]::NewGuid().ToString('N'))"
-$installDirectory = Join-Path $workRoot 'install'
-$profileDirectory = Join-Path $workRoot 'profile'
-$library = Join-Path $workRoot 'library'
-$downloads = Join-Path $workRoot 'downloads'
-$installedExe = Join-Path $installDirectory 'A11y Notebook.exe'
+$workRoot = Join-SmokePath (Get-SmokeTempDirectory 'installed-upgrade workspace') "a11y-windows-installed-upgrade-$([guid]::NewGuid().ToString('N'))" 'installed-upgrade workspace'
+$installDirectory = Join-SmokePath $workRoot 'install' 'installation'
+$profileDirectory = Join-SmokePath $workRoot 'profile' 'profile'
+$library = Join-SmokePath $workRoot 'library' 'library'
+$downloads = Join-SmokePath $workRoot 'downloads' 'downloads'
+$installedExe = Join-SmokePath $installDirectory 'A11y Notebook.exe' 'installed executable'
 $installationAttempted = $false
 $cleanupSucceeded = $false
 try {
@@ -127,7 +141,7 @@ try {
   $expectedHash = Get-SmokePriorDigest $assets[0] $PriorInstallerSha256
   & gh release download v1.1.1 --repo ripplelearning/A11yNotebook --pattern $assetName --dir $downloads
   if ($LASTEXITCODE -ne 0) { throw 'Stable installer download failed.' }
-  $priorInstaller = Join-Path $downloads $assetName
+  $priorInstaller = Join-SmokePath $downloads $assetName 'prior installer'
   if ((Get-FileHash -LiteralPath $priorInstaller -Algorithm SHA256).Hash -ine $expectedHash) {
     throw 'Stable installer SHA-256 mismatch; refusing execution.'
   }
@@ -138,14 +152,14 @@ try {
   $initial = 'UIA upgrade fixture ' + [guid]::NewGuid().ToString('N')
   $priorSaved = 'Saved by stable 1.1.1 through the actual UI ' + [guid]::NewGuid().ToString('N')
   $candidateSaved = 'Saved by candidate through the actual UI ' + [guid]::NewGuid().ToString('N')
-  [IO.File]::WriteAllText((Join-Path $library $noteName), $initial)
-  [IO.File]::WriteAllText((Join-Path $profileDirectory 'recent-vault.json'), (@{ lastOpened = $library } | ConvertTo-Json))
+  [IO.File]::WriteAllText((Join-SmokePath $library $noteName 'smoke note'), $initial)
+  [IO.File]::WriteAllText((Join-SmokePath $profileDirectory 'recent-vault.json' 'recent library profile'), (@{ lastOpened = $library } | ConvertTo-Json))
 
   $installationAttempted = $true
   # NSIS requires /D last, without embedded quotes, even when the path has spaces.
   Invoke-SmokeInstaller $priorInstaller "/S /D=$installDirectory" $InstallerTimeoutSeconds
   Assert-SmokeInstalledVersion '1.1.1'
-  $smokeScript = Join-Path $PSScriptRoot 'windows-ui-automation-smoke.ps1'
+  $smokeScript = Join-SmokePath $scriptDirectory 'windows-ui-automation-smoke.ps1' 'UI smoke script'
   $smokeArguments = @{
     ExecutablePath = $installedExe
     UserDataDirectory = $profileDirectory
@@ -172,7 +186,7 @@ finally {
           & taskkill.exe /PID $process.ProcessId /T /F | Out-Null
         }
       }
-      $uninstaller = Join-Path $installDirectory 'Uninstall A11y Notebook.exe'
+      $uninstaller = Join-SmokePath $installDirectory 'Uninstall A11y Notebook.exe' 'uninstaller'
       if (Test-Path -LiteralPath $uninstaller) {
         # _?= avoids a copied, asynchronous uninstaller so its completion is awaited.
         Invoke-SmokeInstaller $uninstaller "/S _?=$installDirectory" $InstallerTimeoutSeconds

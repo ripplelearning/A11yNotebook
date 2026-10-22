@@ -10,6 +10,11 @@ on:
         description: 'Existing merged version tag (for example v1.1.2-rc.1); never a branch'
         required: true
         type: string
+      allow_desktop_validation_failure:
+        description: 'Allow stable publication despite failed Windows desktop checks; failures remain recorded'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -23,6 +28,8 @@ jobs:
     runs-on: windows-latest
     env:
       RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+      RELEASE_EVENT_NAME: ${{ github.event_name }}
+      ALLOW_DESKTOP_VALIDATION_FAILURE: ${{ github.event_name == 'workflow_dispatch' && inputs.allow_desktop_validation_failure == true }}
     steps:
       - name: Validate tag input
         shell: pwsh
@@ -147,13 +154,41 @@ jobs:
           UIA_OUTCOME: ${{ steps.uia.outcome }}
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
+          $overrideRequested = $env:RELEASE_EVENT_NAME -ceq 'workflow_dispatch' -and $env:ALLOW_DESKTOP_VALIDATION_FAILURE -ceq 'true'
+          $uiAutomation = if ([string]::IsNullOrWhiteSpace($env:UIA_OUTCOME)) { 'not run' } else { $env:UIA_OUTCOME }
+          $installerOverInstall = if ([string]::IsNullOrWhiteSpace($env:UPGRADE_OUTCOME)) { 'not run' } else { $env:UPGRADE_OUTCOME }
+          $failedChecks = @(
+            if ($uiAutomation -cne 'success') { [ordered]@{ name = 'Windows desktop UI Automation'; outcome = $uiAutomation } }
+            if ($installerOverInstall -cne 'success') { [ordered]@{ name = 'Installed upgrade smoke'; outcome = $installerOverInstall } }
+          )
+          $isRc = $env:RELEASE_TAG -match '-rc\.'
+          $overrideUsed = $overrideRequested -and -not $isRc -and $failedChecks.Count -gt 0
+          $warning = $null
+          if ($failedChecks.Count -gt 0) {
+            $failedNames = ($failedChecks | ForEach-Object { "$($_.name) ($($_.outcome))" }) -join ', '
+            if ($overrideUsed) {
+              $warning = "WARNING: Stable publication is proceeding despite failed desktop checks because workflow_dispatch explicitly set allow_desktop_validation_failure=true. Failed checks: $failedNames. These checks remain failed, were not overridden to passing, and require manual review."
+            } elseif ($isRc) {
+              $warning = "WARNING: Desktop checks did not pass ($failedNames). RC policy allows publication without passing these checks; they remain failed and require manual review."
+            } else {
+              $warning = "WARNING: Desktop checks did not pass ($failedNames). Stable publication is blocked unless this workflow is manually dispatched with allow_desktop_validation_failure=true."
+            }
+          }
           [ordered]@{
-            uiAutomation = $env:UIA_OUTCOME
-            installerOverInstall = $env:UPGRADE_OUTCOME
+            uiAutomation = $uiAutomation
+            installerOverInstall = $installerOverInstall
             updaterEndToEnd = 'not exercised; stable clients do not opt into RC updates'
-          } | ConvertTo-Json | Set-Content release/desktop-validation.json
+            overrideRequested = $overrideRequested
+            overrideUsed = $overrideUsed
+            failedChecks = @($failedChecks)
+            warning = $warning
+          } | ConvertTo-Json -Depth 5 | Set-Content release/desktop-validation.json
           "$((Get-FileHash release/desktop-validation.json -Algorithm SHA256).Hash.ToLower())  desktop-validation.json" | Add-Content release/SHA256SUMS.txt
+          '## Windows desktop validation' >> $env:GITHUB_STEP_SUMMARY
+          if ($warning) { ">$warning" >> $env:GITHUB_STEP_SUMMARY }
+          '```json' >> $env:GITHUB_STEP_SUMMARY
           Get-Content release/desktop-validation.json >> $env:GITHUB_STEP_SUMMARY
+          '```' >> $env:GITHUB_STEP_SUMMARY
 
       - name: Retain verified build even if publication fails
         uses: actions/upload-artifact@v7
@@ -169,20 +204,41 @@ jobs:
             release/desktop-validation.json
           if-no-files-found: error
 
-      - name: Require passing desktop checks for stable promotion
-        if: ${{ !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
-        run: throw 'Stable promotion requires passing Windows desktop validation.'
+      - name: Require passing desktop checks or explicit manual override
+        if: ${{ success() && !cancelled() && !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
+        shell: pwsh
+        run: |
+          $overrideRequested = $env:RELEASE_EVENT_NAME -ceq 'workflow_dispatch' -and $env:ALLOW_DESKTOP_VALIDATION_FAILURE -ceq 'true'
+          if (-not $overrideRequested) {
+            throw 'Stable publication requires passing Windows desktop validation. The override is available only when workflow_dispatch explicitly sets allow_desktop_validation_failure=true.'
+          }
+          $failedChecks = @()
+          $uiAutomationOutcome = '${{ steps.uia.outcome }}'
+          $upgradeOutcome = '${{ steps.upgrade.outcome }}'
+          if ($uiAutomationOutcome -cne 'success') { $failedChecks += "Windows desktop UI Automation ($uiAutomationOutcome)" }
+          if ($upgradeOutcome -cne 'success') { $failedChecks += "Installed upgrade smoke ($upgradeOutcome)" }
+          Write-Warning "Proceeding with stable publication under the explicit manual override. Failed checks remain failed: $($failedChecks -join ', ')."
+          "WARNING: Stable publication is proceeding despite failed desktop validation because workflow_dispatch explicitly set allow_desktop_validation_failure=true. Failed checks remain failures: $($failedChecks -join ', ')." >> $env:GITHUB_STEP_SUMMARY
 
       - name: Publish or update release only after validation
         shell: pwsh
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UIA_OUTCOME: ${{ steps.uia.outcome }}
-          UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
           $rc = $env:RELEASE_TAG -match '-rc\.'
           $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
-          $desktopPolicy = if ($rc) { 'Desktop failures remain open and do not prevent downloading this RC for testing.' } else { 'Both automated desktop checks passed, as required for stable publication.' }
+          $desktopValidation = Get-Content release/desktop-validation.json -Raw | ConvertFrom-Json
+          $desktopOutcomes = "Windows desktop UI Automation: $($desktopValidation.uiAutomation). Installer-over-install smoke: $($desktopValidation.installerOverInstall)."
+          $desktopPolicy = if ($desktopValidation.overrideUsed) {
+            'WARNING: Stable publication proceeded under the explicit workflow_dispatch allow_desktop_validation_failure=true override. Failed checks remain failed; review desktop-validation.json before production promotion.'
+          } elseif ($desktopValidation.failedChecks.Count -gt 0 -and $rc) {
+            'WARNING: Desktop checks did not pass; RC policy allows publication for testing, and the failures remain recorded in desktop-validation.json.'
+          } elseif ($desktopValidation.failedChecks.Count -gt 0) {
+            'WARNING: Desktop checks did not pass. Stable publication policy blocks these failures unless the explicit manual override was used.'
+          } else {
+            'Both automated desktop checks passed.'
+          }
+          $overrideRecord = "Desktop failure override requested: $($desktopValidation.overrideRequested); used: $($desktopValidation.overrideUsed)."
           $notes = @"
           $trust.
 
@@ -190,7 +246,7 @@ jobs:
 
           Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
           Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
-          Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs. $desktopPolicy
+          $desktopOutcomes $overrideRecord See desktop-validation.json and workflow logs. $desktopPolicy
           Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
