@@ -9,6 +9,9 @@ out/
 .vite/
 coverage/
 .test-tmp/
+.validation-tmp/
+.a11y-policy-*/
+.a11y-publish-*/
 *.tsbuildinfo
 
 # Logs
