@@ -153,6 +153,21 @@ describe('document provenance and original imports', () => {
     expect(await readdir(path.join(root, 'Folder.md'))).toEqual([]);
   });
 
+  it('treats plain-text and .htm files as editable notes, including imported text files', async () => {
+    await writeFile(path.join(root, 'Plain.txt'), 'plain text body');
+    await writeFile(path.join(root, 'Page.htm'), '<h1>Heading</h1>');
+    const service = await vault();
+    await service.createDocument('Imported.txt', 'imported text', 'imported');
+    const entries = (await service.getVault()).entries;
+    expect(entries.find((entry) => entry.path === 'Plain.txt')?.kind).toBe('note');
+    expect(entries.find((entry) => entry.path === 'Page.htm')?.kind).toBe('note');
+    expect(entries.find((entry) => entry.path === 'Imported.txt')?.kind).toBe('note');
+    await service.saveNote('Plain.txt', 'edited plain text');
+    expect(await service.readNote('Plain.txt')).toBe('edited plain text');
+    await service.saveNote('Imported.txt', 'edited import');
+    expect(await readFile(path.join(root, 'Imported.txt'), 'utf8')).toBe('edited import');
+  });
+
   it('keeps legacy files unknown and persists authored/imported origin without changing original bytes', async () => {
     await writeFile(path.join(root, 'Legacy.md'), '# Legacy');
     const service = await vault();

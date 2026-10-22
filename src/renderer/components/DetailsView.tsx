@@ -11,6 +11,7 @@ export interface DetailsViewProps {
   onSelect: (entry: VaultEntry) => void;
   onOpen: (entry: VaultEntry) => void;
   onRename?: (entry: VaultEntry) => void;
+  onDelete?: (entry: VaultEntry) => void;
   onContextMenu?: (entry: VaultEntry, invoker: HTMLElement, pointer?: { x: number; y: number }) => void;
   emptyMessage?: string;
 }
@@ -31,6 +32,7 @@ export default function DetailsView({
   onSelect,
   onOpen,
   onRename,
+  onDelete,
   onContextMenu,
   emptyMessage = 'No items to display.',
 }: DetailsViewProps) {
@@ -143,6 +145,12 @@ export default function DetailsView({
         if (onRename) {
           event.preventDefault();
           onRename(item);
+        }
+        return;
+      case 'Delete':
+        if (onDelete) {
+          event.preventDefault();
+          onDelete(item);
         }
         return;
       case ' ':

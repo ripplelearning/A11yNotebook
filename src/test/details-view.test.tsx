@@ -25,6 +25,7 @@ function renderDetails(overrides: Partial<ComponentProps<typeof DetailsView>> = 
   const onSelect = vi.fn();
   const onOpen = vi.fn();
   const onRename = vi.fn();
+  const onDelete = vi.fn();
   const onContextMenu = vi.fn();
   render(
     <DetailsView
@@ -34,11 +35,12 @@ function renderDetails(overrides: Partial<ComponentProps<typeof DetailsView>> = 
       onSelect={onSelect}
       onOpen={onOpen}
       onRename={onRename}
+      onDelete={onDelete}
       onContextMenu={onContextMenu}
       {...overrides}
     />,
   );
-  return { onSelect, onOpen, onRename, onContextMenu };
+  return { onSelect, onOpen, onRename, onDelete, onContextMenu };
 }
 
 function renderLibrary() {
@@ -52,7 +54,7 @@ function renderLibrary() {
         kind: 'notebook',
         children: [
           { name: 'Idea.md', path: 'Research/Idea.md', kind: 'note', provenance: 'created' },
-          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'attachment', provenance: 'imported' },
+          { name: 'Report.txt', path: 'Research/Report.txt', kind: 'note', provenance: 'imported' },
         ],
       },
       {
@@ -208,6 +210,15 @@ describe('accessible details view', () => {
     expect(onContextMenu.mock.calls[2][0]).toEqual(items[2]);
   });
 
+  it('deletes the focused item with the Delete key', () => {
+    const { onDelete } = renderDetails();
+    const alpha = screen.getByRole('gridcell', { name: 'Alpha.md' });
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'Delete' });
+    expect(onDelete).toHaveBeenCalledTimes(1);
+    expect(onDelete).toHaveBeenCalledWith(items[2]);
+  });
+
   it('moves focus to a nearby item if the focused identity is removed', () => {
     const { rerender } = render(
       <DetailsView label="Notebook items" items={items} selectedPath={null} onSelect={vi.fn()} onOpen={vi.fn()} />,
@@ -295,7 +306,7 @@ describe('accessible details view', () => {
 
   it.each([
     { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
-    { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report.txt' },
+    { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report' },
   ])('preserves notebook context when selecting and opening $name', async ({ name, path, heading }) => {
     const { bridge, menu } = renderLibrary();
 
@@ -324,8 +335,7 @@ describe('accessible details view', () => {
     expect(item.closest('[role="row"]')).toHaveAttribute('aria-selected', 'true');
     fireEvent.keyDown(item, { key: 'Enter' });
     expect(await screen.findByRole('heading', { name: heading, level: 2 })).toBeInTheDocument();
-    if (name === 'Idea.md') expect(bridge.vault.readNote).toHaveBeenCalledWith(path, undefined);
-    else expect(bridge.vault.readAttachment).toHaveBeenCalledWith(path);
+    expect(bridge.vault.readNote).toHaveBeenCalledWith(path, undefined);
 
     navigate('3');
     expectResearchContext();

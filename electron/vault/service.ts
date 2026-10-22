@@ -17,7 +17,7 @@ import { createProvenanceStore, type Provenance } from './provenance';
 import { readBoundedMetadata } from './metadata-protection';
 
 function isNotePath(value: string) {
-  return ['.md', '.html'].includes(path.extname(value).toLowerCase());
+  return ['.md', '.html', '.htm', '.txt'].includes(path.extname(value).toLowerCase());
 }
 
 export class NoteReadSizeLimitError extends Error {
@@ -274,7 +274,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
 
   async function readNote(relativePath: string, maximumBytes?: number) {
     const target = await resolveEntry(relativePath);
-    if (!isNotePath(target)) throw new Error('Only Markdown and HTML notes can be edited.');
+    if (!isNotePath(target)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
     if (maximumBytes === undefined) return readFile(target, 'utf8');
     const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
@@ -330,7 +330,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       if (typeof content !== 'string') throw new Error('Note content must be text.');
       if (expectedContent !== undefined && typeof expectedContent !== 'string')
         throw new Error('Expected note content must be text.');
-      if (!isNotePath(relativePath)) throw new Error('Only Markdown and HTML notes can be edited.');
+      if (!isNotePath(relativePath)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
       let target: string;
       try {
         target = await resolveEntry(relativePath);
@@ -501,13 +501,15 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
       if (content !== undefined && typeof content !== 'string') throw new Error('Note content must be text.');
       assertVisibleCreationPath(relativePath);
       const target = await resolveEntry(relativePath, true);
-      if (!isNotePath(target)) throw new Error('Notes must use the .md or .html extension.');
+      if (!isNotePath(target)) throw new Error('Notes must use the .md, .html, .htm, or .txt extension.');
       await mkdir(path.dirname(target), { recursive: true });
       const initialContent =
         content ??
-        (path.extname(target).toLowerCase() === '.html'
+        (['.html', '.htm'].includes(path.extname(target).toLowerCase())
           ? `<h1>${path.basename(target, path.extname(target))}</h1>\n<p></p>\n`
-          : `# ${path.basename(target, '.md')}\n\n`);
+          : path.extname(target).toLowerCase() === '.txt'
+            ? `${path.basename(target, path.extname(target))}\n\n`
+            : `# ${path.basename(target, '.md')}\n\n`);
       return createDocument(relativePath, initialContent, origin, assertCurrent, onCommitted);
     });
   }

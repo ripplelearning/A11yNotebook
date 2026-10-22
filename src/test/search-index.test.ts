@@ -101,7 +101,8 @@ describe('persistent vault search', () => {
     expect(results[0].snippet).toContain('useful');
     expect(results[0].score).toBeGreaterThan(0);
     expect(await service.search({ text: 'accessible', limit: 1 })).toHaveLength(1);
-    expect(await service.search({ text: '', kind: 'attachment' })).toHaveLength(1);
+    expect(await service.search({ text: '', kind: 'attachment' })).toEqual([]);
+    expect(await service.search({ text: '', kind: 'note' })).toHaveLength(3);
     expect(await service.search({ text: '', notebook: '' })).toHaveLength(1);
     expect(await service.search({ text: '', modifiedBefore: '2000-01-01' })).toEqual([]);
     expect(await service.search({ text: '', modifiedAfter: '2099-01-01' })).toEqual([]);
