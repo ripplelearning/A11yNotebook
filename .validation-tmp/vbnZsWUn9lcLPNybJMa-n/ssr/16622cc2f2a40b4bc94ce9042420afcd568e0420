@@ -1,0 +1,40 @@
+Object.defineProperty(__vite_ssr_exports__, "IMAGE_TYPES", { enumerable: true, configurable: true, get(){ try { return IMAGE_TYPES } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "DOCUMENT_TYPES", { enumerable: true, configurable: true, get(){ try { return DOCUMENT_TYPES } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "protocolPath", { enumerable: true, configurable: true, get(){ try { return protocolPath } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "readTextAttachment", { enumerable: true, configurable: true, get(){ try { return readTextAttachment } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("node:fs/promises", {"importedNames":["lstat","readFile"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("node:path", {"importedNames":["default"]});
+const IMAGE_TYPES = {
+  ".png": "image/png",
+  ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
+  ".bmp": "image/bmp"
+};
+const DOCUMENT_TYPES = {
+  ".pdf": "application/pdf",
+  ".epub": "application/epub+zip"
+};
+function protocolPath(url) {
+  const match = /^vault-file:\/\/attachment\/([^?#]+)$/.exec(url);
+  if (!match) throw new Error("Invalid attachment URL.");
+  const relative = match[1].split("/").map((segment) => decodeURIComponent(segment));
+  if (relative.some((segment) => !segment || segment === "." || segment === ".." || /[\\/:\0]/.test(segment))) {
+    throw new Error("Invalid attachment path.");
+  };
+  return relative.join("/");
+};
+async function readTextAttachment(resolve, relative) {
+  if (typeof relative !== "string" || !/\.(?:txt|csv|html?)$/i.test(relative)) {
+    throw new Error("Only text, CSV, and HTML previews are supported here.");
+  };
+  const target = await resolve(relative);
+  const stat = await (0,__vite_ssr_import_0__.lstat)(target);
+  if (!stat.isFile() || stat.size > 5 * 1024 * 1024) throw new Error("Preview requires a file smaller than 5 MB.");
+  return { path: relative, text: await (0,__vite_ssr_import_0__.readFile)(target, "utf8"), kind: __vite_ssr_import_1__.default.extname(relative).toLowerCase() };
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTs7OztBQUFBO0FBQ0E7QUFFTyxNQUFNLGNBQXNDO0FBQUEsRUFDakQsUUFBUTtBQUFBLEVBQ1IsUUFBUTtBQUFBLEVBQ1IsU0FBUztBQUFBLEVBQ1QsUUFBUTtBQUFBLEVBQ1IsU0FBUztBQUFBLEVBQ1QsUUFBUTtBQUNWO0FBRU8sTUFBTSxpQkFBeUM7QUFBQSxFQUNwRCxRQUFRO0FBQUEsRUFDUixTQUFTO0FBQ1g7QUFFTyxTQUFTLGFBQWEsS0FBcUI7QUFDaEQsUUFBTSxRQUFRLHdDQUF3QyxLQUFLLEdBQUc7QUFDOUQsTUFBSSxDQUFDLE1BQU8sT0FBTSxJQUFJLE1BQU0seUJBQXlCO0FBQ3JELFFBQU0sV0FBVyxNQUFNLENBQUMsRUFBRSxNQUFNLEdBQUcsRUFBRSxJQUFJLENBQUMsWUFBWSxtQkFBbUIsT0FBTyxDQUFDO0FBQ2pGLE1BQUksU0FBUyxLQUFLLENBQUMsWUFBWSxDQUFDLFdBQVcsWUFBWSxPQUFPLFlBQVksUUFBUSxXQUFXLEtBQUssT0FBTyxDQUFDLEdBQUc7QUFDM0csVUFBTSxJQUFJLE1BQU0sMEJBQTBCO0FBQUEsRUFDNUM7QUFDQSxTQUFPLFNBQVMsS0FBSyxHQUFHO0FBQzFCO0FBRUEsZUFBc0IsbUJBQW1CLFNBQWdELFVBQWtCO0FBQ3pHLE1BQUksT0FBTyxhQUFhLFlBQVksQ0FBQyx3QkFBd0IsS0FBSyxRQUFRLEdBQUc7QUFDM0UsVUFBTSxJQUFJLE1BQU0sdURBQXVEO0FBQUEsRUFDekU7QUFDQSxRQUFNLFNBQVMsTUFBTSxRQUFRLFFBQVE7QUFDckMsUUFBTSxPQUFPLFNBQU0sNkJBQU0sTUFBTTtBQUMvQixNQUFJLENBQUMsS0FBSyxPQUFPLEtBQUssS0FBSyxPQUFPLElBQUksT0FBTyxLQUFNLE9BQU0sSUFBSSxNQUFNLDRDQUE0QztBQUMvRyxTQUFPLEVBQUUsTUFBTSxVQUFVLE1BQU0sU0FBTSxnQ0FBUyxRQUFRLE1BQU0sR0FBRyxNQUFNLDhCQUFLLFFBQVEsUUFBUSxFQUFFLFlBQVksRUFBRTtBQUM1RyIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiYXR0YWNobWVudHMudHMiXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgbHN0YXQsIHJlYWRGaWxlIH0gZnJvbSAnbm9kZTpmcy9wcm9taXNlcyc7XG5pbXBvcnQgcGF0aCBmcm9tICdub2RlOnBhdGgnO1xuXG5leHBvcnQgY29uc3QgSU1BR0VfVFlQRVM6IFJlY29yZDxzdHJpbmcsIHN0cmluZz4gPSB7XG4gICcucG5nJzogJ2ltYWdlL3BuZycsXG4gICcuanBnJzogJ2ltYWdlL2pwZWcnLFxuICAnLmpwZWcnOiAnaW1hZ2UvanBlZycsXG4gICcuZ2lmJzogJ2ltYWdlL2dpZicsXG4gICcud2VicCc6ICdpbWFnZS93ZWJwJyxcbiAgJy5ibXAnOiAnaW1hZ2UvYm1wJyxcbn07XG5cbmV4cG9ydCBjb25zdCBET0NVTUVOVF9UWVBFUzogUmVjb3JkPHN0cmluZywgc3RyaW5nPiA9IHtcbiAgJy5wZGYnOiAnYXBwbGljYXRpb24vcGRmJyxcbiAgJy5lcHViJzogJ2FwcGxpY2F0aW9uL2VwdWIremlwJyxcbn07XG5cbmV4cG9ydCBmdW5jdGlvbiBwcm90b2NvbFBhdGgodXJsOiBzdHJpbmcpOiBzdHJpbmcge1xuICBjb25zdCBtYXRjaCA9IC9edmF1bHQtZmlsZTpcXC9cXC9hdHRhY2htZW50XFwvKFtePyNdKykkLy5leGVjKHVybCk7XG4gIGlmICghbWF0Y2gpIHRocm93IG5ldyBFcnJvcignSW52YWxpZCBhdHRhY2htZW50IFVSTC4nKTtcbiAgY29uc3QgcmVsYXRpdmUgPSBtYXRjaFsxXS5zcGxpdCgnLycpLm1hcCgoc2VnbWVudCkgPT4gZGVjb2RlVVJJQ29tcG9uZW50KHNlZ21lbnQpKTtcbiAgaWYgKHJlbGF0aXZlLnNvbWUoKHNlZ21lbnQpID0+ICFzZWdtZW50IHx8IHNlZ21lbnQgPT09ICcuJyB8fCBzZWdtZW50ID09PSAnLi4nIHx8IC9bXFxcXC86XFwwXS8udGVzdChzZWdtZW50KSkpIHtcbiAgICB0aHJvdyBuZXcgRXJyb3IoJ0ludmFsaWQgYXR0YWNobWVudCBwYXRoLicpO1xuICB9XG4gIHJldHVybiByZWxhdGl2ZS5qb2luKCcvJyk7XG59XG5cbmV4cG9ydCBhc3luYyBmdW5jdGlvbiByZWFkVGV4dEF0dGFjaG1lbnQocmVzb2x2ZTogKHJlbGF0aXZlOiBzdHJpbmcpID0+IFByb21pc2U8c3RyaW5nPiwgcmVsYXRpdmU6IHN0cmluZykge1xuICBpZiAodHlwZW9mIHJlbGF0aXZlICE9PSAnc3RyaW5nJyB8fCAhL1xcLig/OnR4dHxjc3Z8aHRtbD8pJC9pLnRlc3QocmVsYXRpdmUpKSB7XG4gICAgdGhyb3cgbmV3IEVycm9yKCdPbmx5IHRleHQsIENTViwgYW5kIEhUTUwgcHJldmlld3MgYXJlIHN1cHBvcnRlZCBoZXJlLicpO1xuICB9XG4gIGNvbnN0IHRhcmdldCA9IGF3YWl0IHJlc29sdmUocmVsYXRpdmUpO1xuICBjb25zdCBzdGF0ID0gYXdhaXQgbHN0YXQodGFyZ2V0KTtcbiAgaWYgKCFzdGF0LmlzRmlsZSgpIHx8IHN0YXQuc2l6ZSA+IDUgKiAxMDI0ICogMTAyNCkgdGhyb3cgbmV3IEVycm9yKCdQcmV2aWV3IHJlcXVpcmVzIGEgZmlsZSBzbWFsbGVyIHRoYW4gNSBNQi4nKTtcbiAgcmV0dXJuIHsgcGF0aDogcmVsYXRpdmUsIHRleHQ6IGF3YWl0IHJlYWRGaWxlKHRhcmdldCwgJ3V0ZjgnKSwga2luZDogcGF0aC5leHRuYW1lKHJlbGF0aXZlKS50b0xvd2VyQ2FzZSgpIH07XG59XG4iXSwiZmlsZSI6Ii9lbGVjdHJvbi92YXVsdC9hdHRhY2htZW50cy50cyJ9
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL2VsZWN0cm9uL3ZhdWx0L2F0dGFjaG1lbnRzLnRzIiwiL2VsZWN0cm9uL3ZhdWx0L2F0dGFjaG1lbnRzLnRzIix7InVybHMiOiI2IiwiaWRzIjoiNyJ9LFsiOCIsIjkiXSxbXSxbXSx7fSwibm9kZTpmcy9wcm9taXNlcyIsIm5vZGU6cGF0aCJd

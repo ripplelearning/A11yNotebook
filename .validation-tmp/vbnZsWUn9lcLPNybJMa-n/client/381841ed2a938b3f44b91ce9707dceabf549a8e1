@@ -1,0 +1,227 @@
+Object.defineProperty(__vite_ssr_exports__, "generateNotePassword", { enumerable: true, configurable: true, get(){ try { return generateNotePassword } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return NotePasswordDialog } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["Fragment","jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useState"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default"]});
+const PASSWORD_CHARACTERS = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%^&*()-_=+";
+function generateNotePassword(length = 24) {
+  if (!Number.isInteger(length) || length < 8 || length > 128) throw new Error("Password length must be 8–128.");
+  const maximum = Math.floor(256 / PASSWORD_CHARACTERS.length) * PASSWORD_CHARACTERS.length;
+  let result = "";
+  while (result.length < length) {
+    const random = crypto.getRandomValues(new Uint8Array(Math.max(16, length - result.length)));
+    for (const value of random) {
+      if (value >= maximum) continue;
+      result += PASSWORD_CHARACTERS[value % PASSWORD_CHARACTERS.length];
+      if (result.length === length) break;
+    }
+  };
+  return result;
+};
+function NotePasswordDialog({ action, noteName, onSubmit, onClose }) {
+  const [password, setPassword] = (0,__vite_ssr_import_1__.useState)("");
+  const [confirmation, setConfirmation] = (0,__vite_ssr_import_1__.useState)("");
+  const [error, setError] = (0,__vite_ssr_import_1__.useState)("");
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  const [clipboardMessage, setClipboardMessage] = (0,__vite_ssr_import_1__.useState)("");
+  const [generated, setGenerated] = (0,__vite_ssr_import_1__.useState)(false);
+  const encrypting = action === "encrypt";
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    (0,__vite_ssr_import_2__.default),
+    {
+      title: encrypting ? "Encrypt note" : "Unlock encrypted note",
+      titleId: "note-password-heading",
+      onClose,
+      children: /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+        "form",
+        {
+          onSubmit: (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError("");
+            void onSubmit(password).catch(
+              (failure) => setError(failure instanceof Error ? failure.message : "Could not process this note password.")
+            ).finally(() => {
+              setPassword("");
+              setConfirmation("");
+              setBusy(false);
+            });
+          },
+          children: [
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: encrypting ? `Choose a password for ${noteName}.` : `Enter the password for ${noteName}.` }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 58,
+              columnNumber: 9
+            }, this),
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+              "Note password",
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "input",
+                {
+                  autoComplete: encrypting ? "new-password" : "current-password",
+                  "data-autofocus": true,
+                  type: "password",
+                  maxLength: 1024,
+                  value: password,
+                  onChange: (event) => {
+                    setGenerated(false);
+                    setPassword(event.target.value);
+                  }
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                  lineNumber: 61,
+                  columnNumber: 11
+                },
+                this
+              )
+            ] }, void 0, true, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 59,
+              columnNumber: 9
+            }, this),
+            encrypting ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_0__.Fragment), { children: [
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "button",
+                {
+                  type: "button",
+                  onClick: () => {
+                    const next = generateNotePassword();
+                    setPassword(next);
+                    setConfirmation(next);
+                    setGenerated(true);
+                    setClipboardMessage("");
+                  },
+                  children: "Generate password"
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                  lineNumber: 75,
+                  columnNumber: 13
+                },
+                this
+              ),
+              generated ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "button",
+                {
+                  type: "button",
+                  onClick: async () => {
+                    try {
+                      await navigator.clipboard.writeText(password);
+                      setClipboardMessage(
+                        "Password copied. It will be cleared from the clipboard in 30 seconds if unchanged."
+                      );
+                      window.setTimeout(() => {
+                        void navigator.clipboard.readText().then((current) => {
+                          if (current === password) return navigator.clipboard.writeText("");
+                        }).catch(() => void 0);
+                      }, 3e4);
+                    } catch {
+                      setClipboardMessage("Could not copy the generated password.");
+                    }
+                  },
+                  children: "Copy generated password"
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                  lineNumber: 88,
+                  columnNumber: 15
+                },
+                this
+              ) : null,
+              clipboardMessage ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "status", children: clipboardMessage }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                lineNumber: 112,
+                columnNumber: 33
+              }, this) : null
+            ] }, void 0, true, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 74,
+              columnNumber: 11
+            }, this) : null,
+            encrypting ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+              "Confirm note password",
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "input",
+                {
+                  autoComplete: "new-password",
+                  type: "password",
+                  maxLength: 1024,
+                  value: confirmation,
+                  onChange: (event) => {
+                    setGenerated(false);
+                    setConfirmation(event.target.value);
+                  }
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                  lineNumber: 118,
+                  columnNumber: 13
+                },
+                this
+              )
+            ] }, void 0, true, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 116,
+              columnNumber: 11
+            }, this) : null,
+            error ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "alert", children: error }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 130,
+              columnNumber: 18
+            }, this) : null,
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+              "button",
+              {
+                type: "submit",
+                disabled: busy || password.length < 8 || password.length > 1024 || encrypting && password !== confirmation,
+                children: encrypting ? "Encrypt note" : "Unlock note"
+              },
+              void 0,
+              false,
+              {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+                lineNumber: 131,
+                columnNumber: 9
+              },
+              this
+            ),
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: onClose, children: "Cancel" }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+              lineNumber: 137,
+              columnNumber: 9
+            }, this)
+          ]
+        },
+        void 0,
+        true,
+        {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+          lineNumber: 42,
+          columnNumber: 7
+        },
+        this
+      )
+    },
+    void 0,
+    false,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/security/NotePasswordDialog.tsx",
+      lineNumber: 37,
+      columnNumber: 5
+    },
+    this
+  );
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,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O0FBQUE7QUFBQTtBQUFBO0FBQUEsbUJBWUEsSUFDRTtBQUFBLFlBQ0gsUUFBUSxpREFBQyxPQUFFLE1BQUssU0FBUyxtQkFBakI7QUFBQTtBQUFBO0FBQUE7QUFBQSxtQkFBdUIsSUFBTztBQUFBLFlBQ3ZDO0FBQUEsY0FBQztBQUFBO0FBQUEsZ0JBQ0MsTUFBSztBQUFBLGdCQUNMLFVBQVUsUUFBUSxTQUFTLFNBQVMsS0FBSyxTQUFTLFNBQVMsUUFBUyxjQUFjLGFBQWE7QUFBQSxnQkFFOUYsdUJBQWEsaUJBQWlCO0FBQUE7QUFBQSxjQUpqQztBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsWUFLQTtBQUFBLFlBQ0EsaURBQUMsWUFBTyxNQUFLLFVBQVMsU0FBUyxTQUFTLHNCQUF4QztBQUFBO0FBQUE7QUFBQTtBQUFBLG1CQUVBO0FBQUE7QUFBQTtBQUFBLFFBakdGO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxNQWtHQTtBQUFBO0FBQUEsSUF2R0Y7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLEVBd0dBO0FBRUoiLCJuYW1lcyI6W10sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIk5vdGVQYXNzd29yZERpYWxvZy50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgdXNlU3RhdGUgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQgTW9kYWwgZnJvbSAnLi4vLi4vY29tcG9uZW50cy9Nb2RhbCc7XG5cbmNvbnN0IFBBU1NXT1JEX0NIQVJBQ1RFUlMgPSAnQUJDREVGR0hKS0xNTlBRUlNUVVZXWFlaYWJjZGVmZ2hpamttbm9wcXJzdHV2d3h5ejIzNDU2Nzg5IUAjJCVeJiooKS1fPSsnO1xuXG5leHBvcnQgZnVuY3Rpb24gZ2VuZXJhdGVOb3RlUGFzc3dvcmQobGVuZ3RoID0gMjQpIHtcbiAgaWYgKCFOdW1iZXIuaXNJbnRlZ2VyKGxlbmd0aCkgfHwgbGVuZ3RoIDwgOCB8fCBsZW5ndGggPiAxMjgpIHRocm93IG5ldyBFcnJvcignUGFzc3dvcmQgbGVuZ3RoIG11c3QgYmUgOOKAkzEyOC4nKTtcbiAgY29uc3QgbWF4aW11bSA9IE1hdGguZmxvb3IoMjU2IC8gUEFTU1dPUkRfQ0hBUkFDVEVSUy5sZW5ndGgpICogUEFTU1dPUkRfQ0hBUkFDVEVSUy5sZW5ndGg7XG4gIGxldCByZXN1bHQgPSAnJztcbiAgd2hpbGUgKHJlc3VsdC5sZW5ndGggPCBsZW5ndGgpIHtcbiAgICBjb25zdCByYW5kb20gPSBjcnlwdG8uZ2V0UmFuZG9tVmFsdWVzKG5ldyBVaW50OEFycmF5KE1hdGgubWF4KDE2LCBsZW5ndGggLSByZXN1bHQubGVuZ3RoKSkpO1xuICAgIGZvciAoY29uc3QgdmFsdWUgb2YgcmFuZG9tKSB7XG4gICAgICBpZiAodmFsdWUgPj0gbWF4aW11bSkgY29udGludWU7XG4gICAgICByZXN1bHQgKz0gUEFTU1dPUkRfQ0hBUkFDVEVSU1t2YWx1ZSAlIFBBU1NXT1JEX0NIQVJBQ1RFUlMubGVuZ3RoXTtcbiAgICAgIGlmIChyZXN1bHQubGVuZ3RoID09PSBsZW5ndGgpIGJyZWFrO1xuICAgIH1cbiAgfVxuICByZXR1cm4gcmVzdWx0O1xufVxuXG5pbnRlcmZhY2UgUHJvcHMge1xuICBhY3Rpb246ICdlbmNyeXB0JyB8ICd1bmxvY2snO1xuICBub3RlTmFtZTogc3RyaW5nO1xuICBvblN1Ym1pdDogKHBhc3N3b3JkOiBzdHJpbmcpID0+IFByb21pc2U8dm9pZD47XG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XG59XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIE5vdGVQYXNzd29yZERpYWxvZyh7IGFjdGlvbiwgbm90ZU5hbWUsIG9uU3VibWl0LCBvbkNsb3NlIH06IFByb3BzKSB7XG4gIGNvbnN0IFtwYXNzd29yZCwgc2V0UGFzc3dvcmRdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbY29uZmlybWF0aW9uLCBzZXRDb25maXJtYXRpb25dID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbZXJyb3IsIHNldEVycm9yXSA9IHVzZVN0YXRlKCcnKTtcbiAgY29uc3QgW2J1c3ksIHNldEJ1c3ldID0gdXNlU3RhdGUoZmFsc2UpO1xuICBjb25zdCBbY2xpcGJvYXJkTWVzc2FnZSwgc2V0Q2xpcGJvYXJkTWVzc2FnZV0gPSB1c2VTdGF0ZSgnJyk7XG4gIGNvbnN0IFtnZW5lcmF0ZWQsIHNldEdlbmVyYXRlZF0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IGVuY3J5cHRpbmcgPSBhY3Rpb24gPT09ICdlbmNyeXB0JztcbiAgcmV0dXJuIChcbiAgICA8TW9kYWxcbiAgICAgIHRpdGxlPXtlbmNyeXB0aW5nID8gJ0VuY3J5cHQgbm90ZScgOiAnVW5sb2NrIGVuY3J5cHRlZCBub3RlJ31cbiAgICAgIHRpdGxlSWQ9XCJub3RlLXBhc3N3b3JkLWhlYWRpbmdcIlxuICAgICAgb25DbG9zZT17b25DbG9zZX1cbiAgICA+XG4gICAgICA8Zm9ybVxuICAgICAgICBvblN1Ym1pdD17KGV2ZW50KSA9PiB7XG4gICAgICAgICAgZXZlbnQucHJldmVudERlZmF1bHQoKTtcbiAgICAgICAgICBzZXRCdXN5KHRydWUpO1xuICAgICAgICAgIHNldEVycm9yKCcnKTtcbiAgICAgICAgICB2b2lkIG9uU3VibWl0KHBhc3N3b3JkKVxuICAgICAgICAgICAgLmNhdGNoKChmYWlsdXJlOiB1bmtub3duKSA9PlxuICAgICAgICAgICAgICBzZXRFcnJvcihmYWlsdXJlIGluc3RhbmNlb2YgRXJyb3IgPyBmYWlsdXJlLm1lc3NhZ2UgOiAnQ291bGQgbm90IHByb2Nlc3MgdGhpcyBub3RlIHBhc3N3b3JkLicpLFxuICAgICAgICAgICAgKVxuICAgICAgICAgICAgLmZpbmFsbHkoKCkgPT4ge1xuICAgICAgICAgICAgICBzZXRQYXNzd29yZCgnJyk7XG4gICAgICAgICAgICAgIHNldENvbmZpcm1hdGlvbignJyk7XG4gICAgICAgICAgICAgIHNldEJ1c3koZmFsc2UpO1xuICAgICAgICAgICAgfSk7XG4gICAgICAgIH19XG4gICAgICA+XG4gICAgICAgIDxwPntlbmNyeXB0aW5nID8gYENob29zZSBhIHBhc3N3b3JkIGZvciAke25vdGVOYW1lfS5gIDogYEVudGVyIHRoZSBwYXNzd29yZCBmb3IgJHtub3RlTmFtZX0uYH08L3A+XG4gICAgICAgIDxsYWJlbD5cbiAgICAgICAgICBOb3RlIHBhc3N3b3JkXG4gICAgICAgICAgPGlucHV0XG4gICAgICAgICAgICBhdXRvQ29tcGxldGU9e2VuY3J5cHRpbmcgPyAnbmV3LXBhc3N3b3JkJyA6ICdjdXJyZW50LXBhc3N3b3JkJ31cbiAgICAgICAgICAgIGRhdGEtYXV0b2ZvY3VzXG4gICAgICAgICAgICB0eXBlPVwicGFzc3dvcmRcIlxuICAgICAgICAgICAgbWF4TGVuZ3RoPXsxMDI0fVxuICAgICAgICAgICAgdmFsdWU9e3Bhc3N3b3JkfVxuICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4ge1xuICAgICAgICAgICAgICBzZXRHZW5lcmF0ZWQoZmFsc2UpO1xuICAgICAgICAgICAgICBzZXRQYXNzd29yZChldmVudC50YXJnZXQudmFsdWUpO1xuICAgICAgICAgICAgfX1cbiAgICAgICAgICAvPlxuICAgICAgICA8L2xhYmVsPlxuICAgICAgICB7ZW5jcnlwdGluZyA/IChcbiAgICAgICAgICA8PlxuICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcbiAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4ge1xuICAgICAgICAgICAgICAgIGNvbnN0IG5leHQgPSBnZW5lcmF0ZU5vdGVQYXNzd29yZCgpO1xuICAgICAgICAgICAgICAgIHNldFBhc3N3b3JkKG5leHQpO1xuICAgICAgICAgICAgICAgIHNldENvbmZpcm1hdGlvbihuZXh0KTtcbiAgICAgICAgICAgICAgICBzZXRHZW5lcmF0ZWQodHJ1ZSk7XG4gICAgICAgICAgICAgICAgc2V0Q2xpcGJvYXJkTWVzc2FnZSgnJyk7XG4gICAgICAgICAgICAgIH19XG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIEdlbmVyYXRlIHBhc3N3b3JkXG4gICAgICAgICAgICA8L2J1dHRvbj5cbiAgICAgICAgICAgIHtnZW5lcmF0ZWQgPyAoXG4gICAgICAgICAgICAgIDxidXR0b25cbiAgICAgICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcbiAgICAgICAgICAgICAgICBvbkNsaWNrPXthc3luYyAoKSA9PiB7XG4gICAgICAgICAgICAgICAgICB0cnkge1xuICAgICAgICAgICAgICAgICAgICBhd2FpdCBuYXZpZ2F0b3IuY2xpcGJvYXJkLndyaXRlVGV4dChwYXNzd29yZCk7XG4gICAgICAgICAgICAgICAgICAgIHNldENsaXBib2FyZE1lc3NhZ2UoXG4gICAgICAgICAgICAgICAgICAgICAgJ1Bhc3N3b3JkIGNvcGllZC4gSXQgd2lsbCBiZSBjbGVhcmVkIGZyb20gdGhlIGNsaXBib2FyZCBpbiAzMCBzZWNvbmRzIGlmIHVuY2hhbmdlZC4nLFxuICAgICAgICAgICAgICAgICAgICApO1xuICAgICAgICAgICAgICAgICAgICB3aW5kb3cuc2V0VGltZW91dCgoKSA9PiB7XG4gICAgICAgICAgICAgICAgICAgICAgdm9pZCBuYXZpZ2F0b3IuY2xpcGJvYXJkXG4gICAgICAgICAgICAgICAgICAgICAgICAucmVhZFRleHQoKVxuICAgICAgICAgICAgICAgICAgICAgICAgLnRoZW4oKGN1cnJlbnQpID0+IHtcbiAgICAgICAgICAgICAgICAgICAgICAgICAgaWYgKGN1cnJlbnQgPT09IHBhc3N3b3JkKSByZXR1cm4gbmF2aWdhdG9yLmNsaXBib2FyZC53cml0ZVRleHQoJycpO1xuICAgICAgICAgICAgICAgICAgICAgICAgfSlcbiAgICAgICAgICAgICAgICAgICAgICAgIC5jYXRjaCgoKSA9PiB1bmRlZmluZWQpO1xuICAgICAgICAgICAgICAgICAgICB9LCAzMF8wMDApO1xuICAgICAgICAgICAgICAgICAgfSBjYXRjaCB7XG4gICAgICAgICAgICAgICAgICAgIHNldENsaXBib2FyZE1lc3NhZ2UoJ0NvdWxkIG5vdCBjb3B5IHRoZSBnZW5lcmF0ZWQgcGFzc3dvcmQuJyk7XG4gICAgICAgICAgICAgICAgICB9XG4gICAgICAgICAgICAgICAgfX1cbiAgICAgICAgICAgICAgPlxuICAgICAgICAgICAgICAgIENvcHkgZ2VuZXJhdGVkIHBhc3N3b3JkXG4gICAgICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICAgICAgKSA6IG51bGx9XG4gICAgICAgICAgICB7Y2xpcGJvYXJkTWVzc2FnZSA/IDxwIHJvbGU9XCJzdGF0dXNcIj57Y2xpcGJvYXJkTWVzc2FnZX08L3A+IDogbnVsbH1cbiAgICAgICAgICA8Lz5cbiAgICAgICAgKSA6IG51bGx9XG4gICAgICAgIHtlbmNyeXB0aW5nID8gKFxuICAgICAgICAgIDxsYWJlbD5cbiAgICAgICAgICAgIENvbmZpcm0gbm90ZSBwYXNzd29yZFxuICAgICAgICAgICAgPGlucHV0XG4gICAgICAgICAgICAgIGF1dG9Db21wbGV0ZT1cIm5ldy1wYXNzd29yZFwiXG4gICAgICAgICAgICAgIHR5cGU9XCJwYXNzd29yZFwiXG4gICAgICAgICAgICAgIG1heExlbmd0aD17MTAyNH1cbiAgICAgICAgICAgICAgdmFsdWU9e2NvbmZpcm1hdGlvbn1cbiAgICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4ge1xuICAgICAgICAgICAgICAgIHNldEdlbmVyYXRlZChmYWxzZSk7XG4gICAgICAgICAgICAgICAgc2V0Q29uZmlybWF0aW9uKGV2ZW50LnRhcmdldC52YWx1ZSk7XG4gICAgICAgICAgICAgIH19XG4gICAgICAgICAgICAvPlxuICAgICAgICAgIDwvbGFiZWw+XG4gICAgICAgICkgOiBudWxsfVxuICAgICAgICB7ZXJyb3IgPyA8cCByb2xlPVwiYWxlcnRcIj57ZXJyb3J9PC9wPiA6IG51bGx9XG4gICAgICAgIDxidXR0b25cbiAgICAgICAgICB0eXBlPVwic3VibWl0XCJcbiAgICAgICAgICBkaXNhYmxlZD17YnVzeSB8fCBwYXNzd29yZC5sZW5ndGggPCA4IHx8IHBhc3N3b3JkLmxlbmd0aCA+IDEwMjQgfHwgKGVuY3J5cHRpbmcgJiYgcGFzc3dvcmQgIT09IGNvbmZpcm1hdGlvbil9XG4gICAgICAgID5cbiAgICAgICAgICB7ZW5jcnlwdGluZyA/ICdFbmNyeXB0IG5vdGUnIDogJ1VubG9jayBub3RlJ31cbiAgICAgICAgPC9idXR0b24+XG4gICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIG9uQ2xpY2s9e29uQ2xvc2V9PlxuICAgICAgICAgIENhbmNlbFxuICAgICAgICA8L2J1dHRvbj5cbiAgICAgIDwvZm9ybT5cbiAgICA8L01vZGFsPlxuICApO1xufVxuIl0sImZpbGUiOiIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL3NlY3VyaXR5L05vdGVQYXNzd29yZERpYWxvZy50c3gifQ==
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9zZWN1cml0eS9Ob3RlUGFzc3dvcmREaWFsb2cudHN4IiwiL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9zZWN1cml0eS9Ob3RlUGFzc3dvcmREaWFsb2cudHN4Iix7InVybHMiOiI2IiwiaWRzIjoiNyJ9LFsiOCIsIjkiLCIxMCJdLFtdLFtdLHt9LCIvbm9kZV9tb2R1bGVzL3JlYWN0L2pzeC1kZXYtcnVudGltZS5qcyIsIi9ub2RlX21vZHVsZXMvcmVhY3QvaW5kZXguanMiLCIvc3JjL3JlbmRlcmVyL2NvbXBvbmVudHMvTW9kYWwudHN4Il0=

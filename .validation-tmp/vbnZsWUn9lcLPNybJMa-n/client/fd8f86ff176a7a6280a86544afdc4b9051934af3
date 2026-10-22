@@ -1,0 +1,238 @@
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return UpdateDialog } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["Fragment","jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useEffect","useRef"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/shared/app-info.ts", {"importedNames":["RELEASES_URL"]});
+const __vite_ssr_import_3__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default","focusInitialElement"]});
+const MESSAGE_ID = "update-dialog-message";
+function UpdateDialog({
+  status,
+  announcement,
+  currentVersion,
+  onDownload,
+  onInstallNow,
+  onInstallOnExit,
+  onRetry,
+  onClose
+}) {
+  const bodyRef = (0,__vite_ssr_import_1__.useRef)(null);
+  const phase = status.state;
+  const previousPhase = (0,__vite_ssr_import_1__.useRef)(phase);
+  (0,__vite_ssr_import_1__.useEffect)(() => {
+    if (previousPhase.current !== phase && bodyRef.current) {
+      const dialog = bodyRef.current.closest('[role="dialog"]');
+      if (dialog) {
+        (0,__vite_ssr_import_3__.focusInitialElement)(dialog);
+      }
+    };
+    previousPhase.current = phase;
+  }, [phase]);
+  let message;
+  let details = null;
+  let actions;
+  switch (status.state) {
+    case "idle":
+    case "checking":
+      message = "Checking GitHub for a newer version of A11y Notebook…";
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onClose, children: "Close" }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 54,
+        columnNumber: 9
+      }, this);
+      break;
+    case "update-available":
+      message = `Version ${status.version} is available. You are using version ${currentVersion}.`;
+      details = status.releaseNotes ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "release-notes", children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("h3", { children: [
+          "What’s new",
+          status.releaseName ? ` in ${status.releaseName}` : ""
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 63,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: status.releaseNotes }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 64,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 62,
+        columnNumber: 9
+      }, this) : null;
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_0__.Fragment), { children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onDownload, children: "Download" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 69,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: onClose, children: "Not now" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 72,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 68,
+        columnNumber: 9
+      }, this);
+      break;
+    case "download-progress":
+      message = "Downloading the update. You can hide this dialog and keep working; progress is shown in the status bar.";
+      details = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "progress", children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("span", { id: "update-progress-label", children: "Download progress" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 83,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+          "div",
+          {
+            className: "progress-track",
+            role: "progressbar",
+            "aria-labelledby": "update-progress-label",
+            "aria-valuemin": 0,
+            "aria-valuemax": 100,
+            "aria-valuenow": status.percent,
+            "aria-valuetext": `${status.percent} percent`,
+            children: /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "progress-fill", style: { width: `${status.percent}%` } }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+              lineNumber: 93,
+              columnNumber: 13
+            }, this)
+          },
+          void 0,
+          false,
+          {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+            lineNumber: 84,
+            columnNumber: 11
+          },
+          this
+        ),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("span", { "aria-hidden": "true", children: [
+          status.percent,
+          "%"
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 95,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 82,
+        columnNumber: 9
+      }, this);
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onClose, children: "Hide" }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 99,
+        columnNumber: 9
+      }, this);
+      break;
+    case "update-downloaded":
+      message = `Version ${status.version} has been downloaded. Restart now to install it, or install it automatically when you exit.`;
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_0__.Fragment), { children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onInstallNow, children: "Restart and install" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 108,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: onInstallOnExit, children: "Install on exit" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 111,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 107,
+        columnNumber: 9
+      }, this);
+      break;
+    case "update-not-available":
+      message = `You are using the latest version of A11y Notebook (${status.version}).`;
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onClose, children: "Close" }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 120,
+        columnNumber: 9
+      }, this);
+      break;
+    case "unsupported":
+      message = status.message;
+      details = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: [
+        "Installers are published on the",
+        " ",
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("a", { href: __vite_ssr_import_2__.RELEASES_URL, target: "_blank", rel: "noreferrer", children: "A11y Notebook releases page" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 130,
+          columnNumber: 11
+        }, this),
+        "."
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 128,
+        columnNumber: 9
+      }, this);
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onClose, children: "Close" }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 137,
+        columnNumber: 9
+      }, this);
+      break;
+    case "error":
+      message = "The update could not be completed.";
+      details = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { className: "error-message", role: "alert", children: status.message }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 145,
+        columnNumber: 9
+      }, this);
+      actions = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_0__.Fragment), { children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, onClick: onRetry, children: "Try again" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 151,
+          columnNumber: 11
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: onClose, children: "Close" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+          lineNumber: 154,
+          columnNumber: 11
+        }, this)
+      ] }, void 0, true, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 150,
+        columnNumber: 9
+      }, this);
+      break;
+  };
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_3__.default), { titleId: "update-dialog-title", title: "Software update", describedBy: MESSAGE_ID, onClose, children: [
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { ref: bodyRef, className: "modal-body", children: [
+      /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { id: MESSAGE_ID, children: message }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 165,
+        columnNumber: 9
+      }, this),
+      details,
+      /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { className: "sr-only", role: "status", "aria-live": "polite", children: status.state === "error" ? "" : announcement }, void 0, false, {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+        lineNumber: 168,
+        columnNumber: 9
+      }, this)
+    ] }, void 0, true, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+      lineNumber: 164,
+      columnNumber: 7
+    }, this),
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "modal-actions", children: actions }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+      lineNumber: 172,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/components/UpdateDialog.tsx",
+    lineNumber: 163,
+    columnNumber: 5
+  }, this);
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,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QU8sTUFBSyxVQUFTLFNBQVMsU0FBUyxxQkFBeEM7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUVBO0FBQUEsV0FORjtBQUFBO0FBQUE7QUFBQTtBQUFBLGFBT0E7QUFFRjtBQUFBLEVBQ0o7QUFFQSxTQUNFLG9EQUFDLGtDQUFNLFNBQVEsdUJBQXNCLE9BQU0sbUJBQWtCLGFBQWEsWUFBWSxTQUNwRjtBQUFBLHFEQUFDLFNBQUksS0FBSyxTQUFTLFdBQVUsY0FDM0I7QUFBQSx1REFBQyxPQUFFLElBQUksWUFBYSxxQkFBcEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUE0QjtBQUFBLE1BQzNCO0FBQUEsTUFFRCxpREFBQyxPQUFFLFdBQVUsV0FBVSxNQUFLLFVBQVMsYUFBVSxVQUM1QyxpQkFBTyxVQUFVLFVBQVUsS0FBSyxnQkFEbkM7QUFBQTtBQUFBO0FBQUE7QUFBQSxhQUVBO0FBQUEsU0FORjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBT0E7QUFBQSxJQUNBLGlEQUFDLFNBQUksV0FBVSxpQkFBaUIscUJBQWhDO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBd0M7QUFBQSxPQVQxQztBQUFBO0FBQUE7QUFBQTtBQUFBLFNBVUE7QUFFSiIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiVXBkYXRlRGlhbG9nLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VFZmZlY3QsIHVzZVJlZiwgdHlwZSBSZWFjdEVsZW1lbnQgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQgeyBSRUxFQVNFU19VUkwgfSBmcm9tICcuLi8uLi9zaGFyZWQvYXBwLWluZm8nO1xuaW1wb3J0IHR5cGUgeyBVcGRhdGVyU3RhdHVzIH0gZnJvbSAnLi4vLi4vc2hhcmVkL3VwZGF0ZXInO1xuaW1wb3J0IE1vZGFsLCB7IGZvY3VzSW5pdGlhbEVsZW1lbnQgfSBmcm9tICcuL01vZGFsJztcblxudHlwZSBVcGRhdGVEaWFsb2dQcm9wcyA9IHtcbiAgc3RhdHVzOiBVcGRhdGVyU3RhdHVzO1xuICBhbm5vdW5jZW1lbnQ6IHN0cmluZztcbiAgY3VycmVudFZlcnNpb246IHN0cmluZztcbiAgb25Eb3dubG9hZDogKCkgPT4gdm9pZDtcbiAgb25JbnN0YWxsTm93OiAoKSA9PiB2b2lkO1xuICBvbkluc3RhbGxPbkV4aXQ6ICgpID0+IHZvaWQ7XG4gIG9uUmV0cnk6ICgpID0+IHZvaWQ7XG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XG59O1xuXG5jb25zdCBNRVNTQUdFX0lEID0gJ3VwZGF0ZS1kaWFsb2ctbWVzc2FnZSc7XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFVwZGF0ZURpYWxvZyh7XG4gIHN0YXR1cyxcbiAgYW5ub3VuY2VtZW50LFxuICBjdXJyZW50VmVyc2lvbixcbiAgb25Eb3dubG9hZCxcbiAgb25JbnN0YWxsTm93LFxuICBvbkluc3RhbGxPbkV4aXQsXG4gIG9uUmV0cnksXG4gIG9uQ2xvc2UsXG59OiBVcGRhdGVEaWFsb2dQcm9wcykge1xuICBjb25zdCBib2R5UmVmID0gdXNlUmVmPEhUTUxEaXZFbGVtZW50PihudWxsKTtcbiAgY29uc3QgcGhhc2UgPSBzdGF0dXMuc3RhdGU7XG5cbiAgLy8gV2hlbiB0aGUgZGlhbG9nIGNoYW5nZXMgcGhhc2UgaXRzIGJ1dHRvbnMgY2hhbmdlIHRvbywgc28gbW92ZSBmb2N1cyB0byB0aGUgbmV3XG4gIC8vIHByaW1hcnkgYWN0aW9uIGluc3RlYWQgb2YgbGV0dGluZyBmb2N1cyBmYWxsIGJhY2sgdG8gdGhlIGRvY3VtZW50IGJvZHkuXG4gIGNvbnN0IHByZXZpb3VzUGhhc2UgPSB1c2VSZWYocGhhc2UpO1xuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGlmIChwcmV2aW91c1BoYXNlLmN1cnJlbnQgIT09IHBoYXNlICYmIGJvZHlSZWYuY3VycmVudCkge1xuICAgICAgY29uc3QgZGlhbG9nID0gYm9keVJlZi5jdXJyZW50LmNsb3Nlc3Q8SFRNTEVsZW1lbnQ+KCdbcm9sZT1cImRpYWxvZ1wiXScpO1xuICAgICAgaWYgKGRpYWxvZykge1xuICAgICAgICBmb2N1c0luaXRpYWxFbGVtZW50KGRpYWxvZyk7XG4gICAgICB9XG4gICAgfVxuICAgIHByZXZpb3VzUGhhc2UuY3VycmVudCA9IHBoYXNlO1xuICB9LCBbcGhhc2VdKTtcblxuICBsZXQgbWVzc2FnZTogc3RyaW5nO1xuICBsZXQgZGV0YWlsczogUmVhY3RFbGVtZW50IHwgbnVsbCA9IG51bGw7XG4gIGxldCBhY3Rpb25zOiBSZWFjdEVsZW1lbnQ7XG5cbiAgc3dpdGNoIChzdGF0dXMuc3RhdGUpIHtcbiAgICBjYXNlICdpZGxlJzpcbiAgICBjYXNlICdjaGVja2luZyc6XG4gICAgICBtZXNzYWdlID0gJ0NoZWNraW5nIEdpdEh1YiBmb3IgYSBuZXdlciB2ZXJzaW9uIG9mIEExMXkgTm90ZWJvb2vigKYnO1xuICAgICAgYWN0aW9ucyA9IChcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGF0YS1hdXRvZm9jdXMgb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgICAgQ2xvc2VcbiAgICAgICAgPC9idXR0b24+XG4gICAgICApO1xuICAgICAgYnJlYWs7XG4gICAgY2FzZSAndXBkYXRlLWF2YWlsYWJsZSc6XG4gICAgICBtZXNzYWdlID0gYFZlcnNpb24gJHtzdGF0dXMudmVyc2lvbn0gaXMgYXZhaWxhYmxlLiBZb3UgYXJlIHVzaW5nIHZlcnNpb24gJHtjdXJyZW50VmVyc2lvbn0uYDtcbiAgICAgIGRldGFpbHMgPSBzdGF0dXMucmVsZWFzZU5vdGVzID8gKFxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInJlbGVhc2Utbm90ZXNcIj5cbiAgICAgICAgICA8aDM+V2hhdOKAmXMgbmV3e3N0YXR1cy5yZWxlYXNlTmFtZSA/IGAgaW4gJHtzdGF0dXMucmVsZWFzZU5hbWV9YCA6ICcnfTwvaDM+XG4gICAgICAgICAgPHA+e3N0YXR1cy5yZWxlYXNlTm90ZXN9PC9wPlxuICAgICAgICA8L2Rpdj5cbiAgICAgICkgOiBudWxsO1xuICAgICAgYWN0aW9ucyA9IChcbiAgICAgICAgPD5cbiAgICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBkYXRhLWF1dG9mb2N1cyBvbkNsaWNrPXtvbkRvd25sb2FkfT5cbiAgICAgICAgICAgIERvd25sb2FkXG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgICAgICBOb3Qgbm93XG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgIDwvPlxuICAgICAgKTtcbiAgICAgIGJyZWFrO1xuICAgIGNhc2UgJ2Rvd25sb2FkLXByb2dyZXNzJzpcbiAgICAgIG1lc3NhZ2UgPVxuICAgICAgICAnRG93bmxvYWRpbmcgdGhlIHVwZGF0ZS4gWW91IGNhbiBoaWRlIHRoaXMgZGlhbG9nIGFuZCBrZWVwIHdvcmtpbmc7IHByb2dyZXNzIGlzIHNob3duIGluIHRoZSBzdGF0dXMgYmFyLic7XG4gICAgICBkZXRhaWxzID0gKFxuICAgICAgICA8ZGl2IGNsYXNzTmFtZT1cInByb2dyZXNzXCI+XG4gICAgICAgICAgPHNwYW4gaWQ9XCJ1cGRhdGUtcHJvZ3Jlc3MtbGFiZWxcIj5Eb3dubG9hZCBwcm9ncmVzczwvc3Bhbj5cbiAgICAgICAgICA8ZGl2XG4gICAgICAgICAgICBjbGFzc05hbWU9XCJwcm9ncmVzcy10cmFja1wiXG4gICAgICAgICAgICByb2xlPVwicHJvZ3Jlc3NiYXJcIlxuICAgICAgICAgICAgYXJpYS1sYWJlbGxlZGJ5PVwidXBkYXRlLXByb2dyZXNzLWxhYmVsXCJcbiAgICAgICAgICAgIGFyaWEtdmFsdWVtaW49ezB9XG4gICAgICAgICAgICBhcmlhLXZhbHVlbWF4PXsxMDB9XG4gICAgICAgICAgICBhcmlhLXZhbHVlbm93PXtzdGF0dXMucGVyY2VudH1cbiAgICAgICAgICAgIGFyaWEtdmFsdWV0ZXh0PXtgJHtzdGF0dXMucGVyY2VudH0gcGVyY2VudGB9XG4gICAgICAgICAgPlxuICAgICAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJwcm9ncmVzcy1maWxsXCIgc3R5bGU9e3sgd2lkdGg6IGAke3N0YXR1cy5wZXJjZW50fSVgIH19IC8+XG4gICAgICAgICAgPC9kaXY+XG4gICAgICAgICAgPHNwYW4gYXJpYS1oaWRkZW49XCJ0cnVlXCI+e3N0YXR1cy5wZXJjZW50fSU8L3NwYW4+XG4gICAgICAgIDwvZGl2PlxuICAgICAgKTtcbiAgICAgIGFjdGlvbnMgPSAoXG4gICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGRhdGEtYXV0b2ZvY3VzIG9uQ2xpY2s9e29uQ2xvc2V9PlxuICAgICAgICAgIEhpZGVcbiAgICAgICAgPC9idXR0b24+XG4gICAgICApO1xuICAgICAgYnJlYWs7XG4gICAgY2FzZSAndXBkYXRlLWRvd25sb2FkZWQnOlxuICAgICAgbWVzc2FnZSA9IGBWZXJzaW9uICR7c3RhdHVzLnZlcnNpb259IGhhcyBiZWVuIGRvd25sb2FkZWQuIFJlc3RhcnQgbm93IHRvIGluc3RhbGwgaXQsIG9yIGluc3RhbGwgaXQgYXV0b21hdGljYWxseSB3aGVuIHlvdSBleGl0LmA7XG4gICAgICBhY3Rpb25zID0gKFxuICAgICAgICA8PlxuICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGRhdGEtYXV0b2ZvY3VzIG9uQ2xpY2s9e29uSW5zdGFsbE5vd30+XG4gICAgICAgICAgICBSZXN0YXJ0IGFuZCBpbnN0YWxsXG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgb25DbGljaz17b25JbnN0YWxsT25FeGl0fT5cbiAgICAgICAgICAgIEluc3RhbGwgb24gZXhpdFxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8Lz5cbiAgICAgICk7XG4gICAgICBicmVhaztcbiAgICBjYXNlICd1cGRhdGUtbm90LWF2YWlsYWJsZSc6XG4gICAgICBtZXNzYWdlID0gYFlvdSBhcmUgdXNpbmcgdGhlIGxhdGVzdCB2ZXJzaW9uIG9mIEExMXkgTm90ZWJvb2sgKCR7c3RhdHVzLnZlcnNpb259KS5gO1xuICAgICAgYWN0aW9ucyA9IChcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGF0YS1hdXRvZm9jdXMgb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgICAgQ2xvc2VcbiAgICAgICAgPC9idXR0b24+XG4gICAgICApO1xuICAgICAgYnJlYWs7XG4gICAgY2FzZSAndW5zdXBwb3J0ZWQnOlxuICAgICAgbWVzc2FnZSA9IHN0YXR1cy5tZXNzYWdlO1xuICAgICAgZGV0YWlscyA9IChcbiAgICAgICAgPHA+XG4gICAgICAgICAgSW5zdGFsbGVycyBhcmUgcHVibGlzaGVkIG9uIHRoZXsnICd9XG4gICAgICAgICAgPGEgaHJlZj17UkVMRUFTRVNfVVJMfSB0YXJnZXQ9XCJfYmxhbmtcIiByZWw9XCJub3JlZmVycmVyXCI+XG4gICAgICAgICAgICBBMTF5IE5vdGVib29rIHJlbGVhc2VzIHBhZ2VcbiAgICAgICAgICA8L2E+XG4gICAgICAgICAgLlxuICAgICAgICA8L3A+XG4gICAgICApO1xuICAgICAgYWN0aW9ucyA9IChcbiAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGF0YS1hdXRvZm9jdXMgb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgICAgQ2xvc2VcbiAgICAgICAgPC9idXR0b24+XG4gICAgICApO1xuICAgICAgYnJlYWs7XG4gICAgY2FzZSAnZXJyb3InOlxuICAgICAgbWVzc2FnZSA9ICdUaGUgdXBkYXRlIGNvdWxkIG5vdCBiZSBjb21wbGV0ZWQuJztcbiAgICAgIGRldGFpbHMgPSAoXG4gICAgICAgIDxwIGNsYXNzTmFtZT1cImVycm9yLW1lc3NhZ2VcIiByb2xlPVwiYWxlcnRcIj5cbiAgICAgICAgICB7c3RhdHVzLm1lc3NhZ2V9XG4gICAgICAgIDwvcD5cbiAgICAgICk7XG4gICAgICBhY3Rpb25zID0gKFxuICAgICAgICA8PlxuICAgICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIGRhdGEtYXV0b2ZvY3VzIG9uQ2xpY2s9e29uUmV0cnl9PlxuICAgICAgICAgICAgVHJ5IGFnYWluXG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgICAgICBDbG9zZVxuICAgICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8Lz5cbiAgICAgICk7XG4gICAgICBicmVhaztcbiAgfVxuXG4gIHJldHVybiAoXG4gICAgPE1vZGFsIHRpdGxlSWQ9XCJ1cGRhdGUtZGlhbG9nLXRpdGxlXCIgdGl0bGU9XCJTb2Z0d2FyZSB1cGRhdGVcIiBkZXNjcmliZWRCeT17TUVTU0FHRV9JRH0gb25DbG9zZT17b25DbG9zZX0+XG4gICAgICA8ZGl2IHJlZj17Ym9keVJlZn0gY2xhc3NOYW1lPVwibW9kYWwtYm9keVwiPlxuICAgICAgICA8cCBpZD17TUVTU0FHRV9JRH0+e21lc3NhZ2V9PC9wPlxuICAgICAgICB7ZGV0YWlsc31cbiAgICAgICAgey8qIEVycm9ycyBhcmUgYW5ub3VuY2VkIGJ5IHRoZSBhbGVydCBhYm92ZTsgYXZvaWQgYSBkdXBsaWNhdGUgcG9saXRlIGFubm91bmNlbWVudC4gKi99XG4gICAgICAgIDxwIGNsYXNzTmFtZT1cInNyLW9ubHlcIiByb2xlPVwic3RhdHVzXCIgYXJpYS1saXZlPVwicG9saXRlXCI+XG4gICAgICAgICAge3N0YXR1cy5zdGF0ZSA9PT0gJ2Vycm9yJyA/ICcnIDogYW5ub3VuY2VtZW50fVxuICAgICAgICA8L3A+XG4gICAgICA8L2Rpdj5cbiAgICAgIDxkaXYgY2xhc3NOYW1lPVwibW9kYWwtYWN0aW9uc1wiPnthY3Rpb25zfTwvZGl2PlxuICAgIDwvTW9kYWw+XG4gICk7XG59XG4iXSwiZmlsZSI6Ii9zcmMvcmVuZGVyZXIvY29tcG9uZW50cy9VcGRhdGVEaWFsb2cudHN4In0=
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9jb21wb25lbnRzL1VwZGF0ZURpYWxvZy50c3giLCIvc3JjL3JlbmRlcmVyL2NvbXBvbmVudHMvVXBkYXRlRGlhbG9nLnRzeCIseyJ1cmxzIjoiNiIsImlkcyI6IjcifSxbIjgiLCI5IiwiMTAiLCIxMSJdLFtdLFtdLHt9LCIvbm9kZV9tb2R1bGVzL3JlYWN0L2pzeC1kZXYtcnVudGltZS5qcyIsIi9ub2RlX21vZHVsZXMvcmVhY3QvaW5kZXguanMiLCIvc3JjL3NoYXJlZC9hcHAtaW5mby50cyIsIi9zcmMvcmVuZGVyZXIvY29tcG9uZW50cy9Nb2RhbC50c3giXQ==

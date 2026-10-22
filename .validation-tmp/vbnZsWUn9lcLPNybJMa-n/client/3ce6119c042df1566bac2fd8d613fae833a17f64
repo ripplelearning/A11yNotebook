@@ -1,0 +1,78 @@
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return ExternalFileDialog } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useState"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default"]});
+function ExternalFileDialog({ name, canImport, onOpenWith, onImport, onClose }) {
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  const [error, setError] = (0,__vite_ssr_import_1__.useState)("");
+  async function run(action) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+      onClose();
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : "Could not open this file.");
+    } finally {
+      setBusy(false);
+    }
+  }
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    (0,__vite_ssr_import_2__.default),
+    {
+      title: "Open external file",
+      titleId: "external-file-heading",
+      describedBy: "external-file-description",
+      onClose: () => {
+        if (!busy) onClose();
+      },
+      children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { id: "external-file-description", children: [
+          name,
+          " has not been created or imported by A11y Notebook. Choose an application to open it. On Windows, the system chooser controls whether to use that application by default. Cancelling the chooser leaves your file and associations unchanged."
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 38,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", "data-autofocus": true, disabled: busy, onClick: () => void run(onOpenWith), children: "Open with…" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 43,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy || !canImport, onClick: () => void run(onImport), children: "Import into A11y Notebook" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 46,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: canImport ? "Import creates a separate compatible copy in this library and leaves the original unchanged." : "This file type cannot be imported for internal reading or editing." }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 49,
+          columnNumber: 7
+        }, this),
+        error ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "alert", children: error }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 54,
+          columnNumber: 16
+        }, this) : null,
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy, onClick: onClose, children: "Cancel" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+          lineNumber: 55,
+          columnNumber: 7
+        }, this)
+      ]
+    },
+    void 0,
+    true,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/vault/ExternalFileDialog.tsx",
+      lineNumber: 30,
+      columnNumber: 5
+    },
+    this
+  );
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTtBQXFDTTtBQXJDTjtBQUNBO0FBVUEsU0FBd0IsbUJBQW1CLEVBQUUsTUFBTSxXQUFXLFlBQVksVUFBVSxRQUFRLEdBQVU7QUFDcEcsUUFBTSxDQUFDLE1BQU0sT0FBTyxPQUFJLGdDQUFTLEtBQUs7QUFDdEMsUUFBTSxDQUFDLE9BQU8sUUFBUSxPQUFJLGdDQUFTLEVBQUU7QUFFckMsaUJBQWUsSUFBSSxRQUE2QjtBQUM5QyxZQUFRLElBQUk7QUFDWixhQUFTLEVBQUU7QUFDWCxRQUFJO0FBQ0YsWUFBTSxPQUFPO0FBQ2IsY0FBUTtBQUFBLElBQ1YsU0FBUyxTQUFTO0FBQ2hCLGVBQVMsbUJBQW1CLFFBQVEsUUFBUSxVQUFVLDJCQUEyQjtBQUFBLElBQ25GLFVBQUU7QUFDQSxjQUFRLEtBQUs7QUFBQSxJQUNmO0FBQUEsRUFDRjtBQUVBLFNBQ0U7QUFBQSxPQUFDO0FBQUE7QUFBQSxNQUNDLE9BQU07QUFBQSxNQUNOLFNBQVE7QUFBQSxNQUNSLGFBQVk7QUFBQSxNQUNaLFNBQVMsTUFBTTtBQUNiLFlBQUksQ0FBQyxLQUFNLFNBQVE7QUFBQSxNQUNyQjtBQUFBLE1BRUE7QUFBQSx5REFBQyxPQUFFLElBQUcsNkJBQ0g7QUFBQTtBQUFBLFVBQUs7QUFBQSxhQURSO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFJQTtBQUFBLFFBQ0EsaURBQUMsWUFBTyxNQUFLLFVBQVMsa0JBQWMsTUFBQyxVQUFVLE1BQU0sU0FBUyxNQUFNLEtBQUssSUFBSSxVQUFVLEdBQUcsMEJBQTFGO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFFQTtBQUFBLFFBQ0EsaURBQUMsWUFBTyxNQUFLLFVBQVMsVUFBVSxRQUFRLENBQUMsV0FBVyxTQUFTLE1BQU0sS0FBSyxJQUFJLFFBQVEsR0FBRyx5Q0FBdkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUVBO0FBQUEsUUFDQSxpREFBQyxPQUNFLHNCQUNHLGlHQUNBLHdFQUhOO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFJQTtBQUFBLFFBQ0MsUUFBUSxpREFBQyxPQUFFLE1BQUssU0FBUyxtQkFBakI7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUF1QixJQUFPO0FBQUEsUUFDdkMsaURBQUMsWUFBTyxNQUFLLFVBQVMsVUFBVSxNQUFNLFNBQVMsU0FBUyxzQkFBeEQ7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUVBO0FBQUE7QUFBQTtBQUFBLElBM0JGO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxFQTRCQTtBQUVKIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJFeHRlcm5hbEZpbGVEaWFsb2cudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHVzZVN0YXRlIH0gZnJvbSAncmVhY3QnO1xuaW1wb3J0IE1vZGFsIGZyb20gJy4uLy4uL2NvbXBvbmVudHMvTW9kYWwnO1xuXG5pbnRlcmZhY2UgUHJvcHMge1xuICBuYW1lOiBzdHJpbmc7XG4gIGNhbkltcG9ydDogYm9vbGVhbjtcbiAgb25PcGVuV2l0aDogKCkgPT4gUHJvbWlzZTx2b2lkPjtcbiAgb25JbXBvcnQ6ICgpID0+IFByb21pc2U8dm9pZD47XG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XG59XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIEV4dGVybmFsRmlsZURpYWxvZyh7IG5hbWUsIGNhbkltcG9ydCwgb25PcGVuV2l0aCwgb25JbXBvcnQsIG9uQ2xvc2UgfTogUHJvcHMpIHtcbiAgY29uc3QgW2J1c3ksIHNldEJ1c3ldID0gdXNlU3RhdGUoZmFsc2UpO1xuICBjb25zdCBbZXJyb3IsIHNldEVycm9yXSA9IHVzZVN0YXRlKCcnKTtcblxuICBhc3luYyBmdW5jdGlvbiBydW4oYWN0aW9uOiAoKSA9PiBQcm9taXNlPHZvaWQ+KSB7XG4gICAgc2V0QnVzeSh0cnVlKTtcbiAgICBzZXRFcnJvcignJyk7XG4gICAgdHJ5IHtcbiAgICAgIGF3YWl0IGFjdGlvbigpO1xuICAgICAgb25DbG9zZSgpO1xuICAgIH0gY2F0Y2ggKGZhaWx1cmUpIHtcbiAgICAgIHNldEVycm9yKGZhaWx1cmUgaW5zdGFuY2VvZiBFcnJvciA/IGZhaWx1cmUubWVzc2FnZSA6ICdDb3VsZCBub3Qgb3BlbiB0aGlzIGZpbGUuJyk7XG4gICAgfSBmaW5hbGx5IHtcbiAgICAgIHNldEJ1c3koZmFsc2UpO1xuICAgIH1cbiAgfVxuXG4gIHJldHVybiAoXG4gICAgPE1vZGFsXG4gICAgICB0aXRsZT1cIk9wZW4gZXh0ZXJuYWwgZmlsZVwiXG4gICAgICB0aXRsZUlkPVwiZXh0ZXJuYWwtZmlsZS1oZWFkaW5nXCJcbiAgICAgIGRlc2NyaWJlZEJ5PVwiZXh0ZXJuYWwtZmlsZS1kZXNjcmlwdGlvblwiXG4gICAgICBvbkNsb3NlPXsoKSA9PiB7XG4gICAgICAgIGlmICghYnVzeSkgb25DbG9zZSgpO1xuICAgICAgfX1cbiAgICA+XG4gICAgICA8cCBpZD1cImV4dGVybmFsLWZpbGUtZGVzY3JpcHRpb25cIj5cbiAgICAgICAge25hbWV9IGhhcyBub3QgYmVlbiBjcmVhdGVkIG9yIGltcG9ydGVkIGJ5IEExMXkgTm90ZWJvb2suIENob29zZSBhbiBhcHBsaWNhdGlvbiB0byBvcGVuIGl0LiBPbiBXaW5kb3dzLCB0aGVcbiAgICAgICAgc3lzdGVtIGNob29zZXIgY29udHJvbHMgd2hldGhlciB0byB1c2UgdGhhdCBhcHBsaWNhdGlvbiBieSBkZWZhdWx0LiBDYW5jZWxsaW5nIHRoZSBjaG9vc2VyIGxlYXZlcyB5b3VyIGZpbGUgYW5kXG4gICAgICAgIGFzc29jaWF0aW9ucyB1bmNoYW5nZWQuXG4gICAgICA8L3A+XG4gICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBkYXRhLWF1dG9mb2N1cyBkaXNhYmxlZD17YnVzeX0gb25DbGljaz17KCkgPT4gdm9pZCBydW4ob25PcGVuV2l0aCl9PlxuICAgICAgICBPcGVuIHdpdGjigKZcbiAgICAgIDwvYnV0dG9uPlxuICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGlzYWJsZWQ9e2J1c3kgfHwgIWNhbkltcG9ydH0gb25DbGljaz17KCkgPT4gdm9pZCBydW4ob25JbXBvcnQpfT5cbiAgICAgICAgSW1wb3J0IGludG8gQTExeSBOb3RlYm9va1xuICAgICAgPC9idXR0b24+XG4gICAgICA8cD5cbiAgICAgICAge2NhbkltcG9ydFxuICAgICAgICAgID8gJ0ltcG9ydCBjcmVhdGVzIGEgc2VwYXJhdGUgY29tcGF0aWJsZSBjb3B5IGluIHRoaXMgbGlicmFyeSBhbmQgbGVhdmVzIHRoZSBvcmlnaW5hbCB1bmNoYW5nZWQuJ1xuICAgICAgICAgIDogJ1RoaXMgZmlsZSB0eXBlIGNhbm5vdCBiZSBpbXBvcnRlZCBmb3IgaW50ZXJuYWwgcmVhZGluZyBvciBlZGl0aW5nLid9XG4gICAgICA8L3A+XG4gICAgICB7ZXJyb3IgPyA8cCByb2xlPVwiYWxlcnRcIj57ZXJyb3J9PC9wPiA6IG51bGx9XG4gICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBkaXNhYmxlZD17YnVzeX0gb25DbGljaz17b25DbG9zZX0+XG4gICAgICAgIENhbmNlbFxuICAgICAgPC9idXR0b24+XG4gICAgPC9Nb2RhbD5cbiAgKTtcbn1cbiJdLCJmaWxlIjoiL3NyYy9yZW5kZXJlci9mZWF0dXJlcy92YXVsdC9FeHRlcm5hbEZpbGVEaWFsb2cudHN4In0=
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy92YXVsdC9FeHRlcm5hbEZpbGVEaWFsb2cudHN4IiwiL3NyYy9yZW5kZXJlci9mZWF0dXJlcy92YXVsdC9FeHRlcm5hbEZpbGVEaWFsb2cudHN4Iix7InVybHMiOiI2IiwiaWRzIjoiNyJ9LFsiOCIsIjkiLCIxMCJdLFtdLFtdLHt9LCIvbm9kZV9tb2R1bGVzL3JlYWN0L2pzeC1kZXYtcnVudGltZS5qcyIsIi9ub2RlX21vZHVsZXMvcmVhY3QvaW5kZXguanMiLCIvc3JjL3JlbmRlcmVyL2NvbXBvbmVudHMvTW9kYWwudHN4Il0=

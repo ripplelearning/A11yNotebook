@@ -7,7 +7,7 @@ DevTools, or an untouched filesystem sentinel.
 #>
 [CmdletBinding()]
 param(
-  [string]$ExecutablePath = (Join-Path $PSScriptRoot '..\release\win-unpacked\A11y Notebook.exe'),
+  [string]$ExecutablePath,
   [string]$ExpectedVersion,
   [string]$UserDataDirectory,
   [ValidateRange(5, 300)][int]$TimeoutSeconds = 60,
@@ -19,19 +19,17 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'windows-smoke-common.ps1')
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   throw 'This smoke test requires Windows UI Automation; it cannot run on Linux.'
 }
 if (-not [Environment]::UserInteractive -or (Get-Process -Id $PID).SessionId -eq 0) {
   throw 'Run on an unlocked interactive Windows desktop, not a service/session-0 runner.'
 }
-if (-not (Test-Path -LiteralPath $ExecutablePath -PathType Leaf)) {
-  throw "Packaged application not found: $ExecutablePath. Run npm run package:win first."
-}
-$ExecutablePath = (Resolve-Path -LiteralPath $ExecutablePath).Path
+$ExecutablePath = Resolve-SmokeExecutablePath $ExecutablePath $PSScriptRoot $MyInvocation.MyCommand.Path
 if ($ExpectedVersion) {
   $actualVersion = (Get-Item -LiteralPath $ExecutablePath).VersionInfo.ProductVersion
-  if (($actualVersion -replace '\+.*$', '') -cne $ExpectedVersion) {
+  if (-not (Test-SmokeProductVersion $actualVersion $ExpectedVersion)) {
     throw "Product version mismatch: expected '$ExpectedVersion', got '$actualVersion'."
   }
   Write-Output "Verified executable product version: $actualVersion"

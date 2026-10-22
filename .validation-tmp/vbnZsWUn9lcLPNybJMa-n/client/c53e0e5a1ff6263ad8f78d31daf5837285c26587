@@ -1,0 +1,133 @@
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return WebCaptureDialog } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useState"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default"]});
+function WebCaptureDialog({ notebooks, onCapture, onClose }) {
+  const [url, setUrl] = (0,__vite_ssr_import_1__.useState)("");
+  const [notebookPath, setNotebookPath] = (0,__vite_ssr_import_1__.useState)("");
+  const [format, setFormat] = (0,__vite_ssr_import_1__.useState)("markdown");
+  const [error, setError] = (0,__vite_ssr_import_1__.useState)("");
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_2__.default), { title: "Capture web page", titleId: "web-capture-heading", onClose, children: /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    "form",
+    {
+      onSubmit: (event) => {
+        event.preventDefault();
+        setBusy(true);
+        setError("");
+        void onCapture(url, notebookPath, format).then(onClose).catch((failure) => setError(failure.message || "Could not capture this page.")).finally(() => setBusy(false));
+      },
+      children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: "Captures public HTTPS pages and saves supported images in the selected library notebook." }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 29,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+          "HTTPS page URL",
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+            "input",
+            {
+              autoFocus: true,
+              "data-autofocus": true,
+              type: "url",
+              required: true,
+              maxLength: 2048,
+              value: url,
+              onChange: (event) => setUrl(event.target.value)
+            },
+            void 0,
+            false,
+            {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+              lineNumber: 32,
+              columnNumber: 11
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 30,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+          "Save in notebook",
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("select", { value: notebookPath, onChange: (event) => setNotebookPath(event.target.value), children: [
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: "", children: "Library root" }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+              lineNumber: 45,
+              columnNumber: 13
+            }, this),
+            notebooks.map((notebook) => /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: notebook.path, children: notebook.name }, notebook.path, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+              lineNumber: 47,
+              columnNumber: 15
+            }, this))
+          ] }, void 0, true, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+            lineNumber: 44,
+            columnNumber: 11
+          }, this)
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 42,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+          "Output format",
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("select", { value: format, onChange: (event) => setFormat(event.target.value), children: [
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: "markdown", children: "Markdown (.md)" }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+              lineNumber: 56,
+              columnNumber: 13
+            }, this),
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: "html", children: "HTML (.html)" }, void 0, false, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+              lineNumber: 57,
+              columnNumber: 13
+            }, this)
+          ] }, void 0, true, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+            lineNumber: 55,
+            columnNumber: 11
+          }, this)
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 53,
+          columnNumber: 9
+        }, this),
+        error ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "alert", children: error }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 60,
+          columnNumber: 18
+        }, this) : null,
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "submit", disabled: busy || !url.trim(), children: "Capture page" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 61,
+          columnNumber: 9
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: onClose, children: "Cancel" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+          lineNumber: 64,
+          columnNumber: 9
+        }, this)
+      ]
+    },
+    void 0,
+    true,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+      lineNumber: 18,
+      columnNumber: 7
+    },
+    this
+  ) }, void 0, false, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/previews/WebCaptureDialog.tsx",
+    lineNumber: 17,
+    columnNumber: 5
+  }, this);
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,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QUEsZUFFQTtBQUFBO0FBQUE7QUFBQSxJQWhERjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFpREEsS0FsREY7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQW1EQTtBQUVKIiwibmFtZXMiOltdLCJpZ25vcmVMaXN0IjpbXSwic291cmNlcyI6WyJXZWJDYXB0dXJlRGlhbG9nLnRzeCJdLCJzb3VyY2VzQ29udGVudCI6WyJpbXBvcnQgeyB1c2VTdGF0ZSB9IGZyb20gJ3JlYWN0JztcbmltcG9ydCBNb2RhbCBmcm9tICcuLi8uLi9jb21wb25lbnRzL01vZGFsJztcblxuaW50ZXJmYWNlIFByb3BzIHtcbiAgbm90ZWJvb2tzOiB7IHBhdGg6IHN0cmluZzsgbmFtZTogc3RyaW5nIH1bXTtcbiAgb25DYXB0dXJlOiAodXJsOiBzdHJpbmcsIG5vdGVib29rUGF0aDogc3RyaW5nLCBmb3JtYXQ6ICdtYXJrZG93bicgfCAnaHRtbCcpID0+IFByb21pc2U8dm9pZD47XG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XG59XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIFdlYkNhcHR1cmVEaWFsb2coeyBub3RlYm9va3MsIG9uQ2FwdHVyZSwgb25DbG9zZSB9OiBQcm9wcykge1xuICBjb25zdCBbdXJsLCBzZXRVcmxdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbbm90ZWJvb2tQYXRoLCBzZXROb3RlYm9va1BhdGhdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbZm9ybWF0LCBzZXRGb3JtYXRdID0gdXNlU3RhdGU8J21hcmtkb3duJyB8ICdodG1sJz4oJ21hcmtkb3duJyk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbYnVzeSwgc2V0QnVzeV0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIHJldHVybiAoXG4gICAgPE1vZGFsIHRpdGxlPVwiQ2FwdHVyZSB3ZWIgcGFnZVwiIHRpdGxlSWQ9XCJ3ZWItY2FwdHVyZS1oZWFkaW5nXCIgb25DbG9zZT17b25DbG9zZX0+XG4gICAgICA8Zm9ybVxuICAgICAgICBvblN1Ym1pdD17KGV2ZW50KSA9PiB7XG4gICAgICAgICAgZXZlbnQucHJldmVudERlZmF1bHQoKTtcbiAgICAgICAgICBzZXRCdXN5KHRydWUpO1xuICAgICAgICAgIHNldEVycm9yKCcnKTtcbiAgICAgICAgICB2b2lkIG9uQ2FwdHVyZSh1cmwsIG5vdGVib29rUGF0aCwgZm9ybWF0KVxuICAgICAgICAgICAgLnRoZW4ob25DbG9zZSlcbiAgICAgICAgICAgIC5jYXRjaCgoZmFpbHVyZTogdW5rbm93bikgPT4gc2V0RXJyb3IoKGZhaWx1cmUgYXMgRXJyb3IpLm1lc3NhZ2UgfHwgJ0NvdWxkIG5vdCBjYXB0dXJlIHRoaXMgcGFnZS4nKSlcbiAgICAgICAgICAgIC5maW5hbGx5KCgpID0+IHNldEJ1c3koZmFsc2UpKTtcbiAgICAgICAgfX1cbiAgICAgID5cbiAgICAgICAgPHA+Q2FwdHVyZXMgcHVibGljIEhUVFBTIHBhZ2VzIGFuZCBzYXZlcyBzdXBwb3J0ZWQgaW1hZ2VzIGluIHRoZSBzZWxlY3RlZCBsaWJyYXJ5IG5vdGVib29rLjwvcD5cbiAgICAgICAgPGxhYmVsPlxuICAgICAgICAgIEhUVFBTIHBhZ2UgVVJMXG4gICAgICAgICAgPGlucHV0XG4gICAgICAgICAgICBhdXRvRm9jdXNcbiAgICAgICAgICAgIGRhdGEtYXV0b2ZvY3VzXG4gICAgICAgICAgICB0eXBlPVwidXJsXCJcbiAgICAgICAgICAgIHJlcXVpcmVkXG4gICAgICAgICAgICBtYXhMZW5ndGg9ezIwNDh9XG4gICAgICAgICAgICB2YWx1ZT17dXJsfVxuICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gc2V0VXJsKGV2ZW50LnRhcmdldC52YWx1ZSl9XG4gICAgICAgICAgLz5cbiAgICAgICAgPC9sYWJlbD5cbiAgICAgICAgPGxhYmVsPlxuICAgICAgICAgIFNhdmUgaW4gbm90ZWJvb2tcbiAgICAgICAgICA8c2VsZWN0IHZhbHVlPXtub3RlYm9va1BhdGh9IG9uQ2hhbmdlPXsoZXZlbnQpID0+IHNldE5vdGVib29rUGF0aChldmVudC50YXJnZXQudmFsdWUpfT5cbiAgICAgICAgICAgIDxvcHRpb24gdmFsdWU9XCJcIj5MaWJyYXJ5IHJvb3Q8L29wdGlvbj5cbiAgICAgICAgICAgIHtub3RlYm9va3MubWFwKChub3RlYm9vaykgPT4gKFxuICAgICAgICAgICAgICA8b3B0aW9uIGtleT17bm90ZWJvb2sucGF0aH0gdmFsdWU9e25vdGVib29rLnBhdGh9PlxuICAgICAgICAgICAgICAgIHtub3RlYm9vay5uYW1lfVxuICAgICAgICAgICAgICA8L29wdGlvbj5cbiAgICAgICAgICAgICkpfVxuICAgICAgICAgIDwvc2VsZWN0PlxuICAgICAgICA8L2xhYmVsPlxuICAgICAgICA8bGFiZWw+XG4gICAgICAgICAgT3V0cHV0IGZvcm1hdFxuICAgICAgICAgIDxzZWxlY3QgdmFsdWU9e2Zvcm1hdH0gb25DaGFuZ2U9eyhldmVudCkgPT4gc2V0Rm9ybWF0KGV2ZW50LnRhcmdldC52YWx1ZSBhcyAnbWFya2Rvd24nIHwgJ2h0bWwnKX0+XG4gICAgICAgICAgICA8b3B0aW9uIHZhbHVlPVwibWFya2Rvd25cIj5NYXJrZG93biAoLm1kKTwvb3B0aW9uPlxuICAgICAgICAgICAgPG9wdGlvbiB2YWx1ZT1cImh0bWxcIj5IVE1MICguaHRtbCk8L29wdGlvbj5cbiAgICAgICAgICA8L3NlbGVjdD5cbiAgICAgICAgPC9sYWJlbD5cbiAgICAgICAge2Vycm9yID8gPHAgcm9sZT1cImFsZXJ0XCI+e2Vycm9yfTwvcD4gOiBudWxsfVxuICAgICAgICA8YnV0dG9uIHR5cGU9XCJzdWJtaXRcIiBkaXNhYmxlZD17YnVzeSB8fCAhdXJsLnRyaW0oKX0+XG4gICAgICAgICAgQ2FwdHVyZSBwYWdlXG4gICAgICAgIDwvYnV0dG9uPlxuICAgICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBvbkNsaWNrPXtvbkNsb3NlfT5cbiAgICAgICAgICBDYW5jZWxcbiAgICAgICAgPC9idXR0b24+XG4gICAgICA8L2Zvcm0+XG4gICAgPC9Nb2RhbD5cbiAgKTtcbn1cbiJdLCJmaWxlIjoiL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9wcmV2aWV3cy9XZWJDYXB0dXJlRGlhbG9nLnRzeCJ9
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9wcmV2aWV3cy9XZWJDYXB0dXJlRGlhbG9nLnRzeCIsIi9zcmMvcmVuZGVyZXIvZmVhdHVyZXMvcHJldmlld3MvV2ViQ2FwdHVyZURpYWxvZy50c3giLHsidXJscyI6IjYiLCJpZHMiOiI3In0sWyI4IiwiOSIsIjEwIl0sW10sW10se30sIi9ub2RlX21vZHVsZXMvcmVhY3QvanN4LWRldi1ydW50aW1lLmpzIiwiL25vZGVfbW9kdWxlcy9yZWFjdC9pbmRleC5qcyIsIi9zcmMvcmVuZGVyZXIvY29tcG9uZW50cy9Nb2RhbC50c3giXQ==

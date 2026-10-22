@@ -1,0 +1,26 @@
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return OutlineEditor } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/src/shared/assets.ts", {"importedNames":["serializeOutline"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/renderer/features/assets/TreeEditor.tsx", {"importedNames":["default"]});
+function OutlineEditor({ value, onChange, onSave, readOnly }) {
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { children: [
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_2__.default), { value, onChange, label: "Outline", readOnly }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/assets/OutlineEditor.tsx",
+      lineNumber: 14,
+      columnNumber: 7
+    }, this),
+    onSave && !readOnly && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", onClick: () => onSave((0,__vite_ssr_import_1__.serializeOutline)(value)), children: "Save outline" }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/assets/OutlineEditor.tsx",
+      lineNumber: 16,
+      columnNumber: 9
+    }, this)
+  ] }, void 0, true, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/assets/OutlineEditor.tsx",
+    lineNumber: 13,
+    columnNumber: 5
+  }, this);
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTtBQWFNO0FBYk47QUFDQTtBQVNBLFNBQXdCLGNBQWMsRUFBRSxPQUFPLFVBQVUsUUFBUSxTQUFTLEdBQXVCO0FBQy9GLFNBQ0UsaURBQUMsU0FDQztBQUFBLHdEQUFDLGtDQUFXLE9BQWMsVUFBb0IsT0FBTSxXQUFVLFlBQTlEO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBa0Y7QUFBQSxJQUNqRixVQUFVLENBQUMsWUFDVixpREFBQyxZQUFPLE1BQUssVUFBUyxTQUFTLE1BQU0sVUFBTyx3Q0FBaUIsS0FBSyxDQUFDLEdBQUcsNEJBQXRFO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FFQTtBQUFBLE9BTEo7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQU9BO0FBRUoiLCJuYW1lcyI6W10sImlnbm9yZUxpc3QiOltdLCJzb3VyY2VzIjpbIk91dGxpbmVFZGl0b3IudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHNlcmlhbGl6ZU91dGxpbmUsIHR5cGUgT3V0bGluZU5vZGUgfSBmcm9tICcuLi8uLi8uLi9zaGFyZWQvYXNzZXRzJztcbmltcG9ydCBUcmVlRWRpdG9yIGZyb20gJy4vVHJlZUVkaXRvcic7XG5cbmV4cG9ydCBpbnRlcmZhY2UgT3V0bGluZUVkaXRvclByb3BzIHtcbiAgdmFsdWU6IE91dGxpbmVOb2RlW107XG4gIG9uQ2hhbmdlOiAodmFsdWU6IE91dGxpbmVOb2RlW10pID0+IHZvaWQ7XG4gIG9uU2F2ZT86IChtYXJrZG93bjogc3RyaW5nKSA9PiB2b2lkO1xuICByZWFkT25seT86IGJvb2xlYW47XG59XG5cbmV4cG9ydCBkZWZhdWx0IGZ1bmN0aW9uIE91dGxpbmVFZGl0b3IoeyB2YWx1ZSwgb25DaGFuZ2UsIG9uU2F2ZSwgcmVhZE9ubHkgfTogT3V0bGluZUVkaXRvclByb3BzKSB7XG4gIHJldHVybiAoXG4gICAgPGRpdj5cbiAgICAgIDxUcmVlRWRpdG9yIHZhbHVlPXt2YWx1ZX0gb25DaGFuZ2U9e29uQ2hhbmdlfSBsYWJlbD1cIk91dGxpbmVcIiByZWFkT25seT17cmVhZE9ubHl9IC8+XG4gICAgICB7b25TYXZlICYmICFyZWFkT25seSAmJiAoXG4gICAgICAgIDxidXR0b24gdHlwZT1cImJ1dHRvblwiIG9uQ2xpY2s9eygpID0+IG9uU2F2ZShzZXJpYWxpemVPdXRsaW5lKHZhbHVlKSl9PlxuICAgICAgICAgIFNhdmUgb3V0bGluZVxuICAgICAgICA8L2J1dHRvbj5cbiAgICAgICl9XG4gICAgPC9kaXY+XG4gICk7XG59XG4iXSwiZmlsZSI6Ii9zcmMvcmVuZGVyZXIvZmVhdHVyZXMvYXNzZXRzL091dGxpbmVFZGl0b3IudHN4In0=
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9hc3NldHMvT3V0bGluZUVkaXRvci50c3giLCIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL2Fzc2V0cy9PdXRsaW5lRWRpdG9yLnRzeCIseyJ1cmxzIjoiNiIsImlkcyI6IjcifSxbIjgiLCI5IiwiMTAiXSxbXSxbXSx7fSwiL25vZGVfbW9kdWxlcy9yZWFjdC9qc3gtZGV2LXJ1bnRpbWUuanMiLCIvc3JjL3NoYXJlZC9hc3NldHMudHMiLCIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL2Fzc2V0cy9UcmVlRWRpdG9yLnRzeCJd

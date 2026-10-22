@@ -1,0 +1,14 @@
+Object.defineProperty(__vite_ssr_exports__, "APP_NAME", { enumerable: true, configurable: true, get(){ try { return APP_NAME } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "REPOSITORY_OWNER", { enumerable: true, configurable: true, get(){ try { return REPOSITORY_OWNER } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "REPOSITORY_NAME", { enumerable: true, configurable: true, get(){ try { return REPOSITORY_NAME } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "REPOSITORY_URL", { enumerable: true, configurable: true, get(){ try { return REPOSITORY_URL } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "RELEASES_URL", { enumerable: true, configurable: true, get(){ try { return RELEASES_URL } catch {} }});
+const APP_NAME = "A11y Notebook";
+const REPOSITORY_OWNER = "ripplelearning";
+const REPOSITORY_NAME = "A11yNotebook";
+const REPOSITORY_URL = `https://github.com/${REPOSITORY_OWNER}/${REPOSITORY_NAME}`;
+const RELEASES_URL = `${REPOSITORY_URL}/releases`;
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTs7Ozs7QUFHTyxNQUFNLFdBQVc7QUFDakIsTUFBTSxtQkFBbUI7QUFDekIsTUFBTSxrQkFBa0I7QUFDeEIsTUFBTSxpQkFBaUIsc0JBQXNCLGdCQUFnQixJQUFJLGVBQWU7QUFDaEYsTUFBTSxlQUFlLEdBQUcsY0FBYyIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiYXBwLWluZm8udHMiXSwic291cmNlc0NvbnRlbnQiOlsiLy8gU3RhdGljIGFwcGxpY2F0aW9uIG1ldGFkYXRhLiBUaGlzIG1vZHVsZSBtdXN0IHN0YXkgZnJlZSBvZiBOb2RlL0VsZWN0cm9uIGltcG9ydHNcbi8vIHNvIGl0IGNhbiBiZSBzaGFyZWQgYnkgdGhlIHJlbmRlcmVyLCBwcmVsb2FkLCBhbmQgbWFpbiBwcm9jZXNzLlxuXG5leHBvcnQgY29uc3QgQVBQX05BTUUgPSAnQTExeSBOb3RlYm9vayc7XG5leHBvcnQgY29uc3QgUkVQT1NJVE9SWV9PV05FUiA9ICdyaXBwbGVsZWFybmluZyc7XG5leHBvcnQgY29uc3QgUkVQT1NJVE9SWV9OQU1FID0gJ0ExMXlOb3RlYm9vayc7XG5leHBvcnQgY29uc3QgUkVQT1NJVE9SWV9VUkwgPSBgaHR0cHM6Ly9naXRodWIuY29tLyR7UkVQT1NJVE9SWV9PV05FUn0vJHtSRVBPU0lUT1JZX05BTUV9YDtcbmV4cG9ydCBjb25zdCBSRUxFQVNFU19VUkwgPSBgJHtSRVBPU0lUT1JZX1VSTH0vcmVsZWFzZXNgO1xuIl0sImZpbGUiOiIvc3JjL3NoYXJlZC9hcHAtaW5mby50cyJ9
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9zaGFyZWQvYXBwLWluZm8udHMiLCIvc3JjL3NoYXJlZC9hcHAtaW5mby50cyIseyJ1cmxzIjoiNiIsImlkcyI6IjcifSxbXSxbXSxbXSx7fV0=

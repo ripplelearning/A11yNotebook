@@ -1,0 +1,472 @@
+Object.defineProperty(__vite_ssr_exports__, "AnnotationPane", { enumerable: true, configurable: true, get(){ try { return AnnotationPane } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "useAnnotations", { enumerable: true, configurable: true, get(){ try { return useAnnotations } catch {} }});
+Object.defineProperty(__vite_ssr_exports__, "AnnotationDocument", { enumerable: true, configurable: true, get(){ try { return AnnotationDocument } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["Fragment","jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useEffect","useId","useLayoutEffect","useRef","useState"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/shared/annotations.ts", {"importedNames":["ANNOTATION_COLORS","ANNOTATION_LIMITS"]});
+
+
+
+const __vite_ssr_import_3__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default"]});
+const __vite_ssr_import_4__ = await __vite_ssr_import__("/src/renderer/features/annotations/anchors.ts", {"importedNames":["captureAnnotationAnchor","clearAnnotationMarks","jumpToAnnotation","renderAnnotationMarks"]});
+function AnnotationEditor({
+  draft,
+  onSave,
+  onClose
+}) {
+  const id = (0,__vite_ssr_import_1__.useId)();
+  const [color, setColor] = (0,__vite_ssr_import_1__.useState)(draft.annotation?.color ?? "yellow");
+  const [label, setLabel] = (0,__vite_ssr_import_1__.useState)(draft.annotation?.label ?? "Highlight");
+  const [comment, setComment] = (0,__vite_ssr_import_1__.useState)(draft.annotation?.comment ?? "");
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  const [error, setError] = (0,__vite_ssr_import_1__.useState)("");
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    (0,__vite_ssr_import_3__.default),
+    {
+      titleId: `${id}-title`,
+      title: draft.annotation ? "Edit annotation" : "Add annotation",
+      onClose: () => {
+        if (!busy) onClose();
+      },
+      children: /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+        "form",
+        {
+          onSubmit: async (event) => {
+            event.preventDefault();
+            setBusy(true);
+            setError("");
+            try {
+              await onSave({ color, label: label.trim(), comment });
+            } catch {
+              setError("Could not save annotation. Please try again.");
+              setBusy(false);
+            }
+          },
+          children: [
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "modal-body", children: [
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("blockquote", { children: draft.anchor.quote }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 67,
+                columnNumber: 11
+              }, this),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { htmlFor: `${id}-color`, children: "Highlight color" }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 68,
+                columnNumber: 11
+              }, this),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "select",
+                {
+                  id: `${id}-color`,
+                  value: color,
+                  disabled: busy,
+                  onChange: (event) => setColor(event.target.value),
+                  children: __vite_ssr_import_2__.ANNOTATION_COLORS.map((value) => /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value, children: value }, value, false, {
+                    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                    lineNumber: 76,
+                    columnNumber: 15
+                  }, this))
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                  lineNumber: 69,
+                  columnNumber: 11
+                },
+                this
+              ),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { htmlFor: `${id}-label`, children: "Highlight label" }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 81,
+                columnNumber: 11
+              }, this),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "input",
+                {
+                  id: `${id}-label`,
+                  "data-autofocus": true,
+                  value: label,
+                  required: true,
+                  maxLength: __vite_ssr_import_2__.ANNOTATION_LIMITS.label,
+                  disabled: busy,
+                  onChange: (event) => setLabel(event.target.value)
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                  lineNumber: 82,
+                  columnNumber: 11
+                },
+                this
+              ),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { htmlFor: `${id}-comment`, children: "Comment" }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 91,
+                columnNumber: 11
+              }, this),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+                "textarea",
+                {
+                  id: `${id}-comment`,
+                  value: comment,
+                  maxLength: __vite_ssr_import_2__.ANNOTATION_LIMITS.comment,
+                  disabled: busy,
+                  onChange: (event) => setComment(event.target.value)
+                },
+                void 0,
+                false,
+                {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                  lineNumber: 92,
+                  columnNumber: 11
+                },
+                this
+              ),
+              error && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "alert", children: error }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 99,
+                columnNumber: 21
+              }, this)
+            ] }, void 0, true, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+              lineNumber: 66,
+              columnNumber: 9
+            }, this),
+            /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { className: "modal-actions", children: [
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "submit", disabled: busy || !label.trim(), children: busy ? "Saving…" : "Save annotation" }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 102,
+                columnNumber: 11
+              }, this),
+              /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy, onClick: onClose, children: "Cancel" }, void 0, false, {
+                fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+                lineNumber: 105,
+                columnNumber: 11
+              }, this)
+            ] }, void 0, true, {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+              lineNumber: 101,
+              columnNumber: 9
+            }, this)
+          ]
+        },
+        void 0,
+        true,
+        {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+          lineNumber: 53,
+          columnNumber: 7
+        },
+        this
+      )
+    },
+    void 0,
+    false,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 46,
+      columnNumber: 5
+    },
+    this
+  );
+}
+function AnnotationPane({
+  annotations,
+  renderedIds,
+  enabled,
+  busy,
+  onEdit,
+  onDelete,
+  onJump
+}) {
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("section", { "aria-label": "Annotations", children: [
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("h3", { children: "Annotations" }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 133,
+      columnNumber: 7
+    }, this),
+    !annotations.length && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: "No annotations for this note." }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 134,
+      columnNumber: 31
+    }, this),
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("ul", { children: annotations.map((annotation) => /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+      "li",
+      {
+        "data-context": "annotation",
+        "data-path": annotation.path,
+        "data-annotation-id": annotation.id,
+        tabIndex: -1,
+        children: [
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("strong", { children: annotation.label }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+            lineNumber: 144,
+            columnNumber: 13
+          }, this),
+          " ",
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("span", { children: [
+            "(",
+            annotation.color,
+            " highlight)"
+          ] }, void 0, true, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+            lineNumber: 144,
+            columnNumber: 49
+          }, this),
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("blockquote", { children: annotation.anchor.quote }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+            lineNumber: 145,
+            columnNumber: 13
+          }, this),
+          annotation.comment && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: annotation.comment }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+            lineNumber: 146,
+            columnNumber: 36
+          }, this),
+          enabled && !renderedIds.has(annotation.id) && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: "Highlight unavailable: text changed, is ambiguous, or overlaps another annotation." }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+            lineNumber: 148,
+            columnNumber: 15
+          }, this),
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+            "button",
+            {
+              type: "button",
+              disabled: !enabled || !renderedIds.has(annotation.id),
+              "aria-label": `Jump to annotation: ${annotation.label}`,
+              onClick: () => onJump(annotation),
+              children: "Jump to text"
+            },
+            void 0,
+            false,
+            {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+              lineNumber: 150,
+              columnNumber: 13
+            },
+            this
+          ),
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              "aria-label": `Edit annotation: ${annotation.label}`,
+              onClick: () => onEdit(annotation),
+              children: "Edit"
+            },
+            void 0,
+            false,
+            {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+              lineNumber: 158,
+              columnNumber: 13
+            },
+            this
+          ),
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+            "button",
+            {
+              type: "button",
+              disabled: busy,
+              "aria-label": `Delete annotation: ${annotation.label}`,
+              onClick: () => onDelete(annotation),
+              children: "Delete"
+            },
+            void 0,
+            false,
+            {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+              lineNumber: 166,
+              columnNumber: 13
+            },
+            this
+          )
+        ]
+      },
+      annotation.id,
+      true,
+      {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+        lineNumber: 137,
+        columnNumber: 11
+      },
+      this
+    )) }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 135,
+      columnNumber: 7
+    }, this)
+  ] }, void 0, true, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+    lineNumber: 132,
+    columnNumber: 5
+  }, this);
+};
+function useAnnotations({
+  path,
+  content,
+  enabled,
+  annotations,
+  onAdd,
+  onUpdate,
+  onDelete,
+  bindShortcut = true,
+  announce
+}) {
+  const documentRef = (0,__vite_ssr_import_1__.useRef)(null);
+  const [draft, setDraft] = (0,__vite_ssr_import_1__.useState)(null);
+  const [renderedIds, setRenderedIds] = (0,__vite_ssr_import_1__.useState)(/* @__PURE__ */ new Set());
+  const [status, setStatus] = (0,__vite_ssr_import_1__.useState)("");
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  const current = annotations.filter((annotation) => annotation.path === path);
+  const currentPath = (0,__vite_ssr_import_1__.useRef)(path);
+  currentPath.current = path;
+  (0,__vite_ssr_import_1__.useEffect)(() => {
+    setDraft(null);
+    setStatus("");
+  }, [path]);
+  (0,__vite_ssr_import_1__.useLayoutEffect)(() => {
+    const root = documentRef.current;
+    if (!root) return;
+    const next = enabled ? (0,__vite_ssr_import_4__.renderAnnotationMarks)(
+      root,
+      annotations.filter((item) => item.path === path)
+    ) : /* @__PURE__ */ new Set();
+    setRenderedIds(
+      (previous) => previous.size === next.size && [...next].every((id) => previous.has(id)) ? previous : next
+    );
+    return () => (0,__vite_ssr_import_4__.clearAnnotationMarks)(root);
+  }, [annotations, content, enabled, path]);
+  const report = (message) => {
+    setStatus(message);
+    announce?.(message);
+  };
+  const begin = () => {
+    if (!enabled || !path || draft || busy) return;
+    const root = documentRef.current;
+    const anchor = root ? (0,__vite_ssr_import_4__.captureAnnotationAnchor)(root, root.ownerDocument.getSelection()) : null;
+    if (!anchor) {
+      report("Select text in the Markdown reading view before adding an annotation.");
+      return;
+    };
+    setStatus("");
+    setDraft({ path, anchor });
+  };
+  const beginRef = (0,__vite_ssr_import_1__.useRef)(begin);
+  beginRef.current = begin;
+  (0,__vite_ssr_import_1__.useEffect)(() => {
+    if (!bindShortcut) return;
+    const handleKey = (event) => {
+      if (enabled && !document.querySelector('[role="dialog"]') && !event.defaultPrevented && event.ctrlKey && event.shiftKey && !event.altKey && !event.metaKey && event.key.toLowerCase() === "a") {
+        event.preventDefault();
+        beginRef.current();
+      }
+    };
+    document.addEventListener("keydown", handleKey);
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [bindShortcut, enabled]);
+  const activeDraft = draft?.path === path ? draft : null;
+  const toolbar = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)((0,__vite_ssr_import_0__.Fragment), { children: [
+    /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+      "button",
+      {
+        type: "button",
+        disabled: !enabled || !path || busy,
+        "aria-keyshortcuts": bindShortcut ? "Control+Shift+A" : void 0,
+        onMouseDown: (event) => event.preventDefault(),
+        onClick: begin,
+        children: "Annotate selection"
+      },
+      void 0,
+      false,
+      {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+        lineNumber: 261,
+        columnNumber: 7
+      },
+      this
+    ),
+    !announce && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "status", children: status }, void 0, false, {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 270,
+      columnNumber: 21
+    }, this),
+    activeDraft && /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+      AnnotationEditor,
+      {
+        draft: activeDraft,
+        onClose: () => setDraft(null),
+        onSave: async (values) => {
+          if (currentPath.current !== activeDraft.path) throw new Error("The selected note changed.");
+          if (activeDraft.annotation) await onUpdate(activeDraft.annotation.id, values);
+          else await onAdd({ path: activeDraft.path, anchor: activeDraft.anchor, ...values });
+          setDraft(null);
+          report("Annotation saved.");
+        }
+      },
+      activeDraft.annotation?.id ?? "new",
+      false,
+      {
+        fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+        lineNumber: 272,
+        columnNumber: 9
+      },
+      this
+    )
+  ] }, void 0, true, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+    lineNumber: 260,
+    columnNumber: 5
+  }, this);
+  const pane = /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    AnnotationPane,
+    {
+      annotations: current,
+      renderedIds,
+      enabled,
+      busy,
+      onEdit: (annotation) => setDraft({ path: annotation.path, anchor: annotation.anchor, annotation }),
+      onJump: (annotation) => {
+        if (documentRef.current && !(0,__vite_ssr_import_4__.jumpToAnnotation)(documentRef.current, annotation.id))
+          report("Annotation text could not be located.");
+      },
+      onDelete: async (annotation) => {
+        setBusy(true);
+        try {
+          await onDelete(annotation.id);
+          report("Annotation deleted.");
+        } catch {
+          report("Could not delete annotation. Please try again.");
+        } finally {
+          setBusy(false);
+        }
+      }
+    },
+    void 0,
+    false,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+      lineNumber: 288,
+      columnNumber: 5
+    },
+    this
+  );
+  return { documentRef, toolbar, pane, begin };
+};
+function AnnotationDocument({
+  documentRef,
+  children
+}) {
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { ref: documentRef, children }, void 0, false, {
+    fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/annotations/useAnnotations.tsx",
+    lineNumber: 321,
+    columnNumber: 10
+  }, this);
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,eyJ2ZXJzaW9uIjozLCJtYXBwaW5ncyI6IkFBQUEsQ0FBQTs7O0FBa0VVO0FBbEVWO0FBQ0E7Ozs7QUFTQTtBQUNBO0FBa0JBLFNBQVMsaUJBQWlCO0FBQUEsRUFDeEI7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUNGLEdBSUc7QUFDRCxRQUFNLFFBQUssNkJBQU07QUFDakIsUUFBTSxDQUFDLE9BQU8sUUFBUSxPQUFJLGdDQUEwQixNQUFNLFlBQVksU0FBUyxRQUFRO0FBQ3ZGLFFBQU0sQ0FBQyxPQUFPLFFBQVEsT0FBSSxnQ0FBUyxNQUFNLFlBQVksU0FBUyxXQUFXO0FBQ3pFLFFBQU0sQ0FBQyxTQUFTLFVBQVUsT0FBSSxnQ0FBUyxNQUFNLFlBQVksV0FBVyxFQUFFO0FBQ3RFLFFBQU0sQ0FBQyxNQUFNLE9BQU8sT0FBSSxnQ0FBUyxLQUFLO0FBQ3RDLFFBQU0sQ0FBQyxPQUFPLFFBQVEsT0FBSSxnQ0FBUyxFQUFFO0FBQ3JDLFNBQ0U7QUFBQSxPQUFDO0FBQUE7QUFBQSxNQUNDLFNBQVMsR0FBRyxFQUFFO0FBQUEsTUFDZCxPQUFPLE1BQU0sYUFBYSxvQkFBb0I7QUFBQSxNQUM5QyxTQUFTLE1BQU07QUFDYixZQUFJLENBQUMsS0FBTSxTQUFRO0FBQUEsTUFDckI7QUFBQSxNQUVBO0FBQUEsUUFBQztBQUFBO0FBQUEsVUFDQyxVQUFVLE9BQU8sVUFBVTtBQUN6QixrQkFBTSxlQUFlO0FBQ3JCLG9CQUFRLElBQUk7QUFDWixxQkFBUyxFQUFFO0FBQ1gsZ0JBQUk7QUFDRixvQkFBTSxPQUFPLEVBQUUsT0FBTyxPQUFPLE1BQU0sS0FBSyxHQUFHLFFBQVEsQ0FBQztBQUFBLFlBQ3RELFFBQVE7QUFDTix1QkFBUyw4Q0FBOEM7QUFDdkQsc0JBQVEsS0FBSztBQUFBLFlBQ2Y7QUFBQSxVQUNGO0FBQUEsVUFFQTtBQUFBLDZEQUFDLFNBQUksV0FBVSxjQUNiO0FBQUEsK0RBQUMsZ0JBQVksZ0JBQU0sT0FBTyxTQUExQjtBQUFBO0FBQUE7QUFBQTtBQUFBLHFCQUFnQztBQUFBLGNBQ2hDLGlEQUFDLFdBQU0sU0FBUyxHQUFHLEVBQUUsVUFBVSwrQkFBL0I7QUFBQTtBQUFBO0FBQUE7QUFBQSxxQkFBOEM7QUFBQSxjQUM5QztBQUFBLGdCQUFDO0FBQUE7QUFBQSxrQkFDQyxJQUFJLEdBQUcsRUFBRTtBQUFBLGtCQUNULE9BQU87QUFBQSxrQkFDUCxVQUFVO0FBQUEsa0JBQ1YsVUFBVSxDQUFDLFVBQVUsU0FBUyxNQUFNLE9BQU8sS0FBd0I7QUFBQSxrQkFFbEUsa0RBQWtCLElBQUksQ0FBQyxVQUN0QixpREFBQyxZQUFtQixPQUNqQixtQkFEVSxPQUFiO0FBQUE7QUFBQTtBQUFBO0FBQUEseUJBRUEsQ0FDRDtBQUFBO0FBQUEsZ0JBVkg7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLGNBV0E7QUFBQSxjQUNBLGlEQUFDLFdBQU0sU0FBUyxHQUFHLEVBQUUsVUFBVSwrQkFBL0I7QUFBQTtBQUFBO0FBQUE7QUFBQSxxQkFBOEM7QUFBQSxjQUM5QztBQUFBLGdCQUFDO0FBQUE7QUFBQSxrQkFDQyxJQUFJLEdBQUcsRUFBRTtBQUFBLGtCQUNULGtCQUFjO0FBQUEsa0JBQ2QsT0FBTztBQUFBLGtCQUNQLFVBQVE7QUFBQSxrQkFDUixXQUFXLHdDQUFrQjtBQUFBLGtCQUM3QixVQUFVO0FBQUEsa0JBQ1YsVUFBVSxDQUFDLFVBQVUsU0FBUyxNQUFNLE9BQU8sS0FBSztBQUFBO0FBQUEsZ0JBUGxEO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxjQVFBO0FBQUEsY0FDQSxpREFBQyxXQUFNLFNBQVMsR0FBRyxFQUFFLFlBQVksdUJBQWpDO0FBQUE7QUFBQTtBQUFBO0FBQUEscUJBQXdDO0FBQUEsY0FDeEM7QUFBQSxnQkFBQztBQUFBO0FBQUEsa0JBQ0MsSUFBSSxHQUFHLEVBQUU7QUFBQSxrQkFDVCxPQUFPO0FBQUEsa0JBQ1AsV0FBVyx3Q0FBa0I7QUFBQSxrQkFDN0IsVUFBVTtBQUFBLGtCQUNWLFVBQVUsQ0FBQyxVQUFVLFdBQVcsTUFBTSxPQUFPLEtBQUs7QUFBQTtBQUFBLGdCQUxwRDtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsY0FNQTtBQUFBLGNBQ0MsU0FBUyxpREFBQyxPQUFFLE1BQUssU0FBUyxtQkFBakI7QUFBQTtBQUFBO0FBQUE7QUFBQSxxQkFBdUI7QUFBQSxpQkFqQ25DO0FBQUE7QUFBQTtBQUFBO0FBQUEsbUJBa0NBO0FBQUEsWUFDQSxpREFBQyxTQUFJLFdBQVUsaUJBQ2I7QUFBQSwrREFBQyxZQUFPLE1BQUssVUFBUyxVQUFVLFFBQVEsQ0FBQyxNQUFNLEtBQUssR0FDakQsaUJBQU8sWUFBWSxxQkFEdEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxxQkFFQTtBQUFBLGNBQ0EsaURBQUMsWUFBTyxNQUFLLFVBQVMsVUFBVSxNQUFNLFNBQVMsU0FBUyxzQkFBeEQ7QUFBQTtBQUFBO0FBQUE7QUFBQSxxQkFFQTtBQUFBLGlCQU5GO0FBQUE7QUFBQTtBQUFBO0FBQUEsbUJBT0E7QUFBQTtBQUFBO0FBQUEsUUF2REY7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLE1Bd0RBO0FBQUE7QUFBQSxJQS9ERjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFnRUE7QUFFSjtBQUVPLFNBQVMsZUFBZTtBQUFBLEVBQzdCO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQ0YsR0FRRztBQUNELFNBQ0UsaURBQUMsYUFBUSxjQUFXLGVBQ2xCO0FBQUEscURBQUMsUUFBRywyQkFBSjtBQUFBO0FBQUE7QUFBQTtBQUFBLFdBQWU7QUFBQSxJQUNkLENBQUMsWUFBWSxVQUFVLGlEQUFDLE9BQUUsNkNBQUg7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQUFnQztBQUFBLElBQ3hELGlEQUFDLFFBQ0Usc0JBQVksSUFBSSxDQUFDLGVBQ2hCO0FBQUEsTUFBQztBQUFBO0FBQUEsUUFFQyxnQkFBYTtBQUFBLFFBQ2IsYUFBVyxXQUFXO0FBQUEsUUFDdEIsc0JBQW9CLFdBQVc7QUFBQSxRQUMvQixVQUFVO0FBQUEsUUFFVjtBQUFBLDJEQUFDLFlBQVEscUJBQVcsU0FBcEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxpQkFBMEI7QUFBQSxVQUFTO0FBQUEsVUFBQyxpREFBQyxVQUFLO0FBQUE7QUFBQSxZQUFFLFdBQVc7QUFBQSxZQUFNO0FBQUEsZUFBekI7QUFBQTtBQUFBO0FBQUE7QUFBQSxpQkFBb0M7QUFBQSxVQUN4RSxpREFBQyxnQkFBWSxxQkFBVyxPQUFPLFNBQS9CO0FBQUE7QUFBQTtBQUFBO0FBQUEsaUJBQXFDO0FBQUEsVUFDcEMsV0FBVyxXQUFXLGlEQUFDLE9BQUcscUJBQVcsV0FBZjtBQUFBO0FBQUE7QUFBQTtBQUFBLGlCQUF1QjtBQUFBLFVBQzdDLFdBQVcsQ0FBQyxZQUFZLElBQUksV0FBVyxFQUFFLEtBQ3hDLGlEQUFDLE9BQUUsa0dBQUg7QUFBQTtBQUFBO0FBQUE7QUFBQSxpQkFBcUY7QUFBQSxVQUV2RjtBQUFBLFlBQUM7QUFBQTtBQUFBLGNBQ0MsTUFBSztBQUFBLGNBQ0wsVUFBVSxDQUFDLFdBQVcsQ0FBQyxZQUFZLElBQUksV0FBVyxFQUFFO0FBQUEsY0FDcEQsY0FBWSx1QkFBdUIsV0FBVyxLQUFLO0FBQUEsY0FDbkQsU0FBUyxNQUFNLE9BQU8sVUFBVTtBQUFBLGNBQ2pDO0FBQUE7QUFBQSxZQUxEO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxVQU9BO0FBQUEsVUFDQTtBQUFBLFlBQUM7QUFBQTtBQUFBLGNBQ0MsTUFBSztBQUFBLGNBQ0wsVUFBVTtBQUFBLGNBQ1YsY0FBWSxvQkFBb0IsV0FBVyxLQUFLO0FBQUEsY0FDaEQsU0FBUyxNQUFNLE9BQU8sVUFBVTtBQUFBLGNBQ2pDO0FBQUE7QUFBQSxZQUxEO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxVQU9BO0FBQUEsVUFDQTtBQUFBLFlBQUM7QUFBQTtBQUFBLGNBQ0MsTUFBSztBQUFBLGNBQ0wsVUFBVTtBQUFBLGNBQ1YsY0FBWSxzQkFBc0IsV0FBVyxLQUFLO0FBQUEsY0FDbEQsU0FBUyxNQUFNLFNBQVMsVUFBVTtBQUFBLGNBQ25DO0FBQUE7QUFBQSxZQUxEO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxVQU9BO0FBQUE7QUFBQTtBQUFBLE1BbkNLLFdBQVc7QUFBQSxNQURsQjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBLElBcUNBLENBQ0QsS0F4Q0g7QUFBQTtBQUFBO0FBQUE7QUFBQSxXQXlDQTtBQUFBLE9BNUNGO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0E2Q0E7QUFFSjtBQUdPLFNBQVMsZUFBZTtBQUFBLEVBQzdCO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQUEsRUFDQTtBQUFBLEVBQ0E7QUFBQSxFQUNBO0FBQUEsRUFDQSxlQUFlO0FBQUEsRUFDZjtBQUNGLEdBQTBCO0FBQ3hCLFFBQU0saUJBQWMsOEJBQXVCLElBQUk7QUFDL0MsUUFBTSxDQUFDLE9BQU8sUUFBUSxPQUFJLGdDQUF1QixJQUFJO0FBQ3JELFFBQU0sQ0FBQyxhQUFhLGNBQWMsT0FBSSxnQ0FBc0Isb0JBQUksSUFBSSxDQUFDO0FBQ3JFLFFBQU0sQ0FBQyxRQUFRLFNBQVMsT0FBSSxnQ0FBUyxFQUFFO0FBQ3ZDLFFBQU0sQ0FBQyxNQUFNLE9BQU8sT0FBSSxnQ0FBUyxLQUFLO0FBQ3RDLFFBQU0sVUFBVSxZQUFZLE9BQU8sQ0FBQyxlQUFlLFdBQVcsU0FBUyxJQUFJO0FBQzNFLFFBQU0saUJBQWMsOEJBQU8sSUFBSTtBQUMvQixjQUFZLFVBQVU7QUFDdEIsc0NBQVUsTUFBTTtBQUNkLGFBQVMsSUFBSTtBQUNiLGNBQVUsRUFBRTtBQUFBLEVBQ2QsR0FBRyxDQUFDLElBQUksQ0FBQztBQUNULDRDQUFnQixNQUFNO0FBQ3BCLFVBQU0sT0FBTyxZQUFZO0FBQ3pCLFFBQUksQ0FBQyxLQUFNO0FBQ1gsVUFBTSxPQUFPLGFBQ1Q7QUFBQSxNQUNFO0FBQUEsTUFDQSxZQUFZLE9BQU8sQ0FBQyxTQUFTLEtBQUssU0FBUyxJQUFJO0FBQUEsSUFDakQsSUFDQSxvQkFBSSxJQUFZO0FBQ3BCO0FBQUEsTUFBZSxDQUFDLGFBQ2QsU0FBUyxTQUFTLEtBQUssUUFBUSxDQUFDLEdBQUcsSUFBSSxFQUFFLE1BQU0sQ0FBQyxPQUFPLFNBQVMsSUFBSSxFQUFFLENBQUMsSUFBSSxXQUFXO0FBQUEsSUFDeEY7QUFDQSxXQUFPLFNBQU0sNENBQXFCLElBQUk7QUFBQSxFQUN4QyxHQUFHLENBQUMsYUFBYSxTQUFTLFNBQVMsSUFBSSxDQUFDO0FBRXhDLFFBQU0sU0FBUyxDQUFDLFlBQW9CO0FBQ2xDLGNBQVUsT0FBTztBQUNqQixlQUFXLE9BQU87QUFBQSxFQUNwQjtBQUNBLFFBQU0sUUFBUSxNQUFNO0FBQ2xCLFFBQUksQ0FBQyxXQUFXLENBQUMsUUFBUSxTQUFTLEtBQU07QUFDeEMsVUFBTSxPQUFPLFlBQVk7QUFDekIsVUFBTSxTQUFTLFVBQU8sK0NBQXdCLE1BQU0sS0FBSyxjQUFjLGFBQWEsQ0FBQyxJQUFJO0FBQ3pGLFFBQUksQ0FBQyxRQUFRO0FBQ1gsYUFBTyx1RUFBdUU7QUFDOUU7QUFBQSxJQUNGO0FBQ0EsY0FBVSxFQUFFO0FBQ1osYUFBUyxFQUFFLE1BQU0sT0FBTyxDQUFDO0FBQUEsRUFDM0I7QUFDQSxRQUFNLGNBQVcsOEJBQU8sS0FBSztBQUM3QixXQUFTLFVBQVU7QUFDbkIsc0NBQVUsTUFBTTtBQUNkLFFBQUksQ0FBQyxhQUFjO0FBQ25CLFVBQU0sWUFBWSxDQUFDLFVBQXlCO0FBQzFDLFVBQ0UsV0FDQSxDQUFDLFNBQVMsY0FBYyxpQkFBaUIsS0FDekMsQ0FBQyxNQUFNLG9CQUNQLE1BQU0sV0FDTixNQUFNLFlBQ04sQ0FBQyxNQUFNLFVBQ1AsQ0FBQyxNQUFNLFdBQ1AsTUFBTSxJQUFJLFlBQVksTUFBTSxLQUM1QjtBQUNBLGNBQU0sZUFBZTtBQUNyQixpQkFBUyxRQUFRO0FBQUEsTUFDbkI7QUFBQSxJQUNGO0FBQ0EsYUFBUyxpQkFBaUIsV0FBVyxTQUFTO0FBQzlDLFdBQU8sTUFBTSxTQUFTLG9CQUFvQixXQUFXLFNBQVM7QUFBQSxFQUNoRSxHQUFHLENBQUMsY0FBYyxPQUFPLENBQUM7QUFFMUIsUUFBTSxjQUFjLE9BQU8sU0FBUyxPQUFPLFFBQVE7QUFDbkQsUUFBTSxVQUNKLHVGQUNFO0FBQUE7QUFBQSxNQUFDO0FBQUE7QUFBQSxRQUNDLE1BQUs7QUFBQSxRQUNMLFVBQVUsQ0FBQyxXQUFXLENBQUMsUUFBUTtBQUFBLFFBQy9CLHFCQUFtQixlQUFlLG9CQUFvQjtBQUFBLFFBQ3RELGFBQWEsQ0FBQyxVQUFVLE1BQU0sZUFBZTtBQUFBLFFBQzdDLFNBQVM7QUFBQSxRQUNWO0FBQUE7QUFBQSxNQU5EO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQSxJQVFBO0FBQUEsSUFDQyxDQUFDLFlBQVksaURBQUMsT0FBRSxNQUFLLFVBQVUsb0JBQWxCO0FBQUE7QUFBQTtBQUFBO0FBQUEsV0FBeUI7QUFBQSxJQUN0QyxlQUNDO0FBQUEsTUFBQztBQUFBO0FBQUEsUUFFQyxPQUFPO0FBQUEsUUFDUCxTQUFTLE1BQU0sU0FBUyxJQUFJO0FBQUEsUUFDNUIsUUFBUSxPQUFPLFdBQVc7QUFDeEIsY0FBSSxZQUFZLFlBQVksWUFBWSxLQUFNLE9BQU0sSUFBSSxNQUFNLDRCQUE0QjtBQUMxRixjQUFJLFlBQVksV0FBWSxPQUFNLFNBQVMsWUFBWSxXQUFXLElBQUksTUFBTTtBQUFBLGNBQ3ZFLE9BQU0sTUFBTSxFQUFFLE1BQU0sWUFBWSxNQUFNLFFBQVEsWUFBWSxRQUFRLEdBQUcsT0FBTyxDQUFDO0FBQ2xGLG1CQUFTLElBQUk7QUFDYixpQkFBTyxtQkFBbUI7QUFBQSxRQUM1QjtBQUFBO0FBQUEsTUFUSyxZQUFZLFlBQVksTUFBTTtBQUFBLE1BRHJDO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsSUFXQTtBQUFBLE9BdkJKO0FBQUE7QUFBQTtBQUFBO0FBQUEsU0F5QkE7QUFFRixRQUFNLE9BQ0o7QUFBQSxJQUFDO0FBQUE7QUFBQSxNQUNDLGFBQWE7QUFBQSxNQUNiO0FBQUEsTUFDQTtBQUFBLE1BQ0E7QUFBQSxNQUNBLFFBQVEsQ0FBQyxlQUFlLFNBQVMsRUFBRSxNQUFNLFdBQVcsTUFBTSxRQUFRLFdBQVcsUUFBUSxXQUFXLENBQUM7QUFBQSxNQUNqRyxRQUFRLENBQUMsZUFBZTtBQUN0QixZQUFJLFlBQVksV0FBVyxJQUFDLHdDQUFpQixZQUFZLFNBQVMsV0FBVyxFQUFFO0FBQzdFLGlCQUFPLHVDQUF1QztBQUFBLE1BQ2xEO0FBQUEsTUFDQSxVQUFVLE9BQU8sZUFBZTtBQUM5QixnQkFBUSxJQUFJO0FBQ1osWUFBSTtBQUNGLGdCQUFNLFNBQVMsV0FBVyxFQUFFO0FBQzVCLGlCQUFPLHFCQUFxQjtBQUFBLFFBQzlCLFFBQVE7QUFDTixpQkFBTyxnREFBZ0Q7QUFBQSxRQUN6RCxVQUFFO0FBQ0Esa0JBQVEsS0FBSztBQUFBLFFBQ2Y7QUFBQSxNQUNGO0FBQUE7QUFBQSxJQXBCRjtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFxQkE7QUFFRixTQUFPLEVBQUUsYUFBYSxTQUFTLE1BQU0sTUFBTTtBQUM3QztBQUVPLFNBQVMsbUJBQW1CO0FBQUEsRUFDakM7QUFBQSxFQUNBO0FBQ0YsR0FHRztBQUNELFNBQU8saURBQUMsU0FBSSxLQUFLLGFBQWMsWUFBeEI7QUFBQTtBQUFBO0FBQUE7QUFBQSxTQUFpQztBQUMxQyIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsidXNlQW5ub3RhdGlvbnMudHN4Il0sInNvdXJjZXNDb250ZW50IjpbImltcG9ydCB7IHVzZUVmZmVjdCwgdXNlSWQsIHVzZUxheW91dEVmZmVjdCwgdXNlUmVmLCB1c2VTdGF0ZSwgdHlwZSBSZWFjdE5vZGUsIHR5cGUgUmVmT2JqZWN0IH0gZnJvbSAncmVhY3QnO1xuaW1wb3J0IHtcbiAgQU5OT1RBVElPTl9DT0xPUlMsXG4gIEFOTk9UQVRJT05fTElNSVRTLFxuICB0eXBlIEFubm90YXRpb25BbmNob3IsXG4gIHR5cGUgQW5ub3RhdGlvbkNvbG9yLFxuICB0eXBlIEFubm90YXRpb25VcGRhdGUsXG4gIHR5cGUgTmV3QW5ub3RhdGlvbixcbiAgdHlwZSBOb3RlQW5ub3RhdGlvbixcbn0gZnJvbSAnLi4vLi4vLi4vc2hhcmVkL2Fubm90YXRpb25zJztcbmltcG9ydCBNb2RhbCBmcm9tICcuLi8uLi9jb21wb25lbnRzL01vZGFsJztcbmltcG9ydCB7IGNhcHR1cmVBbm5vdGF0aW9uQW5jaG9yLCBjbGVhckFubm90YXRpb25NYXJrcywganVtcFRvQW5ub3RhdGlvbiwgcmVuZGVyQW5ub3RhdGlvbk1hcmtzIH0gZnJvbSAnLi9hbmNob3JzJztcblxuZXhwb3J0IGludGVyZmFjZSBVc2VBbm5vdGF0aW9uc09wdGlvbnMge1xuICBwYXRoOiBzdHJpbmcgfCBudWxsO1xuICAvKiogTWFya2Rvd24gc291cmNlOyBjaGFuZ2luZyBpdCByZWFwcGxpZXMgYW5jaG9ycyBhZnRlciB0aGUgZG9jdW1lbnQgcmVuZGVycy4gKi9cbiAgY29udGVudDogc3RyaW5nO1xuICBlbmFibGVkOiBib29sZWFuO1xuICAvKiogRGlzYWJsZSB0aGUgbG9jYWwgc2hvcnRjdXQgd2hlbiB0aGUgYXBwbGljYXRpb24gY29tbWFuZCByZWdpc3RyeSBvd25zIGl0LiAqL1xuICBiaW5kU2hvcnRjdXQ/OiBib29sZWFuO1xuICBhbm5vdW5jZT86IChtZXNzYWdlOiBzdHJpbmcpID0+IHZvaWQ7XG4gIGFubm90YXRpb25zOiBOb3RlQW5ub3RhdGlvbltdO1xuICBvbkFkZDogKGFubm90YXRpb246IE5ld0Fubm90YXRpb24pID0+IFByb21pc2U8dW5rbm93bj47XG4gIG9uVXBkYXRlOiAoaWQ6IHN0cmluZywgcGF0Y2g6IEFubm90YXRpb25VcGRhdGUpID0+IFByb21pc2U8dW5rbm93bj47XG4gIG9uRGVsZXRlOiAoaWQ6IHN0cmluZykgPT4gUHJvbWlzZTx1bmtub3duPjtcbn1cblxudHlwZSBEcmFmdCA9IHsgcGF0aDogc3RyaW5nOyBhbmNob3I6IEFubm90YXRpb25BbmNob3I7IGFubm90YXRpb24/OiBOb3RlQW5ub3RhdGlvbiB9O1xuXG5mdW5jdGlvbiBBbm5vdGF0aW9uRWRpdG9yKHtcbiAgZHJhZnQsXG4gIG9uU2F2ZSxcbiAgb25DbG9zZSxcbn06IHtcbiAgZHJhZnQ6IERyYWZ0O1xuICBvblNhdmU6ICh2YWx1ZXM6IHsgY29sb3I6IEFubm90YXRpb25Db2xvcjsgbGFiZWw6IHN0cmluZzsgY29tbWVudDogc3RyaW5nIH0pID0+IFByb21pc2U8dm9pZD47XG4gIG9uQ2xvc2U6ICgpID0+IHZvaWQ7XG59KSB7XG4gIGNvbnN0IGlkID0gdXNlSWQoKTtcbiAgY29uc3QgW2NvbG9yLCBzZXRDb2xvcl0gPSB1c2VTdGF0ZTxBbm5vdGF0aW9uQ29sb3I+KGRyYWZ0LmFubm90YXRpb24/LmNvbG9yID8/ICd5ZWxsb3cnKTtcbiAgY29uc3QgW2xhYmVsLCBzZXRMYWJlbF0gPSB1c2VTdGF0ZShkcmFmdC5hbm5vdGF0aW9uPy5sYWJlbCA/PyAnSGlnaGxpZ2h0Jyk7XG4gIGNvbnN0IFtjb21tZW50LCBzZXRDb21tZW50XSA9IHVzZVN0YXRlKGRyYWZ0LmFubm90YXRpb24/LmNvbW1lbnQgPz8gJycpO1xuICBjb25zdCBbYnVzeSwgc2V0QnVzeV0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuICByZXR1cm4gKFxuICAgIDxNb2RhbFxuICAgICAgdGl0bGVJZD17YCR7aWR9LXRpdGxlYH1cbiAgICAgIHRpdGxlPXtkcmFmdC5hbm5vdGF0aW9uID8gJ0VkaXQgYW5ub3RhdGlvbicgOiAnQWRkIGFubm90YXRpb24nfVxuICAgICAgb25DbG9zZT17KCkgPT4ge1xuICAgICAgICBpZiAoIWJ1c3kpIG9uQ2xvc2UoKTtcbiAgICAgIH19XG4gICAgPlxuICAgICAgPGZvcm1cbiAgICAgICAgb25TdWJtaXQ9e2FzeW5jIChldmVudCkgPT4ge1xuICAgICAgICAgIGV2ZW50LnByZXZlbnREZWZhdWx0KCk7XG4gICAgICAgICAgc2V0QnVzeSh0cnVlKTtcbiAgICAgICAgICBzZXRFcnJvcignJyk7XG4gICAgICAgICAgdHJ5IHtcbiAgICAgICAgICAgIGF3YWl0IG9uU2F2ZSh7IGNvbG9yLCBsYWJlbDogbGFiZWwudHJpbSgpLCBjb21tZW50IH0pO1xuICAgICAgICAgIH0gY2F0Y2gge1xuICAgICAgICAgICAgc2V0RXJyb3IoJ0NvdWxkIG5vdCBzYXZlIGFubm90YXRpb24uIFBsZWFzZSB0cnkgYWdhaW4uJyk7XG4gICAgICAgICAgICBzZXRCdXN5KGZhbHNlKTtcbiAgICAgICAgICB9XG4gICAgICAgIH19XG4gICAgICA+XG4gICAgICAgIDxkaXYgY2xhc3NOYW1lPVwibW9kYWwtYm9keVwiPlxuICAgICAgICAgIDxibG9ja3F1b3RlPntkcmFmdC5hbmNob3IucXVvdGV9PC9ibG9ja3F1b3RlPlxuICAgICAgICAgIDxsYWJlbCBodG1sRm9yPXtgJHtpZH0tY29sb3JgfT5IaWdobGlnaHQgY29sb3I8L2xhYmVsPlxuICAgICAgICAgIDxzZWxlY3RcbiAgICAgICAgICAgIGlkPXtgJHtpZH0tY29sb3JgfVxuICAgICAgICAgICAgdmFsdWU9e2NvbG9yfVxuICAgICAgICAgICAgZGlzYWJsZWQ9e2J1c3l9XG4gICAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PiBzZXRDb2xvcihldmVudC50YXJnZXQudmFsdWUgYXMgQW5ub3RhdGlvbkNvbG9yKX1cbiAgICAgICAgICA+XG4gICAgICAgICAgICB7QU5OT1RBVElPTl9DT0xPUlMubWFwKCh2YWx1ZSkgPT4gKFxuICAgICAgICAgICAgICA8b3B0aW9uIGtleT17dmFsdWV9IHZhbHVlPXt2YWx1ZX0+XG4gICAgICAgICAgICAgICAge3ZhbHVlfVxuICAgICAgICAgICAgICA8L29wdGlvbj5cbiAgICAgICAgICAgICkpfVxuICAgICAgICAgIDwvc2VsZWN0PlxuICAgICAgICAgIDxsYWJlbCBodG1sRm9yPXtgJHtpZH0tbGFiZWxgfT5IaWdobGlnaHQgbGFiZWw8L2xhYmVsPlxuICAgICAgICAgIDxpbnB1dFxuICAgICAgICAgICAgaWQ9e2Ake2lkfS1sYWJlbGB9XG4gICAgICAgICAgICBkYXRhLWF1dG9mb2N1c1xuICAgICAgICAgICAgdmFsdWU9e2xhYmVsfVxuICAgICAgICAgICAgcmVxdWlyZWRcbiAgICAgICAgICAgIG1heExlbmd0aD17QU5OT1RBVElPTl9MSU1JVFMubGFiZWx9XG4gICAgICAgICAgICBkaXNhYmxlZD17YnVzeX1cbiAgICAgICAgICAgIG9uQ2hhbmdlPXsoZXZlbnQpID0+IHNldExhYmVsKGV2ZW50LnRhcmdldC52YWx1ZSl9XG4gICAgICAgICAgLz5cbiAgICAgICAgICA8bGFiZWwgaHRtbEZvcj17YCR7aWR9LWNvbW1lbnRgfT5Db21tZW50PC9sYWJlbD5cbiAgICAgICAgICA8dGV4dGFyZWFcbiAgICAgICAgICAgIGlkPXtgJHtpZH0tY29tbWVudGB9XG4gICAgICAgICAgICB2YWx1ZT17Y29tbWVudH1cbiAgICAgICAgICAgIG1heExlbmd0aD17QU5OT1RBVElPTl9MSU1JVFMuY29tbWVudH1cbiAgICAgICAgICAgIGRpc2FibGVkPXtidXN5fVxuICAgICAgICAgICAgb25DaGFuZ2U9eyhldmVudCkgPT4gc2V0Q29tbWVudChldmVudC50YXJnZXQudmFsdWUpfVxuICAgICAgICAgIC8+XG4gICAgICAgICAge2Vycm9yICYmIDxwIHJvbGU9XCJhbGVydFwiPntlcnJvcn08L3A+fVxuICAgICAgICA8L2Rpdj5cbiAgICAgICAgPGRpdiBjbGFzc05hbWU9XCJtb2RhbC1hY3Rpb25zXCI+XG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwic3VibWl0XCIgZGlzYWJsZWQ9e2J1c3kgfHwgIWxhYmVsLnRyaW0oKX0+XG4gICAgICAgICAgICB7YnVzeSA/ICdTYXZpbmfigKYnIDogJ1NhdmUgYW5ub3RhdGlvbid9XG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGlzYWJsZWQ9e2J1c3l9IG9uQ2xpY2s9e29uQ2xvc2V9PlxuICAgICAgICAgICAgQ2FuY2VsXG4gICAgICAgICAgPC9idXR0b24+XG4gICAgICAgIDwvZGl2PlxuICAgICAgPC9mb3JtPlxuICAgIDwvTW9kYWw+XG4gICk7XG59XG5cbmV4cG9ydCBmdW5jdGlvbiBBbm5vdGF0aW9uUGFuZSh7XG4gIGFubm90YXRpb25zLFxuICByZW5kZXJlZElkcyxcbiAgZW5hYmxlZCxcbiAgYnVzeSxcbiAgb25FZGl0LFxuICBvbkRlbGV0ZSxcbiAgb25KdW1wLFxufToge1xuICBhbm5vdGF0aW9uczogTm90ZUFubm90YXRpb25bXTtcbiAgcmVuZGVyZWRJZHM6IFJlYWRvbmx5U2V0PHN0cmluZz47XG4gIGVuYWJsZWQ6IGJvb2xlYW47XG4gIGJ1c3k6IGJvb2xlYW47XG4gIG9uRWRpdDogKGFubm90YXRpb246IE5vdGVBbm5vdGF0aW9uKSA9PiB2b2lkO1xuICBvbkRlbGV0ZTogKGFubm90YXRpb246IE5vdGVBbm5vdGF0aW9uKSA9PiB2b2lkO1xuICBvbkp1bXA6IChhbm5vdGF0aW9uOiBOb3RlQW5ub3RhdGlvbikgPT4gdm9pZDtcbn0pIHtcbiAgcmV0dXJuIChcbiAgICA8c2VjdGlvbiBhcmlhLWxhYmVsPVwiQW5ub3RhdGlvbnNcIj5cbiAgICAgIDxoMz5Bbm5vdGF0aW9uczwvaDM+XG4gICAgICB7IWFubm90YXRpb25zLmxlbmd0aCAmJiA8cD5ObyBhbm5vdGF0aW9ucyBmb3IgdGhpcyBub3RlLjwvcD59XG4gICAgICA8dWw+XG4gICAgICAgIHthbm5vdGF0aW9ucy5tYXAoKGFubm90YXRpb24pID0+IChcbiAgICAgICAgICA8bGlcbiAgICAgICAgICAgIGtleT17YW5ub3RhdGlvbi5pZH1cbiAgICAgICAgICAgIGRhdGEtY29udGV4dD1cImFubm90YXRpb25cIlxuICAgICAgICAgICAgZGF0YS1wYXRoPXthbm5vdGF0aW9uLnBhdGh9XG4gICAgICAgICAgICBkYXRhLWFubm90YXRpb24taWQ9e2Fubm90YXRpb24uaWR9XG4gICAgICAgICAgICB0YWJJbmRleD17LTF9XG4gICAgICAgICAgPlxuICAgICAgICAgICAgPHN0cm9uZz57YW5ub3RhdGlvbi5sYWJlbH08L3N0cm9uZz4gPHNwYW4+KHthbm5vdGF0aW9uLmNvbG9yfSBoaWdobGlnaHQpPC9zcGFuPlxuICAgICAgICAgICAgPGJsb2NrcXVvdGU+e2Fubm90YXRpb24uYW5jaG9yLnF1b3RlfTwvYmxvY2txdW90ZT5cbiAgICAgICAgICAgIHthbm5vdGF0aW9uLmNvbW1lbnQgJiYgPHA+e2Fubm90YXRpb24uY29tbWVudH08L3A+fVxuICAgICAgICAgICAge2VuYWJsZWQgJiYgIXJlbmRlcmVkSWRzLmhhcyhhbm5vdGF0aW9uLmlkKSAmJiAoXG4gICAgICAgICAgICAgIDxwPkhpZ2hsaWdodCB1bmF2YWlsYWJsZTogdGV4dCBjaGFuZ2VkLCBpcyBhbWJpZ3VvdXMsIG9yIG92ZXJsYXBzIGFub3RoZXIgYW5ub3RhdGlvbi48L3A+XG4gICAgICAgICAgICApfVxuICAgICAgICAgICAgPGJ1dHRvblxuICAgICAgICAgICAgICB0eXBlPVwiYnV0dG9uXCJcbiAgICAgICAgICAgICAgZGlzYWJsZWQ9eyFlbmFibGVkIHx8ICFyZW5kZXJlZElkcy5oYXMoYW5ub3RhdGlvbi5pZCl9XG4gICAgICAgICAgICAgIGFyaWEtbGFiZWw9e2BKdW1wIHRvIGFubm90YXRpb246ICR7YW5ub3RhdGlvbi5sYWJlbH1gfVxuICAgICAgICAgICAgICBvbkNsaWNrPXsoKSA9PiBvbkp1bXAoYW5ub3RhdGlvbil9XG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIEp1bXAgdG8gdGV4dFxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICAgICAgICBkaXNhYmxlZD17YnVzeX1cbiAgICAgICAgICAgICAgYXJpYS1sYWJlbD17YEVkaXQgYW5ub3RhdGlvbjogJHthbm5vdGF0aW9uLmxhYmVsfWB9XG4gICAgICAgICAgICAgIG9uQ2xpY2s9eygpID0+IG9uRWRpdChhbm5vdGF0aW9uKX1cbiAgICAgICAgICAgID5cbiAgICAgICAgICAgICAgRWRpdFxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgICA8YnV0dG9uXG4gICAgICAgICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICAgICAgICBkaXNhYmxlZD17YnVzeX1cbiAgICAgICAgICAgICAgYXJpYS1sYWJlbD17YERlbGV0ZSBhbm5vdGF0aW9uOiAke2Fubm90YXRpb24ubGFiZWx9YH1cbiAgICAgICAgICAgICAgb25DbGljaz17KCkgPT4gb25EZWxldGUoYW5ub3RhdGlvbil9XG4gICAgICAgICAgICA+XG4gICAgICAgICAgICAgIERlbGV0ZVxuICAgICAgICAgICAgPC9idXR0b24+XG4gICAgICAgICAgPC9saT5cbiAgICAgICAgKSl9XG4gICAgICA8L3VsPlxuICAgIDwvc2VjdGlvbj5cbiAgKTtcbn1cblxuLyoqIEF0dGFjaCBkb2N1bWVudFJlZiBhcm91bmQgTWFya2Rvd25Eb2N1bWVudCBvbmx5OyBwdXQgdG9vbGJhciBhYm92ZSBpdCBhbmQgcGFuZSBpbiB0aGUgcmlnaHQtaGFuZCBwYW5lLiAqL1xuZXhwb3J0IGZ1bmN0aW9uIHVzZUFubm90YXRpb25zKHtcbiAgcGF0aCxcbiAgY29udGVudCxcbiAgZW5hYmxlZCxcbiAgYW5ub3RhdGlvbnMsXG4gIG9uQWRkLFxuICBvblVwZGF0ZSxcbiAgb25EZWxldGUsXG4gIGJpbmRTaG9ydGN1dCA9IHRydWUsXG4gIGFubm91bmNlLFxufTogVXNlQW5ub3RhdGlvbnNPcHRpb25zKSB7XG4gIGNvbnN0IGRvY3VtZW50UmVmID0gdXNlUmVmPEhUTUxEaXZFbGVtZW50PihudWxsKTtcbiAgY29uc3QgW2RyYWZ0LCBzZXREcmFmdF0gPSB1c2VTdGF0ZTxEcmFmdCB8IG51bGw+KG51bGwpO1xuICBjb25zdCBbcmVuZGVyZWRJZHMsIHNldFJlbmRlcmVkSWRzXSA9IHVzZVN0YXRlPFNldDxzdHJpbmc+PihuZXcgU2V0KCkpO1xuICBjb25zdCBbc3RhdHVzLCBzZXRTdGF0dXNdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBbYnVzeSwgc2V0QnVzeV0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IGN1cnJlbnQgPSBhbm5vdGF0aW9ucy5maWx0ZXIoKGFubm90YXRpb24pID0+IGFubm90YXRpb24ucGF0aCA9PT0gcGF0aCk7XG4gIGNvbnN0IGN1cnJlbnRQYXRoID0gdXNlUmVmKHBhdGgpO1xuICBjdXJyZW50UGF0aC5jdXJyZW50ID0gcGF0aDtcbiAgdXNlRWZmZWN0KCgpID0+IHtcbiAgICBzZXREcmFmdChudWxsKTtcbiAgICBzZXRTdGF0dXMoJycpO1xuICB9LCBbcGF0aF0pO1xuICB1c2VMYXlvdXRFZmZlY3QoKCkgPT4ge1xuICAgIGNvbnN0IHJvb3QgPSBkb2N1bWVudFJlZi5jdXJyZW50O1xuICAgIGlmICghcm9vdCkgcmV0dXJuO1xuICAgIGNvbnN0IG5leHQgPSBlbmFibGVkXG4gICAgICA/IHJlbmRlckFubm90YXRpb25NYXJrcyhcbiAgICAgICAgICByb290LFxuICAgICAgICAgIGFubm90YXRpb25zLmZpbHRlcigoaXRlbSkgPT4gaXRlbS5wYXRoID09PSBwYXRoKSxcbiAgICAgICAgKVxuICAgICAgOiBuZXcgU2V0PHN0cmluZz4oKTtcbiAgICBzZXRSZW5kZXJlZElkcygocHJldmlvdXMpID0+XG4gICAgICBwcmV2aW91cy5zaXplID09PSBuZXh0LnNpemUgJiYgWy4uLm5leHRdLmV2ZXJ5KChpZCkgPT4gcHJldmlvdXMuaGFzKGlkKSkgPyBwcmV2aW91cyA6IG5leHQsXG4gICAgKTtcbiAgICByZXR1cm4gKCkgPT4gY2xlYXJBbm5vdGF0aW9uTWFya3Mocm9vdCk7XG4gIH0sIFthbm5vdGF0aW9ucywgY29udGVudCwgZW5hYmxlZCwgcGF0aF0pO1xuXG4gIGNvbnN0IHJlcG9ydCA9IChtZXNzYWdlOiBzdHJpbmcpID0+IHtcbiAgICBzZXRTdGF0dXMobWVzc2FnZSk7XG4gICAgYW5ub3VuY2U/LihtZXNzYWdlKTtcbiAgfTtcbiAgY29uc3QgYmVnaW4gPSAoKSA9PiB7XG4gICAgaWYgKCFlbmFibGVkIHx8ICFwYXRoIHx8IGRyYWZ0IHx8IGJ1c3kpIHJldHVybjtcbiAgICBjb25zdCByb290ID0gZG9jdW1lbnRSZWYuY3VycmVudDtcbiAgICBjb25zdCBhbmNob3IgPSByb290ID8gY2FwdHVyZUFubm90YXRpb25BbmNob3Iocm9vdCwgcm9vdC5vd25lckRvY3VtZW50LmdldFNlbGVjdGlvbigpKSA6IG51bGw7XG4gICAgaWYgKCFhbmNob3IpIHtcbiAgICAgIHJlcG9ydCgnU2VsZWN0IHRleHQgaW4gdGhlIE1hcmtkb3duIHJlYWRpbmcgdmlldyBiZWZvcmUgYWRkaW5nIGFuIGFubm90YXRpb24uJyk7XG4gICAgICByZXR1cm47XG4gICAgfVxuICAgIHNldFN0YXR1cygnJyk7XG4gICAgc2V0RHJhZnQoeyBwYXRoLCBhbmNob3IgfSk7XG4gIH07XG4gIGNvbnN0IGJlZ2luUmVmID0gdXNlUmVmKGJlZ2luKTtcbiAgYmVnaW5SZWYuY3VycmVudCA9IGJlZ2luO1xuICB1c2VFZmZlY3QoKCkgPT4ge1xuICAgIGlmICghYmluZFNob3J0Y3V0KSByZXR1cm47XG4gICAgY29uc3QgaGFuZGxlS2V5ID0gKGV2ZW50OiBLZXlib2FyZEV2ZW50KSA9PiB7XG4gICAgICBpZiAoXG4gICAgICAgIGVuYWJsZWQgJiZcbiAgICAgICAgIWRvY3VtZW50LnF1ZXJ5U2VsZWN0b3IoJ1tyb2xlPVwiZGlhbG9nXCJdJykgJiZcbiAgICAgICAgIWV2ZW50LmRlZmF1bHRQcmV2ZW50ZWQgJiZcbiAgICAgICAgZXZlbnQuY3RybEtleSAmJlxuICAgICAgICBldmVudC5zaGlmdEtleSAmJlxuICAgICAgICAhZXZlbnQuYWx0S2V5ICYmXG4gICAgICAgICFldmVudC5tZXRhS2V5ICYmXG4gICAgICAgIGV2ZW50LmtleS50b0xvd2VyQ2FzZSgpID09PSAnYSdcbiAgICAgICkge1xuICAgICAgICBldmVudC5wcmV2ZW50RGVmYXVsdCgpO1xuICAgICAgICBiZWdpblJlZi5jdXJyZW50KCk7XG4gICAgICB9XG4gICAgfTtcbiAgICBkb2N1bWVudC5hZGRFdmVudExpc3RlbmVyKCdrZXlkb3duJywgaGFuZGxlS2V5KTtcbiAgICByZXR1cm4gKCkgPT4gZG9jdW1lbnQucmVtb3ZlRXZlbnRMaXN0ZW5lcigna2V5ZG93bicsIGhhbmRsZUtleSk7XG4gIH0sIFtiaW5kU2hvcnRjdXQsIGVuYWJsZWRdKTtcblxuICBjb25zdCBhY3RpdmVEcmFmdCA9IGRyYWZ0Py5wYXRoID09PSBwYXRoID8gZHJhZnQgOiBudWxsO1xuICBjb25zdCB0b29sYmFyID0gKFxuICAgIDw+XG4gICAgICA8YnV0dG9uXG4gICAgICAgIHR5cGU9XCJidXR0b25cIlxuICAgICAgICBkaXNhYmxlZD17IWVuYWJsZWQgfHwgIXBhdGggfHwgYnVzeX1cbiAgICAgICAgYXJpYS1rZXlzaG9ydGN1dHM9e2JpbmRTaG9ydGN1dCA/ICdDb250cm9sK1NoaWZ0K0EnIDogdW5kZWZpbmVkfVxuICAgICAgICBvbk1vdXNlRG93bj17KGV2ZW50KSA9PiBldmVudC5wcmV2ZW50RGVmYXVsdCgpfVxuICAgICAgICBvbkNsaWNrPXtiZWdpbn1cbiAgICAgID5cbiAgICAgICAgQW5ub3RhdGUgc2VsZWN0aW9uXG4gICAgICA8L2J1dHRvbj5cbiAgICAgIHshYW5ub3VuY2UgJiYgPHAgcm9sZT1cInN0YXR1c1wiPntzdGF0dXN9PC9wPn1cbiAgICAgIHthY3RpdmVEcmFmdCAmJiAoXG4gICAgICAgIDxBbm5vdGF0aW9uRWRpdG9yXG4gICAgICAgICAga2V5PXthY3RpdmVEcmFmdC5hbm5vdGF0aW9uPy5pZCA/PyAnbmV3J31cbiAgICAgICAgICBkcmFmdD17YWN0aXZlRHJhZnR9XG4gICAgICAgICAgb25DbG9zZT17KCkgPT4gc2V0RHJhZnQobnVsbCl9XG4gICAgICAgICAgb25TYXZlPXthc3luYyAodmFsdWVzKSA9PiB7XG4gICAgICAgICAgICBpZiAoY3VycmVudFBhdGguY3VycmVudCAhPT0gYWN0aXZlRHJhZnQucGF0aCkgdGhyb3cgbmV3IEVycm9yKCdUaGUgc2VsZWN0ZWQgbm90ZSBjaGFuZ2VkLicpO1xuICAgICAgICAgICAgaWYgKGFjdGl2ZURyYWZ0LmFubm90YXRpb24pIGF3YWl0IG9uVXBkYXRlKGFjdGl2ZURyYWZ0LmFubm90YXRpb24uaWQsIHZhbHVlcyk7XG4gICAgICAgICAgICBlbHNlIGF3YWl0IG9uQWRkKHsgcGF0aDogYWN0aXZlRHJhZnQucGF0aCwgYW5jaG9yOiBhY3RpdmVEcmFmdC5hbmNob3IsIC4uLnZhbHVlcyB9KTtcbiAgICAgICAgICAgIHNldERyYWZ0KG51bGwpO1xuICAgICAgICAgICAgcmVwb3J0KCdBbm5vdGF0aW9uIHNhdmVkLicpO1xuICAgICAgICAgIH19XG4gICAgICAgIC8+XG4gICAgICApfVxuICAgIDwvPlxuICApO1xuICBjb25zdCBwYW5lID0gKFxuICAgIDxBbm5vdGF0aW9uUGFuZVxuICAgICAgYW5ub3RhdGlvbnM9e2N1cnJlbnR9XG4gICAgICByZW5kZXJlZElkcz17cmVuZGVyZWRJZHN9XG4gICAgICBlbmFibGVkPXtlbmFibGVkfVxuICAgICAgYnVzeT17YnVzeX1cbiAgICAgIG9uRWRpdD17KGFubm90YXRpb24pID0+IHNldERyYWZ0KHsgcGF0aDogYW5ub3RhdGlvbi5wYXRoLCBhbmNob3I6IGFubm90YXRpb24uYW5jaG9yLCBhbm5vdGF0aW9uIH0pfVxuICAgICAgb25KdW1wPXsoYW5ub3RhdGlvbikgPT4ge1xuICAgICAgICBpZiAoZG9jdW1lbnRSZWYuY3VycmVudCAmJiAhanVtcFRvQW5ub3RhdGlvbihkb2N1bWVudFJlZi5jdXJyZW50LCBhbm5vdGF0aW9uLmlkKSlcbiAgICAgICAgICByZXBvcnQoJ0Fubm90YXRpb24gdGV4dCBjb3VsZCBub3QgYmUgbG9jYXRlZC4nKTtcbiAgICAgIH19XG4gICAgICBvbkRlbGV0ZT17YXN5bmMgKGFubm90YXRpb24pID0+IHtcbiAgICAgICAgc2V0QnVzeSh0cnVlKTtcbiAgICAgICAgdHJ5IHtcbiAgICAgICAgICBhd2FpdCBvbkRlbGV0ZShhbm5vdGF0aW9uLmlkKTtcbiAgICAgICAgICByZXBvcnQoJ0Fubm90YXRpb24gZGVsZXRlZC4nKTtcbiAgICAgICAgfSBjYXRjaCB7XG4gICAgICAgICAgcmVwb3J0KCdDb3VsZCBub3QgZGVsZXRlIGFubm90YXRpb24uIFBsZWFzZSB0cnkgYWdhaW4uJyk7XG4gICAgICAgIH0gZmluYWxseSB7XG4gICAgICAgICAgc2V0QnVzeShmYWxzZSk7XG4gICAgICAgIH1cbiAgICAgIH19XG4gICAgLz5cbiAgKTtcbiAgcmV0dXJuIHsgZG9jdW1lbnRSZWYsIHRvb2xiYXIsIHBhbmUsIGJlZ2luIH07XG59XG5cbmV4cG9ydCBmdW5jdGlvbiBBbm5vdGF0aW9uRG9jdW1lbnQoe1xuICBkb2N1bWVudFJlZixcbiAgY2hpbGRyZW4sXG59OiB7XG4gIGRvY3VtZW50UmVmOiBSZWZPYmplY3Q8SFRNTERpdkVsZW1lbnQ+O1xuICBjaGlsZHJlbjogUmVhY3ROb2RlO1xufSkge1xuICByZXR1cm4gPGRpdiByZWY9e2RvY3VtZW50UmVmfT57Y2hpbGRyZW59PC9kaXY+O1xufVxuIl0sImZpbGUiOiIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL2Fubm90YXRpb25zL3VzZUFubm90YXRpb25zLnRzeCJ9
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9hbm5vdGF0aW9ucy91c2VBbm5vdGF0aW9ucy50c3giLCIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL2Fubm90YXRpb25zL3VzZUFubm90YXRpb25zLnRzeCIseyJ1cmxzIjoiNiIsImlkcyI6IjcifSxbIjgiLCI5IiwiMTAiLCIxMSIsIjEyIl0sW10sW10se30sIi9ub2RlX21vZHVsZXMvcmVhY3QvanN4LWRldi1ydW50aW1lLmpzIiwiL25vZGVfbW9kdWxlcy9yZWFjdC9pbmRleC5qcyIsIi9zcmMvc2hhcmVkL2Fubm90YXRpb25zLnRzIiwiL3NyYy9yZW5kZXJlci9jb21wb25lbnRzL01vZGFsLnRzeCIsIi9zcmMvcmVuZGVyZXIvZmVhdHVyZXMvYW5ub3RhdGlvbnMvYW5jaG9ycy50cyJd

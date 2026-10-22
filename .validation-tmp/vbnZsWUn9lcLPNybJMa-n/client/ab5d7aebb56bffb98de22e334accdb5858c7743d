@@ -1,0 +1,162 @@
+Object.defineProperty(__vite_ssr_exports__, "default", { enumerable: true, configurable: true, get(){ try { return ReminderAlertDialog } catch {} }});
+const __vite_ssr_import_0__ = await __vite_ssr_import__("/node_modules/react/jsx-dev-runtime.js", {"importedNames":["jsxDEV"]});
+const __vite_ssr_import_1__ = await __vite_ssr_import__("/node_modules/react/index.js", {"importedNames":["useState"]});
+const __vite_ssr_import_2__ = await __vite_ssr_import__("/src/renderer/components/Modal.tsx", {"importedNames":["default"]});
+function ReminderAlertDialog({
+  reminder,
+  count,
+  locked,
+  onComplete,
+  onDismiss,
+  onSnooze,
+  onLater,
+  restoreFocusTo
+}) {
+  const [duration, setDuration] = (0,__vite_ssr_import_1__.useState)(15);
+  const [busy, setBusy] = (0,__vite_ssr_import_1__.useState)(false);
+  const [error, setError] = (0,__vite_ssr_import_1__.useState)("");
+  const run = (operation) => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    void operation().catch(() => setError("Could not update reminder. Save or resolve note changes, then retry.")).finally(() => setBusy(false));
+  };
+  return /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+    (0,__vite_ssr_import_2__.default),
+    {
+      role: "alertdialog",
+      title: "Reminder",
+      titleId: "reminder-alert-title",
+      describedBy: "reminder-alert-description",
+      restoreFocusTo,
+      onClose: () => {
+        if (!busy) onLater();
+      },
+      children: [
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("div", { id: "reminder-alert-description", children: [
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: locked || reminder.privacy === "hide-title" ? "A reminder is due." : reminder.title }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+            lineNumber: 49,
+            columnNumber: 9
+          }, this),
+          locked ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: "Unlock the library to view it." }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+            lineNumber: 50,
+            columnNumber: 19
+          }, this) : null,
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "status", children: [
+            count,
+            " reminder",
+            count === 1 ? "" : "s",
+            " waiting."
+          ] }, void 0, true, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+            lineNumber: 51,
+            columnNumber: 9
+          }, this),
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { children: "Escape or Later closes this alert without dismissing the reminder. It remains in Reminders." }, void 0, false, {
+            fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+            lineNumber: 54,
+            columnNumber: 9
+          }, this)
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 48,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { "data-autofocus": true, type: "button", disabled: busy || locked, onClick: () => run(onComplete), children: "Mark Complete" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 56,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy || locked, onClick: () => run(onDismiss), children: "Dismiss" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 59,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("label", { children: [
+          "Snooze duration",
+          /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)(
+            "select",
+            {
+              value: duration,
+              disabled: busy || locked,
+              onChange: (event) => setDuration(event.target.value === "tomorrow" ? "tomorrow" : Number(event.target.value)),
+              children: [
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: 5, children: "5 minutes" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 71,
+                  columnNumber: 11
+                }, this),
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: 15, children: "15 minutes" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 72,
+                  columnNumber: 11
+                }, this),
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: 30, children: "30 minutes" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 73,
+                  columnNumber: 11
+                }, this),
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: 60, children: "1 hour" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 74,
+                  columnNumber: 11
+                }, this),
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: 1440, children: "1 day (24 hours)" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 75,
+                  columnNumber: 11
+                }, this),
+                /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("option", { value: "tomorrow", children: "Tomorrow" }, void 0, false, {
+                  fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+                  lineNumber: 76,
+                  columnNumber: 11
+                }, this)
+              ]
+            },
+            void 0,
+            true,
+            {
+              fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+              lineNumber: 64,
+              columnNumber: 9
+            },
+            this
+          )
+        ] }, void 0, true, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 62,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy || locked, onClick: () => run(() => onSnooze(duration)), children: "Snooze" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 79,
+          columnNumber: 7
+        }, this),
+        /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("button", { type: "button", disabled: busy, onClick: onLater, children: "Later" }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 82,
+          columnNumber: 7
+        }, this),
+        error ? /* @__PURE__ */ (0,__vite_ssr_import_0__.jsxDEV)("p", { role: "alert", children: error }, void 0, false, {
+          fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+          lineNumber: 85,
+          columnNumber: 16
+        }, this) : null
+      ]
+    },
+    void 0,
+    true,
+    {
+      fileName: "/home/runner/work/A11yNotebook/A11yNotebook/src/renderer/features/reminders/ReminderAlertDialog.tsx",
+      lineNumber: 38,
+      columnNumber: 5
+    },
+    this
+  );
+}
+//# sourceMappingSource=vite-generated
+//# sourceMappingURL=data:application/json;base64,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QVpuQztBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsVUFhQTtBQUFBLGFBZkY7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQWdCQTtBQUFBLFFBQ0EsaURBQUMsWUFBTyxNQUFLLFVBQVMsVUFBVSxRQUFRLFFBQVEsU0FBUyxNQUFNLElBQUksTUFBTSxTQUFTLFFBQVEsQ0FBQyxHQUFHLHNCQUE5RjtBQUFBO0FBQUE7QUFBQTtBQUFBLGVBRUE7QUFBQSxRQUNBLGlEQUFDLFlBQU8sTUFBSyxVQUFTLFVBQVUsTUFBTSxTQUFTLFNBQVMscUJBQXhEO0FBQUE7QUFBQTtBQUFBO0FBQUEsZUFFQTtBQUFBLFFBQ0MsUUFBUSxpREFBQyxPQUFFLE1BQUssU0FBUyxtQkFBakI7QUFBQTtBQUFBO0FBQUE7QUFBQSxlQUF1QixJQUFPO0FBQUE7QUFBQTtBQUFBLElBL0N6QztBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUE7QUFBQTtBQUFBO0FBQUEsRUFnREE7QUFFSiIsIm5hbWVzIjpbXSwiaWdub3JlTGlzdCI6W10sInNvdXJjZXMiOlsiUmVtaW5kZXJBbGVydERpYWxvZy50c3giXSwic291cmNlc0NvbnRlbnQiOlsiaW1wb3J0IHsgdXNlU3RhdGUgfSBmcm9tICdyZWFjdCc7XG5pbXBvcnQgdHlwZSB7IFJlbWluZGVyLCBTbm9vemVEdXJhdGlvbiB9IGZyb20gJy4uLy4uLy4uL3NoYXJlZC9yZW1pbmRlcnMnO1xuaW1wb3J0IE1vZGFsIGZyb20gJy4uLy4uL2NvbXBvbmVudHMvTW9kYWwnO1xuXG5pbnRlcmZhY2UgUHJvcHMge1xuICByZW1pbmRlcjogUmVtaW5kZXI7XG4gIGNvdW50OiBudW1iZXI7XG4gIGxvY2tlZD86IGJvb2xlYW47XG4gIG9uQ29tcGxldGU6ICgpID0+IFByb21pc2U8dm9pZD47XG4gIG9uRGlzbWlzczogKCkgPT4gUHJvbWlzZTx2b2lkPjtcbiAgb25Tbm9vemU6IChkdXJhdGlvbjogU25vb3plRHVyYXRpb24pID0+IFByb21pc2U8dm9pZD47XG4gIG9uTGF0ZXI6ICgpID0+IHZvaWQ7XG4gIHJlc3RvcmVGb2N1c1RvPzogSFRNTEVsZW1lbnQgfCBudWxsO1xufVxuXG5leHBvcnQgZGVmYXVsdCBmdW5jdGlvbiBSZW1pbmRlckFsZXJ0RGlhbG9nKHtcbiAgcmVtaW5kZXIsXG4gIGNvdW50LFxuICBsb2NrZWQsXG4gIG9uQ29tcGxldGUsXG4gIG9uRGlzbWlzcyxcbiAgb25Tbm9vemUsXG4gIG9uTGF0ZXIsXG4gIHJlc3RvcmVGb2N1c1RvLFxufTogUHJvcHMpIHtcbiAgY29uc3QgW2R1cmF0aW9uLCBzZXREdXJhdGlvbl0gPSB1c2VTdGF0ZTxTbm9vemVEdXJhdGlvbj4oMTUpO1xuICBjb25zdCBbYnVzeSwgc2V0QnVzeV0gPSB1c2VTdGF0ZShmYWxzZSk7XG4gIGNvbnN0IFtlcnJvciwgc2V0RXJyb3JdID0gdXNlU3RhdGUoJycpO1xuICBjb25zdCBydW4gPSAob3BlcmF0aW9uOiAoKSA9PiBQcm9taXNlPHZvaWQ+KSA9PiB7XG4gICAgaWYgKGJ1c3kpIHJldHVybjtcbiAgICBzZXRCdXN5KHRydWUpO1xuICAgIHNldEVycm9yKCcnKTtcbiAgICB2b2lkIG9wZXJhdGlvbigpXG4gICAgICAuY2F0Y2goKCkgPT4gc2V0RXJyb3IoJ0NvdWxkIG5vdCB1cGRhdGUgcmVtaW5kZXIuIFNhdmUgb3IgcmVzb2x2ZSBub3RlIGNoYW5nZXMsIHRoZW4gcmV0cnkuJykpXG4gICAgICAuZmluYWxseSgoKSA9PiBzZXRCdXN5KGZhbHNlKSk7XG4gIH07XG4gIHJldHVybiAoXG4gICAgPE1vZGFsXG4gICAgICByb2xlPVwiYWxlcnRkaWFsb2dcIlxuICAgICAgdGl0bGU9XCJSZW1pbmRlclwiXG4gICAgICB0aXRsZUlkPVwicmVtaW5kZXItYWxlcnQtdGl0bGVcIlxuICAgICAgZGVzY3JpYmVkQnk9XCJyZW1pbmRlci1hbGVydC1kZXNjcmlwdGlvblwiXG4gICAgICByZXN0b3JlRm9jdXNUbz17cmVzdG9yZUZvY3VzVG99XG4gICAgICBvbkNsb3NlPXsoKSA9PiB7XG4gICAgICAgIGlmICghYnVzeSkgb25MYXRlcigpO1xuICAgICAgfX1cbiAgICA+XG4gICAgICA8ZGl2IGlkPVwicmVtaW5kZXItYWxlcnQtZGVzY3JpcHRpb25cIj5cbiAgICAgICAgPHA+e2xvY2tlZCB8fCByZW1pbmRlci5wcml2YWN5ID09PSAnaGlkZS10aXRsZScgPyAnQSByZW1pbmRlciBpcyBkdWUuJyA6IHJlbWluZGVyLnRpdGxlfTwvcD5cbiAgICAgICAge2xvY2tlZCA/IDxwPlVubG9jayB0aGUgbGlicmFyeSB0byB2aWV3IGl0LjwvcD4gOiBudWxsfVxuICAgICAgICA8cCByb2xlPVwic3RhdHVzXCI+XG4gICAgICAgICAge2NvdW50fSByZW1pbmRlcntjb3VudCA9PT0gMSA/ICcnIDogJ3MnfSB3YWl0aW5nLlxuICAgICAgICA8L3A+XG4gICAgICAgIDxwPkVzY2FwZSBvciBMYXRlciBjbG9zZXMgdGhpcyBhbGVydCB3aXRob3V0IGRpc21pc3NpbmcgdGhlIHJlbWluZGVyLiBJdCByZW1haW5zIGluIFJlbWluZGVycy48L3A+XG4gICAgICA8L2Rpdj5cbiAgICAgIDxidXR0b24gZGF0YS1hdXRvZm9jdXMgdHlwZT1cImJ1dHRvblwiIGRpc2FibGVkPXtidXN5IHx8IGxvY2tlZH0gb25DbGljaz17KCkgPT4gcnVuKG9uQ29tcGxldGUpfT5cbiAgICAgICAgTWFyayBDb21wbGV0ZVxuICAgICAgPC9idXR0b24+XG4gICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBkaXNhYmxlZD17YnVzeSB8fCBsb2NrZWR9IG9uQ2xpY2s9eygpID0+IHJ1bihvbkRpc21pc3MpfT5cbiAgICAgICAgRGlzbWlzc1xuICAgICAgPC9idXR0b24+XG4gICAgICA8bGFiZWw+XG4gICAgICAgIFNub296ZSBkdXJhdGlvblxuICAgICAgICA8c2VsZWN0XG4gICAgICAgICAgdmFsdWU9e2R1cmF0aW9ufVxuICAgICAgICAgIGRpc2FibGVkPXtidXN5IHx8IGxvY2tlZH1cbiAgICAgICAgICBvbkNoYW5nZT17KGV2ZW50KSA9PlxuICAgICAgICAgICAgc2V0RHVyYXRpb24oZXZlbnQudGFyZ2V0LnZhbHVlID09PSAndG9tb3Jyb3cnID8gJ3RvbW9ycm93JyA6IChOdW1iZXIoZXZlbnQudGFyZ2V0LnZhbHVlKSBhcyBTbm9vemVEdXJhdGlvbikpXG4gICAgICAgICAgfVxuICAgICAgICA+XG4gICAgICAgICAgPG9wdGlvbiB2YWx1ZT17NX0+NSBtaW51dGVzPC9vcHRpb24+XG4gICAgICAgICAgPG9wdGlvbiB2YWx1ZT17MTV9PjE1IG1pbnV0ZXM8L29wdGlvbj5cbiAgICAgICAgICA8b3B0aW9uIHZhbHVlPXszMH0+MzAgbWludXRlczwvb3B0aW9uPlxuICAgICAgICAgIDxvcHRpb24gdmFsdWU9ezYwfT4xIGhvdXI8L29wdGlvbj5cbiAgICAgICAgICA8b3B0aW9uIHZhbHVlPXsxNDQwfT4xIGRheSAoMjQgaG91cnMpPC9vcHRpb24+XG4gICAgICAgICAgPG9wdGlvbiB2YWx1ZT1cInRvbW9ycm93XCI+VG9tb3Jyb3c8L29wdGlvbj5cbiAgICAgICAgPC9zZWxlY3Q+XG4gICAgICA8L2xhYmVsPlxuICAgICAgPGJ1dHRvbiB0eXBlPVwiYnV0dG9uXCIgZGlzYWJsZWQ9e2J1c3kgfHwgbG9ja2VkfSBvbkNsaWNrPXsoKSA9PiBydW4oKCkgPT4gb25Tbm9vemUoZHVyYXRpb24pKX0+XG4gICAgICAgIFNub296ZVxuICAgICAgPC9idXR0b24+XG4gICAgICA8YnV0dG9uIHR5cGU9XCJidXR0b25cIiBkaXNhYmxlZD17YnVzeX0gb25DbGljaz17b25MYXRlcn0+XG4gICAgICAgIExhdGVyXG4gICAgICA8L2J1dHRvbj5cbiAgICAgIHtlcnJvciA/IDxwIHJvbGU9XCJhbGVydFwiPntlcnJvcn08L3A+IDogbnVsbH1cbiAgICA8L01vZGFsPlxuICApO1xufVxuIl0sImZpbGUiOiIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL3JlbWluZGVycy9SZW1pbmRlckFsZXJ0RGlhbG9nLnRzeCJ9
+
+//# vitestCache=W3siZmlsZSI6IjEiLCJpZCI6IjEiLCJ1cmwiOiIyIiwiaW1wb3J0cyI6IjMiLCJtYXBwaW5ncyI6ZmFsc2UsImRlcHMiOiI0IiwiZHluYW1pY0RlcHMiOiI1Iiwic3RhdGljTW9ja3MiOm51bGx9LCIvaG9tZS9ydW5uZXIvd29yay9BMTF5Tm90ZWJvb2svQTExeU5vdGVib29rL3NyYy9yZW5kZXJlci9mZWF0dXJlcy9yZW1pbmRlcnMvUmVtaW5kZXJBbGVydERpYWxvZy50c3giLCIvc3JjL3JlbmRlcmVyL2ZlYXR1cmVzL3JlbWluZGVycy9SZW1pbmRlckFsZXJ0RGlhbG9nLnRzeCIseyJ1cmxzIjoiNiIsImlkcyI6IjcifSxbIjgiLCI5IiwiMTAiXSxbXSxbXSx7fSwiL25vZGVfbW9kdWxlcy9yZWFjdC9qc3gtZGV2LXJ1bnRpbWUuanMiLCIvbm9kZV9tb2R1bGVzL3JlYWN0L2luZGV4LmpzIiwiL3NyYy9yZW5kZXJlci9jb21wb25lbnRzL01vZGFsLnRzeCJd

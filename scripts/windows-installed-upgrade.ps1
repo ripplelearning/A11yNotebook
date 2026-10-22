@@ -25,6 +25,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'windows-smoke-common.ps1')
 if ([Environment]::OSVersion.Platform -ne [PlatformID]::Win32NT) {
   throw 'The installed-upgrade smoke requires a real Windows interactive desktop.'
 }
@@ -81,7 +82,7 @@ function Assert-SmokeInstalledVersion([string]$Expected) {
     throw "Installed executable missing: $installedExe"
   }
   $actual = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
-  if (($actual -replace '\+.*$', '') -cne $Expected) {
+  if (-not (Test-SmokeProductVersion $actual $Expected)) {
     throw "Installed executable product version: expected '$Expected', got '$actual'."
   }
   Write-Output "Verified installed executable product version: $actual"

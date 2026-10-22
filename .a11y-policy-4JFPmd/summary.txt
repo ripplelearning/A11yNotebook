@@ -1,0 +1,17 @@
+## Desktop validation
+WARNING: Desktop validation incomplete; this is NOT a fully validated production release.
+
+{
+  "uiAutomation": "failure",
+  "installerOverInstall": "success",
+  "overrideRequested": true,
+  "overrideUsed": false,
+  "failedChecks": [
+    "uiAutomation"
+  ],
+  "notRunChecks": [],
+  "desktopValidationIncomplete": true,
+  "warning": "WARNING: Desktop validation incomplete; this is NOT a fully validated production release.",
+  "publicationAllowed": false,
+  "updaterEndToEnd": "not exercised; installer-over-install is not consented updater download/restart/install E2E"
+}

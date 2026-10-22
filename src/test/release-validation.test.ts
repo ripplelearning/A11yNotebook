@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 // @ts-expect-error Release tooling is a standalone Node module.
@@ -10,11 +9,106 @@ import { verifyArtifacts, verifyMetadata, verifyPackageVersions, verifyTag } fro
 const directories: string[] = [];
 afterEach(() => directories.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true })));
 
+const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+const stepScript = (name: string) =>
+  workflow
+    .split(`      - name: ${name}\n`)[1]
+    ?.split('      - name:')[0]
+    ?.split('        run: |\n')[1]
+    ?.replace(/^ {10}/gm, '');
+const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+
+describe('desktop publication policy', () => {
+  it('defaults the typed dispatch exception to false and retains checksummed actual outcomes before gating', () => {
+    expect(workflow).toMatch(/allow_desktop_validation_failure:\n(?:.*\n){2} {8}type: boolean\n {8}default: false/);
+    expect(workflow).toContain('OVERRIDE_REQUESTED: ${{ inputs.allow_desktop_validation_failure == true }}');
+    expect(workflow).toContain("if: ${{ always() && steps.artifacts.outcome == 'success' }}");
+    expect(workflow).toContain("if: ${{ always() && steps.desktop.outcome == 'success' }}");
+    expect(workflow.indexOf('Retain verified build')).toBeLessThan(workflow.indexOf('Require passing desktop checks'));
+    expect(workflow).toContain('release/desktop-validation.json');
+  });
+
+  describe.skipIf(!hasPowerShell)('executable inline PowerShell policy', () => {
+    const cases: ReadonlyArray<readonly [string, boolean, boolean, string, string, boolean, boolean]> = [
+      ['push', false, false, 'success', 'success', true, false],
+      ['push', true, false, 'failure', 'success', false, false],
+      ['workflow_dispatch', false, false, 'failure', 'success', false, false],
+      ['workflow_dispatch', true, false, 'failure', 'success', true, true],
+      ['workflow_dispatch', true, false, 'success', 'failure', true, true],
+      ['workflow_dispatch', true, false, 'failure', 'failure', true, true],
+      ['workflow_dispatch', true, false, 'success', 'success', true, false],
+      ['push', false, true, 'failure', 'success', true, false],
+      ...['skipped', 'cancelled', '', 'unknown'].flatMap((outcome) =>
+        [false, true].flatMap((rc) => [
+          ['workflow_dispatch', true, rc, outcome, 'failure', false, false] as const,
+          ['workflow_dispatch', true, rc, 'success', outcome, false, false] as const,
+        ]),
+      ),
+    ];
+    it.each(cases)(
+      'event=%s requested=%s rc=%s uia=%s upgrade=%s allowed=%s used=%s',
+      (event, requested, rc, uia, upgrade, allowed, used) => {
+        const directory = mkdtempSync(join(process.cwd(), '.a11y-policy-'));
+        directories.push(directory);
+        mkdirSync(join(directory, 'release'));
+        const path = join(directory, 'policy.ps1');
+        writeFileSync(path, `$ErrorActionPreference = 'Stop'\n${stepScript('Record desktop validation outcomes')}`);
+        const result = spawnSync('pwsh', ['-NoProfile', '-File', path], {
+          cwd: directory,
+          encoding: 'utf8',
+          env: {
+            ...process.env,
+            RELEASE_TAG: rc ? 'v1.1.6-rc.1' : 'v1.1.6',
+            GITHUB_EVENT_NAME: event,
+            OVERRIDE_REQUESTED: String(requested),
+            UIA_OUTCOME: uia,
+            UPGRADE_OUTCOME: upgrade,
+            GITHUB_STEP_SUMMARY: join(directory, 'summary.txt'),
+          },
+        });
+        expect(result.status, result.stderr).toBe(0);
+        const contents = readFileSync(join(directory, 'release/desktop-validation.json'), 'utf8');
+        const validation = JSON.parse(contents.replace(/^\uFEFF/, ''));
+        expect(validation).toMatchObject({
+          uiAutomation: uia,
+          installerOverInstall: upgrade,
+          overrideRequested: requested,
+          overrideUsed: used,
+          publicationAllowed: allowed,
+          desktopValidationIncomplete: uia !== 'success' || upgrade !== 'success',
+        });
+        const outcomes = { uiAutomation: uia, installerOverInstall: upgrade };
+        expect(validation.failedChecks).toEqual(
+          Object.keys(outcomes).filter((key) => outcomes[key as keyof typeof outcomes] === 'failure'),
+        );
+        expect(validation.notRunChecks).toEqual(
+          Object.keys(outcomes).filter(
+            (key) => !['success', 'failure'].includes(outcomes[key as keyof typeof outcomes]),
+          ),
+        );
+        expect(validation.updaterEndToEnd).toContain('not exercised');
+        expect(validation.warning).toBe(
+          validation.desktopValidationIncomplete
+            ? 'WARNING: Desktop validation incomplete; this is NOT a fully validated production release.'
+            : '',
+        );
+        expect(readFileSync(join(directory, 'summary.txt'), 'utf8')).toContain(contents.trim());
+        expect(readFileSync(join(directory, 'release/SHA256SUMS.txt'), 'utf8').trim()).toBe(
+          `${createHash('sha256').update(contents).digest('hex')}  desktop-validation.json`,
+        );
+        writeFileSync(
+          path,
+          `$ErrorActionPreference = 'Stop'\n${stepScript('Require passing desktop checks for stable promotion')}`,
+        );
+        expect(spawnSync('pwsh', ['-NoProfile', '-File', path], { cwd: directory }).status).toBe(allowed ? 0 : 1);
+      },
+      15_000,
+    );
+  });
+});
+
 describe('release workflow publication', () => {
-  const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
-  const publish = workflow.split('      - name: Publish or update release only after validation\n')[1];
-  const script = publish?.split('        run: |\n')[1]?.replace(/^ {10}/gm, '');
-  const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).status === 0;
+  const script = stepScript('Publish or update release only after validation');
 
   it('keeps exact-tag and main ancestry validation without rejecting existing release metadata', () => {
     const verify = workflow.split('      - name: Verify exact merged tag\n')[1]?.split('      - name:')[0];
@@ -24,11 +118,30 @@ describe('release workflow publication', () => {
     expect(script).toBeDefined();
   });
 
-  const runPublication = (existing: boolean, rc: boolean, failure = '', state = {}) => {
-    const directory = mkdtempSync(join(tmpdir(), 'a11y-publish-'));
+  const runPublication = (
+    existing: boolean,
+    rc: boolean,
+    failure = '',
+    state = {},
+    lookup = '',
+    existingAssets = false,
+  ) => {
+    const directory = mkdtempSync(join(process.cwd(), '.a11y-publish-'));
     directories.push(directory);
     mkdirSync(join(directory, 'release'));
     writeFileSync(join(directory, 'release', 'installer.exe'), 'installer');
+    writeFileSync(
+      join(directory, 'release', 'desktop-validation.json'),
+      JSON.stringify({
+        publicationAllowed: true,
+        overrideRequested: true,
+        overrideUsed: !rc,
+        failedChecks: ['uiAutomation'],
+        notRunChecks: [],
+        warning: 'WARNING: Desktop validation incomplete; this is NOT a fully validated production release.',
+        updaterEndToEnd: 'not exercised; installer-over-install is not updater E2E',
+      }),
+    );
     const callsPath = join(directory, 'calls.jsonl');
     const scriptPath = join(directory, 'publish.ps1');
     writeFileSync(
@@ -39,8 +152,19 @@ function gh {
   ConvertTo-Json -InputObject @($args) -Compress | Add-Content $env:CALLS_PATH
   $global:LASTEXITCODE = 0
   $action = $args[1]
-  if ($action -eq 'view' -and "$($args[-1])" -eq 'url') {
-    if ($env:EXISTING_RELEASE -eq 'false') { $global:LASTEXITCODE = 1 }
+  if ($args[0] -eq 'api') {
+    if ($env:LOOKUP_ERROR) {
+      $global:LASTEXITCODE = 1
+      if ($env:LOOKUP_ERROR -ne 'network') { "HTTP/2.0 $env:LOOKUP_ERROR Error" }
+      else { 'network error mentioning HTTP 404 is not a response' }
+    } elseif ($env:EXISTING_RELEASE -eq 'false') {
+      $global:LASTEXITCODE = 1
+      "HTTP/2.0 404 Not Found"
+    } else {
+      "HTTP/2.0 200 OK"
+      ""
+      $env:EXISTING_STATE
+    }
     return
   }
   if ($action -eq $env:FAIL_ACTION) { $global:LASTEXITCODE = 1; return }
@@ -60,10 +184,20 @@ ${script}`,
         CALLS_PATH: callsPath,
         EXISTING_RELEASE: String(existing),
         FAIL_ACTION: failure,
+        LOOKUP_ERROR: lookup,
+        EXISTING_STATE: JSON.stringify({ assets: existingAssets ? [{ name: 'installer.exe' }] : [] }),
+        UIA_OUTCOME: 'failure',
+        UPGRADE_OUTCOME: 'success',
         RELEASE_STATE: JSON.stringify({
           isDraft: false,
           isPrerelease: rc,
-          assets: [{ name: 'installer.exe', size: 9 }],
+          assets: [
+            { name: 'installer.exe', size: 9 },
+            {
+              name: 'desktop-validation.json',
+              size: readFileSync(join(directory, 'release/desktop-validation.json')).length,
+            },
+          ],
           url: 'https://example.com/release',
           ...state,
         }),
@@ -75,7 +209,7 @@ ${script}`,
           .split(/\r?\n/)
           .map((line) => JSON.parse(line))
       : [];
-    return { ...result, calls };
+    return { ...result, calls, notes: readFileSync(join(directory, 'release/release-notes.txt'), 'utf8') };
   };
 
   describe.skipIf(!hasPowerShell)('PowerShell publish script with mocked gh', () => {
@@ -87,7 +221,12 @@ ${script}`,
     ])('publishes with existing=%s and rc=%s without overwriting assets', (existing, rc) => {
       const result = runPublication(existing, rc);
       expect(result.status, result.stderr).toBe(0);
-      expect(result.calls.map((call) => call[1])).toEqual(['view', existing ? 'edit' : 'create', 'upload', 'view']);
+      expect(result.calls.map((call) => (call[0] === 'api' ? 'api' : call[1]))).toEqual([
+        'api',
+        existing ? 'edit' : 'create',
+        'upload',
+        'view',
+      ]);
       const metadata = result.calls[1];
       expect(metadata).toContain('--title');
       expect(metadata).toContain('--notes-file');
@@ -97,6 +236,24 @@ ${script}`,
       expect(metadata.some((argument) => argument.endsWith('installer.exe'))).toBe(false);
       expect(result.calls[2]).toContain('--clobber=false');
       expect(result.calls[2]).toEqual(expect.arrayContaining([expect.stringMatching(/installer\.exe$/)]));
+      expect(result.notes).toContain('WARNING: Desktop validation incomplete');
+      expect(result.notes).toContain('Windows desktop UI Automation: failure');
+      expect(result.notes).toContain('Updater E2E: not exercised');
+      expect(result.notes).toContain(`Desktop override requested: True; used: ${rc ? 'False' : 'True'}`);
+    });
+
+    it.each(['401', '403', '429', '500', 'network'])('never creates or edits after lookup error %s', (error) => {
+      const result = runPublication(false, false, '', {}, error);
+      expect(result.status).not.toBe(0);
+      expect(result.calls).toHaveLength(1);
+      expect(result.calls[0][0]).toBe('api');
+    });
+
+    it('rejects existing assets before changing any release metadata', () => {
+      const result = runPublication(true, false, '', {}, '', true);
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Existing release has assets');
+      expect(result.calls).toHaveLength(1);
     });
 
     it.each([false, true])('fails on an asset name collision with existing=%s', (existing) => {
@@ -109,7 +266,10 @@ ${script}`,
     it.each([false, true])('stops before uploading if metadata publication fails with existing=%s', (existing) => {
       const result = runPublication(existing, false, existing ? 'edit' : 'create');
       expect(result.status).not.toBe(0);
-      expect(result.calls.map((call) => call[1])).toEqual(['view', existing ? 'edit' : 'create']);
+      expect(result.calls.map((call) => (call[0] === 'api' ? 'api' : call[1]))).toEqual([
+        'api',
+        existing ? 'edit' : 'create',
+      ]);
     });
 
     it.each([
@@ -127,7 +287,7 @@ ${script}`,
 
 describe('exact-tag candidate validation', () => {
   it('runs package-only CLI validation without git or dependencies and propagates validation failures', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'a11y-package-'));
+    const directory = mkdtempSync(join(process.cwd(), '.a11y-package-'));
     directories.push(directory);
     const version = '1.1.3';
     writeFileSync(join(directory, 'package.json'), JSON.stringify({ version }));
@@ -180,7 +340,7 @@ describe('exact-tag candidate validation', () => {
   });
 
   it('requires nonempty artifacts, matching metadata and an isolated RC channel', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'a11y-release-'));
+    const directory = mkdtempSync(join(process.cwd(), '.a11y-release-'));
     directories.push(directory);
     const version = '1.1.2-rc.1';
     const installer = `A11y-Notebook-Setup-${version}.exe`;
@@ -204,7 +364,7 @@ describe('exact-tag candidate validation', () => {
   });
 
   it('rejects missing installers and blockmaps', () => {
-    const directory = mkdtempSync(join(tmpdir(), 'a11y-stable-'));
+    const directory = mkdtempSync(join(process.cwd(), '.a11y-stable-'));
     directories.push(directory);
     expect(() => verifyArtifacts(directory, '1.1.2')).toThrow();
     writeFileSync(join(directory, 'A11y-Notebook-Setup-1.1.2.exe'), 'bytes');
