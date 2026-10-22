@@ -909,7 +909,7 @@ export default function App() {
     let content: string;
     try {
       const loaded = await bridge.vault.readNote(entry.path, notePassword);
-      content = /\.html$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
+      content = /\.html?$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
     } catch (error) {
       if (!canOpen()) return;
       if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
@@ -922,7 +922,7 @@ export default function App() {
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
-      title: entry.name.replace(/\.(?:md|html)$/i, ''),
+      title: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
       content,
       saved: content,
     };
@@ -994,7 +994,7 @@ export default function App() {
         throw new Error('Add tasks to an unencrypted note so they can appear in Tasks.');
       const baseline = await bridge.readNote(path);
       let content: string;
-      if (/\.html$/i.test(path)) {
+      if (/\.html?$/i.test(path)) {
         const document = new DOMParser().parseFromString(baseline, 'text/html');
         const list = document.createElement('ul');
         const item = document.createElement('li');
@@ -1108,9 +1108,9 @@ export default function App() {
       setStatusMessage('Decrypt this note to a separate unprotected copy before converting it.');
       return;
     }
-    const from = /\.html$/i.test(note.path) ? 'html' : 'markdown';
+    const from = /\.html?$/i.test(note.path) ? 'html' : 'markdown';
     const to = from === 'html' ? 'markdown' : 'html';
-    const targetPath = note.path.replace(/\.(?:md|html)$/i, to === 'html' ? '.html' : '.md');
+    const targetPath = note.path.replace(/\.(?:md|html|htm|txt)$/i, to === 'html' ? '.html' : '.md');
     if (!window.confirm(formatConversionWarning(note.content, from, to))) return;
     try {
       const converted = convertNoteContent(note.content, from, to, targetPath);
@@ -1175,7 +1175,7 @@ export default function App() {
         (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? ''));
       const leaf =
         request.action === 'new-note'
-          ? `${name.replace(/\.(?:md|html)$/i, '')}.${format === 'html' ? 'html' : 'md'}`
+          ? `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : 'md'}`
           : name;
       const relative = [parent, leaf].filter(Boolean).join('/');
       setVault(
@@ -1219,7 +1219,7 @@ export default function App() {
           title: nextPath
             .split('/')
             .at(-1)!
-            .replace(/\.(?:md|html)$/i, ''),
+            .replace(/\.(?:md|html|htm|txt)$/i, ''),
           content,
           saved: content,
         };
@@ -1415,7 +1415,7 @@ export default function App() {
       }
     } else if (
       entry &&
-      request.context.startsWith('tree-') &&
+      (request.context.startsWith('tree-') || request.context === 'attachment') &&
       [
         'context-rename',
         'context-move',
@@ -1624,8 +1624,8 @@ export default function App() {
     if (!note) return;
     const bridge = window.a11yNotebook.vault;
     if (choice === 'copy') {
-      const extension = /\.html$/i.test(note.path) ? '.html' : '.md';
-      const copyPath = note.path.replace(/\.(?:md|html)$/i, ` (conflict copy ${Date.now()})${extension}`);
+      const extension = /\.html?$/i.test(note.path) ? '.html' : '.md';
+      const copyPath = note.path.replace(/\.(?:md|html|htm|txt)$/i, ` (conflict copy ${Date.now()})${extension}`);
       setVault(await bridge.createNote(copyPath, note.content));
       setOpenNotes((items) => items.filter((item) => item.path !== note.path));
       synchronization.clearConflict(note.path);
@@ -1653,7 +1653,7 @@ export default function App() {
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook || activeConflict || synchronization.checking) return;
-    const contentToSave = /\.html$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
+    const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     try {
       await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
       setOpenNotes((current) =>
@@ -1746,7 +1746,7 @@ export default function App() {
       itemDialog
     )
       return;
-    const contentToSave = /\.html$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
+    const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     const timeout = window.setTimeout(() => {
       void window.a11yNotebook?.vault
         .saveNote(note.path, contentToSave, note.saved)
@@ -2045,9 +2045,9 @@ export default function App() {
           )
           .map(async (entry) => ({
             id: `user:${entry.path}`,
-            name: entry.name.replace(/\.(?:md|html)$/i, ''),
+            name: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
             content: await window.a11yNotebook!.vault.readNote(entry.path),
-            format: /\.html$/i.test(entry.path) ? ('html' as const) : ('markdown' as const),
+            format: /\.html?$/i.test(entry.path) ? ('html' as const) : ('markdown' as const),
           })),
       )
         .then((templates) => {
@@ -2753,6 +2753,7 @@ export default function App() {
                 onSelect={selectEntry}
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
+                onDelete={(entry) => void deleteEntry(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'notes-files' ? (
@@ -2769,6 +2770,7 @@ export default function App() {
                 onSelect={selectEntry}
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
+                onDelete={(entry) => void deleteEntry(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'milestones' ? (
@@ -3042,7 +3044,7 @@ export default function App() {
                     notePath={currentNote.path}
                     editorRef={editorRef}
                     content={currentNote.content}
-                    format={/\.html$/i.test(currentNote.path) ? 'html' : 'markdown'}
+                    format={/\.html?$/i.test(currentNote.path) ? 'html' : 'markdown'}
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
@@ -3400,7 +3402,7 @@ export default function App() {
         <ExportNoteDialog
           path={exportRequest.path}
           content={openNotes.find((note) => note.path === exportRequest.path)?.content ?? ''}
-          sourceFormat={/\.html$/i.test(exportRequest.path) ? 'html' : 'markdown'}
+          sourceFormat={/\.html?$/i.test(exportRequest.path) ? 'html' : 'markdown'}
           protectedNote={exportRequest.protectedNote}
           onClose={() => setExportRequest(null)}
           onExport={async (format, protectedConsent) => {
@@ -3408,7 +3410,7 @@ export default function App() {
             if (!bridge?.exportNote) throw new Error('Note export is unavailable.');
             if (exportRequest.protectedNote && !protectedConsent)
               throw new Error('Explicit consent is required to export protected content.');
-            const sourceFormat = /\.html$/i.test(exportRequest.path) ? 'html' : 'markdown';
+            const sourceFormat = /\.html?$/i.test(exportRequest.path) ? 'html' : 'markdown';
             const source =
               openNotes.find((note) => note.path === exportRequest.path)?.content ??
               (await bridge.readNote(exportRequest.path));

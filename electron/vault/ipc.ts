@@ -618,7 +618,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
   await vault.resolveEntry(destination, true);
   const sourceExtension = path.posix.extname(relative).toLowerCase();
   const destinationExtension = path.posix.extname(destination).toLowerCase();
-  if (['.md', '.html'].includes(sourceExtension) && sourceExtension !== destinationExtension)
+  if (['.md', '.html', '.htm', '.txt'].includes(sourceExtension) && sourceExtension !== destinationExtension)
     throw new Error('Use the note format conversion command to change a note extension.');
   const notes: NoteSource[] = [];
   const attachmentPaths: string[] = [];
@@ -1391,8 +1391,8 @@ export function setupVaultIpc(
       const vault = requireService();
       const access = captureVaultAccess(event, isTrustedSender);
       const sourcePath = await vault.resolveEntry(relativePath);
-      if (!['.md', '.html'].includes(path.extname(sourcePath).toLowerCase())) {
-        throw new Error('Only Markdown and HTML notes can be exported.');
+      if (!['.md', '.html', '.htm', '.txt'].includes(path.extname(sourcePath).toLowerCase())) {
+        throw new Error('Only Markdown, HTML, and plain-text notes can be exported.');
       }
       let stored: unknown;
       try {

@@ -162,6 +162,7 @@ describe('command registry', () => {
     expect(getContextMenuCommands('annotation').map(({ id }) => id)).toContain('context-delete');
     expect(getContextMenuCommands('reminder').map(({ id }) => id)).toContain('context-delete');
     expect(getContextMenuCommands('attachment').map(({ id }) => id)).toContain('context-reveal');
+    expect(getContextMenuCommands('attachment').map(({ id }) => id)).toContain('context-delete');
     expect(getContextMenuCommands('document-preview').map(({ id }) => id)).toContain('context-open-external');
     expect(getContextMenuCommands('editor-selection', false).map(({ id }) => id)).toContain('context-copy');
     expect(getContextMenuCommands('editor-selection', true).map(({ id }) => id)).toContain('format-bold');

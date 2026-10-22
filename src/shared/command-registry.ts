@@ -252,7 +252,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-delete',
     label: 'Delete',
     description: 'Delete the selected library item.',
-    contexts: ['tree-note', 'tree-folder', 'annotation', 'reminder'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder'],
   },
   {
     id: 'context-reveal',

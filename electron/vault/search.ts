@@ -325,7 +325,12 @@ export function createSearchIndex(root: string) {
             next.set(relative, {
               path: relative,
               title: (documentText.title ?? title ?? path.basename(relative, extension)).slice(0, 1000),
-              kind: extension === '.docx' ? 'docx' : ['.md', '.html'].includes(extension) ? 'note' : 'attachment',
+              kind:
+                extension === '.docx'
+                  ? 'docx'
+                  : ['.md', '.html', '.htm', '.txt'].includes(extension)
+                    ? 'note'
+                    : 'attachment',
               notebook: path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative),
               tags:
                 extension === '.md'
