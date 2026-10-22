@@ -435,11 +435,15 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         onCommitted?.(target, stagedIdentity);
       } catch (error) {
         if (
-          !['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')
+          !['ENOTSUP', 'EOPNOTSUPP', 'EPERM', 'EXDEV', 'ENOSYS', 'EISDIR'].includes(
+            (error as NodeJS.ErrnoException).code ?? '',
+          )
         )
           throw error;
-        // FAT and some network folders cannot hard-link. Exclusive creation
-        // still prevents overwrites; any incomplete file is removed on failure.
+        // FAT and some network folders cannot hard-link, and Google Drive's
+        // virtual filesystem reports EISDIR for the attempt. Exclusive creation
+        // still prevents overwrites (an existing directory target fails the
+        // exclusive open), and any incomplete file is removed on failure.
         assertCurrent?.();
         const handle = await open(
           target,

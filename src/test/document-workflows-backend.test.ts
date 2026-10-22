@@ -12,6 +12,7 @@ import { untaggedReport } from './fixtures/pdf-fixtures';
 
 const mock = vi.hoisted(() => ({
   unsupportedLinks: false,
+  linkErrorCode: 'ENOTSUP',
   protectedPdf: '',
   failProvenanceWrite: false,
   failReplacementRename: false,
@@ -37,7 +38,7 @@ vi.mock('node:fs/promises', async (original) => {
   return {
     ...actual,
     link: async (...args: Parameters<typeof actual.link>) => {
-      if (mock.unsupportedLinks) throw Object.assign(new Error('Hard links unsupported'), { code: 'ENOTSUP' });
+      if (mock.unsupportedLinks) throw Object.assign(new Error('Hard links unsupported'), { code: mock.linkErrorCode });
       return actual.link(...args);
     },
     rename: async (...args: Parameters<typeof actual.rename>) => {
@@ -54,6 +55,7 @@ let root = '';
 const services: ReturnType<typeof createVaultService>[] = [];
 beforeEach(async () => {
   mock.unsupportedLinks = false;
+  mock.linkErrorCode = 'ENOTSUP';
   mock.protectedPdf = '';
   mock.failProvenanceWrite = false;
   mock.failReplacementRename = false;
@@ -128,6 +130,27 @@ describe('document provenance and original imports', () => {
     expect((await service.getVault()).entries.map((entry) => entry.provenance)).toEqual(['created', 'imported']);
     await expect(service.createDocument('Original.md', '# Replacement', 'imported')).rejects.toThrow();
     expect(await service.readNote('Original.md')).toBe('# Imported');
+  });
+
+  it('falls back when hard links report EISDIR, as Google Drive virtual drives do', async () => {
+    const service = await vault();
+    mock.unsupportedLinks = true;
+    mock.linkErrorCode = 'EISDIR';
+    await service.createNote('Created.md', '# Authored');
+    await service.createDocument('Original.md', '# Imported', 'imported');
+    expect((await service.getVault()).entries.map((entry) => entry.provenance)).toEqual(['created', 'imported']);
+    await expect(service.createDocument('Original.md', '# Replacement', 'imported')).rejects.toThrow();
+    expect(await service.readNote('Original.md')).toBe('# Imported');
+  });
+
+  it('never lets the EISDIR fallback write over an existing directory', async () => {
+    const service = await vault();
+    mock.unsupportedLinks = true;
+    mock.linkErrorCode = 'EISDIR';
+    await mkdir(path.join(root, 'Folder.md'));
+    await expect(service.createNote('Folder.md', '# Nope')).rejects.toThrow();
+    expect((await lstat(path.join(root, 'Folder.md'))).isDirectory()).toBe(true);
+    expect(await readdir(path.join(root, 'Folder.md'))).toEqual([]);
   });
 
   it('keeps legacy files unknown and persists authored/imported origin without changing original bytes', async () => {
