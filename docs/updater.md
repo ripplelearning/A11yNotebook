@@ -140,8 +140,49 @@ certificate secrets are absent; that capability is not evidence of production re
 
 ## Preparing a downloadable Windows release candidate
 
-The intended next version is **1.1.5**, set in both package files and unused when prepared.
-Recheck remote tags and releases before publication. The immutable `v1.1.4` tag points to
+The preferred next release is **v1.1.7**, after the repairs and matching package/lockfile version bump
+are reviewed, merged and tagged on that merged commit. Recheck remote tags and releases before publication.
+No publication or workflow rerun is performed by this preparation.
+
+### Known desktop validation failures and recovery policy
+
+The UI smoke failure is a PowerShell parameter-default path bug involving `$PSScriptRoot`.
+The full log at `2026-10-22T03:26:40.7374562Z` points to
+`windows-ui-automation-smoke.ps1:10 char:40`, exactly at `$PSScriptRoot` in the
+`ExecutablePath` parameter's `Join-Path` default. The npm entry invokes
+`powershell -ExecutionPolicy Bypass -File ...` (Windows PowerShell), even when the outer workflow
+shell is `pwsh`. Resolve defaults in the script body instead, validating the script root with a
+script-path fallback and tracing its parent repository root. This is not evidence that the application
+UI failed, nor proof of a generic hosted-runner desktop limitation.
+The installed-upgrade check has a literal version mismatch; derive the candidate version from the
+package instead of retaining a stale literal. These are known script defects, not checks that passed.
+
+The normal stable path (including every tag push) requires **both desktop checks to succeed**.
+Manual `workflow_dispatch` also defaults to strict policy. A maintainer may explicitly set the typed
+boolean `allow_desktop_validation_failure=true` only to accept completed `success`/`failure` outcomes.
+It cannot accept `skipped`, `cancelled`, missing or unknown outcomes. RC publication permits completed
+failures without this stable exception, but also rejects incomplete/non-run outcomes.
+All other gates remain mandatory: exact tag/version/main ancestry, dependency installation, typecheck,
+lint, tests, formatting, generated shortcuts, packaging, signing-status and artifact/hash verification.
+
+The retained, checksummed `desktop-validation.json`, Actions summary and release notes preserve the
+actual outcomes, whether the override was requested/used, failed and not-run checks, and a prominent
+**desktop validation incomplete / NOT a fully validated production release** warning when appropriate.
+An unused request is not reported as an override used. Installer-over-install is never reported as
+consented updater download/restart/install E2E, even when both desktop checks pass.
+
+A dispatch from reviewed `main` selects that workflow definition, but checkout still selects the
+exact input tag. A workflow-only exception for **v1.1.6** therefore builds and publishes the **old tagged
+source and scripts**, not the repaired scripts on `main`. It is not equivalent to the preferred
+new v1.1.7 merge/tag path. Inline workflow policy avoids depending on new helper scripts absent from old tags.
+Do not move tags, overwrite assets, or treat a failed publication rerun as a dry run.
+Only an explicit HTTP 404 release lookup allows creation; authorization, rate-limit, network and server
+errors fail closed. Existing metadata with no assets may be updated; any existing assets stop publication
+before metadata changes. Uploads never clobber, and published asset sizes must match the verified build.
+
+### Earlier release-preparation context
+
+The immutable `v1.1.4` tag points to
 `7e67edcb4ccfb7ae97c86600b9097e90a05dfdb9`: rerunning it cannot pick up this fix.
 [Release run #7, attempt 2](https://github.com/ripplelearning/A11yNotebook/actions/runs/39676673070)
 passed the duplicate-release gate but stopped before packaging: 88 test files passed and the
@@ -181,7 +222,7 @@ After release preparation is reviewed and merged through normal branch protectio
    the **new** `v<package-version>` tag on the exact merged commit.
    Tag pushes trigger publication, not a dry run. No tag is created or pushed by this preparation work.
 3. The Release workflow checks out that exact tag, verifies its commit and package version,
-   requires ancestry in `main`, and refuses to overwrite an existing release. The commands
+   requires ancestry in `main`, and refuses to overwrite assets on an existing release. The commands
    `node scripts/verify-release.mjs tag <tag>` and `node scripts/verify-release.mjs artifacts <tag>`
    still require an existing tag on the exact checkout; package-only validation does not bypass them.
    If execution needs to be retried **before publication**, an authorized maintainer can dispatch `release.yml`
@@ -197,24 +238,24 @@ After release preparation is reviewed and merged through normal branch protectio
    git checkout --detach <reviewed-merged-SHA>
    git merge-base --is-ancestor HEAD origin/main
    node scripts/verify-release.mjs package
-   git ls-remote origin refs/tags/v1.1.5
+   git ls-remote origin refs/tags/v1.1.7
    gh api --paginate repos/ripplelearning/A11yNotebook/releases --jq '.[].tag_name'
    ```
 
-   Stop if any check fails, the package version is not `1.1.5`, the tag lookup returns a ref,
-   or the release list already contains `v1.1.5` (including a draft). Only then:
+   Stop if any check fails, the package version is not `1.1.7`, the tag lookup returns a ref,
+   or the release list already contains `v1.1.7` (including a draft). Only then:
 
    ```sh
-   git tag v1.1.5 <reviewed-merged-SHA>
-   git push origin refs/tags/v1.1.5
+   git tag v1.1.7 <reviewed-merged-SHA>
+   git push origin refs/tags/v1.1.7
    ```
 
    The tag push is the normal publication entry point. If that event did not run, the supported
-   manual alternative is `gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag=v1.1.5`
+   manual alternative is `gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag=v1.1.7`
    with the existing exact merged tag; do not dispatch a branch as the tag input or run both routes
    concurrently. Never pre-create an empty release, move/delete `v1.1.4`, delete releases or overwrite assets.
    This agent preparation cannot create/push tags or promise publication.
-   A successful PR/CI build is not release success: wait for the **v1.1.5** Release run to succeed,
+   A successful PR/CI build is not release success: wait for the **v1.1.7** Release run to succeed,
    inspect its provenance, download the actual release assets and verify `SHA256SUMS.txt`.
    Packaging, signing status, desktop checks and downloadable assets remain unverified until then.
 
@@ -226,11 +267,13 @@ After release preparation is reviewed and merged through normal branch protectio
 5. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
    requires signing and verifies Authenticode on the installer, portable and unpacked app.
    Without the certificate, both RC and stable builds are explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
-   Stable publication still requires passing desktop checks. Signed production distribution remains recommended;
+   Stable publication defaults to passing desktop checks; only the explicit dispatch exception above can accept completed failures.
+   Signed production distribution remains recommended;
    unsigned publication does not satisfy signed-updater/publisher validation. Never send credentials in chat.
 6. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
    are attached as `desktop-validation.json`, including failures (hosted runners may lack a usable desktop).
-   An RC remains downloadable if these desktop checks fail; stable promotion does not.
+   An RC remains downloadable if these desktop checks complete with failures; stable publication requires success
+   unless the explicit dispatch exception is used. Neither path permits skipped/cancelled/unknown checks.
    These are not JAWS/NVDA/Narrator tests, and installer-over-install is **not** full updater E2E.
 7. The workflow retains downloadable Actions artifacts, then creates a new GitHub prerelease with installer,
    portable executable, update metadata, `SHA256SUMS.txt`, `signatures.json`, `desktop-validation.json` and

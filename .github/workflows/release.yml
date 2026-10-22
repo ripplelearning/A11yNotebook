@@ -10,6 +10,11 @@ on:
         description: 'Existing merged version tag (for example v1.1.2-rc.1); never a branch'
         required: true
         type: string
+      allow_desktop_validation_failure:
+        description: 'Explicitly publish with completed desktop check failures; NOT production validation'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
@@ -124,6 +129,7 @@ jobs:
           }
 
       - name: Verify artifacts and record provenance
+        id: artifacts
         run: node scripts/verify-release.mjs artifacts "${{ env.RELEASE_TAG }}"
 
       - name: Windows desktop UI Automation smoke
@@ -142,20 +148,44 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Record desktop validation outcomes
+        id: desktop
+        if: ${{ always() && steps.artifacts.outcome == 'success' }}
         shell: pwsh
         env:
           UIA_OUTCOME: ${{ steps.uia.outcome }}
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
+          OVERRIDE_REQUESTED: ${{ inputs.allow_desktop_validation_failure == true }}
         run: |
-          [ordered]@{
+          $requested = $env:OVERRIDE_REQUESTED -eq 'true'
+          $checks = [ordered]@{
             uiAutomation = $env:UIA_OUTCOME
             installerOverInstall = $env:UPGRADE_OUTCOME
-            updaterEndToEnd = 'not exercised; stable clients do not opt into RC updates'
-          } | ConvertTo-Json | Set-Content release/desktop-validation.json
+          }
+          $failed = @($checks.Keys | Where-Object { $checks[$_] -eq 'failure' })
+          $notRun = @($checks.Keys | Where-Object { $checks[$_] -notin @('success', 'failure') })
+          $rc = $env:RELEASE_TAG -match '-rc\.'
+          $used = !$rc -and $env:GITHUB_EVENT_NAME -eq 'workflow_dispatch' -and $requested -and $failed.Count -gt 0 -and $notRun.Count -eq 0
+          $allowed = $notRun.Count -eq 0 -and ($failed.Count -eq 0 -or $rc -or $used)
+          $warning = if ($failed.Count -gt 0 -or $notRun.Count -gt 0) { 'WARNING: Desktop validation incomplete; this is NOT a fully validated production release.' } else { '' }
+          $validation = [ordered]@{
+            uiAutomation = $env:UIA_OUTCOME
+            installerOverInstall = $env:UPGRADE_OUTCOME
+            overrideRequested = $requested
+            overrideUsed = $used
+            failedChecks = $failed
+            notRunChecks = $notRun
+            desktopValidationIncomplete = ($failed.Count -gt 0 -or $notRun.Count -gt 0)
+            warning = $warning
+            publicationAllowed = $allowed
+            updaterEndToEnd = 'not exercised; installer-over-install is not consented updater download/restart/install E2E'
+          }
+          $validation | ConvertTo-Json | Set-Content release/desktop-validation.json
           "$((Get-FileHash release/desktop-validation.json -Algorithm SHA256).Hash.ToLower())  desktop-validation.json" | Add-Content release/SHA256SUMS.txt
+          "## Desktop validation`n$warning`n" >> $env:GITHUB_STEP_SUMMARY
           Get-Content release/desktop-validation.json >> $env:GITHUB_STEP_SUMMARY
 
       - name: Retain verified build even if publication fails
+        if: ${{ always() && steps.desktop.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: windows-${{ env.RELEASE_TAG }}
@@ -170,8 +200,12 @@ jobs:
           if-no-files-found: error
 
       - name: Require passing desktop checks for stable promotion
-        if: ${{ !contains(env.RELEASE_TAG, '-rc.') && (steps.uia.outcome != 'success' || steps.upgrade.outcome != 'success') }}
-        run: throw 'Stable promotion requires passing Windows desktop validation.'
+        shell: pwsh
+        run: |
+          $validation = Get-Content release/desktop-validation.json -Raw | ConvertFrom-Json
+          if (!$validation.publicationAllowed) {
+            throw 'Desktop publication policy failed: stable requires passing checks or an explicit dispatch exception; skipped/cancelled/unknown outcomes are never eligible.'
+          }
 
       - name: Publish or update release only after validation
         shell: pwsh
@@ -181,8 +215,10 @@ jobs:
           UPGRADE_OUTCOME: ${{ steps.upgrade.outcome }}
         run: |
           $rc = $env:RELEASE_TAG -match '-rc\.'
+          $validation = Get-Content release/desktop-validation.json -Raw | ConvertFrom-Json
+          if (!$validation.publicationAllowed) { throw 'Desktop publication policy failed.' }
           $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
-          $desktopPolicy = if ($rc) { 'Desktop failures remain open and do not prevent downloading this RC for testing.' } else { 'Both automated desktop checks passed, as required for stable publication.' }
+          $desktopPolicy = if ($validation.overrideUsed) { 'Explicit workflow_dispatch desktop-failure exception used; failed checks were NOT passed.' } elseif ($rc) { 'Completed desktop failures remain open and do not prevent downloading this RC for testing.' } else { 'Both automated desktop checks passed, as required for default stable publication.' }
           $notes = @"
           $trust.
 
@@ -191,21 +227,34 @@ jobs:
           Source tag: $env:RELEASE_TAG. Exact commit, run URL and SHA-256 checksums are attached.
           Passed checks: typecheck, lint, tests, build, packaging, update metadata/hash verification.
           Windows desktop UI Automation: $env:UIA_OUTCOME. Installer-over-install smoke: $env:UPGRADE_OUTCOME. See desktop-validation.json and workflow logs. $desktopPolicy
+          Desktop override requested: $($validation.overrideRequested); used: $($validation.overrideUsed).
+          Failed desktop checks: $($validation.failedChecks -join ', '). Not-run desktop checks: $($validation.notRunChecks -join ', ').
+          $($validation.warning)
           Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
+          Updater E2E: $($validation.updaterEndToEnd).
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
-          $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
+          $notes | Set-Content release/release-notes.txt
           $assets = @(Get-ChildItem release -File | Where-Object {
             $_.Name -match '\.(exe|blockmap|yml)$' -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
           } | ForEach-Object FullName)
           $options = if ($rc) { @('--prerelease', '--latest=false') } else { @('--prerelease=false', '--latest') }
-          gh release view "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --json url | Out-Null
-          if ($LASTEXITCODE -eq 0) {
-            gh release edit "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" --draft=false @options
+          $lookup = @(gh api --include "repos/$env:GITHUB_REPOSITORY/releases/tags/$env:RELEASE_TAG" 2>&1)
+          $lookupExit = $LASTEXITCODE
+          $response = $lookup -join "`n"
+          $status = [regex]::Match($response, '(?m)^HTTP/\S+\s+(\d{3})\b')
+          if (!$status.Success) { throw 'Release lookup did not return an HTTP status; refusing publication.' }
+          if ($lookupExit -eq 0 -and $status.Groups[1].Value -eq '200') {
+            $existing = ($response -split '\r?\n\r?\n', 2)[1] | ConvertFrom-Json
+            if (!$existing -or $null -eq $existing.assets) { throw 'Invalid existing release metadata.' }
+            if (@($existing.assets).Count -gt 0) { throw 'Existing release has assets; refusing to modify metadata or overwrite assets. Use a new version/tag.' }
+            gh release edit "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --title "A11y Notebook $env:RELEASE_TAG" --notes-file release/release-notes.txt --draft=false @options
             if ($LASTEXITCODE -ne 0) { throw 'Release metadata update failed.' }
-          } else {
-            gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "A11y Notebook $env:RELEASE_TAG" --notes-file "$env:RUNNER_TEMP/release-notes.txt" @options
+          } elseif ($lookupExit -ne 0 -and $status.Groups[1].Value -eq '404') {
+            gh release create "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" --verify-tag --title "A11y Notebook $env:RELEASE_TAG" --notes-file release/release-notes.txt @options
             if ($LASTEXITCODE -ne 0) { throw 'Release creation failed.' }
+          } else {
+            throw "Release lookup failed (HTTP $($status.Groups[1].Value)); refusing publication."
           }
           gh release upload "$env:RELEASE_TAG" --repo "$env:GITHUB_REPOSITORY" @assets --clobber=false
           if ($LASTEXITCODE -ne 0) { throw 'Asset upload failed; never overwrite release assets.' }
