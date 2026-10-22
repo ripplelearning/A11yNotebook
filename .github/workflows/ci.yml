@@ -49,6 +49,10 @@ jobs:
           $channel = if ($version -match '-rc\.') { 'rc' } else { 'latest' }
           npm run package:win -- --config.publish.channel=$channel --config.generateUpdatesFilesForAllChannels=false
 
+      - name: Verify Windows candidate artifacts
+        if: runner.os == 'Windows'
+        run: node scripts/verify-release.mjs candidate
+
       - name: Record Windows candidate source and checksums
         if: runner.os == 'Windows'
         shell: pwsh

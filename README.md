@@ -101,6 +101,9 @@ The output goes to `release/`:
 - `release/win-unpacked/`: the unpacked app, useful for quick checks.
 - `release/latest.yml`: the update metadata that `electron-updater` reads.
 
+After packaging, run `node scripts/verify-release.mjs candidate` to check the versioned installers, update metadata,
+and unpacked executable without requiring a release tag.
+
 `npm run package:win` never publishes anything. `npm run release:win` builds **and publishes** to GitHub Releases.
 It is normally run only by the release workflow, which supplies `GH_TOKEN` from the built-in `GITHUB_TOKEN`.
 For manual publishing, use a token with write access to this repository's contents (a classic PAT needs `repo`

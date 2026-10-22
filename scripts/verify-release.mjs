@@ -50,6 +50,10 @@ export function verifyArtifacts(directory, version) {
   for (const name of required) {
     assert.ok(statSync(`${directory}/${name}`).size > 0, `Missing or empty artifact: ${name}`);
   }
+  assert.ok(
+    statSync(`${directory}/win-unpacked/A11y Notebook.exe`).size > 0,
+    'Missing or empty artifact: win-unpacked/A11y Notebook.exe',
+  );
   const metadataFiles = readdirSync(directory).filter((name) => /^(latest|alpha|beta|rc)\.yml$/.test(name));
   assert.deepEqual(metadataFiles, [`${channel}.yml`], 'Do not publish metadata for another updater channel');
   verifyMetadata(
@@ -70,7 +74,12 @@ function main() {
     assert.equal(tag, undefined, 'Package-only validation does not accept a tag');
     return;
   }
-  assert.ok(command === 'tag' || command === 'artifacts', 'Expected package, tag or artifacts command');
+  if (command === 'candidate') {
+    assert.equal(tag, undefined, 'Candidate artifact validation does not accept a tag');
+    verifyArtifacts('release', version);
+    return;
+  }
+  assert.ok(command === 'tag' || command === 'artifacts', 'Expected package, candidate, tag or artifacts command');
   const git = (...args) => execFileSync('git', args, { encoding: 'utf8' }).trim();
   const commit = git('rev-parse', 'HEAD');
   verifyTag(tag, version, commit, git('rev-parse', `refs/tags/${tag}^{commit}`));

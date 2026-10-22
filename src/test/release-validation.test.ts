@@ -13,8 +13,18 @@ const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).st
 
 describe('release workflow publication', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
+  const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
   const publish = workflow.split('      - name: Publish or update release only after validation\n')[1];
   const script = publish?.split('        run: |\n')[1]?.replace(/^ {10}/gm, '');
+
+  it('runs the Windows UI smoke under PowerShell Core', () => {
+    expect(packageJson.scripts['test:ui-smoke']).toMatch(/^pwsh /);
+  });
+
+  it('validates Windows candidate artifacts after packaging in CI', () => {
+    const ci = readFileSync('.github/workflows/ci.yml', 'utf8');
+    expect(ci.indexOf('npm run package:win')).toBeLessThan(ci.indexOf('node scripts/verify-release.mjs candidate'));
+  });
 
   it('keeps exact-tag and main ancestry validation without rejecting existing release metadata', () => {
     const verify = workflow.split('      - name: Verify exact merged tag\n')[1]?.split('      - name:')[0];
@@ -146,6 +156,7 @@ describe('release workflow publication', () => {
           expect(result.validation.warning).toBeNull();
         }
       },
+      15000,
     );
 
     it('records desktop checks that were not run instead of reporting success', () => {
@@ -417,6 +428,33 @@ describe('exact-tag candidate validation', () => {
     expect(() => verifyTag(`v${version}`, version, 'abc', 'abc')).not.toThrow();
   });
 
+  it('validates candidate artifacts without requiring a release tag', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'a11y-candidate-'));
+    directories.push(directory);
+    const version = '1.1.3';
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({ version }));
+    const lock = { version, packages: { '': { version } } };
+    writeFileSync(join(directory, 'package-lock.json'), JSON.stringify(lock));
+    const release = join(directory, 'release');
+    const installer = `A11y-Notebook-Setup-${version}.exe`;
+    const contents = Buffer.from('candidate installer bytes');
+    mkdirSync(join(release, 'win-unpacked'), { recursive: true });
+    for (const name of [installer, `${installer}.blockmap`, `A11y-Notebook-Portable-${version}.exe`]) {
+      writeFileSync(join(release, name), contents);
+    }
+    writeFileSync(join(release, 'win-unpacked', 'A11y Notebook.exe'), 'unpacked executable bytes');
+    const hash = createHash('sha512').update(contents).digest('base64');
+    writeFileSync(
+      join(release, 'latest.yml'),
+      `version: ${version}\nfiles:\n  - url: ${installer}\n    sha512: ${hash}\n    size: ${contents.length}\npath: ${installer}\nsha512: ${hash}\n`,
+    );
+    const result = spawnSync(process.execPath, [resolve('scripts/verify-release.mjs'), 'candidate'], {
+      cwd: directory,
+      encoding: 'utf8',
+    });
+    expect(result.status, result.stderr).toBe(0);
+  });
+
   it('requires plain semver package versions without a v prefix', () => {
     const lockFor = (version: string) => ({ version, packages: { '': { version } } });
     expect(() => verifyPackageVersions('1.1.3', lockFor('1.1.3'))).not.toThrow();
@@ -442,6 +480,9 @@ describe('exact-tag candidate validation', () => {
     directories.push(directory);
     const version = '1.1.2-rc.1';
     const installer = `A11y-Notebook-Setup-${version}.exe`;
+    const unpackedExecutable = join(directory, 'win-unpacked', 'A11y Notebook.exe');
+    mkdirSync(join(directory, 'win-unpacked'));
+    writeFileSync(unpackedExecutable, 'unpacked executable bytes');
     const contents = Buffer.from('test installer bytes');
     const metadata = `version: ${version}\nfiles:\n  - url: ${installer}\n    sha512: ${createHash('sha512').update(contents).digest('base64')}\n    size: ${contents.length}\npath: ${installer}\nsha512: ${createHash('sha512').update(contents).digest('base64')}\n`;
     for (const name of [installer, `${installer}.blockmap`, `A11y-Notebook-Portable-${version}.exe`]) {
@@ -459,6 +500,9 @@ describe('exact-tag candidate validation', () => {
     rmSync(join(directory, 'latest.yml'));
     writeFileSync(join(directory, installer), '');
     expect(() => verifyArtifacts(directory, version)).toThrow(/empty artifact/);
+    writeFileSync(join(directory, installer), contents);
+    rmSync(unpackedExecutable);
+    expect(() => verifyArtifacts(directory, version)).toThrow(/win-unpacked\/A11y Notebook\.exe/);
   });
 
   it('rejects missing installers and blockmaps', () => {
