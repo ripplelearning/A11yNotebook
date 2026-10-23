@@ -51,6 +51,8 @@ function installBridge() {
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
+      addBookmark: vi.fn(async () => []),
+      removeBookmark: vi.fn(async () => []),
     },
   };
   window.a11yNotebook = bridge;

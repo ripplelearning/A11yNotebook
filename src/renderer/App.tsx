@@ -24,6 +24,7 @@ import type {
   AppMode,
   FocusRegion,
   FocusTarget,
+  BookmarkAnchor,
   RecentLibrary,
   VaultBookmark,
   VaultEntry,
@@ -38,6 +39,7 @@ import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
+import { headingAnchorAt, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
@@ -253,6 +255,11 @@ export default function App() {
   const [tasks, setTasks] = useState<VaultTask[]>([]);
   const [links, setLinks] = useState<VaultLink[]>([]);
   const [bookmarks, setBookmarks] = useState<VaultBookmark[]>([]);
+  const [pendingBookmarkAnchor, setPendingBookmarkAnchor] = useState<{
+    path: string;
+    anchor: BookmarkAnchor;
+    nonce: number;
+  } | null>(null);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
   const [milestoneTabOpen, setMilestoneTabOpen] = useState(false);
@@ -1200,6 +1207,83 @@ export default function App() {
       setStatusMessage('Could not update the bookmark.');
     }
   };
+
+  const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    if (!note || !window.a11yNotebook) return;
+    const caret = editorRef.current?.selectionStart ?? 0;
+    let anchor: BookmarkAnchor | null = null;
+    if (kind === 'heading') {
+      anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
+      if (!anchor) {
+        setStatusMessage('No heading at or before the cursor to bookmark.');
+        return;
+      }
+    } else {
+      anchor = { kind: 'offset', offset: caret };
+    }
+    try {
+      const nextBookmarks = await window.a11yNotebook.vault.addBookmark(note.path, anchor);
+      setBookmarks(nextBookmarks);
+      setStatusMessage(
+        anchor.kind === 'heading' ? `Bookmarked heading "${anchor.text}".` : 'Bookmarked this position.',
+      );
+    } catch {
+      setStatusMessage('Could not add the bookmark.');
+    }
+  };
+
+  const removeBookmarkById = async (id: string) => {
+    if (!window.a11yNotebook) return;
+    try {
+      setBookmarks(await window.a11yNotebook.vault.removeBookmark(id));
+      setStatusMessage('Bookmark removed.');
+    } catch {
+      setStatusMessage('Could not remove the bookmark.');
+    }
+  };
+
+  // After a bookmark with an anchor is activated, land the caret (edit
+  // mode) or focus (reading view) at the anchored place once the note is
+  // the current one.
+  useEffect(() => {
+    if (!pendingBookmarkAnchor || currentNote?.path !== pendingBookmarkAnchor.path) return;
+    const { anchor } = pendingBookmarkAnchor;
+    const offset = resolveBookmarkAnchor(currentNote.content, /\.html?$/i.test(currentNote.path), anchor);
+    setPendingBookmarkAnchor(null);
+    if (offset === null) {
+      setStatusMessage('That bookmarked heading no longer exists in the note.');
+      return;
+    }
+    const textarea = editorRef.current;
+    if (textarea && mode === 'edit') {
+      textarea.focus();
+      try {
+        textarea.setSelectionRange(offset, offset);
+      } catch {
+        // The caret landing is best-effort; the note is open either way.
+      }
+      setStatusMessage('Opened at the bookmarked place.');
+      return;
+    }
+    if (anchor.kind === 'heading') {
+      const container = annotationTools.documentRef.current;
+      const headings = container
+        ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
+        : [];
+      const matches = headings.filter((heading) => heading.textContent?.trim() === anchor.text);
+      const target = matches[anchor.occurrence] ?? matches[0];
+      if (target) {
+        if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+        target.focus();
+        target.scrollIntoView({ block: 'start' });
+        setStatusMessage('Opened at the bookmarked heading.');
+        return;
+      }
+    }
+    setStatusMessage('Opened at the bookmarked place.');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingBookmarkAnchor, currentNote]);
 
   const deleteEntry = async (entryPath: string) => {
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
@@ -3141,16 +3225,28 @@ export default function App() {
                   </button>
                 ) : null}
                 {mode === 'edit' ? (
-                  <EditorTools
-                    showCommandButtons={showCommandButtons}
-                    ref={editorToolsRef}
-                    textareaRef={editorRef}
-                    bindShortcuts={false}
-                    notePaths={notePaths}
-                    announce={setStatusMessage}
-                    onRequestAttachment={() => handleCommand('insert-attachment')}
-                    onContentChange={(content) => updateNoteContent(currentNote.id, content)}
-                  />
+                  <>
+                    <EditorTools
+                      showCommandButtons={showCommandButtons}
+                      ref={editorToolsRef}
+                      textareaRef={editorRef}
+                      bindShortcuts={false}
+                      notePaths={notePaths}
+                      announce={setStatusMessage}
+                      onRequestAttachment={() => handleCommand('insert-attachment')}
+                      onContentChange={(content) => updateNoteContent(currentNote.id, content)}
+                    />
+                    {showCommandButtons ? (
+                      <>
+                        <button type="button" onClick={() => void addAnchoredBookmark('heading')}>
+                          Bookmark heading at cursor
+                        </button>
+                        <button type="button" onClick={() => void addAnchoredBookmark('position')}>
+                          Bookmark position at cursor
+                        </button>
+                      </>
+                    ) : null}
+                  </>
                 ) : (
                   annotationTools.toolbar
                 )}
@@ -3263,10 +3359,25 @@ export default function App() {
                       type="button"
                       onClick={() => {
                         const entry = findEntry(vault?.entries ?? [], bookmark.path);
-                        if (entry) void openEntry(entry);
+                        if (entry) {
+                          if (bookmark.anchor)
+                            setPendingBookmarkAnchor({
+                              path: bookmark.path,
+                              anchor: bookmark.anchor,
+                              nonce: Date.now(),
+                            });
+                          void openEntry(entry);
+                        }
                       }}
                     >
-                      {bookmark.title}
+                      {bookmark.anchor?.kind === 'heading'
+                        ? `${bookmark.title} — ${bookmark.path.split('/').pop()}`
+                        : bookmark.anchor?.kind === 'offset'
+                          ? `${bookmark.title} (position)`
+                          : bookmark.title}
+                    </button>{' '}
+                    <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
+                      Remove
                     </button>
                   </li>
                 ))}

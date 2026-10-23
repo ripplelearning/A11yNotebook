@@ -47,6 +47,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultGetLinkIndex: 'vault:get-link-index',
   vaultGetBookmarks: 'vault:get-bookmarks',
   vaultToggleBookmark: 'vault:toggle-bookmark',
+  vaultAddBookmark: 'vault:add-bookmark',
+  vaultRemoveBookmark: 'vault:remove-bookmark',
   vaultGetReadingPosition: 'vault:get-reading-position',
   vaultSetReadingPosition: 'vault:set-reading-position',
   vaultMove: 'vault:move',
@@ -239,6 +241,8 @@ const bridge: NotebookBridge = {
     getLinkIndex: () => ipcRenderer.invoke(CHANNELS.vaultGetLinkIndex),
     getBookmarks: () => ipcRenderer.invoke(CHANNELS.vaultGetBookmarks),
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),
+    addBookmark: (relativePath, anchor) => ipcRenderer.invoke(CHANNELS.vaultAddBookmark, relativePath, anchor),
+    removeBookmark: (id) => ipcRenderer.invoke(CHANNELS.vaultRemoveBookmark, id),
     getReadingPosition: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultGetReadingPosition, relativePath),
     setReadingPosition: (relativePath, position) =>
       ipcRenderer.invoke(CHANNELS.vaultSetReadingPosition, relativePath, position),

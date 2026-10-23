@@ -71,6 +71,8 @@ function setup(
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
+      addBookmark: vi.fn(async () => []),
+      removeBookmark: vi.fn(async () => []),
       getSettings: vi.fn(async () => {
         if (!unlocked || options.failSettingsAfterUnlock) throw new Error('Settings unavailable.');
         return {

@@ -121,6 +121,8 @@ export interface VaultBridge {
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
+  addBookmark(path: string, anchor?: import('./types').BookmarkAnchor): Promise<VaultBookmark[]>;
+  removeBookmark(id: string): Promise<VaultBookmark[]>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }
