@@ -1,7 +1,8 @@
 // @vitest-environment node
 import { describe, expect, it, vi } from 'vitest';
 import { createAnnotationStore } from '../../electron/vault/annotations';
-import { resolveDocxAnchor, type NewDocxAnnotation } from '../shared/docx-annotations';
+import { docxAnchorText, resolveDocxAnchor, type NewDocxAnnotation } from '../shared/docx-annotations';
+import type { DocxStructure } from '../shared/docx';
 
 const input: NewDocxAnnotation = {
   path: 'Docs/Report.docx',
@@ -60,6 +61,26 @@ describe('DOCX annotation persistence', () => {
     const added = await store.docx.add(input);
     await store.migratePaths('Docs/Report.docx', 'Archive/Report.docx');
     expect(await store.docx.list('Archive/Report.docx')).toEqual([{ ...added, path: 'Archive/Report.docx' }]);
+  });
+});
+
+describe('docxAnchorText', () => {
+  const blocks: DocxStructure['blocks'] = [
+    { kind: 'paragraph', text: 'Intro', runs: [] },
+    {
+      kind: 'table',
+      rows: [
+        { cells: [{ paragraphs: [{ kind: 'paragraph', text: 'A1', runs: [] }] }, { paragraphs: [{ kind: 'paragraph', text: 'B', runs: [] }, { kind: 'paragraph', text: '1', runs: [] }] }] },
+      ],
+    },
+  ];
+  const base = { quote: 'x', prefix: '', suffix: '', start: 0, end: 1 };
+  it('addresses paragraphs and table cells, and rejects mismatches', () => {
+    expect(docxAnchorText(blocks, { ...base, blockIndex: 0 })).toBe('Intro');
+    expect(docxAnchorText(blocks, { ...base, blockIndex: 0, cellIndex: 0 })).toBeNull();
+    expect(docxAnchorText(blocks, { ...base, blockIndex: 1, cellIndex: 1 })).toBe('B1');
+    expect(docxAnchorText(blocks, { ...base, blockIndex: 1 })).toBeNull();
+    expect(docxAnchorText(blocks, { ...base, blockIndex: 9 })).toBeNull();
   });
 });
 

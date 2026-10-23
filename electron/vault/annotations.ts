@@ -281,6 +281,10 @@ function docxAnchor(value: unknown): DocxAnnotationAnchor {
     !Number.isSafeInteger(data.blockIndex) ||
     (data.blockIndex as number) < 0 ||
     (data.blockIndex as number) > DOCX_ANNOTATION_LIMITS.blockIndex ||
+    (data.cellIndex !== undefined &&
+      (!Number.isSafeInteger(data.cellIndex) ||
+        (data.cellIndex as number) < 0 ||
+        (data.cellIndex as number) > DOCX_ANNOTATION_LIMITS.blockIndex)) ||
     !Number.isSafeInteger(data.start) ||
     !Number.isSafeInteger(data.end) ||
     (data.start as number) < 0 ||
@@ -289,6 +293,7 @@ function docxAnchor(value: unknown): DocxAnnotationAnchor {
     throw new Error('Invalid DOCX annotation anchor.');
   return {
     blockIndex: data.blockIndex as number,
+    ...(data.cellIndex !== undefined ? { cellIndex: data.cellIndex as number } : {}),
     quote,
     prefix: text(data.prefix, DOCX_ANNOTATION_LIMITS.context),
     suffix: text(data.suffix, DOCX_ANNOTATION_LIMITS.context),

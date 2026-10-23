@@ -1,4 +1,5 @@
 import { ANNOTATION_COLORS, type AnnotationColor } from './annotations';
+import type { DocxStructure } from './docx';
 
 export const DOCX_ANNOTATION_SCHEMA_VERSION = 1 as const;
 export const DOCX_ANNOTATION_COLORS = ANNOTATION_COLORS;
@@ -14,11 +15,29 @@ export type DocxAnnotationColor = AnnotationColor;
  */
 export interface DocxAnnotationAnchor {
   blockIndex: number;
+  /** For table blocks: the cell's row-major ordinal within the table. Absent for paragraphs. */
+  cellIndex?: number;
   quote: string;
   prefix: string;
   suffix: string;
   start: number;
   end: number;
+}
+
+/**
+ * The text an anchor addresses, derived from the parsed structure
+ * alone: a paragraph block's text, or a table cell's paragraph texts
+ * concatenated (the same concatenation the rendered cell produces).
+ * Returns null when the anchor does not address a real unit.
+ */
+export function docxAnchorText(blocks: DocxStructure['blocks'], anchor: DocxAnnotationAnchor): string | null {
+  const block = blocks[anchor.blockIndex];
+  if (!block) return null;
+  if (block.kind === 'paragraph') return anchor.cellIndex === undefined ? block.text : null;
+  if (anchor.cellIndex === undefined) return null;
+  const cell = block.rows.flatMap((row) => row.cells)[anchor.cellIndex];
+  if (!cell) return null;
+  return cell.paragraphs.map((paragraph) => paragraph.text).join('');
 }
 
 export interface DocxAnnotation {
