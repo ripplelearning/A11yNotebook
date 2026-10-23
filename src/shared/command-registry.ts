@@ -554,15 +554,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'edit-undo',
     label: 'Undo',
     description:
-      'Undo the last edit in the active note, using the recorded edit history when the editor’s native undo is unavailable.',
-    shortcut: 'Ctrl+Z',
+      'Undo the last edit in the active note, using the recorded edit history when the editor’s native undo is unavailable. Ctrl+Z stays a reserved native editing key; in the note editor it is routed to this history by the editor itself.',
   },
   {
     id: 'edit-redo',
     label: 'Redo',
-    description: 'Redo the last undone edit in the active note.',
-    shortcut: 'Ctrl+Shift+Z',
-    shortcutAliases: ['Ctrl+Y'],
+    description:
+      'Redo the last undone edit in the active note. Ctrl+Shift+Z and Ctrl+Y stay reserved native editing keys; in the note editor they are routed to this history by the editor itself.',
   },
   {
     id: 'show-tasks',

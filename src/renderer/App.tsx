@@ -323,7 +323,8 @@ export default function App() {
     setOpenNotes((items) => items.map((note) => (note.id === id ? { ...note, content } : note)));
   };
 
-  const stepEditHistory = (direction: 'undo' | 'redo') => {
+  /** Apply one recorded undo/redo step to the active note. Returns false when it has none. */
+  const applyEditHistory = (direction: 'undo' | 'redo'): boolean => {
     const note = openNotes.find((item) => item.id === selectedTab);
     const history = note ? editHistoriesRef.current.get(note.id) : undefined;
     if (note && history) {
@@ -352,13 +353,38 @@ export default function App() {
           }
         });
         setStatusMessage(direction === 'undo' ? 'Undid the last edit.' : 'Redid the edit.');
-        return;
+        return true;
       }
     }
+    return false;
+  };
+
+  const stepEditHistory = (direction: 'undo' | 'redo') => {
     // No recorded history for this note: fall back to the native undo so
     // fields outside the note editor keep their standard behavior.
-    document.execCommand(direction);
+    if (!applyEditHistory(direction)) document.execCommand(direction);
   };
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y are reserved native editing keys, so
+  // they are not command shortcuts. Inside the note editor's textarea the
+  // recorded history owns them when it has a step to apply (that is the
+  // guaranteed fallback); otherwise the keypress falls through to the
+  // native undo untouched.
+  const applyEditHistoryRef = useRef(applyEditHistory);
+  applyEditHistoryRef.current = applyEditHistory;
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!editorRef.current || event.target !== editorRef.current) return;
+      if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      const direction =
+        key === 'z' && !event.shiftKey ? 'undo' : key === 'z' || key === 'y' ? 'redo' : null;
+      if (!direction) return;
+      if (applyEditHistoryRef.current(direction)) event.preventDefault();
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'low' | 'normal' | 'high' | 'urgent'>('all');
@@ -2503,14 +2529,7 @@ export default function App() {
         ].includes(command.id)
       )
         return;
-      // Undo/redo shortcuts belong to whatever field is focused, except
-      // the note editor itself: other fields keep their native undo.
-      if (
-        (command.id === 'edit-undo' || command.id === 'edit-redo') &&
-        editing &&
-        event.target !== editorRef.current
-      )
-        return;
+
       event.preventDefault();
       handleCommand(command.id);
     }
