@@ -478,4 +478,32 @@ describe('vault reminder scheduler', () => {
     expect(f.notify).toHaveBeenCalledOnce();
     expect(vi.getTimerCount()).toBe(0);
   });
+
+  it('snapshots only pending due times, without titles or paths, for locked alerts', async () => {
+    const f = fixture('- [ ] Future task remind:2026-10-05 09:00');
+    await f.service.initialize();
+    const review = {
+      id: `flashcard:Study.md#${'b'.repeat(64)}`,
+      path: 'Study.md',
+      scheduledAt: new Date(2026, 9, 6, 9, 0).toISOString(),
+    };
+    const withReviews = createReminderService({
+      ...f.options,
+      getFlashcardReviews: async () => [review],
+      notifyFlashcard: vi.fn(),
+    });
+    await withReviews.initialize();
+    const snapshot = withReviews.dueSnapshot();
+    expect(snapshot.map((entry) => entry.kind)).toEqual(['reminder', 'flashcard']);
+    for (const entry of snapshot) {
+      expect(Object.keys(entry).sort()).toEqual(['id', 'kind', 'scheduledAt']);
+    }
+    // The past-due task in the default fixture fires at initialize and is excluded.
+    const past = fixture();
+    await past.service.initialize();
+    expect(past.service.dueSnapshot()).toEqual([]);
+    past.service.stop();
+    withReviews.stop();
+    f.service.stop();
+  });
 });

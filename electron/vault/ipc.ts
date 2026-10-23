@@ -24,6 +24,7 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import { createReminderService, parseTaskReminders } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
@@ -86,6 +87,34 @@ let idleLockTimer: NodeJS.Timeout | undefined;
 let idleLockMinutes = 15;
 let sendSecurityLocked: () => void = () => undefined;
 let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
+// Privacy-safe due snapshot (ids and times only) kept while the library is
+// locked, when the reminder service itself is stopped.
+let dueSnapshotCache: DueSnapshotEntry[] = [];
+let dueSnapshotVaultPath = '';
+const lockedDueWatcher = createLockedDueWatcher({
+  onDue: (vaultPath) => {
+    sendReminder({ type: 'locked-due', vaultPath });
+    if (Notification.isSupported()) {
+      const notification = new Notification({
+        title: 'A11y Notebook',
+        body: 'A reminder is due. Unlock the library to view it.',
+      });
+      notifications.add(notification);
+      notification.on('close', () => notifications.delete(notification));
+      notification.show();
+    }
+  },
+});
+
+function cancelLockedDueAlerts() {
+  lockedDueWatcher.cancel();
+}
+
+function armLockedDueAlerts() {
+  if (dueSnapshotCache.length && dueSnapshotVaultPath) lockedDueWatcher.arm(dueSnapshotCache, dueSnapshotVaultPath);
+  else lockedDueWatcher.cancel();
+}
+
 const notifications = new Set<Notification>();
 const notificationTargets = new Map<Notification, { path: string }>();
 let vaultOperations: Promise<unknown> = Promise.resolve();
@@ -201,6 +230,9 @@ function lockVault() {
     notifications.clear();
     notificationTargets.clear();
     sendSecurityLocked();
+    // The service is stopped, but its last due snapshot lets generic,
+    // content-free due alerts continue while the library stays locked.
+    armLockedDueAlerts();
   }
 }
 
@@ -299,6 +331,7 @@ function openVault(vaultPath: string) {
 }
 
 async function startReminders(vaultService: VaultService, vault: VaultInfo) {
+  cancelLockedDueAlerts();
   const nextReminders = makeReminders(vaultService, vault);
   reminderService = nextReminders;
   await nextReminders.initialize().catch(() =>
@@ -308,6 +341,10 @@ async function startReminders(vaultService: VaultService, vault: VaultInfo) {
       message: 'Could not initialize reminders. Check library metadata.',
     }),
   );
+  if (reminderService === nextReminders) {
+    dueSnapshotCache = nextReminders.dueSnapshot();
+    dueSnapshotVaultPath = vault.path;
+  }
 }
 
 async function openVaultNow(vaultPath: string, assertCurrent: () => void = () => undefined) {
@@ -430,7 +467,15 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     validatePdf: (relative) => nextService.validatePdfAnnotationDocument(relative),
   });
   if (masterKey || !securityConfig) await startReminders(nextService, vault);
-  else reminderService = null;
+  else {
+    reminderService = null;
+    // A library that opens locked has no due snapshot of its own yet; any
+    // watcher armed while switching away from the previous library must not
+    // fire generic alerts naming that library.
+    cancelLockedDueAlerts();
+    dueSnapshotCache = [];
+    dueSnapshotVaultPath = '';
+  }
   await nextService
     .startWatcher(
       (event) => {
@@ -457,7 +502,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
 }
 
 function makeReminders(nextService: VaultService, vault: VaultInfo) {
-  return createReminderService({
+  const instance = createReminderService({
     readStore: () => metadataFor(nextService).read('reminders.json'),
     writeStore: (value) => {
       const key = masterKey;
@@ -536,13 +581,18 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       }
     },
     onChange: (reminders) => {
-      if (service === nextService) sendReminder({ type: 'changed', vaultPath: vault.path, reminders });
+      if (service === nextService) {
+        sendReminder({ type: 'changed', vaultPath: vault.path, reminders });
+        dueSnapshotCache = instance.dueSnapshot();
+        dueSnapshotVaultPath = vault.path;
+      }
     },
     onError: () => {
       if (service === nextService)
         sendReminder({ type: 'error', vaultPath: vault.path, message: 'Could not update reminders.' });
     },
   });
+  return instance;
 }
 
 function metadataFor(vault: VaultService) {

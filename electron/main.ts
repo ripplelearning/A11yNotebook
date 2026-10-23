@@ -210,7 +210,7 @@ if (!app.requestSingleInstanceLock()) {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.vaultChanged, event);
       },
       (event) => {
-        if (event.type === 'fired') {
+        if (event.type === 'fired' || event.type === 'locked-due') {
           pendingReminderAlerts.push(event);
           if (pendingReminderAlerts.length > MAX_PENDING_REMINDER_ALERTS)
             pendingReminderAlerts.splice(0, pendingReminderAlerts.length - MAX_PENDING_REMINDER_ALERTS);

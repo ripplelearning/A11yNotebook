@@ -46,6 +46,7 @@ import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog'
 import SearchResults from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
+import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
@@ -3257,6 +3258,14 @@ export default function App() {
             switchingRef.current
           }
           onComplete={completeReminder}
+          announce={setStatusMessage}
+        />
+      ) : null}
+      {vault && securityLocked && settingsVaultPath === vault.path ? (
+        <LockedReminderAlerts
+          key={`locked:${vault.path}`}
+          vaultPath={vault.path}
+          settings={settings}
           announce={setStatusMessage}
         />
       ) : null}
