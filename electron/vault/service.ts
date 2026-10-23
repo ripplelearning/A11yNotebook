@@ -4,7 +4,7 @@ import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writ
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import type { ReadingPosition, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
@@ -670,6 +670,15 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     if (updatedBookmarks.some((bookmark, index) => bookmark !== bookmarks[index])) {
       await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(updatedBookmarks, null, 2), 'utf8');
     }
+    const positions = await readReadingPositions();
+    const updatedPositions = positions.map((position) =>
+      position.path === sourceRelative || position.path.startsWith(`${sourceRelative}/`)
+        ? { ...position, path: `${nextRelative}${position.path.slice(sourceRelative.length)}` }
+        : position,
+    );
+    if (updatedPositions.some((position, index) => position !== positions[index])) {
+      await writeReadingPositions(updatedPositions);
+    }
     return getVault();
   }
 
@@ -839,6 +848,73 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return next;
   }
 
+  async function readReadingPositions(): Promise<ReadingPosition[]> {
+    const filePath = await resolveMetadata('reading-positions.json', true);
+    try {
+      const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
+      if (!Array.isArray(parsed)) return [];
+      return parsed.filter(
+        (item): item is ReadingPosition =>
+          typeof item === 'object' &&
+          item !== null &&
+          typeof (item as ReadingPosition).path === 'string' &&
+          typeof (item as ReadingPosition).cfi === 'string' &&
+          Number.isInteger((item as ReadingPosition).sectionIndex) &&
+          typeof (item as ReadingPosition).updated === 'string',
+      );
+    } catch {
+      return [];
+    }
+  }
+
+  async function writeReadingPositions(positions: ReadingPosition[]): Promise<void> {
+    await writeFile(await resolveMetadata('reading-positions.json', true), JSON.stringify(positions, null, 2), 'utf8');
+  }
+
+  async function getReadingPosition(relativePath: string): Promise<ReadingPosition | null> {
+    try {
+      await resolveEntry(relativePath);
+    } catch {
+      return null; // A book deleted outside the app simply has no position.
+    }
+    const positions = await readReadingPositions();
+    return positions.find((position) => position.path === relativePath) ?? null;
+  }
+
+  async function setReadingPosition(
+    relativePath: string,
+    position: { cfi: unknown; sectionIndex: unknown },
+  ): Promise<void> {
+    const target = await resolveEntry(relativePath);
+    if (path.extname(target).toLowerCase() !== '.epub') {
+      throw new Error('Reading positions are saved for ePub documents.');
+    }
+    if (
+      typeof position?.cfi !== 'string' ||
+      position.cfi.length > 4096 ||
+      (position.cfi !== '' && !position.cfi.startsWith('epubcfi('))
+    ) {
+      throw new Error('The reading position is invalid.');
+    }
+    if (
+      !Number.isInteger(position.sectionIndex) ||
+      (position.sectionIndex as number) < 0 ||
+      (position.sectionIndex as number) > 100_000
+    ) {
+      throw new Error('The reading position is invalid.');
+    }
+    const positions = await readReadingPositions();
+    const retained = positions.filter((entry) => entry.path !== relativePath);
+    retained.push({
+      path: relativePath,
+      cfi: position.cfi,
+      sectionIndex: position.sectionIndex as number,
+      updated: new Date().toISOString(),
+    });
+    retained.sort((a, b) => a.updated.localeCompare(b.updated));
+    await writeReadingPositions(retained.slice(-500));
+  }
+
   return {
     initialize,
     getVault,
@@ -865,6 +941,8 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     getLinkIndex,
     getBookmarks,
     toggleBookmark,
+    getReadingPosition,
+    setReadingPosition,
     resolveEntry,
     validatePdfAnnotationDocument,
     readDocxStructure,
