@@ -235,6 +235,60 @@ describe('local accessible document reader', () => {
     expect(book.destroy).toHaveBeenCalledOnce();
   });
 
+  it('restores the saved ePub reading position and saves new locations', async () => {
+    const display = vi.fn(async () => undefined);
+    let relocatedHandler: ((location: { start?: { cfi?: string } }) => void) | undefined;
+    const rendition = {
+      display,
+      destroy: vi.fn(),
+      on: vi.fn((event: string, handler: (location: { start?: { cfi?: string } }) => void) => {
+        if (event === 'relocated') relocatedHandler = handler;
+      }),
+    };
+    const section = (index: number, href: string) => ({
+      index,
+      href,
+      load: async () => ({ textContent: `Chapter ${index + 1} text` }),
+      hooks: { serialize: { register: vi.fn() } },
+    });
+    const book = {
+      spine: {
+        spineItems: [section(0, 'Text/one.xhtml'), section(1, 'Text/two.xhtml')],
+        get: vi.fn((cfi: string) => (cfi.includes('/6/8') ? { index: 1 } : { index: 0 })),
+      },
+      navigation: { toc: [] },
+      renderTo: vi.fn((container: HTMLElement) => {
+        container.appendChild(document.createElement('iframe'));
+        return rendition;
+      }),
+      destroy: vi.fn(),
+    };
+    ePub.mockResolvedValue(book);
+    const getReadingPosition = vi.fn(async () => ({
+      path: 'Books/Guide.epub',
+      cfi: 'epubcfi(/6/8!/4/2)',
+      sectionIndex: 1,
+      updated: '2026-10-22T00:00:00.000Z',
+    }));
+    const setReadingPosition = vi.fn(async () => undefined);
+    window.a11yNotebook = {
+      vault: { getReadingPosition, setReadingPosition },
+    } as unknown as NotebookBridge;
+
+    render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    await waitFor(() => expect(display).toHaveBeenCalledWith('epubcfi(/6/8!/4/2)'));
+    expect(getReadingPosition).toHaveBeenCalledWith('Books/Guide.epub');
+    expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
+
+    relocatedHandler?.({ start: { cfi: 'epubcfi(/6/8!/4/10)' } });
+    await waitFor(() =>
+      expect(setReadingPosition).toHaveBeenCalledWith('Books/Guide.epub', {
+        cfi: 'epubcfi(/6/8!/4/10)',
+        sectionIndex: 1,
+      }),
+    );
+  });
+
   it('rejects an oversized file before passing it to a parser', async () => {
     vi.stubGlobal(
       'fetch',

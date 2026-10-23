@@ -89,3 +89,12 @@ export interface VaultBookmark {
   title: string;
   created: string;
 }
+
+/** The last reading position in a document, used to resume where the reader stopped. */
+export interface ReadingPosition {
+  path: string;
+  /** EPUB CFI for ePub documents; empty when only the section is known. */
+  cfi: string;
+  sectionIndex: number;
+  updated: string;
+}

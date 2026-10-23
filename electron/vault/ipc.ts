@@ -2388,6 +2388,18 @@ export function setupVaultIpc(
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
     return requireService().toggleBookmark(relativePath);
   });
+  ipcMain.handle(IPC_CHANNELS.vaultGetReadingPosition, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Reading position path must be text.');
+    return requireService().getReadingPosition(relativePath);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSetReadingPosition, async (event, relativePath: unknown, position: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Reading position path must be text.');
+    if (typeof position !== 'object' || position === null) throw new Error('The reading position is invalid.');
+    const candidate = position as { cfi: unknown; sectionIndex: unknown };
+    return requireService().setReadingPosition(relativePath, candidate);
+  });
 }
 
 function vaultPathOf(vault: { path: string }) {
