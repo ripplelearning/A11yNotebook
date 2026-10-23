@@ -67,4 +67,5 @@ export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
   'flashcard-schedules',
   'reminders',
   'settings',
+  'search-index',
 ];
