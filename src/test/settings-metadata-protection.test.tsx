@@ -46,7 +46,7 @@ describe('scoped metadata encryption consent', () => {
       'remain plaintext',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
-      'Reminder defaults',
+      'Reminders, reminder defaults',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
       'settings (both library and global copies), global preferences',

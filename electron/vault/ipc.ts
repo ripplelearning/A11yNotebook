@@ -34,7 +34,7 @@ import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/e
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
-import { createReminderService, parseTaskReminders } from './reminders';
+import { createReminderService, parseTaskReminders, validateReminderStore } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
 import { createMilestoneStore, validateMilestoneStore } from './milestones';
@@ -667,7 +667,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
 
 function makeReminders(nextService: VaultService, vault: VaultInfo) {
   const instance = createReminderService({
-    readStore: () => metadataFor(nextService).read('reminders.json'),
+    readStore: () => routedMetadataFor(nextService).read('reminders.json'),
     writeStore: (value) => {
       const key = masterKey;
       const generation = securityGeneration;
@@ -681,7 +681,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
           throw new Error('The open library or lock state changed.');
       };
       assertCurrent();
-      return metadataFor(nextService).write('reminders.json', value, assertCurrent);
+      return routedMetadataFor(nextService).write('reminders.json', value, assertCurrent);
     },
     validateNote: async (relative) => {
       await nextService.readNote(relative);
@@ -826,6 +826,7 @@ const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'links.json': 'links',
   'image-alts.json': 'image-alts',
   'flashcards.json': 'flashcard-schedules',
+  'reminders.json': 'reminders',
 };
 
 /**
@@ -1169,6 +1170,8 @@ export function setupVaultIpc(
           const raw = await metadataFor(vault).read('bookmarks.json');
           if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
           legacy = raw ?? [];
+        } else if (store === 'reminders') {
+          legacy = validateReminderStore(await metadataFor(vault).read('reminders.json'));
         } else if (store === 'image-alts' || store === 'flashcard-schedules') {
           const raw = await metadataFor(vault).read(store === 'image-alts' ? 'image-alts.json' : 'flashcards.json');
           if (raw !== null && (typeof raw !== 'object' || Array.isArray(raw)))
