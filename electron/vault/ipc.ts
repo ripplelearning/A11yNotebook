@@ -14,7 +14,7 @@ import {
   type ProtectedMetadataAccess,
 } from './metadata-protection';
 import type { MetadataProtectionStatus } from '../../src/shared/metadata-protection';
-import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readTextAttachment } from './attachments';
+import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
@@ -30,7 +30,13 @@ import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-d
 import { createMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import { createAssetDraftStore } from './asset-drafts';
-import { IMPORT_EXTENSIONS, importedCopyPath, isEncryptedNoteSource, readImportSource } from './import';
+import {
+  IMPORT_EXTENSIONS,
+  convertImportedBytes,
+  importedCopyPath,
+  isEncryptedNoteSource,
+  readImportSource,
+} from './import';
 import { isExternalDocumentPath } from './external-documents';
 import { openWithWindows } from './open-with';
 import { createLocalLibrary } from './create-library';
@@ -1998,6 +2004,7 @@ export function setupVaultIpc(
       await requireService().resolveEntry(relative);
       return { path: relative, kind: '.docx', text: '' };
     }
+    if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative);
     return readTextAttachment(requireService().resolveEntry, relative);
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadDocxStructure, async (event, relative: unknown) => {
@@ -2172,11 +2179,17 @@ export function setupVaultIpc(
       const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
       if (!(await lstat(currentNotebook)).isDirectory())
         throw new Error('The destination notebook is no longer available.');
+      // RTF imports as an HTML note and legacy .doc as a text note, so the
+      // destination takes the converted extension rather than the source's.
+      const converted = convertImportedBytes(source, bytes);
+      const sourceBase = path.basename(source);
+      const destinationName =
+        sourceBase.slice(0, sourceBase.length - path.extname(sourceBase).length) + converted.extension;
       return (
         await copyImportedDocument(
           vault,
-          path.posix.join(notebookPath, path.basename(source)),
-          bytes,
+          path.posix.join(notebookPath, destinationName),
+          converted.bytes,
           false,
           access.assertCurrent,
         )
@@ -2205,7 +2218,10 @@ export function setupVaultIpc(
       });
       access.assertCurrent();
       if (consent.response !== 1) return null;
-      return copyImportedDocument(access.vault, relativePath, bytes, true, access.assertCurrent);
+      const converted = convertImportedBytes(source, bytes);
+      const destination =
+        relativePath.slice(0, relativePath.length - path.posix.extname(relativePath).length) + converted.extension;
+      return copyImportedDocument(access.vault, destination, converted.bytes, true, access.assertCurrent);
     });
   };
   ipcMain.handle(IPC_CHANNELS.vaultImportEntry, importSelectedEntry);

@@ -5,6 +5,7 @@ import { useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
 import type { VaultTask } from '../../../shared/types';
 import { imageUrl } from '../../../shared/attachments';
+import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
 import { htmlToMarkdown, markdownToHtml } from './format-conversion';
 import { sanitizeNoteHtml } from './sanitize-html';
@@ -66,7 +67,7 @@ interface MarkdownDocumentProps {
   onOpenExternal?: (url: string) => void;
   editorRef?: RefObject<HTMLTextAreaElement>;
   notePath?: string;
-  format?: 'markdown' | 'html';
+  format?: 'markdown' | 'html' | 'text';
   disabled?: boolean;
   htmlTasks?: VaultTask[];
   onToggleHtmlTask?: (taskId: string) => void;
@@ -88,6 +89,24 @@ export default function MarkdownDocument({
   onToggleHtmlTask,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
+  if (mode === 'edit' && format === 'text') {
+    // Plain-text notes have no rich-text form; the textarea is the editor.
+    return (
+      <label className="editor-label">
+        Plain text source
+        <textarea
+          ref={editorRef}
+          disabled={disabled}
+          data-context="editor-selection"
+          data-path={notePath}
+          aria-label="Plain text source"
+          className="markdown-editor"
+          value={content}
+          onChange={(event) => onChange(event.target.value)}
+        />
+      </label>
+    );
+  }
   if (mode === 'edit') {
     return (
       <>
@@ -129,6 +148,16 @@ export default function MarkdownDocument({
           </label>
         )}
       </>
+    );
+  }
+
+  if (format === 'text') {
+    // Reading view for plain text: real paragraphs, never Markdown parsing,
+    // so hashes, asterisks, and line breaks keep their literal meaning.
+    return (
+      <div className="document-body markdown-body" data-context="reading-document" data-path={notePath}>
+        <PlainTextDocument text={content} />
+      </div>
     );
   }
 
