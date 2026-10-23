@@ -851,9 +851,9 @@ export default function SettingsDialog({
                     : libraryEncryption.state === 'decrypting'
                       ? 'being turned off — decryption will finish next time you unlock'
                       : 'still migrating'}{' '}
-                  for this library: {libraryEncryption.files} note file{libraryEncryption.files === 1 ? '' : 's'}{' '}
-                  encrypted at rest. Notes open only while the library is unlocked. Attachments are not covered yet
-                  and remain ordinary files.
+                  for this library: {libraryEncryption.files} file{libraryEncryption.files === 1 ? '' : 's'}{' '}
+                  encrypted at rest, including attachments. Files open only while the library is unlocked, and
+                  encrypted files cannot be opened in other apps from inside this one.
                 </p>
                 {libraryEncryption.state === 'active' ? (
                   <>
@@ -863,7 +863,7 @@ export default function SettingsDialog({
                         checked={libraryDecryptionConsent}
                         onChange={(event) => setLibraryDecryptionConsent(event.target.checked)}
                       />
-                      I understand my notes will be decrypted back into ordinary files that any app can read
+                      I understand my files will be decrypted back into ordinary files that any app can read
                     </label>
                     <button
                       type="button"
@@ -875,7 +875,7 @@ export default function SettingsDialog({
                         void disable(true)
                           .then(() => {
                             setLibraryDecryptionConsent(false);
-                            setSecurityNotice('Whole-library encryption is off. Your notes are ordinary files again.');
+                            setSecurityNotice('Whole-library encryption is off. Your files are ordinary files again.');
                             setLibraryEncryption({ enabled: false, state: null, files: 0 });
                           })
                           .catch(() =>
@@ -892,12 +892,11 @@ export default function SettingsDialog({
             ) : (
               <>
                 <p>
-                  Whole-library encryption stores every note file in this library as an authenticated encrypted
-                  container, readable only while the library is unlocked. It is separate from metadata encryption
-                  above. Notes can no longer be read by other apps or editors, search works only while unlocked, and
-                  if you lose both the password and the recovery key the notes are unrecoverable. Attachments are
-                  not covered yet and remain ordinary files. Migration runs now and resumes automatically after an
-                  interruption.
+                  Whole-library encryption stores every file in this library — notes and attachments alike — as
+                  an authenticated encrypted container, readable only while the library is unlocked. It is separate
+                  from metadata encryption above. Files can no longer be read or opened by other apps, search works
+                  only while unlocked, and if you lose both the password and the recovery key the files are
+                  unrecoverable. Migration runs now and resumes automatically after an interruption.
                 </p>
                 <label>
                   <input
@@ -905,7 +904,7 @@ export default function SettingsDialog({
                     checked={libraryEncryptionConsent}
                     onChange={(event) => setLibraryEncryptionConsent(event.target.checked)}
                   />
-                  I understand my note files will be encrypted at rest and only open inside this app while unlocked
+                  I understand my files will be encrypted at rest and only open inside this app while unlocked
                 </label>
                 <button
                   type="button"
@@ -917,7 +916,7 @@ export default function SettingsDialog({
                     void enable(true)
                       .then(() => {
                         setLibraryEncryptionConsent(false);
-                        setSecurityNotice('Whole-library encryption is on. Your notes are encrypted at rest.');
+                        setSecurityNotice('Whole-library encryption is on. Your files are encrypted at rest.');
                         return window.a11yNotebook?.vault.libraryEncryptionStatus?.();
                       })
                       .then((status) => {
@@ -929,7 +928,7 @@ export default function SettingsDialog({
                       .finally(() => setLibraryEncryptionSaving(false));
                   }}
                 >
-                  {libraryEncryptionSaving ? 'Encrypting notes…' : 'Encrypt all notes in this library'}
+                  {libraryEncryptionSaving ? 'Encrypting files…' : 'Encrypt all files in this library'}
                 </button>
               </>
             )}

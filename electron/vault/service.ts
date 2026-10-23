@@ -102,15 +102,23 @@ export function createVaultService(
     return bytes.length >= LIBRARY_CONTAINER_MAGIC.length && bytes.subarray(0, 8).toString('ascii') === LIBRARY_CONTAINER_MAGIC;
   }
 
-  function decodeNoteBytes(relativePath: string, bytes: Buffer): string {
-    if (!libraryManifest) return bytes.toString('utf8');
+  function decodeFileBytes(relativePath: string, bytes: Buffer): Buffer {
+    if (!libraryManifest) return bytes;
     const entry = libraryManifest.files[relativePath];
     if (isLibraryContainer(bytes)) {
-      if (!entry) throw new Error('This note is encrypted but is not listed in the library encryption manifest.');
-      return decryptLibraryFile(requireLibraryContentKey(), entry.fileId, bytes).toString('utf8');
+      if (!entry) throw new Error('This file is encrypted but is not listed in the library encryption manifest.');
+      return decryptLibraryFile(requireLibraryContentKey(), entry.fileId, bytes);
     }
-    if (entry) throw new Error('This note should be encrypted but is stored in plaintext.');
-    return bytes.toString('utf8');
+    if (entry) throw new Error('This file should be encrypted but is stored in plaintext.');
+    return bytes;
+  }
+
+  function decodeNoteBytes(relativePath: string, bytes: Buffer): string {
+    return decodeFileBytes(relativePath, bytes).toString('utf8');
+  }
+
+  function libraryEncryptionCovers(relativePath: string): boolean {
+    return Boolean(libraryManifest?.files[relativePath]);
   }
 
   function decryptSearchBytes(relativePath: string, bytes: Buffer): Buffer | null {
@@ -349,7 +357,7 @@ export function createVaultService(
       if (!stat.isFile() || stat.size > 40 * 1024 * 1024) {
         throw new Error('This DOCX exceeds the 40 MiB archive limit.');
       }
-      const bytes = await file.readFile();
+      const bytes = decodeFileBytes(relativePath, await file.readFile());
       if (bytes.length > 40 * 1024 * 1024) throw new Error('This DOCX exceeds the 40 MiB archive limit.');
       const structure = parseDocxStructure(bytes);
       if (disposed || !root) throw new Error('This library is closed.');
@@ -573,7 +581,16 @@ export function createVaultService(
     assertVisibleCreationPath(relativePath);
     const target = await resolveEntry(relativePath, true);
     let pendingManifestEntry: LibraryManifestFile | null = null;
-    if (libraryManifest && isNotePath(relativePath) && typeof content === 'string') {
+    if (libraryManifest && Buffer.isBuffer(content)) {
+      const fileId = fileIdFor(relativePath);
+      const container = encryptLibraryFile(requireLibraryContentKey(), fileId, content);
+      pendingManifestEntry = {
+        fileId,
+        plainLength: content.length,
+        containerLength: container.length,
+      };
+      content = container;
+    } else if (libraryManifest && typeof content === 'string') {
       const fileId = fileIdFor(relativePath);
       const container = encryptLibraryFile(requireLibraryContentKey(), fileId, Buffer.from(content, 'utf8'));
       pendingManifestEntry = {
@@ -939,7 +956,7 @@ export function createVaultService(
       assertCurrent?.();
       const target = await resolveEntry(relativePath);
       assertCurrent?.();
-      const original = await readFile(target, 'utf8');
+      const original = decodeNoteBytes(relativePath, await readFile(target));
       assertCurrent?.();
       if (path.extname(target).toLowerCase() === '.html') {
         if (
@@ -998,7 +1015,7 @@ export function createVaultService(
       ) {
         throw new Error('Invalid HTML task update request.');
       }
-      const original = await readFile(target, 'utf8');
+      const original = decodeNoteBytes(relativePath, await readFile(target));
       if (createHash('sha256').update(original, 'utf8').digest('hex') !== revision) {
         throw new Error('Note changed on disk. Refresh tasks before updating this task.');
       }
@@ -1215,15 +1232,15 @@ export function createVaultService(
     if (!libraryManifest) throw new Error('Whole-library encryption is not enabled for this library.');
     const key = requireLibraryContentKey();
     const info = await getVault();
-    const notes: string[] = [];
+    const files: string[] = [];
     const collect = (entries: VaultEntry[]) => {
       for (const entry of entries) {
-        if (entry.kind === 'note') notes.push(entry.path);
+        if (entry.kind === 'note' || entry.kind === 'attachment') files.push(entry.path);
         if (entry.children) collect(entry.children);
       }
     };
     collect(info.entries);
-    const present = new Set(notes);
+    const present = new Set(files);
     let pruned = false;
     for (const listed of Object.keys(libraryManifest.files)) {
       if (!present.has(listed)) {
@@ -1232,14 +1249,14 @@ export function createVaultService(
       }
     }
     if (pruned) libraryEncryption?.manifestChanged(libraryManifest);
-    for (const relative of notes) {
+    for (const relative of files) {
       assertCurrent();
       const target = await resolveEntry(relative);
       const raw = await readFile(target);
       const existing = libraryManifest.files[relative];
       if (isLibraryContainer(raw)) {
         if (!existing)
-          throw new Error(`The note ${relative} is an encryption container but is not in the manifest.`);
+          throw new Error(`The file ${relative} is an encryption container but is not in the manifest.`);
         const plain = decryptLibraryFile(key, existing.fileId, raw);
         recordManifestEntry(relative, {
           fileId: existing.fileId,
@@ -1248,8 +1265,15 @@ export function createVaultService(
         });
         continue;
       }
-      if (existing) throw new Error(`The note ${relative} should be encrypted but is stored in plaintext.`);
-      await replaceNote(relative, raw.toString('utf8'), undefined, assertCurrent);
+      if (existing) throw new Error(`The file ${relative} should be encrypted but is stored in plaintext.`);
+      const fileId = newLibraryFileId();
+      const container = encryptLibraryFile(key, fileId, raw);
+      await rewriteRawBytes(relative, container, assertCurrent);
+      recordManifestEntry(relative, {
+        fileId,
+        plainLength: raw.length,
+        containerLength: container.length,
+      });
     }
     if (libraryManifest.state !== 'active') {
       libraryManifest.state = 'active';
@@ -1299,7 +1323,7 @@ export function createVaultService(
           const plain = decryptLibraryFile(key, entry.fileId, raw);
           await rewriteRawBytes(relative, plain, assertCurrent);
         } else if (libraryManifest.state !== 'decrypting') {
-          throw new Error(`The note ${relative} should be encrypted but is stored in plaintext.`);
+          throw new Error(`The file ${relative} should be encrypted but is stored in plaintext.`);
         }
       }
       delete libraryManifest.files[relative];
@@ -1316,6 +1340,12 @@ export function createVaultService(
     libraryEncryptionManifest,
     migrateToLibraryEncryption,
     migrateFromLibraryEncryption,
+    decodeFileBytes,
+    libraryEncryptionCovers,
+    // The asset store's save path: same staging, baseline and
+    // encryption behavior as replaceNote, without the note-path
+    // restriction (assets include .csv and .json sources).
+    replaceTextFile: replaceNote,
     saveNote,
     createFolder,
     createNote,
