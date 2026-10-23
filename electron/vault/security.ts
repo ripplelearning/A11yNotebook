@@ -721,6 +721,7 @@ export function encryptRecord(
     | 'credentials'
     | 'legacy-vault-key'
     | 'vault-config-integrity'
+    | 'library-content'
     | `metadata-${ProtectedStoreName}`,
   id: string,
   plaintext: string,
@@ -745,6 +746,7 @@ export function decryptRecord(
     | 'credentials'
     | 'legacy-vault-key'
     | 'vault-config-integrity'
+    | 'library-content'
     | `metadata-${ProtectedStoreName}`,
   value: unknown,
 ): string {
