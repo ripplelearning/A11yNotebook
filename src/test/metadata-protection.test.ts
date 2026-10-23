@@ -305,7 +305,9 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.extend('milestones', [])).rejects.toThrow('not enabled');
     await f.store.enable();
     await expect(f.store.extend('annotations', {})).rejects.toThrow('already under encrypted protection');
-    await expect(f.store.extend('search-index', {})).rejects.toThrow('No legacy filename is registered');
+    // 'asset-drafts' is deliberately never registered: cognitive
+    // drafts live under the checkpoints store.
+    await expect(f.store.extend('asset-drafts' as never, {})).rejects.toThrow('No legacy filename is registered');
     await expect(f.store.read('search-index')).rejects.toThrow('not under encrypted protection');
   });
 
@@ -321,6 +323,42 @@ describe('scoped encrypted metadata storage', () => {
     await writeFile(containerPath, bytes.replace(/[a-f0-9]{8}/, 'deadbeef'));
     await expect(f.store.read('milestones')).rejects.toThrow();
     delete PROTECTED_LEGACY_FILENAMES.milestones;
+  });
+
+  it('rotateKeys stages every store under the new key without committing', async () => {
+    const { randomBytes } = await import('node:crypto');
+    const f = await fixture();
+    await f.store.enable();
+    await f.store.write('annotations', { rotated: 'new-key-only words' });
+    const newKey = randomBytes(32);
+    keys.push(newKey);
+    const nextPointer = await f.store.rotateKeys(newKey);
+    // Nothing committed: the live config still points at the old
+    // generations, and the old key still reads the stores.
+    const liveConfig = f.config();
+    if (liveConfig.version !== 3) throw new Error('expected v3');
+    expect(liveConfig.metadataProtection?.vaultId).toBe(nextPointer.vaultId);
+    expect(liveConfig.metadataProtection?.stores.annotations?.generation).not.toBe(
+      nextPointer.stores.annotations?.generation,
+    );
+    await expect(f.store.read('annotations')).resolves.toEqual({ rotated: 'new-key-only words' });
+    // A store bound to the new pointer and new key reads the staged
+    // containers; the old key cannot.
+    const rotatedStore = createProtectedMetadataStore({
+      resolver: {
+        resolveMetadata: async (name: string) => path.join(f.folder, name),
+      },
+      getConfig: () => {
+        const config = f.config();
+        if (config.version !== 3) throw new Error('expected v3');
+        return { ...config, metadataProtection: nextPointer };
+      },
+      access: () => ({ key: newKey, assertCurrent: () => undefined }),
+      commitConfig: async () => undefined,
+      readLegacy: async () => null,
+    });
+    await expect(rotatedStore.read('annotations')).resolves.toEqual({ rotated: 'new-key-only words' });
+    await expect(rotatedStore.read('checkpoints')).resolves.toEqual({ version: 1, drafts: [] });
   });
 
   it('validates pointers with extension stores and rejects unknown or base-less pointers', async () => {

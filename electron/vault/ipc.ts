@@ -1,6 +1,6 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
 import { lstat, mkdir, readFile, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
@@ -59,6 +59,7 @@ import { openWithWindows } from './open-with';
 import { createLocalLibrary } from './create-library';
 import { createAuditStore, runAudited, type AuditAttempt, type AuditOperation } from './audit';
 import {
+  completeVaultDataKeyRotation,
   createVaultSecurityConfig,
   completeRecoverableCredentialMigration,
   decryptPasswordEncryptedNote,
@@ -72,6 +73,7 @@ import {
   reencryptPasswordNote,
   resetVaultPasswordWithRecovery,
   revokeVaultRecoveryKey,
+  rotateVaultDataKey,
   rotateVaultRecoveryKey,
   updateRecoverableCredentials,
   updateRecoverableCredentialText,
@@ -598,6 +600,12 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
   // the time any bookmark/link operation runs, both are wired. The
   // instance check keeps a stale service from touching the new
   // library's protection state.
+  // The search cache needs its protection state BEFORE initialize()
+  // runs (its first rebuild persists immediately), when the protected
+  // store does not exist yet — so the adapter also consults a hint
+  // cell filled from the security config read just below, before
+  // initialize. Once the store exists, protects() is authoritative.
+  const searchProtectionHint = { value: false };
   const nextService = createVaultService(vaultPath, undefined, {
     isProtected: (name) =>
       service === nextService && (protectedMetadata?.protects(name === 'bookmarks.json' ? 'bookmarks' : 'links') ?? false),
@@ -609,11 +617,29 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
       return protectedMetadata!.write(name === 'bookmarks.json' ? 'bookmarks' : 'links', value);
     },
+    searchIndex: {
+      isProtected: () => searchProtectionHint.value || (protectedMetadata?.protects('search-index') ?? false),
+      read: () => {
+        if (!protectedMetadata) throw new Error('Protected metadata is not ready yet.');
+        return protectedMetadata.read('search-index');
+      },
+      write: (value) => {
+        if (!protectedMetadata) throw new Error('Protected metadata is not ready yet.');
+        return protectedMetadata.write('search-index', value);
+      },
+    },
   });
   let vault: VaultInfo;
   let nextSecurity: VaultSecurityConfig | null = null;
   let nextIdleLockMinutes = 15;
   try {
+    const preSecurity = (await readVaultSecurityMetadata(nextService).catch(() => null)) as {
+      version?: unknown;
+      metadataProtection?: { stores?: Record<string, unknown> };
+    } | null;
+    searchProtectionHint.value = Boolean(
+      preSecurity?.version === 3 && preSecurity.metadataProtection?.stores?.['search-index'],
+    );
     vault = await nextService.initialize();
     const savedSecurity = await readVaultSecurityMetadata(nextService);
     // Plaintext read on purpose: at open time the library is still
@@ -972,6 +998,71 @@ async function finishProtectedMetadataCleanup() {
   }
 }
 
+/**
+ * Re-encrypt everything still keyed by the pre-rotation legacy key
+ * (the credentials file and vault-encrypted notes) under the current
+ * data key, then complete the rotation by dropping the legacy key.
+ * Returns false — leaving the legacy fallback in place — when any
+ * item cannot be rotated; it keeps opening via the legacy fallback. The caller must
+ * hold the vault-operation serialization and an unlocked library.
+ * Password-encrypted notes are never touched: they use independent
+ * passwords, not the data key.
+ */
+async function reencryptLegacyContent(): Promise<boolean> {
+  if (!service || !securityConfig || securityConfig.version !== 3 || !masterKey) return false;
+  const vault = service;
+  const key = masterKey;
+  const legacy = unwrapLegacyVaultKey(securityConfig, key);
+  if (!legacy) return false;
+  try {
+    if (legacy.equals(key)) return true;
+    const store = metadataFor(vault);
+    const savedCredentials = await store.read('credentials.json').catch(() => null);
+    if (isEncryptedRecord(savedCredentials)) {
+      const text = decryptRecord(legacy, 'credentials', savedCredentials);
+      await store.write('credentials.json', encryptRecord(key, 'credentials', 'credentials-store', text));
+    }
+    const info = await vault.getVault();
+    const notes: string[] = [];
+    const collect = (entries: VaultEntry[]) => {
+      for (const entry of entries) {
+        if (entry.kind === 'note') notes.push(entry.path);
+        if (entry.children) collect(entry.children);
+      }
+    };
+    collect(info.entries);
+    for (const relative of notes) {
+      const content = await vault.readNote(relative, 16 * 1024 * 1024).catch(() => null);
+      if (content === null) return false;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(content);
+      } catch {
+        continue;
+      }
+      if (!isEncryptedRecord(parsed)) continue;
+      let plaintext: string;
+      try {
+        plaintext = decryptRecord(legacy, 'note', parsed);
+      } catch {
+        return false;
+      }
+      const rotated = encryptRecord(key, 'note', parsed.id, plaintext);
+      await vault.saveNote(relative, JSON.stringify(rotated), content);
+    }
+    if (!service || service !== vault || masterKey !== key || securityConfig?.version !== 3) return false;
+    const completed = completeVaultDataKeyRotation(securityConfig, key);
+    await store.write('security.json', completed);
+    securityConfig = completed;
+    return true;
+  } catch {
+    return false;
+  } finally {
+    legacy.fill(0);
+  }
+}
+
+
 async function relocate(relative: string, destination: string, assertCurrent: () => void = () => undefined) {
   if (relative === destination || relative.includes('\\') || destination.includes('\\'))
     throw new Error('Choose a different, library-relative destination using forward slashes.');
@@ -1279,6 +1370,12 @@ export function setupVaultIpc(
           const raw = await metadataFor(vault).read('bookmarks.json');
           if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
           legacy = raw ?? [];
+        } else if (store === 'search-index') {
+          const raw = await metadataFor(vault).read('search-index.json');
+          legacy =
+            raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as { documents?: unknown }).documents)
+              ? raw
+              : { version: 4, root: (await vault.getVault()).path, documents: [] };
         } else if (store === 'settings') {
           legacy = validateSettings((await metadataFor(vault).read('settings.json')) ?? DEFAULT_SETTINGS);
         } else if (store === 'reminders') {
@@ -1563,6 +1660,57 @@ export function setupVaultIpc(
         audit.committed();
         securityConfig = revoked;
         resetIdleLock();
+      });
+    },
+  );
+  handleAudited(
+    IPC_CHANNELS.vaultSecurityRotateDataKey,
+    'data-key.rotate',
+    async (audit, event, password: unknown, recoveryKey: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        if (!securityConfig || securityConfig.version !== 3 || !masterKey)
+          throw new Error('Unlock a version-3 library first.');
+        if (typeof password !== 'string') throw new Error('Enter the library password.');
+        if (recoveryKey !== null && typeof recoveryKey !== 'string')
+          throw new Error('Enter the recovery key, or leave it empty when recovery is not configured.');
+        const vault = requireService();
+        const newKey = randomBytes(32);
+        try {
+          // Stage every protected store under the new key first; the
+          // staged containers are orphans until the rotated config
+          // (carrying their digests) commits.
+          const nextPointer = protectedMetadata?.enabled() ? await protectedMetadata.rotateKeys(newKey) : undefined;
+          access.assertCurrent();
+          const { config: rotated, oldKey } = await rotateVaultDataKey(
+            securityConfig,
+            password,
+            recoveryKey,
+            nextPointer,
+            newKey,
+          );
+          oldKey.fill(0);
+          await metadataFor(vault).write('security.json', rotated);
+          audit.committed();
+          // The key swap itself invalidates every captured access
+          // (they compare the master-key buffer), so no generation
+          // bump or post-swap assertion is needed here.
+          const previousKey = masterKey;
+          securityConfig = rotated;
+          masterKey = newKey;
+          previousKey.fill(0);
+          await protectedMetadata?.sweepOrphans().catch(() => undefined);
+          // Best effort: re-encrypt notes and the credentials file
+          // now; anything left keeps opening via the legacy fallback
+          // and is retried on the next unlock.
+          await reencryptLegacyContent().catch(() => false);
+          resetIdleLock();
+        } catch (error) {
+          if (masterKey !== newKey) newKey.fill(0);
+          throw error;
+        }
       });
     },
   );

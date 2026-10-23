@@ -99,6 +99,7 @@ export interface VaultBridge {
   acknowledgeVaultRecovery?(acknowledged: boolean): Promise<void>;
   recoverVault?(recoveryKey: string, newPassword: string): Promise<VaultInfo>;
   revokeVaultRecovery?(password: string): Promise<void>;
+  rotateVaultDataKey?(password: string, recoveryKey: string | null): Promise<void>;
   encryptNote?(path: string, expectedContent: string, password: string): Promise<void>;
   isNoteEncrypted?(path: string): Promise<boolean>;
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;

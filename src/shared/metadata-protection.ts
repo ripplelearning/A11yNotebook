@@ -18,7 +18,6 @@ export const PROTECTED_STORE_NAMES = [
   'reminders',
   'settings',
   'search-index',
-  'asset-drafts',
   'flashcard-schedules',
 ] as const;
 
@@ -67,4 +66,5 @@ export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
   'flashcard-schedules',
   'reminders',
   'settings',
+  'search-index',
 ];
