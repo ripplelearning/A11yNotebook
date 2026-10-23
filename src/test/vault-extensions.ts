@@ -19,6 +19,10 @@ export function vaultExtensions() {
     addPdfAnnotation: vi.fn(),
     updatePdfAnnotation: vi.fn(),
     deletePdfAnnotation: vi.fn(async () => undefined),
+    listDocxAnnotations: vi.fn(async () => []),
+    addDocxAnnotation: vi.fn(),
+    updateDocxAnnotation: vi.fn(),
+    deleteDocxAnnotation: vi.fn(async () => undefined),
     readAttachment: vi.fn(),
     readDocxStructure: vi.fn(async () => ({
       blocks: [],

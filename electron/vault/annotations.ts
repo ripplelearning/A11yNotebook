@@ -7,7 +7,13 @@ import {
   type NewAnnotation,
   type NoteAnnotation,
 } from '../../src/shared/annotations';
-import type { PdfAnnotationStore } from '../../src/shared/annotation-store';
+import type { DocxAnnotationStore, PdfAnnotationStore } from '../../src/shared/annotation-store';
+import {
+  DOCX_ANNOTATION_LIMITS,
+  DOCX_ANNOTATION_SCHEMA_VERSION,
+  type DocxAnnotation,
+  type DocxAnnotationAnchor,
+} from '../../src/shared/docx-annotations';
 import {
   PDF_ANNOTATION_COLORS,
   PDF_ANNOTATION_LIMITS,
@@ -23,13 +29,15 @@ export interface AnnotationStoreOptions {
   write: (value: AnnotationMetadata) => Promise<void>;
   validateNote: (path: string) => Promise<void>;
   validatePdf?: (path: string) => Promise<void>;
+  validateDocx?: (path: string) => Promise<void>;
   captureAuthorization?: () => () => void;
 }
 
 export interface AnnotationMetadata {
-  version: 2;
+  version: 3;
   annotations: NoteAnnotation[];
   pdfAnnotations: PdfAnnotation[];
+  docxAnnotations: DocxAnnotation[];
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -266,11 +274,63 @@ function pdfRecord(value: unknown): PdfAnnotation {
 }
 
 /** Callbacks must securely read/write vault-local metadata and reject notes outside the vault, including symlinks. */
+function docxAnchor(value: unknown): DocxAnnotationAnchor {
+  const data = object(value);
+  const quote = text(data.quote, DOCX_ANNOTATION_LIMITS.quote, true);
+  if (
+    !Number.isSafeInteger(data.blockIndex) ||
+    (data.blockIndex as number) < 0 ||
+    (data.blockIndex as number) > DOCX_ANNOTATION_LIMITS.blockIndex ||
+    (data.cellIndex !== undefined &&
+      (!Number.isSafeInteger(data.cellIndex) ||
+        (data.cellIndex as number) < 0 ||
+        (data.cellIndex as number) > DOCX_ANNOTATION_LIMITS.blockIndex)) ||
+    !Number.isSafeInteger(data.start) ||
+    !Number.isSafeInteger(data.end) ||
+    (data.start as number) < 0 ||
+    (data.end as number) - (data.start as number) !== quote.length
+  )
+    throw new Error('Invalid DOCX annotation anchor.');
+  return {
+    blockIndex: data.blockIndex as number,
+    ...(data.cellIndex !== undefined ? { cellIndex: data.cellIndex as number } : {}),
+    quote,
+    prefix: text(data.prefix, DOCX_ANNOTATION_LIMITS.context),
+    suffix: text(data.suffix, DOCX_ANNOTATION_LIMITS.context),
+    start: data.start as number,
+    end: data.end as number,
+  };
+}
+
+function docxRecord(value: unknown): DocxAnnotation {
+  const data = object(value);
+  const id = text(data.id, 36, true);
+  if (!/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(id)) {
+    throw new Error('Invalid annotation identifier.');
+  }
+  const createdAt = text(data.createdAt, 30, true);
+  const updatedAt = text(data.updatedAt, 30, true);
+  if (!Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(updatedAt))) {
+    throw new Error('Invalid annotation date.');
+  }
+  if (data.schemaVersion !== DOCX_ANNOTATION_SCHEMA_VERSION) throw new Error('Invalid DOCX annotation schema.');
+  return {
+    id,
+    path: notePath(data.path),
+    anchor: docxAnchor(data.anchor),
+    ...fields(data),
+    createdAt,
+    updatedAt,
+    schemaVersion: DOCX_ANNOTATION_SCHEMA_VERSION,
+  };
+}
+
 export function createAnnotationStore({
   read,
   write: persist,
   validateNote,
   validatePdf,
+  validateDocx,
   captureAuthorization,
 }: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
@@ -295,24 +355,31 @@ export function createAnnotationStore({
   async function load(): Promise<AnnotationMetadata> {
     const raw = await read();
     activeAuthorization?.();
-    if (raw === undefined || raw === null) return { version: 2, annotations: [], pdfAnnotations: [] };
+    if (raw === undefined || raw === null)
+      return { version: 3, annotations: [], pdfAnnotations: [], docxAnnotations: [] };
     const data = object(raw);
     if (
-      ![1, 2].includes(data.version as number) ||
+      ![1, 2, 3].includes(data.version as number) ||
       !Array.isArray(data.annotations) ||
       data.annotations.length > ANNOTATION_LIMITS.records ||
       (data.version === 2 &&
-        (!Array.isArray(data.pdfAnnotations) || data.pdfAnnotations.length > PDF_ANNOTATION_LIMITS.records))
+        (!Array.isArray(data.pdfAnnotations) || data.pdfAnnotations.length > PDF_ANNOTATION_LIMITS.records)) ||
+      (data.version === 3 &&
+        (!Array.isArray(data.pdfAnnotations) ||
+          data.pdfAnnotations.length > PDF_ANNOTATION_LIMITS.records ||
+          !Array.isArray(data.docxAnnotations) ||
+          data.docxAnnotations.length > DOCX_ANNOTATION_LIMITS.records))
     ) {
       throw new Error('Invalid annotation metadata.');
     }
     const annotations = data.annotations.map(record);
-    const pdfAnnotations = data.version === 2 ? (data.pdfAnnotations as unknown[]).map(pdfRecord) : [];
-    const ids = [...annotations, ...pdfAnnotations].map((item) => item.id);
+    const pdfAnnotations = (data.version as number) >= 2 ? (data.pdfAnnotations as unknown[]).map(pdfRecord) : [];
+    const docxAnnotations = data.version === 3 ? (data.docxAnnotations as unknown[]).map(docxRecord) : [];
+    const ids = [...annotations, ...pdfAnnotations, ...docxAnnotations].map((item) => item.id);
     if (new Set(ids).size !== ids.length) {
       throw new Error('Duplicate annotation identifier.');
     }
-    return { version: 2, annotations, pdfAnnotations };
+    return { version: 3, annotations, pdfAnnotations, docxAnnotations };
   }
   async function validate(path: unknown) {
     const safe = notePath(path);
@@ -328,6 +395,75 @@ export function createAnnotationStore({
     await validatePdf(safe);
     return safe;
   }
+  async function validateDocxPath(path: unknown) {
+    const safe = notePath(path);
+    if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid DOCX annotation path.');
+    if (!/\.docx$/i.test(safe)) throw new Error('DOCX annotations require a Word document.');
+    if (!validateDocx) throw new Error('DOCX annotation validation is unavailable.');
+    await validateDocx(safe);
+    return safe;
+  }
+  const docx: DocxAnnotationStore = {
+    list(path) {
+      return serial(async () => {
+        const safe = await validateDocxPath(path);
+        return (await load()).docxAnnotations.filter((item) => item.path === safe);
+      });
+    },
+    add(input) {
+      return serial(async () => {
+        const data = object(input);
+        const path = await validateDocxPath(data.path);
+        const validAnchor = docxAnchor(data.anchor);
+        const validFields = fields(data);
+        const metadata = await load();
+        if (metadata.docxAnnotations.length >= DOCX_ANNOTATION_LIMITS.records)
+          throw new Error('DOCX annotation limit reached.');
+        const now = new Date().toISOString();
+        const added: DocxAnnotation = {
+          id: randomUUID(),
+          path,
+          anchor: validAnchor,
+          ...validFields,
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: DOCX_ANNOTATION_SCHEMA_VERSION,
+        };
+        metadata.docxAnnotations.push(added);
+        await write(metadata);
+        return added;
+      });
+    },
+    update(path, id, patch) {
+      return serial(async () => {
+        const safe = await validateDocxPath(path);
+        const data = object(patch);
+        if (Object.keys(data).some((key) => !['color', 'label', 'comment'].includes(key)))
+          throw new Error('Invalid DOCX annotation update.');
+        const metadata = await load();
+        const index = metadata.docxAnnotations.findIndex((item) => item.id === id && item.path === safe);
+        if (index < 0) throw new Error('DOCX annotation not found.');
+        const updated: DocxAnnotation = {
+          ...metadata.docxAnnotations[index],
+          ...fields({ ...metadata.docxAnnotations[index], ...data }),
+          updatedAt: new Date().toISOString(),
+        };
+        metadata.docxAnnotations[index] = updated;
+        await write(metadata);
+        return updated;
+      });
+    },
+    delete(path, id) {
+      return serial(async () => {
+        const safe = await validateDocxPath(path);
+        const metadata = await load();
+        const index = metadata.docxAnnotations.findIndex((item) => item.id === id && item.path === safe);
+        if (index < 0) throw new Error('DOCX annotation not found.');
+        metadata.docxAnnotations.splice(index, 1);
+        await write(metadata);
+      });
+    },
+  };
   const pdf: PdfAnnotationStore = {
     list(path) {
       return serial(async () => {
@@ -396,6 +532,7 @@ export function createAnnotationStore({
   };
   return {
     pdf,
+    docx,
     snapshot: () => serial(load),
     restore: (value: AnnotationMetadata) => serial(() => write(value)),
     list(path: string): Promise<NoteAnnotation[]> {
@@ -470,6 +607,11 @@ export function createAnnotationStore({
           if (item.path === source || item.path.startsWith(`${source}/`)) {
             item.path = await validatePdfPath(`${destination}${item.path.slice(source.length)}`);
             for (const target of [item.target, ...(item.targets ?? [])]) target.documentIdentity.vaultPath = item.path;
+          }
+        }
+        for (const item of metadata.docxAnnotations) {
+          if (item.path === source || item.path.startsWith(`${source}/`)) {
+            item.path = await validateDocxPath(`${destination}${item.path.slice(source.length)}`);
           }
         }
         await write(metadata);
