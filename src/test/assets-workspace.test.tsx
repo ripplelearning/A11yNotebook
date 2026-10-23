@@ -167,6 +167,87 @@ describe('vault-backed cognitive workspace', () => {
     expect(vault.saveAsset).not.toHaveBeenCalled();
   });
 
+  it('opens a malformed structured file in source recovery mode and returns to the structured editor once fixed', async () => {
+    const vault = vaultExtensions();
+    vault.readAsset.mockResolvedValue({ path: 'Broken.outline.md', type: 'outline', content: 'not a list\n' });
+    window.a11yNotebook = {
+      vault: {
+        ...vault,
+        readAssetDraft: vi.fn(async () => ({ enabled: false, token: '', draft: null })),
+      },
+    } as unknown as NotebookBridge;
+    const announce = vi.fn();
+    render(
+      <AssetsWorkspace
+        paths={['Broken.outline.md']}
+        initialPath="Broken.outline.md"
+        refresh={async () => undefined}
+        announce={announce}
+        onDirty={vi.fn()}
+        onBusy={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Source recovery mode' });
+    expect(announce).toHaveBeenCalledWith(
+      'This file could not be opened in the structured editor. Recovery mode shows its source text.',
+    );
+    expect(screen.getByLabelText('Asset source')).toHaveValue('not a list\n');
+    expect(screen.getByRole('alert')).toHaveTextContent('Expected a list item at line 1');
+    expect(screen.getByRole('button', { name: 'Open in structured editor' })).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Asset source'), { target: { value: '- Fixed\n- Two\n' } });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open in structured editor' })).not.toBeDisabled(),
+    );
+    fireEvent.click(screen.getByRole('button', { name: 'Open in structured editor' }));
+    await waitFor(() => expect(screen.queryByRole('heading', { name: 'Source recovery mode' })).not.toBeInTheDocument());
+    expect(vault.saveAsset).not.toHaveBeenCalled();
+  });
+
+  it('restores a malformed draft as source text and saves the fixed source', async () => {
+    const vault = vaultExtensions();
+    vault.readAsset.mockResolvedValue({ path: 'Plan.outline.md', type: 'outline', content: '- One\n' });
+    window.a11yNotebook = {
+      vault: {
+        ...vault,
+        readAssetDraft: vi.fn(async () => ({
+          enabled: true,
+          token: 'session',
+          draft: {
+            path: 'Plan.outline.md',
+            type: 'outline',
+            revision: 'revision',
+            updatedAt: '2026-10-10T00:00:00.000Z',
+            expiresAt: '2026-10-17T00:00:00.000Z',
+            baselineHash: 'hash',
+            baselineContent: '- One\n',
+            content: 'broken draft\n',
+          },
+        })),
+        checkpointAssetDraft: vi.fn(async () => ({}) as never),
+        discardAssetDraft: vi.fn(async () => undefined),
+      },
+    } as unknown as NotebookBridge;
+    render(
+      <AssetsWorkspace
+        paths={['Plan.outline.md']}
+        initialPath="Plan.outline.md"
+        refresh={async () => undefined}
+        announce={vi.fn()}
+        onDirty={vi.fn()}
+        onBusy={vi.fn()}
+      />,
+    );
+    await screen.findByRole('heading', { name: 'Recover unsaved asset changes' });
+    fireEvent.click(screen.getByRole('button', { name: 'Restore as unsaved changes' }));
+    const restoreSource = await screen.findByRole('button', { name: 'Restore as source text' });
+    fireEvent.click(restoreSource);
+    await screen.findByRole('heading', { name: 'Source recovery mode' });
+    expect(screen.getByLabelText('Asset source')).toHaveValue('broken draft\n');
+    fireEvent.change(screen.getByLabelText('Asset source'), { target: { value: '- Recovered\n' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save source text' }));
+    await waitFor(() => expect(vault.saveAsset).toHaveBeenCalledWith('Plan.outline.md', '- Recovered\n', '- One\n'));
+  });
+
   it('loads a newly requested asset instead of retaining the previous file', async () => {
     const { props, rerender } = setup();
     await screen.findByText('Alpha');
