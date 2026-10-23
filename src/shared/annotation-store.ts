@@ -11,14 +11,21 @@ import {
   type DocxAnnotationUpdate,
   type NewDocxAnnotation,
 } from './docx-annotations';
+import {
+  EPUB_ANNOTATION_SCHEMA_VERSION,
+  type EpubAnnotation,
+  type EpubAnnotationUpdate,
+  type NewEpubAnnotation,
+} from './epub-annotations';
 
-export type AnnotationRecord = NoteAnnotation | PdfAnnotation | DocxAnnotation;
+export type AnnotationRecord = NoteAnnotation | PdfAnnotation | DocxAnnotation | EpubAnnotation;
 
 export const ANNOTATION_SCHEMA_VERSIONS = {
   pdf: PDF_ANNOTATION_SCHEMA_VERSION,
   markdown: NOTE_ANNOTATION_SCHEMA_VERSION,
   html: NOTE_ANNOTATION_SCHEMA_VERSION,
   docx: DOCX_ANNOTATION_SCHEMA_VERSION,
+  epub: EPUB_ANNOTATION_SCHEMA_VERSION,
 } as const;
 
 export interface PdfAnnotationStore {
@@ -32,5 +39,12 @@ export interface DocxAnnotationStore {
   list(path: string): Promise<DocxAnnotation[]>;
   add(input: NewDocxAnnotation): Promise<DocxAnnotation>;
   update(path: string, id: string, patch: DocxAnnotationUpdate): Promise<DocxAnnotation>;
+  delete(path: string, id: string): Promise<void>;
+}
+
+export interface EpubAnnotationStore {
+  list(path: string): Promise<EpubAnnotation[]>;
+  add(input: NewEpubAnnotation): Promise<EpubAnnotation>;
+  update(path: string, id: string, patch: EpubAnnotationUpdate): Promise<EpubAnnotation>;
   delete(path: string, id: string): Promise<void>;
 }

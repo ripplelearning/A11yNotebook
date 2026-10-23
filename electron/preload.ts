@@ -67,6 +67,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultDocxAnnotationAdd: 'vault:docx-annotation-add',
   vaultDocxAnnotationUpdate: 'vault:docx-annotation-update',
   vaultDocxAnnotationDelete: 'vault:docx-annotation-delete',
+  vaultEpubAnnotations: 'vault:epub-annotations',
+  vaultEpubAnnotationAdd: 'vault:epub-annotation-add',
+  vaultEpubAnnotationUpdate: 'vault:epub-annotation-update',
+  vaultEpubAnnotationDelete: 'vault:epub-annotation-delete',
   vaultReadAttachment: 'vault:read-attachment',
   vaultReadDocxStructure: 'vault:read-docx-structure',
   vaultImageAlt: 'vault:image-alt',
@@ -180,6 +184,11 @@ const bridge: NotebookBridge = {
     updateDocxAnnotation: (relativePath, id, update) =>
       ipcRenderer.invoke(CHANNELS.vaultDocxAnnotationUpdate, relativePath, id, update),
     deleteDocxAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultDocxAnnotationDelete, relativePath, id),
+    listEpubAnnotations: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultEpubAnnotations, relativePath),
+    addEpubAnnotation: (annotation) => ipcRenderer.invoke(CHANNELS.vaultEpubAnnotationAdd, annotation),
+    updateEpubAnnotation: (relativePath, id, update) =>
+      ipcRenderer.invoke(CHANNELS.vaultEpubAnnotationUpdate, relativePath, id, update),
+    deleteEpubAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultEpubAnnotationDelete, relativePath, id),
     readAttachment: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadAttachment, relativePath),
     readDocxStructure: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadDocxStructure, relativePath),
     getImageAlt: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImageAlt, relativePath),

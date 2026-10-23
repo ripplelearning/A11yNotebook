@@ -31,7 +31,7 @@ describe('DOCX annotation persistence', () => {
     const added = await store.docx.add(input);
     expect(added.schemaVersion).toBe(1);
     expect(await store.docx.list(input.path)).toEqual([added]);
-    expect(snapshot()).toMatchObject({ version: 3, annotations: [], pdfAnnotations: [], docxAnnotations: [added] });
+    expect(snapshot()).toMatchObject({ version: 4, annotations: [], pdfAnnotations: [], docxAnnotations: [added] });
     const updated = await store.docx.update(input.path, added.id, { label: 'Updated' });
     expect(updated.label).toBe('Updated');
     expect(updated.anchor).toEqual(added.anchor);
@@ -42,7 +42,7 @@ describe('DOCX annotation persistence', () => {
   it('loads v2 envelopes (no DOCX collection) and upgrades them on write', async () => {
     const { store, snapshot } = fixture({ version: 2, annotations: [], pdfAnnotations: [] });
     await store.docx.add(input);
-    expect(snapshot()).toMatchObject({ version: 3, docxAnnotations: [expect.objectContaining({ label: 'Key figure' })] });
+    expect(snapshot()).toMatchObject({ version: 4, docxAnnotations: [expect.objectContaining({ label: 'Key figure' })] });
   });
 
   it('rejects unsafe paths, wrong extensions, and malformed anchors before writing', async () => {

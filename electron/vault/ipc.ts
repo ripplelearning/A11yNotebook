@@ -25,6 +25,7 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
+import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
@@ -606,6 +607,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     },
     validatePdf: (relative) => nextService.validatePdfAnnotationDocument(relative),
     validateDocx: (relative) => nextService.validateDocxAnnotationDocument(relative),
+    validateEpub: (relative) => nextService.validateEpubAnnotationDocument(relative),
   });
   if (masterKey || !securityConfig) await startReminders(nextService, vault);
   else {
@@ -2228,6 +2230,58 @@ export function setupVaultIpc(
     return serializeVaultOperation(async () => {
       access.assertCurrent();
       await current.docx.delete(relative, id);
+      access.assertCurrent();
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultEpubAnnotations, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !annotations) throw new Error('Invalid ePub annotation request.');
+    const current = annotations;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.epub.list(relative);
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultEpubAnnotationAdd, async (event, value: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!annotations) throw new Error('Open a library first.');
+    const current = annotations;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.epub.add(value as NewEpubAnnotation);
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultEpubAnnotationUpdate,
+    async (event, relative: unknown, id: unknown, update: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
+        throw new Error('Invalid ePub annotation request.');
+      const current = annotations;
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const result = await current.epub.update(relative, id, update as EpubAnnotationUpdate);
+        access.assertCurrent();
+        return result;
+      });
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultEpubAnnotationDelete, async (event, relative: unknown, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || typeof id !== 'string' || !annotations)
+      throw new Error('Invalid ePub annotation request.');
+    const current = annotations;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      await current.epub.delete(relative, id);
       access.assertCurrent();
     });
   });

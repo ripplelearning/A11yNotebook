@@ -223,6 +223,24 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     await readDocxStructure(relativePath);
   }
 
+  async function validateEpubAnnotationDocument(relativePath: string) {
+    if (!/\.epub$/i.test(relativePath)) throw new Error('ePub annotations require an ePub book.');
+    const absolute = await resolveEntry(relativePath);
+    const stat = await lstat(absolute);
+    if (!stat.isFile()) throw new Error('Annotations require a document file.');
+    const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const header = Buffer.alloc(4);
+      const { bytesRead } = await file.read(header, 0, header.length, 0);
+      // An ePub is a ZIP archive; anything else (including encrypted
+      // Office-style containers) cannot be opened by the reader.
+      if (bytesRead < 2 || header[0] !== 0x50 || header[1] !== 0x4b)
+        throw new Error('Annotations require an unprotected ePub book.');
+    } finally {
+      await file.close();
+    }
+  }
+
   async function readDocxStructure(relativePath: string): Promise<DocxStructure> {
     if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX reading requires a .docx document.');
     const absolute = await resolveEntry(relativePath);
@@ -1033,6 +1051,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     resolveEntry,
     validatePdfAnnotationDocument,
     validateDocxAnnotationDocument,
+    validateEpubAnnotationDocument,
     readDocxStructure,
     resolveMetadata,
     search,

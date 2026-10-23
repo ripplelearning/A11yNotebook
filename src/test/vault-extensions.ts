@@ -23,6 +23,10 @@ export function vaultExtensions() {
     addDocxAnnotation: vi.fn(),
     updateDocxAnnotation: vi.fn(),
     deleteDocxAnnotation: vi.fn(async () => undefined),
+    listEpubAnnotations: vi.fn(async () => []),
+    addEpubAnnotation: vi.fn(),
+    updateEpubAnnotation: vi.fn(),
+    deleteEpubAnnotation: vi.fn(async () => undefined),
     readAttachment: vi.fn(),
     readDocxStructure: vi.fn(async () => ({
       blocks: [],

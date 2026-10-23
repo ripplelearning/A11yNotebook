@@ -13,6 +13,7 @@ import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './s
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
 import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './docx-annotations';
+import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
 import type { AttachmentPreview } from './attachments';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
@@ -52,6 +53,10 @@ export interface VaultBridge {
   addDocxAnnotation(annotation: NewDocxAnnotation): Promise<DocxAnnotation>;
   updateDocxAnnotation(path: string, id: string, update: DocxAnnotationUpdate): Promise<DocxAnnotation>;
   deleteDocxAnnotation(path: string, id: string): Promise<void>;
+  listEpubAnnotations(path: string): Promise<EpubAnnotation[]>;
+  addEpubAnnotation(annotation: NewEpubAnnotation): Promise<EpubAnnotation>;
+  updateEpubAnnotation(path: string, id: string, update: EpubAnnotationUpdate): Promise<EpubAnnotation>;
+  deleteEpubAnnotation(path: string, id: string): Promise<void>;
   readAttachment(path: string): Promise<AttachmentPreview>;
   readDocxStructure(path: string): Promise<DocxStructure>;
   getImageAlt(path: string): Promise<string>;
