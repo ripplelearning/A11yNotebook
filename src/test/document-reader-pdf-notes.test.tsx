@@ -119,6 +119,27 @@ afterEach(() => {
 });
 
 describe('PDF reader annotation rendering', () => {
+  it('copies notes with their original quotes to the clipboard and jumps from page to note', async () => {
+    const written: string[] = [];
+    const writeText = vi.fn(async (text: string) => {
+      written.push(text);
+    });
+    Object.defineProperty(window.navigator, 'clipboard', { value: { writeText }, configurable: true });
+    render(<DocumentReader path="book.pdf" kind=".pdf" />);
+    const copy = await screen.findByRole('button', { name: 'Copy notes to clipboard' });
+    await waitFor(() => expect(copy).toBeEnabled());
+    expect(screen.getByText(/1 note on page 1\./)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Go to first note on this page' }));
+    await waitFor(() => expect(screen.getByRole('button', { name: /Highlight — yellow, page 1/ })).toHaveFocus());
+    fireEvent.click(copy);
+    await waitFor(() => expect(writeText).toHaveBeenCalledOnce());
+    const exported = written[0];
+    expect(exported).toContain('PDF notes for book.pdf');
+    expect(exported).toContain('> Hello');
+    expect(exported).toContain('Confidence: certain. Verification: verified.');
+    expect(await screen.findByText('Copied 1 PDF note to the clipboard.')).toBeInTheDocument();
+  });
+
   it('retains original stored notes when PDF parsing fails and supports deletion without unsafe highlights', async () => {
     fake.openError = true;
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
