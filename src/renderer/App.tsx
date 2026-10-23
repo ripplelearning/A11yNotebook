@@ -309,6 +309,10 @@ export default function App() {
   const [noteAnnotations, setNoteAnnotations] = useState<NoteAnnotation[]>([]);
   const [userTemplates, setUserTemplates] = useState<NoteTemplate[]>([]);
   const [pendingFocus, setPendingFocus] = useState<FocusTarget | null>(null);
+  // Set when a closed note or file should hand focus back to the Notes and
+  // Files grid: the path of the item to focus, or null for the grid's active
+  // cell. Undefined means no grid focus is pending.
+  const [pendingGridFocusPath, setPendingGridFocusPath] = useState<string | null | undefined>(undefined);
   const updater = useUpdater();
   const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage);
   const { checking: checkingDisk, checkDisk, clearAllConflicts } = synchronization;
@@ -749,6 +753,26 @@ export default function App() {
       setPendingFocus(null);
     }
   }, [pendingFocus, focusNow]);
+
+  // After closing a note or file, focus returns to the Notes and Files grid —
+  // to the closed item's cell when it is still listed, otherwise to the grid's
+  // active cell. Runs after render so the grid exists.
+  useEffect(() => {
+    if (pendingGridFocusPath === undefined || selectedTab !== 'notes-files') return;
+    const panel = tabPanelRef.current;
+    const cells = panel ? Array.from(panel.querySelectorAll<HTMLElement>('[role="grid"] [role="gridcell"]')) : [];
+    const target =
+      cells.find(
+        (cell) => cell.dataset.path === pendingGridFocusPath && cell.getAttribute('aria-colindex') === '1',
+      ) ??
+      cells.find((cell) => cell.tabIndex === 0) ??
+      panel;
+    if (target) {
+      target.focus();
+      setActiveRegion('main');
+    }
+    setPendingGridFocusPath(undefined);
+  }, [pendingGridFocusPath, selectedTab]);
 
   // Keep the highlighted region in sync when focus moves by mouse or Tab.
   useEffect(() => {
@@ -1307,6 +1331,10 @@ export default function App() {
 
   const closeContextTab = (tabId: string) => {
     const note = openNotes.find((item) => item.id === tabId);
+    // Closing the note or file being read returns to the Notes and Files grid
+    // rather than dropping the user on the Welcome screen.
+    const returnsToGrid = selectedTab === tabId && (Boolean(note) || tabId === 'attachment');
+    const gridReturnPath = note?.path ?? (tabId === 'attachment' ? attachment?.path : undefined);
     if (note) {
       if (note.content !== note.saved && !window.confirm(`Discard unsaved changes to ${note.title}?`)) return;
       setOpenNotes((current) => current.filter((item) => item.id !== tabId));
@@ -1325,8 +1353,15 @@ export default function App() {
       setAssetInitialPath(undefined);
     } else if (tabId === 'attachment') setAttachment(null);
     setPinnedTabs((current) => new Set([...current].filter((id) => id !== tabId)));
-    if (selectedTab === tabId) setSelectedTab('welcome');
-    setPendingFocus('tabs');
+    if (returnsToGrid) {
+      const notebook = findEntry(vault?.entries ?? [], selectedNotebookPath ?? null);
+      setSelectedTab('notes-files');
+      announceNavigation(notebook ? `Notes and Files in ${notebook.name}` : 'Notes and Files');
+      setPendingGridFocusPath(gridReturnPath ?? null);
+    } else {
+      if (selectedTab === tabId) setSelectedTab('welcome');
+      setPendingFocus('tabs');
+    }
   };
 
   const handleContextCommand = async (commandId: CommandId) => {
@@ -1975,9 +2010,18 @@ export default function App() {
     }
     if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
     if (commandId === 'import-file') {
-      if (treeSelection && findEntry(vault?.entries ?? [], treeSelection)?.kind === 'notebook' && window.a11yNotebook)
+      // In the Notes and Files view the notebook was already chosen to enter the
+      // view, so import into it instead of demanding a fresh tree selection.
+      const selectedEntry = findEntry(vault?.entries ?? [], treeSelection);
+      const targetNotebook =
+        selectedEntry?.kind === 'notebook'
+          ? selectedEntry.path
+          : selectedTab === 'notes-files'
+            ? selectedNotebookPath
+            : undefined;
+      if (targetNotebook && window.a11yNotebook)
         void window.a11yNotebook.vault
-          .importFile(treeSelection)
+          .importFile(targetNotebook)
           .then((updated) => updated && setVault(updated))
           .catch(() => setStatusMessage('Could not import the selected file.'));
       else setStatusMessage('Select a notebook before importing a file.');
@@ -2345,7 +2389,12 @@ export default function App() {
   const isCommandDisabled = (id: CommandId): boolean => {
     if (securityLocked || switchingVault) return true;
     if (id === 'import-file')
-      return !window.a11yNotebook || !vault || findEntry(vault.entries, treeSelection)?.kind !== 'notebook';
+      return (
+        !window.a11yNotebook ||
+        !vault ||
+        (findEntry(vault.entries, treeSelection)?.kind !== 'notebook' &&
+          !(selectedTab === 'notes-files' && !!selectedNotebookPath))
+      );
     if (id === 'open-selected-external') {
       const entry = findEntry(vault?.entries ?? [], treeSelection);
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';

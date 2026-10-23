@@ -289,7 +289,7 @@ describe('feature wiring in the application shell', () => {
     await screen.findByRole('heading', { name: 'Study' });
     menu('new-note');
     const dialog = await screen.findByRole('dialog', { name: 'New note' });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Briefing' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New Note Name' }), { target: { value: 'Briefing' } });
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'html' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.html'));
@@ -398,7 +398,7 @@ describe('feature wiring in the application shell', () => {
     await screen.findByRole('heading', { name: 'Study' });
     menu('new-note');
     const dialog = screen.getByRole('dialog', { name: 'New note' });
-    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'New' } });
+    fireEvent.change(within(dialog).getByLabelText('New Note Name'), { target: { value: 'New' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('New.md'));
     await waitFor(() => expect(dialog).not.toBeInTheDocument());

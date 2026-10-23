@@ -214,12 +214,12 @@ describe('contextual shell document workflows', () => {
       search.focus();
       shortcut('n');
       expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
-      expect(screen.getByRole('textbox', { name: 'Name' })).toHaveFocus();
+      expect(screen.getByRole('textbox', { name: 'New Notebook Name' })).toHaveFocus();
       fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
       expect(search).toHaveFocus();
       shortcut('n', { altKey: true });
       const dialog = screen.getByRole('dialog', { name: 'New note' });
-      fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Deferred' } });
+      fireEvent.change(within(dialog).getByLabelText('New Note Name'), { target: { value: 'Deferred' } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
       await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Research/Deferred.md'));
       expect(bridge.vault.createNotebook).not.toHaveBeenCalled();
@@ -285,7 +285,7 @@ describe('contextual shell document workflows', () => {
     fireEvent.click(screen.getByRole('gridcell', { name: 'Plan.md' }));
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New note' });
-    fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Next' } });
+    fireEvent.change(within(dialog).getByLabelText('New Note Name'), { target: { value: 'Next' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Research/Next.md'));
   });
@@ -499,7 +499,13 @@ describe('contextual shell document workflows', () => {
     await waitFor(check);
     expect(bridge.vault.readNote).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Close Plan' }));
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Welcome' })).toHaveFocus());
+    // Closing the open note returns to the Notes and Files grid, focused on
+    // the closed note's cell.
+    await waitFor(() =>
+      expect(
+        within(screen.getByRole('grid', { name: 'Notes and files' })).getByRole('gridcell', { name: 'Plan.md' }),
+      ).toHaveFocus(),
+    );
     fireEvent.click(entry);
     await screen.findByRole('heading', { name: 'Plan', level: 2 });
     await waitFor(check);
