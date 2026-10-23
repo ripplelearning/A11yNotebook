@@ -359,6 +359,8 @@ export function createProtectedMetadataStore(options: {
       }
       return next;
     },
+    /** Remove protected containers whose generation is no longer current. */
+    sweepOrphans: () => collectOrphans(),
     async extend(store: ProtectedStoreName, legacyValue: unknown) {
       const access = options.access();
       const previous = pointer();

@@ -3635,6 +3635,12 @@ export default function App() {
             setRecoveryAvailable(false);
             setStatusMessage('Library recovery revoked.');
           }}
+          onRotateDataKey={async (password, recoveryKey) => {
+            const rotate = window.a11yNotebook?.vault.rotateVaultDataKey;
+            if (!rotate) throw new Error('Data key rotation is unavailable.');
+            await rotate(password, recoveryKey);
+            setStatusMessage('Data key rotated.');
+          }}
           onLockVault={async () => {
             await window.a11yNotebook?.vault.lockVault?.();
             setSecurityLocked(true);
