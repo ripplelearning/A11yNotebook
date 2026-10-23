@@ -119,6 +119,7 @@ export function buildApplicationMenu(
         commandItem('toggle-bookmark', 'checkbox'),
         commandItem('encrypt-current-note'),
         commandItem('convert-current-note'),
+        commandItem('convert-note-to-outline'),
         { type: 'separator' },
         commandItem('refresh-links'),
         commandItem('show-settings'),
