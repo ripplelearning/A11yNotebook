@@ -305,7 +305,9 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.extend('milestones', [])).rejects.toThrow('not enabled');
     await f.store.enable();
     await expect(f.store.extend('annotations', {})).rejects.toThrow('already under encrypted protection');
-    await expect(f.store.extend('search-index', {})).rejects.toThrow('No legacy filename is registered');
+    // 'asset-drafts' is deliberately never registered: cognitive
+    // drafts live under the checkpoints store.
+    await expect(f.store.extend('asset-drafts' as never, {})).rejects.toThrow('No legacy filename is registered');
     await expect(f.store.read('search-index')).rejects.toThrow('not under encrypted protection');
   });
 

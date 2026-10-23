@@ -499,6 +499,12 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
   // the time any bookmark/link operation runs, both are wired. The
   // instance check keeps a stale service from touching the new
   // library's protection state.
+  // The search cache needs its protection state BEFORE initialize()
+  // runs (its first rebuild persists immediately), when the protected
+  // store does not exist yet — so the adapter also consults a hint
+  // cell filled from the security config read just below, before
+  // initialize. Once the store exists, protects() is authoritative.
+  const searchProtectionHint = { value: false };
   const nextService = createVaultService(vaultPath, undefined, {
     isProtected: (name) =>
       service === nextService && (protectedMetadata?.protects(name === 'bookmarks.json' ? 'bookmarks' : 'links') ?? false),
@@ -510,11 +516,29 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
       return protectedMetadata!.write(name === 'bookmarks.json' ? 'bookmarks' : 'links', value);
     },
+    searchIndex: {
+      isProtected: () => searchProtectionHint.value || (protectedMetadata?.protects('search-index') ?? false),
+      read: () => {
+        if (!protectedMetadata) throw new Error('Protected metadata is not ready yet.');
+        return protectedMetadata.read('search-index');
+      },
+      write: (value) => {
+        if (!protectedMetadata) throw new Error('Protected metadata is not ready yet.');
+        return protectedMetadata.write('search-index', value);
+      },
+    },
   });
   let vault: VaultInfo;
   let nextSecurity: VaultSecurityConfig | null = null;
   let nextIdleLockMinutes = 15;
   try {
+    const preSecurity = (await readVaultSecurityMetadata(nextService).catch(() => null)) as {
+      version?: unknown;
+      metadataProtection?: { stores?: Record<string, unknown> };
+    } | null;
+    searchProtectionHint.value = Boolean(
+      preSecurity?.version === 3 && preSecurity.metadataProtection?.stores?.['search-index'],
+    );
     vault = await nextService.initialize();
     const savedSecurity = await readVaultSecurityMetadata(nextService);
     // Plaintext read on purpose: at open time the library is still
@@ -1176,6 +1200,12 @@ export function setupVaultIpc(
           const raw = await metadataFor(vault).read('bookmarks.json');
           if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
           legacy = raw ?? [];
+        } else if (store === 'search-index') {
+          const raw = await metadataFor(vault).read('search-index.json');
+          legacy =
+            raw && typeof raw === 'object' && !Array.isArray(raw) && Array.isArray((raw as { documents?: unknown }).documents)
+              ? raw
+              : { version: 4, root: (await vault.getVault()).path, documents: [] };
         } else if (store === 'settings') {
           legacy = validateSettings((await metadataFor(vault).read('settings.json')) ?? DEFAULT_SETTINGS);
         } else if (store === 'reminders') {

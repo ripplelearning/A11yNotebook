@@ -11,7 +11,12 @@ import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
 import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDate } from './tasks';
 import type { VaultChangedEvent } from '../../src/shared/search';
-import { checkedVaultPath, createSearchIndex, ensureMetadataDirectory } from './search';
+import {
+  checkedVaultPath,
+  createSearchIndex,
+  ensureMetadataDirectory,
+  type SearchIndexProtectionAdapter,
+} from './search';
 import { createVaultWatcher } from './watcher';
 import { readImport } from './import';
 import { createProvenanceStore, type Provenance } from './provenance';
@@ -45,6 +50,8 @@ export interface VaultProtectedMetadataAdapter {
   isProtected(name: 'bookmarks.json' | 'links.json'): boolean;
   read(name: 'bookmarks.json' | 'links.json'): Promise<unknown>;
   write(name: 'bookmarks.json' | 'links.json', value: unknown): Promise<void>;
+  /** Optional bridge for the persisted search cache (see search.ts). */
+  searchIndex?: SearchIndexProtectionAdapter;
 }
 
 export function createVaultService(
@@ -97,7 +104,7 @@ export function createVaultService(
       const stat = await lstat(root);
       if (!stat.isDirectory()) throw new Error('Library must be a folder.');
       await ensureMetadataDirectory(root);
-      searchIndex = createSearchIndex(root);
+      searchIndex = createSearchIndex(root, protectedMetadata?.searchIndex);
       await searchIndex.initialize();
       if (onChanged) await startWatcher(onChanged);
       return getVault();

@@ -226,7 +226,22 @@ function validCachedDocument(value: unknown): value is IndexedDocument {
   );
 }
 
-export function createSearchIndex(root: string) {
+/**
+ * Bridge to encrypted metadata protection for the persisted search
+ * cache. When protected, the cache lives only in the protected store:
+ * the plaintext file is never read or written. Persistence is a cache,
+ * so protected writes are best-effort — while the library is locked
+ * (or the index exceeds the protected size cap) the write is skipped
+ * and search keeps working from the in-memory rebuild; integrity
+ * failures surface on the protected read paths, which fail closed.
+ */
+export interface SearchIndexProtectionAdapter {
+  isProtected(): boolean;
+  read(): Promise<unknown>;
+  write(value: unknown): Promise<void>;
+}
+
+export function createSearchIndex(root: string, protection?: SearchIndexProtectionAdapter) {
   let documents = new Map<string, IndexedDocument>();
   const postings = new Map<string, Set<string>>();
   const documentTerms = new Map<string, string[]>();
@@ -267,6 +282,15 @@ export function createSearchIndex(root: string) {
   }
 
   async function persist(next: Map<string, IndexedDocument>) {
+    if (protection?.isProtected()) {
+      try {
+        await protection.write({ version: VERSION, root, documents: [...next.values()] });
+      } catch {
+        // Locked, oversize, or the protected store is not ready yet:
+        // skip persistence rather than fall back to plaintext.
+      }
+      return;
+    }
     await ensureMetadataDirectory(root);
     const destination = await checkedVaultPath(root, '.a11ynotebook/search-index.json', true);
     const temporary = path.join(root, '.a11ynotebook', `search-index-${randomUUID()}.tmp`);
@@ -379,8 +403,20 @@ export function createSearchIndex(root: string) {
     return serialized(async () => {
       await ensureMetadataDirectory(root);
       try {
-        const read = await readSafeText(root, '.a11ynotebook/search-index.json', MAX_CACHE_BYTES);
-        const cache: unknown = read && JSON.parse(read.content);
+        let cache: unknown = null;
+        if (protection?.isProtected()) {
+          // Any failure (locked, store not created yet, tampering)
+          // means an empty cache; the rebuild below repopulates the
+          // in-memory index from the vault's files.
+          try {
+            cache = await protection.read();
+          } catch {
+            cache = null;
+          }
+        } else {
+          const read = await readSafeText(root, '.a11ynotebook/search-index.json', MAX_CACHE_BYTES);
+          cache = read && JSON.parse(read.content);
+        }
         if (cache && typeof cache === 'object') {
           const candidate = cache as { version?: number; root?: string; documents?: unknown[] };
           if (
