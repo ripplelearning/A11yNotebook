@@ -325,6 +325,39 @@ export function createProtectedMetadataStore(options: {
      * extension leaves cleanupRequired set and all reads fail closed
      * until cleanup finishes, exactly like the original opt-in.
      */
+    /**
+     * Re-encrypt every protected store under a new data key. Reads
+     * each store with the current key and stages it under a fresh
+     * generation with the new key, returning the replacement pointer
+     * (digests included) for the caller to seal into the rotated
+     * security config. Nothing is committed here: until the caller
+     * commits that config, the old pointer and old containers remain
+     * authoritative, and the staged containers are orphans a later
+     * cleanup removes. Refuses while a cleanup is pending.
+     */
+    async rotateKeys(newKey: Buffer): Promise<MetadataProtectionPointer> {
+      const identity = pointer();
+      if (!identity) throw new Error('Encrypted metadata protection is not enabled.');
+      if (Object.values(identity.stores).some((item) => item?.cleanupRequired))
+        throw new Error('Finish protected metadata cleanup before rotating the data key.');
+      const oldAccess = options.access();
+      oldAccess.assertCurrent();
+      const next: MetadataProtectionPointer = {
+        ...identity,
+        stores: Object.fromEntries(
+          Object.keys(identity.stores).map((store) => [
+            store,
+            { generation: randomUUID(), digest: '', cleanupRequired: false },
+          ]),
+        ),
+      };
+      for (const store of Object.keys(identity.stores) as ProtectedStoreName[]) {
+        const value = await read(store);
+        oldAccess.assertCurrent();
+        await stage(store, value, next, { key: newKey, assertCurrent: oldAccess.assertCurrent });
+      }
+      return next;
+    },
     async extend(store: ProtectedStoreName, legacyValue: unknown) {
       const access = options.access();
       const previous = pointer();

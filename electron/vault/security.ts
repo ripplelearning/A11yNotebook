@@ -678,6 +678,111 @@ export function rotateVaultRecoveryKey(
   }
 }
 
+/**
+ * Rotate the vault DATA key (distinct from recovery-key rotation,
+ * which rewraps the same key). Both current factors are required when
+ * configured: the password proves possession for the new password
+ * wrap, and the recovery key — when a recovery envelope exists — must
+ * unwrap the SAME old key, so the existing recovery key stays valid
+ * for the new key. The returned config wraps the OLD key as its
+ * legacy key, so content not yet re-encrypted (vault notes) still
+ * opens through the established legacy fallback until the caller
+ * finishes re-encryption and calls completeVaultDataKeyRotation.
+ * The metadata-protection pointer is replaced atomically with the
+ * caller-supplied one (whose digests must already cover new-key
+ * containers) or carried over when no pointer is supplied.
+ */
+export async function rotateVaultDataKey(
+  config: VaultSecurityConfig,
+  password: string,
+  recoveryKey: unknown,
+  metadataPointer?: MetadataProtectionPointer,
+): Promise<{ config: RecoverableVaultSecurityConfig; oldKey: Buffer; newKey: Buffer }> {
+  if (config.version !== 3) throw new Error('Library recovery is not configured.');
+  validatePassword(password);
+  validateRecoverableConfig(config);
+  if (metadataPointer !== undefined) validateMetadataProtectionPointer(metadataPointer);
+  const oldKey = await unlockVault(config, password);
+  try {
+    const recoveryConfigured = Boolean(config.recoveryNonce && config.recoveryTag && config.recoveryWrappedDataKey);
+    if (recoveryConfigured) {
+      const recovered = unlockVaultWithRecovery(config, recoveryKey);
+      try {
+        if (!recovered.equals(oldKey)) throw new Error('The recovery key does not match this library.');
+      } finally {
+        recovered.fill(0);
+      }
+    }
+    const newKey = randomBytes(KEY_BYTES);
+    try {
+      const passwordFields = await passwordWrap(newKey, password);
+      let recoveryFields: Pick<RecoverableVaultSecurityConfig, 'recoveryNonce' | 'recoveryTag' | 'recoveryWrappedDataKey'> = {
+        recoveryNonce: null,
+        recoveryTag: null,
+        recoveryWrappedDataKey: null,
+      };
+      if (recoveryConfigured) {
+        const material = decodeRecoveryKey(recoveryKey);
+        try {
+          const wrapped = encryptBytes(material, 'vault-key-recovery', 'vault-data-key', newKey);
+          recoveryFields = {
+            recoveryNonce: wrapped.nonce,
+            recoveryTag: wrapped.tag,
+            recoveryWrappedDataKey: wrapped.ciphertext.toString('base64'),
+          };
+        } finally {
+          material.fill(0);
+        }
+      }
+      const credentials = config.credentials
+        ? encryptRecord(newKey, 'credentials', 'credentials-store', decryptRecord(oldKey, 'credentials', config.credentials))
+        : null;
+      const rotated = sealRecoverableConfig(
+        {
+          ...config,
+          ...passwordFields,
+          ...recoveryFields,
+          legacyKey: encryptRecord(newKey, 'legacy-vault-key', 'legacy-vault-key', oldKey.toString('base64')),
+          credentials,
+          ...(metadataPointer !== undefined ? { metadataProtection: metadataPointer } : {}),
+        },
+        newKey,
+      );
+      validateRecoverableConfig(rotated);
+      return { config: rotated, oldKey, newKey };
+    } catch (error) {
+      newKey.fill(0);
+      throw error;
+    }
+  } catch (error) {
+    oldKey.fill(0);
+    throw error;
+  }
+}
+
+/**
+ * Finish a data-key rotation once every consumer of the old key has
+ * been re-encrypted: the legacy-key slot becomes a self-wrap (the
+ * shape a library with no legacy content carries in practice — the
+ * fallback simply yields the current key), and the config is resealed.
+ */
+export function completeVaultDataKeyRotation(
+  config: VaultSecurityConfig,
+  dataKey: Buffer,
+): RecoverableVaultSecurityConfig {
+  if (config.version !== 3 || dataKey.length !== KEY_BYTES) throw new Error('Library recovery is not configured.');
+  validateRecoverableConfig(config);
+  const completed = sealRecoverableConfig(
+    {
+      ...config,
+      legacyKey: encryptRecord(dataKey, 'legacy-vault-key', 'legacy-vault-key', dataKey.toString('base64')),
+    },
+    dataKey,
+  );
+  validateRecoverableConfig(completed);
+  return completed;
+}
+
 export function updateRecoverableCredentials(
   config: VaultSecurityConfig,
   dataKey: Buffer,
