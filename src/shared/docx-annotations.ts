@@ -66,6 +66,35 @@ export const DOCX_ANNOTATION_LIMITS = {
 
 export type DocxAnchorStatus = 'anchored' | 'ambiguous' | 'orphan';
 
+export interface DocxAnnotationExportItem {
+  annotation: DocxAnnotation;
+  status: DocxAnchorStatus;
+}
+
+/** Plain-text export with original quotes and per-annotation status, mirroring the note/PDF exports. */
+export function formatDocxAnnotationsExport(documentPath: string, items: DocxAnnotationExportItem[]): string {
+  const name = documentPath.split('/').at(-1) ?? documentPath;
+  const lines: string[] = [`Annotations for ${name}`, ''];
+  for (const { annotation, status } of items) {
+    const location =
+      annotation.anchor.cellIndex !== undefined
+        ? `section ${annotation.anchor.blockIndex + 1}, table cell ${annotation.anchor.cellIndex + 1}`
+        : `section ${annotation.anchor.blockIndex + 1}`;
+    lines.push(`## ${annotation.label || 'Annotation'} (${annotation.color} highlight) — ${location}`);
+    for (const quoteLine of annotation.anchor.quote.split('\n')) lines.push(`> ${quoteLine}`);
+    if (annotation.comment) lines.push(`Comment: ${annotation.comment}`);
+    lines.push(
+      status === 'anchored'
+        ? 'Status: Highlight shown in the reading view.'
+        : status === 'ambiguous'
+          ? 'Status: Highlight unavailable — the quoted text occurs more than once in its block.'
+          : 'Status: Highlight unavailable — the quoted text no longer appears in its block.',
+    );
+    lines.push('');
+  }
+  return lines.join('\n').trimEnd() + '\n';
+}
+
 /**
  * Resolve an anchor against its block's current text. The recorded
  * offsets win when they still match; otherwise the quote is searched —
