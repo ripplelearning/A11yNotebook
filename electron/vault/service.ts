@@ -652,17 +652,41 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     }
     const sourceRelative = path.relative(root, source).split(path.sep).join('/');
     const nextRelative = path.relative(root, destination).split(path.sep).join('/');
-    const newName = path.basename(destination);
-    const bookmarks = await getBookmarks();
     await rename(source, destination);
     await refreshSearchIndex();
+    await migrateMoveMetadata(sourceRelative, nextRelative);
+    return getVault();
+  }
+
+  /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
+  async function migrateMoveMetadata(sourceRelative: string, nextRelative: string): Promise<void> {
+    // Read bookmarks.json raw: getBookmarks() drops entries whose files are
+    // missing, which after a rename (or a crash mid-move) is exactly the
+    // stale source path this migration exists to fix.
+    let bookmarks: VaultBookmark[] = [];
+    try {
+      const parsed: unknown = JSON.parse(await readFile(await resolveMetadata('bookmarks.json', true), 'utf8'));
+      if (Array.isArray(parsed)) {
+        bookmarks = parsed.filter(
+          (item): item is VaultBookmark =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as VaultBookmark).id === 'string' &&
+            typeof (item as VaultBookmark).path === 'string' &&
+            typeof (item as VaultBookmark).title === 'string' &&
+            typeof (item as VaultBookmark).created === 'string',
+        );
+      }
+    } catch {
+      bookmarks = [];
+    }
     const updatedBookmarks = bookmarks.map((bookmark) =>
       bookmark.path === sourceRelative || bookmark.path.startsWith(`${sourceRelative}/`)
         ? {
             ...bookmark,
             path: `${nextRelative}${bookmark.path.slice(sourceRelative.length)}`,
             ...(bookmark.path === sourceRelative && isNotePath(sourceRelative)
-              ? { title: path.basename(newName, path.extname(newName)) }
+              ? { title: path.posix.basename(nextRelative, path.posix.extname(nextRelative)) }
               : {}),
           }
         : bookmark,
@@ -679,7 +703,6 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     if (updatedPositions.some((position, index) => position !== positions[index])) {
       await writeReadingPositions(updatedPositions);
     }
-    return getVault();
   }
 
   async function getTasks() {
@@ -935,6 +958,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     pruneProvenance: (assertCurrent?: () => void) => provenance.prune(assertCurrent),
     renameEntry,
     moveEntry,
+    migrateMoveMetadata,
     getTasks,
     toggleTask,
     setHtmlTaskDueDate,
