@@ -49,7 +49,7 @@ describe('scoped metadata encryption consent', () => {
       'Reminders, reminder defaults',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
-      'settings (both library and global copies), global preferences',
+      'The app-global',
     );
     expect(screen.getByText(/saved cognitive asset files \(including saved flashcards\)/)).toHaveTextContent(
       'A stable version 3 library recovery envelope is required',
