@@ -10,6 +10,7 @@ import {
 } from '../../../shared/annotations';
 import Modal from '../../components/Modal';
 import { captureAnnotationAnchor, clearAnnotationMarks, jumpToAnnotation, renderAnnotationMarks } from './anchors';
+import { formatNoteAnnotationsExport } from '../../../shared/note-annotation-export';
 
 export interface UseAnnotationsOptions {
   path: string | null;
@@ -128,6 +129,7 @@ export function AnnotationPane({
   onDelete: (annotation: NoteAnnotation) => void;
   onJump: (annotation: NoteAnnotation) => void;
 }) {
+  const [copyStatus, setCopyStatus] = useState('');
   return (
     <section aria-label="Annotations">
       <h3>Annotations</h3>
@@ -174,6 +176,34 @@ export function AnnotationPane({
           </li>
         ))}
       </ul>
+      {annotations.length ? (
+        <>
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  formatNoteAnnotationsExport(
+                    annotations[0].path,
+                    annotations.map((annotation) => ({
+                      annotation,
+                      rendered: renderedIds.has(annotation.id),
+                    })),
+                  ),
+                );
+                setCopyStatus(
+                  `Copied ${annotations.length} annotation${annotations.length === 1 ? '' : 's'} to the clipboard.`,
+                );
+              } catch {
+                setCopyStatus('Could not copy annotations to the clipboard.');
+              }
+            }}
+          >
+            Copy annotations to clipboard
+          </button>
+          {copyStatus ? <p role="status">{copyStatus}</p> : null}
+        </>
+      ) : null}
     </section>
   );
 }
