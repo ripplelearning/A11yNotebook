@@ -13,6 +13,7 @@ export interface NotebookSettings {
   reminderSound?: boolean;
   reminderSoundChoice?: 'gentle-chime';
   reminderVolume?: number;
+  backgroundReminders?: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -28,6 +29,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderSound: false,
   reminderSoundChoice: 'gentle-chime',
   reminderVolume: 50,
+  backgroundReminders: false,
 };
 
 const RESERVED_SHORTCUTS = [
@@ -98,6 +100,7 @@ export function validateSettings(value: unknown): NotebookSettings {
   const reminderSoundChoice =
     settings.reminderSoundChoice === undefined ? 'gentle-chime' : settings.reminderSoundChoice;
   const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
+  const backgroundReminders = settings.backgroundReminders === undefined ? false : settings.backgroundReminders;
   const showCommandButtons = settings.showCommandButtons === undefined ? false : settings.showCommandButtons;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
@@ -116,6 +119,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     noteEditLockMinutes > 240 ||
     (defaultNoteOpenMode !== 'read-only' && defaultNoteOpenMode !== 'edit') ||
     typeof reminderAlerts !== 'boolean' ||
+    typeof backgroundReminders !== 'boolean' ||
     typeof reminderSound !== 'boolean' ||
     reminderSoundChoice !== 'gentle-chime' ||
     !Number.isInteger(reminderVolume) ||
@@ -148,5 +152,6 @@ export function validateSettings(value: unknown): NotebookSettings {
     reminderSound,
     reminderSoundChoice,
     reminderVolume,
+    backgroundReminders,
   };
 }

@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { lstat, mkdir, readFile, realpath, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -33,6 +33,13 @@ import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/d
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
+import { LOCKED_DUE_SNAPSHOT_FILE, serializeDueSnapshot, validateDueSnapshot } from './locked-due-store';
+import {
+  createScheduledReminderManager,
+  planWake,
+  REMINDER_WAKE_ARG,
+  type ScheduledReminderManager,
+} from '../scheduled-reminders';
 import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
 import { createReminderService, parseTaskReminders, validateReminderStore } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
@@ -122,6 +129,84 @@ function cancelLockedDueAlerts() {
 function armLockedDueAlerts() {
   if (dueSnapshotCache.length && dueSnapshotVaultPath) lockedDueWatcher.arm(dueSnapshotCache, dueSnapshotVaultPath);
   else lockedDueWatcher.cancel();
+}
+
+// Exited-process alerts (Windows Task Scheduler). Consent comes from
+// the backgroundReminders setting; the manager and snapshot sync are
+// best-effort and never block reminder operation.
+let backgroundRemindersEnabled = false;
+const scheduledReminders: ScheduledReminderManager = createScheduledReminderManager({});
+
+function reminderLaunchCommand(): { execute: string; args: string[] } {
+  return app.isPackaged
+    ? { execute: process.execPath, args: [REMINDER_WAKE_ARG] }
+    : { execute: process.execPath, args: [app.getAppPath(), REMINDER_WAKE_ARG] };
+}
+
+function persistDueSnapshot() {
+  if (!service || !dueSnapshotVaultPath) return;
+  const vault = service;
+  const snapshot = serializeDueSnapshot(dueSnapshotCache);
+  void metadataFor(vault)
+    .write(LOCKED_DUE_SNAPSHOT_FILE, snapshot)
+    .catch(() => undefined);
+}
+
+function syncScheduledReminderTask() {
+  const command = reminderLaunchCommand();
+  void scheduledReminders
+    .sync({
+      enabled: backgroundRemindersEnabled,
+      execute: command.execute,
+      args: command.args,
+      entries: dueSnapshotCache,
+    })
+    .catch(() => false);
+}
+
+/**
+ * Entry point for a Task Scheduler wake launch: read the last opened
+ * library's persisted due snapshot, show generic alerts for anything
+ * due, drop the fired entries, persist the rest, and re-register the
+ * task for the next due time. No library is opened and no content is
+ * read — the snapshot holds ids and times only.
+ */
+async function runReminderWake(): Promise<void> {
+  const { lastOpened } = await readRecentVaultFile();
+  if (!lastOpened) return;
+  const file = path.join(lastOpened, '.a11ynotebook', LOCKED_DUE_SNAPSHOT_FILE);
+  let entries: DueSnapshotEntry[] = [];
+  try {
+    entries = validateDueSnapshot(JSON.parse(await readFile(file, 'utf8')));
+  } catch {
+    return;
+  }
+  const { due, remaining } = planWake(entries, new Date());
+  if (due.length && Notification.isSupported()) {
+    const notification = new Notification({
+      title: 'A11y Notebook',
+      body:
+        due.length === 1
+          ? 'A reminder is due. Unlock the library to view it.'
+          : `${due.length} reminders are due. Unlock the library to view them.`,
+    });
+    notifications.add(notification);
+    notification.on('close', () => notifications.delete(notification));
+    notification.show();
+  }
+  if (due.length) {
+    const temporary = `${file}.wake-${randomUUID()}.tmp`;
+    try {
+      await writeFile(temporary, JSON.stringify(serializeDueSnapshot(remaining), null, 2), { mode: 0o600 });
+      await rename(temporary, file);
+    } catch {
+      await unlink(temporary).catch(() => undefined);
+    }
+  }
+  const command = reminderLaunchCommand();
+  await scheduledReminders
+    .sync({ enabled: true, execute: command.execute, args: command.args, entries: remaining })
+    .catch(() => false);
 }
 
 const notifications = new Set<Notification>();
@@ -490,6 +575,8 @@ async function startReminders(vaultService: VaultService, vault: VaultInfo) {
   if (reminderService === nextReminders) {
     dueSnapshotCache = nextReminders.dueSnapshot();
     dueSnapshotVaultPath = vault.path;
+    persistDueSnapshot();
+    syncScheduledReminderTask();
   }
 }
 
@@ -525,7 +612,9 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     const savedSettings = await createMetadataStore(nextService).read('settings.json');
     if (savedSettings) {
       try {
-        nextIdleLockMinutes = validateSettings(savedSettings).vaultLockMinutes ?? 15;
+        const validatedOpenSettings = validateSettings(savedSettings);
+        nextIdleLockMinutes = validatedOpenSettings.vaultLockMinutes ?? 15;
+        backgroundRemindersEnabled = validatedOpenSettings.backgroundReminders === true;
       } catch {
         nextIdleLockMinutes = 15;
       }
@@ -754,6 +843,8 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
         sendReminder({ type: 'changed', vaultPath: vault.path, reminders });
         dueSnapshotCache = instance.dueSnapshot();
         dueSnapshotVaultPath = vault.path;
+        persistDueSnapshot();
+        syncScheduledReminderTask();
       }
     },
     onError: () => {
@@ -2545,6 +2636,8 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     const settings = validateSettings(value);
     idleLockMinutes = settings.vaultLockMinutes ?? 15;
+    backgroundRemindersEnabled = settings.backgroundReminders === true;
+    syncScheduledReminderTask();
     if (service) await routedMetadataFor(service).write('settings.json', settings);
     // The global fallback copy mirrors whatever was saved last. While
     // the open library's settings are encrypted, writing that mirror
@@ -2888,6 +2981,7 @@ export function setupVaultIpc(
     const candidate = position as { cfi: unknown; sectionIndex: unknown };
     return requireService().setReadingPosition(relativePath, candidate);
   });
+  return { runReminderWake };
 }
 
 function vaultPathOf(vault: { path: string }) {
