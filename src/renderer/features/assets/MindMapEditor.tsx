@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { serializeMindMap, serializeOutline, type OutlineNode } from '../../../shared/assets';
+import { layoutMindMap, MIND_MAP_FONT_SIZE, type MindMapLayoutKind } from '../../../shared/mind-map-layout';
 import TreeEditor from './TreeEditor';
 
 export interface MindMapEditorProps {
@@ -9,14 +11,34 @@ export interface MindMapEditorProps {
   readOnly?: boolean;
 }
 
+const LAYOUT_STORAGE_KEY = 'a11y-notebook.mind-map-layout';
+
+function storedLayout(): MindMapLayoutKind {
+  try {
+    return window.localStorage.getItem(LAYOUT_STORAGE_KEY) === 'radial' ? 'radial' : 'hierarchical';
+  } catch {
+    return 'hierarchical';
+  }
+}
+
+const DEPTH_FILLS = ['0.22', '0.14', '0.09', '0.06', '0.04'];
+
+function displayText(text: string, width: number): string {
+  const maxChars = Math.max(4, Math.floor((width - 20) / 7.2));
+  return text.length > maxChars ? `${text.slice(0, maxChars - 1)}…` : text;
+}
+
 export default function MindMapEditor({ value, onChange, onSave, onExportOutline, readOnly }: MindMapEditorProps) {
-  const nodes: { node: OutlineNode; depth: number; parent?: number }[] = [];
-  const collect = (node: OutlineNode, depth: number, parent?: number) => {
-    const index = nodes.length;
-    nodes.push({ node, depth, parent });
-    node.children.forEach((child) => collect(child, depth + 1, index));
+  const [layoutKind, setLayoutKind] = useState<MindMapLayoutKind>(storedLayout);
+  const layout = layoutMindMap(value, layoutKind);
+  const chooseLayout = (kind: MindMapLayoutKind) => {
+    setLayoutKind(kind);
+    try {
+      window.localStorage.setItem(LAYOUT_STORAGE_KEY, kind);
+    } catch {
+      // The choice simply will not persist.
+    }
   };
-  collect(value, 0);
   return (
     <div>
       <TreeEditor
@@ -26,26 +48,74 @@ export default function MindMapEditor({ value, onChange, onSave, onExportOutline
         singleRoot
         readOnly={readOnly}
       />
+      <fieldset>
+        <legend>Map layout</legend>
+        <label>
+          <input
+            type="radio"
+            name="mind-map-layout"
+            value="hierarchical"
+            checked={layoutKind === 'hierarchical'}
+            onChange={() => chooseLayout('hierarchical')}
+          />{' '}
+          Hierarchical
+        </label>{' '}
+        <label>
+          <input
+            type="radio"
+            name="mind-map-layout"
+            value="radial"
+            checked={layoutKind === 'radial'}
+            onChange={() => chooseLayout('radial')}
+          />{' '}
+          Radial
+        </label>
+      </fieldset>
       <svg
         aria-hidden="true"
         focusable="false"
         width="100%"
-        height={Math.max(80, nodes.length * 40)}
-        viewBox={`0 0 ${Math.max(400, ...nodes.map(({ depth }) => depth * 160 + 200))} ${Math.max(80, nodes.length * 40)}`}
+        viewBox={`0 0 ${layout.width} ${layout.height}`}
+        data-layout={layoutKind}
+        className="mind-map-visual"
       >
-        {nodes.map(({ node, depth, parent }, index) => (
+        {layout.nodes.map((node) =>
+          node.parentId ? (
+            <path
+              key={`edge-${node.id}`}
+              d={layout.connectors.get(node.id) ?? ''}
+              fill="none"
+              stroke="currentColor"
+              strokeOpacity="0.55"
+              strokeWidth={node.depth === 1 ? 2 : 1.25}
+            />
+          ) : null,
+        )}
+        {layout.nodes.map((node) => (
           <g key={node.id}>
-            {parent !== undefined && (
-              <line
-                x1={nodes[parent].depth * 160 + 20}
-                y1={parent * 40 + 25}
-                x2={depth * 160 + 20}
-                y2={index * 40 + 25}
-                stroke="currentColor"
-              />
-            )}
-            <text x={depth * 160 + 24} y={index * 40 + 25} fill="currentColor">
-              {node.text.slice(0, 24)}
+            <title>{node.text}</title>
+            <rect
+              x={node.x - node.width / 2}
+              y={node.y - node.height / 2}
+              width={node.width}
+              height={node.height}
+              rx={node.depth === 0 ? 14 : 9}
+              fill="currentColor"
+              fillOpacity={DEPTH_FILLS[Math.min(node.depth, DEPTH_FILLS.length - 1)]}
+              stroke="currentColor"
+              strokeOpacity="0.7"
+              strokeWidth={node.depth === 0 ? 2 : 1}
+            />
+            <text
+              x={node.x}
+              y={node.y}
+              textAnchor="middle"
+              dominantBaseline="central"
+              fill="currentColor"
+              fontSize={MIND_MAP_FONT_SIZE}
+              fontWeight={node.depth === 0 ? 600 : 400}
+            >
+              {displayText(node.text, node.width)}
             </text>
           </g>
         ))}

@@ -95,6 +95,26 @@ describe('MindMapEditor', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Export outline' }));
     expect(exportOutline).toHaveBeenCalledWith('- Main\n    - Renamed\n');
   });
+
+  it('switches between hierarchical and radial visual layouts and remembers the choice', () => {
+    const value: OutlineNode = {
+      id: 'root',
+      text: 'Main',
+      children: [{ id: 'branch', text: 'Branch', children: [] }],
+    };
+    const { container } = render(<MindMapEditor value={value} onChange={vi.fn()} />);
+    const svg = container.querySelector('svg')!;
+    expect(svg).toHaveAttribute('data-layout', 'hierarchical');
+    expect(svg.querySelectorAll('rect')).toHaveLength(2);
+    expect(svg.querySelectorAll('path')).toHaveLength(1);
+    const hierarchicalBox = svg.getAttribute('viewBox');
+    fireEvent.click(screen.getByRole('radio', { name: 'Radial' }));
+    expect(svg).toHaveAttribute('data-layout', 'radial');
+    expect(svg.getAttribute('viewBox')).not.toBe(hierarchicalBox);
+    expect(window.localStorage.getItem('a11y-notebook.mind-map-layout')).toBe('radial');
+    // The semantic tree stays authoritative in both layouts.
+    expect(screen.getByRole('tree', { name: 'Mind map' })).toBeInTheDocument();
+  });
 });
 
 describe('GridEditor', () => {
