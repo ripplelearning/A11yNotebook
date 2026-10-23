@@ -62,7 +62,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Built-in and library HTML/Markdown templates can create either note format; placeholder escaping/sanitization, correct extension, preview, and cursor placement are supported. Markdown remains the default.
 - ✅ Markdown/HTML notes export through an accessible action and native save dialog to Markdown or sanitized standalone HTML. Export does not modify the source, protects the original from being selected as output, confirms overwrites, requires consent for decrypted protected notes, embeds local raster images in HTML, and warns that relative links/other metadata are not packaged.
 - ✅ Web capture offers Markdown or HTML. Main-process sanitization preserves semantic headings, lists, tables and safe links, localizes supported raster images with alt descriptions, records canonical source attribution, opens/indexes the note, and announces partial image failures.
-- ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. PDF uses an independent target contract; ePub annotation UI remains open.
+- ✅ HTML note text annotations use the same labelled quote/context anchor storage and jump/edit/delete UI as Markdown. PDF uses an independent target contract. ePub and DOCX annotation UIs shipped in PRs #76–#79 under the shared reader capability contract (PR #75).
 
 ## Phase 4 — Search, indexing, and annotations
 
@@ -82,7 +82,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. While locked, a privacy-safe due-time snapshot drives a generic alert and sound without revealing titles (PR #66).
 - ⛔ Real Windows minimized/background audio, focus and JAWS/NVDA/Narrator verification remains manual.
 - ✅ Milestone planning UI on existing service/typed IPC: list/detail/create/edit/delete, task/note associations, dates/status/progress and keyboard/focus regression tests.
-- ⏳ Exited-process notification delivery: no Task Scheduler/helper integration ships yet.
+- ✅ Exited-process notification delivery via Windows Task Scheduler (PR #93): opt-in, generic alerts from the ids-and-times snapshot, self-re-registering single task; real-Windows delivery still unverified.
 - ⛔ Manual Windows notification and screen-reader verification.
 
 ## Phase 6 — Cognitive assets and templates
@@ -93,7 +93,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Built-in Daily/Meeting/Project/Reading/Lecture templates, placeholders/cursor, preview, and editable `Templates/` Markdown/HTML.
 - ✅ Extensible shared asset-type registry; no executable plugin loading.
 - ✅ Opt-in encrypted cognitive checkpoints, debounced bounded retention, explicit restore/discard/compare and source-baseline conflict warnings.
-- ⏳ Rich mind-map layout and exited-process flashcard review notifications. ✅ General Markdown-to-outline conversion shipped in PR #65.
+- ✅ Rich mind-map layouts (hierarchical/radial, PR #82) and exited-process flashcard review notifications (the due snapshot carries flashcard entries through the same wake path, PR #93). ✅ General Markdown-to-outline conversion shipped in PR #65.
 
 ## Phase 7 — Security and local protection 🚧
 
@@ -103,8 +103,11 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ AES-256-GCM encrypted credential storage using the main-process library key.
 - ✅ User-selected AES-256-GCM encrypted notes with separate scrypt-derived passwords.
 - ✅ Cryptographic password generation and conditional 30-second clipboard clearing for passwords generated in the note-encryption dialog.
-- ✅ Scoped opt-in encrypted Markdown/HTML/PDF annotations and cognitive checkpoints using stable v3 keys, authenticated pointers and resumable plaintext cleanup.
-- ⏳ Excluded indexes/metadata and whole-library encryption remain plaintext/open; scoped protection does not cover search, links, bookmarks, reminders or settings.
+- ✅ Scoped opt-in encrypted Markdown/HTML/PDF/DOCX/ePub annotations and cognitive checkpoints using stable v3 keys, authenticated pointers and resumable plaintext cleanup.
+- ✅ Broader per-store encrypted metadata (PRs #83–#89): reminder defaults, milestones, bookmarks, link index, image descriptions, flashcard schedules, reminders, library settings and the search-index cache, each individually consented and migrated.
+- ✅ Data-key rotation (PRs #90–#91) with protected-store staging, legacy-key fallback and completion reseal.
+- 🚧 Whole-library encryption: authenticated streaming container format and migration manifest implemented (PR #92); file-migration wiring open.
+- 🚧 Whole-library encryption remains open at the wiring level (format and manifest implemented, PR #92). The formerly excluded indexes/metadata are covered per-store (see above); audit history and global preferences remain documented plaintext exclusions.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
@@ -114,8 +117,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Local pdf.js page rendering and text extraction, page navigation, and in-document search; epub.js archive/spine parsing, accessible section text, section navigation, and in-document search.
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
 - ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits. Remaining PDF sidebar/export/lifecycle work is listed below.
-- 🚧 ePub uses epub.js to render paginated book content and a nested navigation TOC. Chapter output is sanitized; ePub annotations, broader lifecycle validation, and manual accessibility checks remain open.
-- ✅ Local DOCX semantic parsing, typed IPC, navigation/search and hostile-archive tests (PR #27). DOCX annotations and manual Windows AT validation remain open. Legacy `.doc` imports as extracted text via a bounded local spec-based parser, and `.rtf` imports as sanitized semantic HTML (PR #62).
+- 🚧 ePub uses epub.js to render paginated book content and a nested navigation TOC. Chapter output is sanitized; ePub annotations shipped in PRs #78–#79; broader lifecycle validation and manual accessibility checks remain open.
+- ✅ Local DOCX semantic parsing, typed IPC, navigation/search and hostile-archive tests (PR #27). DOCX annotations shipped in PRs #76–#77; manual Windows AT validation remains open. Legacy `.doc` imports as extracted text via a bounded local spec-based parser, and `.rtf` imports as sanitized semantic HTML (PR #62).
 
 ### Document reader and annotation follow-up plan
 
