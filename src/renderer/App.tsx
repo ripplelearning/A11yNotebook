@@ -24,6 +24,7 @@ import type {
   AppMode,
   FocusRegion,
   FocusTarget,
+  RecentLibrary,
   VaultBookmark,
   VaultEntry,
   VaultInfo,
@@ -244,6 +245,7 @@ export default function App() {
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
+  const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
   const [openNotes, setOpenNotes] = useState<OpenNote[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
   const [links, setLinks] = useState<VaultLink[]>([]);
@@ -544,6 +546,13 @@ export default function App() {
           if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
         })
         .catch(() => setStatusMessage('Could not open the last library.'));
+    if (bridge?.vault.getRecentLibraries)
+      void bridge.vault
+        .getRecentLibraries()
+        .then((recent) => {
+          if (generation === vaultGenerationRef.current) setRecentLibraries(recent);
+        })
+        .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -762,9 +771,7 @@ export default function App() {
     const panel = tabPanelRef.current;
     const cells = panel ? Array.from(panel.querySelectorAll<HTMLElement>('[role="grid"] [role="gridcell"]')) : [];
     const target =
-      cells.find(
-        (cell) => cell.dataset.path === pendingGridFocusPath && cell.getAttribute('aria-colindex') === '1',
-      ) ??
+      cells.find((cell) => cell.dataset.path === pendingGridFocusPath && cell.getAttribute('aria-colindex') === '1') ??
       cells.find((cell) => cell.tabIndex === 0) ??
       panel;
     if (target) {
@@ -1831,10 +1838,23 @@ export default function App() {
     if (labels[screen]) announceNavigation(labels[screen]);
   };
 
-  const openLibrary = (create = false) => {
+  const refreshRecentLibraries = () => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getRecentLibraries) return;
+    void bridge
+      .getRecentLibraries()
+      .then(setRecentLibraries)
+      .catch(() => undefined);
+  };
+
+  const openLibrary = (create = false, recentPath?: string) => {
     const bridge = window.a11yNotebook?.vault;
     if (!bridge) return;
-    const open = create ? bridge.createLibrary : bridge.open;
+    if (recentPath && !bridge.openLibraryPath) {
+      setStatusMessage('Opening a recent library is unavailable.');
+      return;
+    }
+    const open = recentPath ? () => bridge.openLibraryPath!(recentPath) : create ? bridge.createLibrary : bridge.open;
     if (!open) {
       setStatusMessage('Library creation is unavailable.');
       return;
@@ -1865,6 +1885,7 @@ export default function App() {
           setAssetDirty(false);
           setSelectedTab(create ? 'libraries' : 'welcome');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
+          refreshRecentLibraries();
         }
       })
       .catch(() => setStatusMessage(create ? 'Could not create the library.' : 'Could not open the selected library.'))
@@ -2787,8 +2808,10 @@ export default function App() {
               <LibrariesScreen
                 showCommandButtons={showCommandButtons}
                 vault={vault}
+                recentLibraries={recentLibraries}
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
+                onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
                 disabled={switchingVault || securityLocked}
               />
             ) : selectedTab === 'notebooks' ? (

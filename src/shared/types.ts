@@ -40,6 +40,13 @@ export interface VaultEntry {
   provenance?: 'created' | 'imported' | 'unknown';
 }
 
+/** A library the user has opened before, offered in the recent-library picker. */
+export interface RecentLibrary {
+  path: string;
+  name: string;
+  lastOpenedAt: string;
+}
+
 /** Public view of the currently open local vault. */
 export interface VaultInfo {
   name: string;

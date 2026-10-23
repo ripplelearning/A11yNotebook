@@ -1,6 +1,6 @@
 import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
-import type { VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
+import type { RecentLibrary, VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
@@ -19,6 +19,8 @@ import type { DocxStructure } from './docx';
 export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   createLibrary?(): Promise<VaultInfo | null>;
+  getRecentLibraries?(): Promise<RecentLibrary[]>;
+  openLibraryPath?(path: string): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;
   readNote(path: string, password?: string): Promise<string>;
   saveNote(path: string, content: string, expectedContent?: string): Promise<void>;

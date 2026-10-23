@@ -264,9 +264,59 @@ async function copyImportedDocument(
   throw new Error('Too many imported copies already exist. Choose another notebook.');
 }
 
+export interface RecentLibraryRecord {
+  path: string;
+  name: string;
+  lastOpenedAt: string;
+}
+
+async function readRecentVaultFile(): Promise<{ lastOpened?: string; recent: RecentLibraryRecord[] }> {
+  try {
+    const parsed = JSON.parse(await readFile(recentFile(), 'utf8')) as { lastOpened?: unknown; recent?: unknown };
+    const recent = Array.isArray(parsed.recent)
+      ? parsed.recent.filter(
+          (item): item is RecentLibraryRecord =>
+            typeof item === 'object' &&
+            item !== null &&
+            typeof (item as RecentLibraryRecord).path === 'string' &&
+            typeof (item as RecentLibraryRecord).name === 'string' &&
+            typeof (item as RecentLibraryRecord).lastOpenedAt === 'string',
+        )
+      : [];
+    if (recent.length === 0 && typeof parsed.lastOpened === 'string') {
+      recent.push({ path: parsed.lastOpened, name: path.basename(parsed.lastOpened), lastOpenedAt: '' });
+    }
+    return { lastOpened: typeof parsed.lastOpened === 'string' ? parsed.lastOpened : undefined, recent };
+  } catch {
+    return { recent: [] };
+  }
+}
+
 async function rememberVault(vaultPath: string) {
+  const { recent } = await readRecentVaultFile();
+  const entry: RecentLibraryRecord = {
+    path: vaultPath,
+    name: path.basename(vaultPath),
+    lastOpenedAt: new Date().toISOString(),
+  };
+  const next = [entry, ...recent.filter((item) => item.path !== vaultPath)].slice(0, 10);
   await mkdir(path.dirname(recentFile()), { recursive: true });
-  await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath }), 'utf8');
+  await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath, recent: next }), 'utf8');
+}
+
+/** Recent libraries whose folders still exist, most recently opened first. */
+async function listRecentVaults(): Promise<RecentLibraryRecord[]> {
+  const { recent } = await readRecentVaultFile();
+  const existing: RecentLibraryRecord[] = [];
+  for (const entry of recent) {
+    try {
+      const stat = await lstat(entry.path);
+      if (stat.isDirectory() && !stat.isSymbolicLink()) existing.push(entry);
+    } catch {
+      // The folder was moved or deleted; it drops out of the picker.
+    }
+  }
+  return existing;
 }
 
 async function removeLegacyCredentialCopy(vault: VaultService) {
@@ -1721,6 +1771,21 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender, true);
     const result = await dialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] });
     return result.canceled || !result.filePaths[0] ? null : openVault(result.filePaths[0]);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultRecentLibraries, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return listRecentVaults();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultOpenPath, async (event, requested: unknown) => {
+    assertTrusted(event, isTrustedSender, true);
+    if (typeof requested !== 'string') throw new Error('Library path must be text.');
+    const match = (await listRecentVaults()).find((entry) => entry.path === requested);
+    if (!match) {
+      throw new Error(
+        'Only a recently opened library can be opened directly. Use Open library to choose another folder.',
+      );
+    }
+    return openVault(match.path);
   });
   ipcMain.handle(IPC_CHANNELS.vaultCreateLibrary, async (event) => {
     assertTrusted(event, isTrustedSender);

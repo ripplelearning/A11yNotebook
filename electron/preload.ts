@@ -22,6 +22,8 @@ const CHANNELS: typeof SharedChannels = {
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
   pdfReadingPreferencesChanged: 'pdf-reading-preferences-changed',
   vaultOpen: 'vault:open',
+  vaultRecentLibraries: 'vault:recent-libraries',
+  vaultOpenPath: 'vault:open-path',
   vaultCreateLibrary: 'vault:create-library',
   vaultCreateTask: 'vault:create-task',
   vaultOpenWith: 'vault:open-with',
@@ -139,6 +141,8 @@ const bridge: NotebookBridge = {
   },
   vault: {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
+    getRecentLibraries: () => ipcRenderer.invoke(CHANNELS.vaultRecentLibraries),
+    openLibraryPath: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultOpenPath, libraryPath),
     createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
     createTask: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateTask, input),
     openWith: (relativePath, options) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath, options),
