@@ -190,7 +190,7 @@ export default function AssetsWorkspace({
       cancelled = true;
       session.current += 1;
     };
-  }, [path, loadContent]);
+  }, [path, loadContent, announce]);
 
   const source = sourceRecovery
     ? sourceRecovery.text
