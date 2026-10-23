@@ -64,8 +64,8 @@ export function buildApplicationMenu(
     {
       label: '&Edit',
       submenu: [
-        { role: 'undo' },
-        { role: 'redo' },
+        commandItem('edit-undo'),
+        commandItem('edit-redo'),
         { type: 'separator' },
         { role: 'cut' },
         { role: 'copy' },

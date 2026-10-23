@@ -18,6 +18,8 @@ export type CommandId =
   | 'context-open-with'
   | 'context-open-with-default'
   | 'save-current-note'
+  | 'edit-undo'
+  | 'edit-redo'
   | 'show-tasks'
   | 'toggle-bookmark'
   | 'close-current-tab'
@@ -547,6 +549,20 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Save note',
     description: 'Save changes to the active Markdown note.',
     shortcut: 'Ctrl+S',
+  },
+  {
+    id: 'edit-undo',
+    label: 'Undo',
+    description:
+      'Undo the last edit in the active note, using the recorded edit history when the editor’s native undo is unavailable.',
+    shortcut: 'Ctrl+Z',
+  },
+  {
+    id: 'edit-redo',
+    label: 'Redo',
+    description: 'Redo the last undone edit in the active note.',
+    shortcut: 'Ctrl+Shift+Z',
+    shortcutAliases: ['Ctrl+Y'],
   },
   {
     id: 'show-tasks',
