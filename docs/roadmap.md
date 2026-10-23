@@ -79,7 +79,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Persisted, validated reminder defaults and creation-dialog preferences without rewriting existing reminders.
 - ✅ Named milestone service/typed IPC with stable task associations, move preservation, and live progress.
 - ✅ Unified reminder/opt-in flashcard scheduler with persistent deduplication and library switch/lock cancellation.
-- 🚧 Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. Generic locked-library alert/sound remains open; lock stops delivery until unlock.
+- ✅ Settings-controlled in-app reminder queue, accessible alert actions and bundled background sound; native notifications remain independent. While locked, a privacy-safe due-time snapshot drives a generic alert and sound without revealing titles (PR #66).
 - ⛔ Real Windows minimized/background audio, focus and JAWS/NVDA/Narrator verification remains manual.
 - ✅ Milestone planning UI on existing service/typed IPC: list/detail/create/edit/delete, task/note associations, dates/status/progress and keyboard/focus regression tests.
 - ⏳ Exited-process notification delivery: no Task Scheduler/helper integration ships yet.
@@ -93,7 +93,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Built-in Daily/Meeting/Project/Reading/Lecture templates, placeholders/cursor, preview, and editable `Templates/` Markdown/HTML.
 - ✅ Extensible shared asset-type registry; no executable plugin loading.
 - ✅ Opt-in encrypted cognitive checkpoints, debounced bounded retention, explicit restore/discard/compare and source-baseline conflict warnings.
-- ⏳ Rich mind-map layout, exited-process flashcard review notifications and general Markdown-to-outline conversion.
+- ⏳ Rich mind-map layout and exited-process flashcard review notifications. ✅ General Markdown-to-outline conversion shipped in PR #65.
 
 ## Phase 7 — Security and local protection 🚧
 
@@ -115,17 +115,17 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ PDF reading draws a bounded-scale canvas with a selectable text layer, zoom/rotation, semantic tagged-PDF DOM, conservative inferred text for untagged pages, stable persisted anchors, and accessible note creation/highlights.
 - ✅ PDF Reading Settings persist independent, default-exposed AT preferences for running headers/footers and printed page numbers. Changes apply live without removing visible/selectable/searchable text; see `pdf-semantic-phase1.md` for detection limits. Remaining PDF sidebar/export/lifecycle work is listed below.
 - 🚧 ePub uses epub.js to render paginated book content and a nested navigation TOC. Chapter output is sanitized; ePub annotations, broader lifecycle validation, and manual accessibility checks remain open.
-- ✅ Local DOCX semantic parsing, typed IPC, navigation/search and hostile-archive tests (PR #27). DOCX annotations and manual Windows AT validation remain open; legacy `.doc` remains unsupported.
+- ✅ Local DOCX semantic parsing, typed IPC, navigation/search and hostile-archive tests (PR #27). DOCX annotations and manual Windows AT validation remain open. Legacy `.doc` imports as extracted text via a bounded local spec-based parser, and `.rtf` imports as sanitized semantic HTML (PR #62).
 
 ### Document reader and annotation follow-up plan
 
 These are open implementation/design tasks, not externally blocked work:
 
 1. ✅ Add a bounded selectable PDF.js text layer, zoom/rotation transforms, canonical page text offsets, marked-content mappings, persisted quote/context anchors, accessible note creation, and selection highlights.
-2. ✅ Add a paginated epub.js rendition, navigation-document TOC, chapter sanitization, bounded text search, and book cleanup. Broader hostile-content/resource validation, reading-progress persistence, and ePub annotation anchors remain open.
+2. ✅ Add a paginated epub.js rendition, navigation-document TOC, chapter sanitization, bounded text search, and book cleanup. Broader hostile-content/resource validation and ePub annotation anchors remain open; reading-position persistence (CFI + section) shipped in PR #63.
 3. ✅ Version and validate PDF page/quote targets in metadata v2 without changing Markdown/HTML records. Add selection/quote/semantic creation with confidence and orphan/unverified reporting. ePub spine/CFI anchors remain open.
 4. Test anchors and renderer lifecycle with PDF/ePub fixtures, unsafe archives, changed documents, and keyboard-only interaction. Manual Windows JAWS/NVDA/Narrator and UI Automation checks remain a separate validation step; passing them does not replace the missing implementation.
-5. PDF PHASE 5: annotation sidebar and bidirectional navigation. PHASE 6: clipboard export with original quotes. PHASE 7: lifecycle, cleanup, performance, and broader security validation. Continuous-page cross-page pointer selection remains follow-up; grouped per-page targets are supported by the contract.
+5. ✅ PDF PHASE 5/6 (PR #67): the notes panel serves as the annotation sidebar with note-to-page navigation, a notes-on-this-page indicator with a page-to-note focus jump, and clipboard export with original quotes and status. PHASE 7: lifecycle, cleanup, performance, and broader security validation. Continuous-page cross-page pointer selection remains follow-up; grouped per-page targets are supported by the contract.
 
 ## Phase 9 — Accessibility validation and release readiness
 
@@ -146,7 +146,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 - ✅ Notebook task-completion summaries, milestone service/progress and planning UI; manual Windows AT validation remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
 - ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
-- ⏳ Recent-library selection is not available; the app restores the last opened library automatically.
+- ✅ Recent-library picker lists the ten most recent libraries on the Libraries screen; the app still restores the last opened library automatically (PR #64).
 - ⛔ Windows signing, UI Automation execution, native notification delivery verification, and real JAWS/NVDA/Narrator speech checks need owner-provisioned credentials or Windows/manual test infrastructure.
 
 ## Dependency-ordered continuation

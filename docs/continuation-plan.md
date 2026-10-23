@@ -59,10 +59,12 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 - In-app alerts use this scheduler with persisted Settings choices, bundled sound, focused-only accessible dialogs,
   queued reminders, Mark Complete/Dismiss/Snooze actions, all requested snooze intervals, privacy and library cancellation.
   Native notifications are independent. Escape/Later closes without reminder dismissal.
-- **Partial — exact remaining acceptance criterion:** retain a privacy-safe due-event snapshot in the existing
-  scheduler while locked, play configured sound and queue a generic “A reminder is due. Unlock the library to view it.”
-  alert without reading/revealing titles. Current locking stops the scheduler, clears alerts/audio and catches up
-  only after unlock. Add locked+unfocused sound/dialog and lock-during-delivery race tests before claiming this complete.
+- **Complete (PR #66):** the reminder service exposes a privacy-safe due snapshot (ids and times only); the IPC
+  layer keeps it fresh and, on lock, a generation-guarded watcher fires one content-free "locked-due" event per due
+  batch plus a generic native notification. The renderer's locked alert component plays the configured sound (even
+  unfocused) and shows the generic “A reminder is due. Unlock the library to view it.” dialog. Unit tests cover the
+  snapshot's privacy, watcher batching, and the lock/unlock cancellation race; an IPC-harness-level lock scenario
+  remains unrun, and real Windows audio/focus validation is still manual (below).
 - **Manual validation needed:** real Windows unfocused/minimized audio, queue focus transfer/return and
   JAWS/NVDA/Narrator speech. Automated mocks are not proof of these behaviors.
 - Startup readiness replay buffers the latest 100 fired events for once-only sound delivery before the renderer
@@ -84,9 +86,10 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
    can lose recent edits. Real Windows keyboard/screen-reader validation remains unrun.
    **Partial:** malformed outline/mind-map/grid checkpoint content is available for compare/copy, but structured
    restore requires valid content. A general source-edit recovery mode for malformed structured drafts remains open.
-2. **General Markdown-to-outline conversion.** Preserve heading hierarchy and meaningful content; deliberately handle
-   front matter, fenced code, and lists; preview content-loss warnings; create a sibling asset without overwriting the
-   source.
+2. **General Markdown-to-outline conversion — delivered (PR #65).** Headings nest by level, lists nest by
+   indentation, fenced code/tables/images stay verbatim, front matter is omitted, and every transformation is
+   surfaced as a warning in the confirmation before a sibling `.outline.md` is created; the source note is
+   never overwritten.
 3. **Mind-map visual layouts.** Improve hierarchical/radial views while the semantic keyboard-operable tree remains
    authoritative. SVG must be decorative and nonduplicating; retain visible focus and equivalent nonvisual operations,
    zoom, reduced-motion, and forced-colors behavior.
@@ -108,19 +111,21 @@ Implement adapters in this order after the shared contract and safe lifecycle ar
    browsing scripts, relaxed sandbox, or arbitrary network access. Verify existing note annotations against the common
    capability contract.
 2. **ePub — partial.** Paginated epub.js rendering, nested navigation-document TOC, chapter sanitization, bounded text
-   search, and cleanup are implemented. Validate remote-resource and hostile-archive handling; add document annotations
-   and persisted reading position.
+   search, cleanup, and persisted reading position (PR #63) are implemented. Validate remote-resource and
+   hostile-archive handling; document annotations remain open.
 3. **DOCX — local reading implemented in PR #27.** The bounded main-process ZIP/XML parser extracts semantic
    paragraphs, headings, lists, tables, links and raster images; the reader provides navigation and search.
    Hostile-archive tests cover external resources, macros and unsafe expansion. DOCX annotations are not implemented.
    Real Windows assistive-technology validation remains unrun. Never execute Office automation/macros or upload
    private documents to third-party services.
-4. **Legacy `.doc` — unsupported/open pending a vetted local strategy.** `.doc` is not renamed `.docx`. If no secure,
-   feasible local parser/converter is identified, show an explicit unsupported state and propose a vetted local
-   dependency; never silently misparse or send documents to a conversion service.
-5. **PDF remaining capabilities — open.** Preserve the implemented semantic reader and stable anchors. Finish common
-   sidebar/export/lifecycle behavior as needed; preserve original quotes, confidence/orphan reporting, bidirectional
-   focus/navigation, cleanup, performance, and security checks. Cross-page pointer selection remains separate follow-up.
+4. **Legacy `.doc` — resolved (PR #62).** The vetted strategy is a bounded, local, spec-based extractor
+   ([MS-CFB] compound file + [MS-DOC] piece table) implemented in `electron/vault/doc.ts`: text only, no
+   formatting, no macros or embedded objects executed, nothing sent to a conversion service. `.doc` imports as a
+   `.txt` note and previews as extracted text; unsupported or malformed files fail with an explicit error.
+5. **PDF remaining capabilities — sidebar/export delivered (PR #67).** The notes panel is the annotation
+   sidebar: note-to-page navigation, a notes-on-this-page indicator with a page-to-note focus jump, and clipboard
+   export preserving original quotes plus confidence/verification/orphan status. Lifecycle, cleanup, performance,
+   and broader security validation remain open follow-up; cross-page pointer selection remains separate.
 
 ## Accessibility release gate — manual validation not run
 
@@ -181,5 +186,5 @@ Manual matrix (all **not run**, no Windows runner in this session):
 Local parsing, typed IPC, reader navigation/search and hostile fixtures already ship on main. Preserve the 40 MiB
 archive, 50 MiB expanded-total and 10,000-entry bounds and rejection of encrypted archives, macros, OLE, unsafe
 relationships and traversal. Original bytes remain unchanged; archive processing stays in the main process.
-DOCX annotations and manual JAWS/NVDA/Narrator validation remain open. Legacy binary `.doc` remains explicitly
-unsupported, not guessed as ZIP/DOCX.
+DOCX annotations and manual JAWS/NVDA/Narrator validation remain open. Legacy binary `.doc` is handled by the
+bounded local text extractor in `electron/vault/doc.ts` (PR #62); it is never guessed as ZIP/DOCX.
