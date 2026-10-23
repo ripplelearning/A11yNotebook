@@ -96,7 +96,7 @@ PDF annotation paths are validated inside the current library, including symlink
 checks. Quotes, context, labels, and comments are stored in plaintext metadata
 for ordinary PDFs; a library password gate is **not** metadata encryption.
 Protected-content checks reject annotation access that would expose protected
-plaintext. Whole-library and annotation-metadata encryption remain unimplemented.
+plaintext. Annotation-metadata encryption is implemented per store (above); whole-library encryption covers note files (below) with attachments still plaintext.
 
 PDF.js renders one bounded-scale canvas page with selectable text and stable
 canonical-range annotation mapping. Changed file hashes require explicit
@@ -314,6 +314,21 @@ both must unwrap the same old key, so the existing recovery key stays valid. Pro
 the new key before the rotated config commits; the old key is kept only as the new config's wrapped legacy key
 until the credentials store and library-encrypted notes are re-encrypted, after which a completion reseal drops
 it. Content that cannot be rotated keeps opening through that legacy fallback.
+
+**Whole-library encryption for notes (PRs #92, #96–#97):** an opt-in mode, separate from the per-store metadata
+protection above. Enabling it (Settings, explicit consent, unlocked version-3 library) creates
+`library-encryption.json`, a manifest holding a content key wrapped under the library data key plus, per note
+file, a random file identity and lengths. Every note file is then stored as an authenticated chunked container
+(per-file HKDF keys from the content key; chunk authentication binds file id, index and finality), and notes
+exist as plaintext only in the unlocked app's memory. Reads fail closed: a manifest-listed path stored in
+plaintext, or a container the manifest does not list, is an error, and the content key is derived from the
+current data key only while unlocked and zeroed on lock. Search indexes decrypted text while unlocked and
+treats containers as empty while locked, so container bytes never enter the index. Migration (and the
+decrypt-and-turn-off opt-out, via a persisted `decrypting` state) is resumable: each file is recorded as it
+converts, stale entries are pruned, and the manifest file is deleted on opt-out only after its file map is
+verifiably empty. Attachments (PDFs, images and other non-note files) are NOT covered and remain ordinary
+files; filenames stay visible; independently password-encrypted notes compose (their envelope text is the
+container's plaintext).
 
 Encryption and filesystem access remain in the main process behind explicit typed, sender-validated IPC.
 Versioned authenticated AES-GCM records use separate annotation/checkpoint domains and fresh nonces. The authenticated
