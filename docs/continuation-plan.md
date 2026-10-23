@@ -33,15 +33,17 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
    See `security.md` for exact coverage/exclusions, crash/durability and OS-user tampering limits. Native warning
    speech/focus still needs Windows AT verification; an audit viewer and comprehensive automatic-lock/event history
    are not implemented.
-2. **Scoped annotation/checkpoint protection — implemented; broader indexes/metadata remain open.** Explicit consent
+2. **Scoped annotation/checkpoint protection — implemented, including the broader indexes/metadata.** Explicit consent
    in an unlocked version-3 library enables main-process authenticated per-store ciphertext and security-pointer
-   migration, with cleanup retry and no protected plaintext fallback. Markdown/HTML/PDF annotations and cognitive
-   checkpoints are included; DOCX annotations do not exist. Search/link indexes, bookmarks, reminders/defaults,
-   schedules, settings, milestones, descriptions, source files, filenames and exports remain plaintext.
-   The verified baseline inventory and scoped threat model are in `security.md`. Broader protection still requires
-   direct `service.ts` link/bookmark writers, `search.ts` cache/startup/watch writers, both settings copies and global
-   preferences to be addressed. Actual data-key rotation (not recovery-key rotation) remains open.
-3. **Whole-library encryption — open design and implementation.** This is a separate opt-in storage mode, not password
+   migration, with cleanup retry and no protected plaintext fallback. Markdown/HTML/PDF/DOCX/ePub annotations and
+   cognitive checkpoints are included in the base stores. The broader wiring (PRs #83–#89) routes the direct
+   `service.ts` link/bookmark writers, the `search.ts` cache/startup/watch writers, reminder/default stores,
+   schedules, milestones, image descriptions, reminders and both settings copies through the same protection, each
+   behind its own per-store consent; the settings global mirror is suppressed while a library's settings are
+   encrypted. Global preferences and the audit log remain documented plaintext exclusions. Actual data-key
+   rotation (not recovery-key rotation) is implemented (PRs #90–#91), including protected-store staging, the
+   legacy-key fallback for unrotated content, and completion reseal.
+3. **Whole-library encryption — format and manifest implemented (PR #92); migration wiring open.** This is a separate opt-in storage mode, not password
    gating. Before implementation, specify threat model and behavior for ordinary-file interoperability, filenames and
    attachments, external editors/watchers, search, export, lock, migration, and recovery. Require a bounded authenticated
    streaming/container format and a safe resumable migration with explicit rollback and crash-restart tests. Do not
@@ -70,10 +72,13 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
 - Startup readiness replay buffers the latest 100 fired events for once-only sound delivery before the renderer
   subscribes. Older overflow items remain in persisted Reminders and load into the visual queue silently; audible
   catch-up for an overflow beyond 100 simultaneous startup deliveries is not guaranteed.
-- **Exited-process reminders/reviews remain open.** Design an opt-in Windows integration (Task Scheduler/helper or
-  supported equivalent) with explicit consent, uninstall/disable cleanup, no shell injection, secrets, or plaintext
-  titles in command lines, and duplicate/restart/race prevention. Specify lock/privacy behavior and missed-reminder
-  fallback. Tray-only behavior is not delivery after process exit; never install a service silently.
+- **Exited-process reminders/reviews — implemented (PR #93); Windows delivery unverified.** The opt-in
+  `backgroundReminders` setting registers a single Windows Task Scheduler task (fixed name, always replaced with
+  /F; schtasks via argument arrays; escaped XML carrying only a due time and the launch command) that wakes the
+  app at the next due time from the persisted ids-and-times snapshot. The wake shows a generic alert, drops fired
+  entries, and re-registers; disabling deletes the task. Lock/privacy behavior matches the locked-library alerts:
+  generic text only, no titles anywhere outside the unlocked app. Actual schtasks delivery on a real Windows
+  machine remains unverified.
 
 ## Phase 6 — cognitive assets and templates — open
 
@@ -146,11 +151,10 @@ Also verify keyboard-only operation, visible focus, 200–400% reflow/zoom witho
 high contrast and Windows forced colors, semantic headings/landmarks, and no duplicate decorative SVG announcements.
 Windows execution and licensed/tooling-dependent manual passes are externally blocked in this environment.
 
-## Exited-process Windows implementation gates — no integration ships here
+## Exited-process Windows implementation gates — integration shipped (PR #93), verification open
 
-Tray/closed-window behavior is not delivery after exit. No Task Scheduler registration/helper/enable/disable/status
-API, settings consent or uninstall cleanup exists. The existing app scheduler is not an interprocess transaction.
-Before claiming implementation:
+The Task Scheduler registration, settings consent, wake flow, and disable-cleanup described in Phase 5 now exist.
+What remains open is verification, not implementation:
 
 - Use explicit opt-in, per-user non-elevated registration, confirmation before enable/disable and actionable status/
   registration/update/unregister failures. Launch only the trusted installed helper using argument arrays without a

@@ -172,12 +172,16 @@ Evidence and ownership:
 - `security.ts:28–65,135–165,663–707` defines legacy v1, wrapped-key v2 and authenticated recovery v3 records.
   Recovery migration commits in `security.json`, embeds encrypted credentials, retains a wrapped legacy note key,
   and durably retries credential cleanup. Password reset/rotation/revocation rewrap the stable data key; independent
-  note passwords remain separate. Actual data-key rotation is not implemented.
+  note passwords remain separate. Actual data-key rotation is implemented (PRs #90–#91; see the rotation paragraph in the scoped-protection section below).
 - `assets.ts:47–86` validates source types/bounds but saves in place. `AssetsWorkspace.tsx:65–123` keeps dirty edits
   only in memory. `App.tsx:408–433` clears/unmounts them on lock; note autosave is not a cognitive checkpoint.
   No persisted drafts exist. Source asset files, notes, attachments and exports remain ordinary files.
-- `reminders.ts` provides in-process queues/dedup, not interprocess leases. `electron-builder.yml` packages NSIS
-  and portable builds but has no reminder helper or uninstall hook. No Task Scheduler registration is present.
+- `reminders.ts` provides in-process queues/dedup, not interprocess leases. Exited-process delivery is
+  implemented in `scheduled-reminders.ts` (PR #93): an opt-in Windows Task Scheduler task wakes the app at the
+  next due time from the persisted ids-and-times snapshot; disabling the setting deletes the task.
+  `electron-builder.yml` packages NSIS and portable builds but has no reminder helper or uninstall hook, so a
+  task left behind by an uninstall is inert (its action target no longer exists) and is removed on the next
+  install's first sync or from Task Scheduler directly.
 - Live `App.tsx:650–665` omits DOCX from attachment routing despite the shipped reader; this is a routing defect,
   not evidence that DOCX needs to be implemented again.
 
@@ -261,7 +265,7 @@ to the main process; password reset and recovery-key rotation rewrap the same da
 password-encrypted notes. No passwords or keys may be persisted for scheduled helpers. Each logical store needs a
 distinct HKDF domain (`metadata:annotations`, `metadata:reminders`, `metadata:reminder-defaults`,
 `metadata:flashcards`, `metadata:milestones`, `metadata:settings`, `metadata:image-alts`, `metadata:bookmarks`,
-`metadata:links`, `metadata:search-index`, `metadata:asset-drafts`) and bounded authenticated envelopes binding
+`metadata:links`, `metadata:search-index`) and bounded authenticated envelopes binding
 schema version, store identity, library identity, generation and record identity. Audit and nonsensitive global
 preferences require explicit documented exclusions; sensitive global copies must be removed or stopped.
 
@@ -278,19 +282,38 @@ Remaining tests/implementation gates: cancellation before commit, interruption a
 rollback without key loss, post-commit cleanup failures, cross-store/generation substitution, nonce/bounds/tamper
 rejection, recovery/password reset/rotation/revocation, data-key rotation with two-generation rollback, legacy notes,
 independent note passwords, concurrent watcher/scheduler/write/lock/switch races, and absence of plaintext staging,
-caches or drafts. Data-key rotation is distinct from recovery-key rotation and has no implementation yet.
+caches or drafts. Data-key rotation is distinct from recovery-key rotation; it is implemented (see below).
 
 ## Scoped annotation and cognitive-checkpoint protection
 
 This is **opt-in, not whole-library encryption**. Only an unlocked library with the stable version-3 security config is
 eligible. Enable library recovery first when using an older config. Explicit consent names the protected stores:
 Markdown/HTML annotation quotes, context, labels and comments; PDF annotations in the same annotation store; and
-cognitive checkpoints for outlines, mind maps, flashcards and CSV/Markdown grids. DOCX annotations do not exist.
+cognitive checkpoints for outlines, mind maps, flashcards and CSV/Markdown grids. Annotations for DOCX and ePub
+documents live in the same store's per-format collections.
 
-**Unprotected:** search index and snippets, link index, bookmarks, reminders and defaults, settings (both copies),
-flashcard schedules, milestones, image descriptions, audit history, recent-library/global preferences, filenames,
-ordinary notes/asset sources, attachments, exports and backups remain plaintext. Independently password-encrypted
-notes keep their independent passwords. Do not infer confidentiality for excluded data from this toggle.
+**Broader per-store protection (PRs #83–#89):** beyond the base pair, each of these stores can be individually
+migrated into encrypted protection from Settings, with its own consent: reminder defaults, milestones, bookmarks,
+the link index, image descriptions, flashcard schedules, reminders, library settings, and the persisted
+search-index cache. Migration stages the store under a fresh generation, commits the authenticated pointer, and
+only then removes the plaintext legacy file; an interrupted migration leaves reads fail-closed until cleanup
+finishes on a later unlock. The search cache is derived data: while locked or over the protected size cap its
+writes are skipped rather than falling back to plaintext, and its container is still authenticated on the
+migration and cleanup paths. While a library's settings are encrypted, saves are no longer mirrored into the
+plaintext app-global settings file, and enabling settings encryption deletes the stale mirror.
+
+**Still unprotected:** audit history, recent-library/global preferences, filenames, ordinary notes/asset sources,
+attachments, exports and backups remain plaintext, as does the times-only due snapshot (`locked-due.json`: ids,
+due times and kinds, never titles) that background reminder alerts read after the app exits. Independently
+password-encrypted notes keep their independent passwords. Do not infer confidentiality for excluded data from
+these toggles.
+
+**Data-key rotation (PRs #90–#91):** Settings can rotate the actual data key (distinct from recovery-key
+rotation, which rewraps the same key). The user re-enters the password and, when configured, the recovery key;
+both must unwrap the same old key, so the existing recovery key stays valid. Protected stores are staged under
+the new key before the rotated config commits; the old key is kept only as the new config's wrapped legacy key
+until the credentials store and library-encrypted notes are re-encrypted, after which a completion reseal drops
+it. Content that cannot be rotated keeps opening through that legacy fallback.
 
 Encryption and filesystem access remain in the main process behind explicit typed, sender-validated IPC.
 Versioned authenticated AES-GCM records use separate annotation/checkpoint domains and fresh nonces. The authenticated
