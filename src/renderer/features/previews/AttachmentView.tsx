@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { useState } from 'react';
 import { imageUrl, parseCsv, type AttachmentPreview } from '../../../shared/attachments';
+import PlainTextDocument from '../vault/PlainTextDocument';
 import DocumentReader from './DocumentReader';
 
 interface Props {
@@ -23,26 +24,27 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
       csvError = 'This CSV could not be parsed. Open it externally to inspect it.';
     }
   }
-  const html = /\.html?$/i.test(preview.path)
-    ? DOMPurify.sanitize(preview.text, {
-        FORBID_TAGS: [
-          'script',
-          'style',
-          'iframe',
-          'object',
-          'embed',
-          'form',
-          'input',
-          'button',
-          'link',
-          'meta',
-          'base',
-          'svg',
-          'math',
-        ],
-        FORBID_ATTR: ['src', 'srcset', 'href', 'style', 'action', 'poster', 'background'],
-      })
-    : '';
+  const html =
+    /\.html?$/i.test(preview.path) || preview.kind === '.html'
+      ? DOMPurify.sanitize(preview.text, {
+          FORBID_TAGS: [
+            'script',
+            'style',
+            'iframe',
+            'object',
+            'embed',
+            'form',
+            'input',
+            'button',
+            'link',
+            'meta',
+            'base',
+            'svg',
+            'math',
+          ],
+          FORBID_ATTR: ['src', 'srcset', 'href', 'style', 'action', 'poster', 'background'],
+        })
+      : '';
   return (
     <section
       aria-label="Attachment preview"
@@ -110,7 +112,9 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
           </div>
         )
       ) : (
-        <pre>{preview.text}</pre>
+        <div className="document-body">
+          <PlainTextDocument text={preview.text} />
+        </div>
       )}
     </section>
   );

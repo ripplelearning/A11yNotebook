@@ -37,6 +37,7 @@ import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
+import { outlineConversionWarning } from '../shared/outline-conversion';
 import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
@@ -196,6 +197,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'toggle-bookmark',
       'encrypt-current-note',
       'convert-current-note',
+      'convert-note-to-outline',
       'refresh-links',
       'show-reminders',
       'show-milestones',
@@ -907,7 +909,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub|docx)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (!canOpen()) return;
         setAttachment(preview);
@@ -1152,6 +1154,36 @@ export default function App() {
       setStatusMessage(`Created ${to.toUpperCase()} copy. The original note was kept.`);
     } catch {
       setStatusMessage('Could not convert this note. Check whether a sibling note already exists.');
+    }
+  };
+
+  const convertActiveNoteToOutline = async () => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    const bridge = window.a11yNotebook?.vault;
+    if (!note || !bridge) return;
+    if (!/\.md$/i.test(note.path) || /\.(?:outline|cards|grid)\.md$/i.test(note.path)) {
+      setStatusMessage('Only Markdown notes can be converted to an outline.');
+      return;
+    }
+    if (await bridge.isNoteEncrypted?.(note.path)) {
+      setStatusMessage('Decrypt this note to a separate unprotected copy before converting it.');
+      return;
+    }
+    const targetPath = note.path.replace(/\.md$/i, '.outline.md');
+    const { outline, message } = outlineConversionWarning(note.content, targetPath);
+    if (!outline) {
+      setStatusMessage('This note has no content to convert to an outline.');
+      return;
+    }
+    if (!window.confirm(message)) return;
+    try {
+      const updated = await bridge.createNote(targetPath, outline);
+      setVault(updated);
+      const created = findEntry(updated.entries, targetPath);
+      if (created) await openEntry(created);
+      setStatusMessage('Created outline copy. The original note was kept.');
+    } catch {
+      setStatusMessage('Could not create the outline. Check whether a sibling outline already exists.');
     }
   };
 
@@ -2021,6 +2053,10 @@ export default function App() {
       if (currentNote && mode === 'edit' && currentNote.path !== encryptedNotePath) void convertActiveNoteFormat();
       return;
     }
+    if (commandId === 'convert-note-to-outline') {
+      if (currentNote && currentNote.path !== encryptedNotePath) void convertActiveNoteToOutline();
+      return;
+    }
     if (commandId === 'insert-attachment') {
       if (!currentNote || mode !== 'edit') {
         setStatusMessage('Open a note in edit mode first.');
@@ -2441,6 +2477,13 @@ export default function App() {
         currentNote.content !== currentNote.saved
       );
     if (id === 'convert-current-note') return !currentNote || mode !== 'edit' || currentNote.path === encryptedNotePath;
+    if (id === 'convert-note-to-outline')
+      return (
+        !currentNote ||
+        currentNote.path === encryptedNotePath ||
+        !/\.md$/i.test(currentNote.path) ||
+        /\.(?:outline|cards|grid)\.md$/i.test(currentNote.path)
+      );
     if (id.startsWith('format-') || id === 'insert-link' || id === 'insert-table' || id === 'insert-attachment')
       return !currentNote || mode !== 'edit' || currentNoteEditLocked;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
@@ -3116,7 +3159,13 @@ export default function App() {
                     notePath={currentNote.path}
                     editorRef={editorRef}
                     content={currentNote.content}
-                    format={/\.html?$/i.test(currentNote.path) ? 'html' : 'markdown'}
+                    format={
+                      /\.html?$/i.test(currentNote.path)
+                        ? 'html'
+                        : /\.txt$/i.test(currentNote.path)
+                          ? 'text'
+                          : 'markdown'
+                    }
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}

@@ -618,7 +618,7 @@ describe('extended vault IPC integration', () => {
 
   it('hands external-only Office/text originals to OS applications without treating them as internally importable', async () => {
     const { shell } = await import('electron');
-    for (const extension of ['rtf', 'doc', 'xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp']) {
+    for (const extension of ['xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp']) {
       const relative = `Original.${extension}`;
       const absolute = path.join(mock.root, relative);
       await writeFile(absolute, 'Original external document');

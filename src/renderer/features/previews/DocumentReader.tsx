@@ -1,7 +1,7 @@
 import type ePubFactory from 'epubjs/src/index.js';
 import type { EpubTocItem } from 'epubjs/src/index.js';
 import DOMPurify from 'dompurify';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
@@ -308,7 +308,7 @@ function EpubToc({ items, onSelect }: { items: EpubTocItem[]; onSelect: (href: s
   );
 }
 
-function EpubReader({ bytes }: { bytes: Uint8Array }) {
+function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [search, setSearch] = useState('');
@@ -317,6 +317,67 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
   const renditionRef = useRef<ReturnType<Awaited<ReturnType<typeof ePubFactory>>['renderTo']> | null>(null);
   const renditionContainerRef = useRef<HTMLDivElement>(null);
   const pendingHrefRef = useRef<string | null>(null);
+  const pendingCfiRef = useRef<string | null>(null);
+  const [positionReady, setPositionReady] = useState(false);
+  const sectionIndexRef = useRef(0);
+  sectionIndexRef.current = sectionIndex;
+  const lastLocationRef = useRef<{ cfi: string; sectionIndex: number } | null>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Load the saved reading position before displaying anything, so reopening
+  // a book resumes where the reader stopped instead of restarting it.
+  useEffect(() => {
+    let cancelled = false;
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.getReadingPosition) {
+      setPositionReady(true);
+      return;
+    }
+    void vault
+      .getReadingPosition(path)
+      .then((saved) => {
+        if (cancelled) return;
+        if (saved) {
+          if (saved.cfi) pendingCfiRef.current = saved.cfi;
+          if (saved.sectionIndex > 0) setSectionIndex(saved.sectionIndex);
+        }
+        setPositionReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setPositionReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  const queueSavePosition = useCallback(
+    (cfi: string, index: number) => {
+      lastLocationRef.current = { cfi, sectionIndex: index };
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        const location = lastLocationRef.current;
+        const vault = window.a11yNotebook?.vault;
+        if (location && vault?.setReadingPosition) {
+          void vault.setReadingPosition(path, location).catch(() => undefined);
+        }
+      }, 600);
+    },
+    [path],
+  );
+
+  // Flush a pending position when the reader closes.
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const location = lastLocationRef.current;
+      const vault = window.a11yNotebook?.vault;
+      if (location && vault?.setReadingPosition) {
+        void vault.setReadingPosition(path, location).catch(() => undefined);
+      }
+    },
+    [path],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -379,21 +440,44 @@ function EpubReader({ bytes }: { bytes: Uint8Array }) {
     observer.observe(renditionContainerRef.current, { childList: true, subtree: true });
     labelFrames();
     renditionRef.current = rendition;
+    // epub.js emits 'relocated' after every display or page turn; its bundled
+    // types omit the event API, so it is reached through a structural view.
+    const evented = rendition as unknown as {
+      on?: (event: string, handler: (location: { start?: { cfi?: string } }) => void) => void;
+    };
+    if (typeof evented.on === 'function') {
+      evented.on('relocated', (location) => {
+        const cfi = location?.start?.cfi;
+        if (!cfi) return;
+        let index = sectionIndexRef.current;
+        try {
+          const spine = book.spine as unknown as { get?: (target: string) => { index?: number } | undefined };
+          const section = spine.get?.(cfi);
+          if (section && typeof section.index === 'number') index = section.index;
+        } catch {
+          // Keep the section the controls already show.
+        }
+        if (index !== sectionIndexRef.current) setSectionIndex(index);
+        queueSavePosition(cfi, index);
+      });
+    }
     return () => {
       observer.disconnect();
       renditionRef.current = null;
     };
-  }, [book]);
+  }, [book, queueSavePosition]);
 
   useEffect(() => {
+    if (!positionReady) return;
     const section = book?.spine.spineItems[sectionIndex];
     if (!section || !renditionRef.current) return;
-    const href = pendingHrefRef.current ?? section.href;
+    const target = pendingCfiRef.current ?? pendingHrefRef.current ?? section.href;
+    pendingCfiRef.current = null;
     pendingHrefRef.current = null;
-    void renditionRef.current.display(href).catch(() => {
+    void renditionRef.current.display(target).catch(() => {
       setError('This ePub section could not be rendered. Its accessible text remains available.');
     });
-  }, [book, sectionIndex]);
+  }, [book, sectionIndex, positionReady]);
 
   const matchingSections = readerModel.findSections(search);
   const activeSection = readerModel.sections[sectionIndex];
@@ -475,7 +559,7 @@ function ByteDocumentReader({ path, kind }: ByteDocumentProps) {
   ) : kind === '.pdf' ? (
     <PdfReader key={path} bytes={bytes} path={path} />
   ) : (
-    <EpubReader bytes={bytes} />
+    <EpubReader key={path} bytes={bytes} path={path} />
   );
 }
 

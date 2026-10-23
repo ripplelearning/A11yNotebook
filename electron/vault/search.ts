@@ -4,8 +4,10 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultSearchQuery, VaultSearchResult } from '../../src/shared/search';
 import { type DocxStructure } from '../../src/shared/docx';
+import { extractDocText } from './doc';
 import { extractEpubPages, extractPdfPages } from './document-preview';
 import { docxSearchText, parseDocxStructure } from './docx-parser';
+import { convertRtfToHtml } from './rtf';
 
 const VERSION = 4;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
@@ -107,6 +109,13 @@ function extractDocumentText(content: Buffer, extension: string) {
     if (extension === '.docx') {
       const structure: DocxStructure = parseDocxStructure(content);
       return { text: docxSearchText(structure, MAX_FILE_BYTES), title: structure.title };
+    }
+    if (extension === '.rtf') {
+      const html = convertRtfToHtml(content.toString('latin1'));
+      return { text: extractText(html, '.html').slice(0, MAX_FILE_BYTES), title: undefined };
+    }
+    if (extension === '.doc') {
+      return { text: extractDocText(content).slice(0, MAX_FILE_BYTES), title: undefined };
     }
     const pages = extension === '.pdf' ? extractPdfPages(content) : extractEpubPages(content);
     return { text: pages.join('\n\n').slice(0, MAX_FILE_BYTES), title: undefined };
@@ -302,7 +311,12 @@ export function createSearchIndex(root: string) {
               next.set(relative, cached);
               continue;
             }
-            const isDocument = extension === '.pdf' || extension === '.epub' || extension === '.docx';
+            const isDocument =
+              extension === '.pdf' ||
+              extension === '.epub' ||
+              extension === '.docx' ||
+              extension === '.rtf' ||
+              extension === '.doc';
             const textRead =
               TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES
                 ? await readSafeText(root, relative, MAX_FILE_BYTES)

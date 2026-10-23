@@ -1,6 +1,14 @@
 import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
-import type { RecentLibrary, VaultBookmark, VaultCaptureResult, VaultInfo, VaultLinkIndex, VaultTask } from './types';
+import type {
+  ReadingPosition,
+  RecentLibrary,
+  VaultBookmark,
+  VaultCaptureResult,
+  VaultInfo,
+  VaultLinkIndex,
+  VaultTask,
+} from './types';
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
@@ -113,6 +121,8 @@ export interface VaultBridge {
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
+  getReadingPosition?(path: string): Promise<ReadingPosition | null>;
+  setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }
 
 /** Narrow updater API exposed to the renderer through the preload script. */
