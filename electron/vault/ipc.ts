@@ -876,7 +876,7 @@ async function finishProtectedMetadataCleanup() {
  * (the credentials file and vault-encrypted notes) under the current
  * data key, then complete the rotation by dropping the legacy key.
  * Returns false — leaving the legacy fallback in place — when any
- * item cannot be rotated, so a later unlock retries. The caller must
+ * item cannot be rotated; it keeps opening via the legacy fallback. The caller must
  * hold the vault-operation serialization and an unlocked library.
  * Password-encrypted notes are never touched: they use independent
  * passwords, not the data key.
@@ -935,10 +935,6 @@ async function reencryptLegacyContent(): Promise<boolean> {
   }
 }
 
-/** Serialized best-effort completion of a pending data-key rotation. */
-function finishDataKeyRotation(): Promise<boolean> {
-  return serializeVaultOperation(() => reencryptLegacyContent()).catch(() => false);
-}
 
 async function relocate(relative: string, destination: string, assertCurrent: () => void = () => undefined) {
   if (relative === destination || relative.includes('\\') || destination.includes('\\'))
@@ -1302,7 +1298,6 @@ export function setupVaultIpc(
       securityConfig = config;
       masterKey = key;
       await finishProtectedMetadataCleanup();
-      void finishDataKeyRotation();
       resetIdleLock();
     });
   });
@@ -1500,7 +1495,6 @@ export function setupVaultIpc(
         masterKey = recovered.key;
         await finishLegacyCredentialCleanup(requireService(), recovered.key);
         await finishProtectedMetadataCleanup();
-        void finishDataKeyRotation();
         resetIdleLock();
         const vault = await requireService().getVault();
         await startReminders(requireService(), vault);

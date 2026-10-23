@@ -531,7 +531,7 @@ export default function SettingsDialog({
                   <h4>Data key rotation</h4>
                   <p>
                     Rotation replaces the library's underlying encryption key and re-encrypts protected metadata,
-                    the credentials store, and vault-encrypted notes under the new key. Your password stays the
+                    the credentials store, and library-encrypted notes under the new key. Your password stays the
                     same{recoveryAvailable ? ' and your existing recovery key stays valid' : ''}. Enter your current
                     password{recoveryAvailable ? ' and your recovery key' : ''} to confirm. Notes protected by
                     separate passwords are not affected.
