@@ -153,7 +153,15 @@ function persistDueSnapshot() {
 }
 
 function syncScheduledReminderTask() {
-  const command = reminderLaunchCommand();
+  // Windows-only feature: never touch the app-path APIs elsewhere
+  // (including test harnesses whose Electron mock lacks them).
+  if (process.platform !== 'win32') return;
+  let command: { execute: string; args: string[] };
+  try {
+    command = reminderLaunchCommand();
+  } catch {
+    return;
+  }
   void scheduledReminders
     .sync({
       enabled: backgroundRemindersEnabled,
@@ -203,10 +211,14 @@ async function runReminderWake(): Promise<void> {
       await unlink(temporary).catch(() => undefined);
     }
   }
-  const command = reminderLaunchCommand();
-  await scheduledReminders
-    .sync({ enabled: true, execute: command.execute, args: command.args, entries: remaining })
-    .catch(() => false);
+  try {
+    const command = reminderLaunchCommand();
+    await scheduledReminders
+      .sync({ enabled: true, execute: command.execute, args: command.args, entries: remaining })
+      .catch(() => false);
+  } catch {
+    // Re-registration is best-effort; the next app run re-syncs.
+  }
 }
 
 const notifications = new Set<Notification>();
