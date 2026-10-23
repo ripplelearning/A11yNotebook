@@ -19,6 +19,7 @@ const EXTENDABLE_STORE_LABELS: Record<string, string> = {
   'image-alts': 'Image descriptions',
   'flashcard-schedules': 'Flashcard schedules',
   reminders: 'Reminders',
+  settings: 'Settings',
 };
 import { playReminderSound, stopReminderSound } from '../reminders/reminderSound';
 import { useShortcutCapture } from './useShortcutCapture';
@@ -623,9 +624,10 @@ export default function SettingsDialog({
               This is not whole-library encryption. It encrypts Markdown, HTML, PDF, DOCX and ePub annotations and recovery drafts
               for outlines, mindmaps, grids and flashcards. Ordinary notes,
               attachments, saved cognitive asset files (including saved flashcards), filenames,
-              settings (both library and global copies), global preferences,
-              the search index and the audit log remain plaintext. Reminders, reminder defaults,
-              milestones, bookmarks, the link index, image descriptions and flashcard schedules can each be migrated into encryption below once the base protection is on. Notes, source
+              global preferences, the search index and the audit log remain plaintext. The app-global
+              fallback copy of settings also remains plaintext; it stops being updated while a library whose
+              settings are encrypted is open, and enabling settings encryption removes the stale copy. Reminders, reminder defaults,
+              milestones, bookmarks, the link index, image descriptions, flashcard schedules and library settings can each be migrated into encryption below once the base protection is on. Notes, source
               attachments, exports and backups remain plaintext, not whole-library encrypted. Flashcard drafts are
               encrypted, but their saved source files remain plaintext. Unlocked application memory is not protected.
               Plaintext cleanup is not secure erasure. A stable version 3 library recovery envelope is required.

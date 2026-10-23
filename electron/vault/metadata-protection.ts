@@ -32,6 +32,7 @@ export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, stri
   'image-alts': 'image-alts.json',
   'flashcard-schedules': 'flashcards.json',
   reminders: 'reminders.json',
+  settings: 'settings.json',
 };
 
 function storeEntry(identity: MetadataProtectionPointer, store: ProtectedStoreName): ProtectedStorePointer {

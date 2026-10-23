@@ -66,4 +66,5 @@ export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
   'image-alts',
   'flashcard-schedules',
   'reminders',
+  'settings',
 ];

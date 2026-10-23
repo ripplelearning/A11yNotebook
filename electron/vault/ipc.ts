@@ -517,6 +517,11 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
   try {
     vault = await nextService.initialize();
     const savedSecurity = await readVaultSecurityMetadata(nextService);
+    // Plaintext read on purpose: at open time the library is still
+    // locked, so protected settings cannot be decrypted. A protected
+    // library has no plaintext settings file, this returns null, and
+    // the idle-lock default applies until the first post-unlock
+    // settings read restores the real value.
     const savedSettings = await createMetadataStore(nextService).read('settings.json');
     if (savedSettings) {
       try {
@@ -827,6 +832,7 @@ const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'image-alts.json': 'image-alts',
   'flashcards.json': 'flashcard-schedules',
   'reminders.json': 'reminders',
+  'settings.json': 'settings',
 };
 
 /**
@@ -1170,6 +1176,8 @@ export function setupVaultIpc(
           const raw = await metadataFor(vault).read('bookmarks.json');
           if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
           legacy = raw ?? [];
+        } else if (store === 'settings') {
+          legacy = validateSettings((await metadataFor(vault).read('settings.json')) ?? DEFAULT_SETTINGS);
         } else if (store === 'reminders') {
           legacy = validateReminderStore(await metadataFor(vault).read('reminders.json'));
         } else if (store === 'image-alts' || store === 'flashcard-schedules') {
@@ -1185,6 +1193,11 @@ export function setupVaultIpc(
         access.assertCurrent();
         try {
           await protectedMetadata.extend(store, legacy);
+          if (store === 'settings') {
+            // Remove the stale global mirror of these settings: it is
+            // a plaintext copy of exactly what was just encrypted.
+            await unlink(path.join(app.getPath('userData'), 'settings.json')).catch(() => undefined);
+          }
           audit.committed();
           access.assertCurrent();
           return metadataProtectionStatus();
@@ -2503,7 +2516,15 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     const vault = service;
     if (vault) {
-      const saved = await metadataFor(vault).read('settings.json');
+      let saved: unknown = null;
+      try {
+        saved = await routedMetadataFor(vault).read('settings.json');
+      } catch (error) {
+        // While the library is locked, protected settings cannot be
+        // read: fall through to the global/defaults path below. Any
+        // other failure (tampering, corruption) surfaces instead.
+        if (!protectedMetadata?.protects('settings') || masterKey !== null) throw error;
+      }
       if (saved) {
         const validated = validateSettings(saved);
         idleLockMinutes = validated.vaultLockMinutes ?? 15;
@@ -2524,11 +2545,17 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     const settings = validateSettings(value);
     idleLockMinutes = settings.vaultLockMinutes ?? 15;
-    if (service) await metadataFor(service).write('settings.json', settings);
-    await mkdir(app.getPath('userData'), { recursive: true });
-    await writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify(settings, null, 2), {
-      mode: 0o600,
-    });
+    if (service) await routedMetadataFor(service).write('settings.json', settings);
+    // The global fallback copy mirrors whatever was saved last. While
+    // the open library's settings are encrypted, writing that mirror
+    // would defeat the protection, so it is skipped (and any stale
+    // mirror is removed when settings protection is enabled).
+    if (!protectedMetadata?.protects('settings')) {
+      await mkdir(app.getPath('userData'), { recursive: true });
+      await writeFile(path.join(app.getPath('userData'), 'settings.json'), JSON.stringify(settings, null, 2), {
+        mode: 0o600,
+      });
+    }
     resetIdleLock();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReveal, async (event, relativePath: unknown) => {
