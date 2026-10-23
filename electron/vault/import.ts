@@ -2,8 +2,10 @@ import { constants } from 'node:fs';
 import { lstat, open } from 'node:fs/promises';
 import path from 'node:path';
 import { IMAGE_TYPES } from './attachments';
+import { extractDocText, isDocSource } from './doc';
 import { parseDocxStructure } from './docx-parser';
 import { extractEpubPages, extractPdfPages } from './document-preview';
+import { convertRtfToHtml, isRtfSource } from './rtf';
 import { createAssetRegistry, assetTypes } from '../../src/shared/assets';
 import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 import { isInternallySupportedPath } from '../../src/shared/file-provenance';
@@ -67,6 +69,8 @@ export const IMPORT_EXTENSIONS = [
   'pdf',
   'epub',
   'docx',
+  'rtf',
+  'doc',
   'png',
   'jpg',
   'jpeg',
@@ -75,6 +79,9 @@ export const IMPORT_EXTENSIONS = [
   'bmp',
   'json',
 ];
+
+export const GDOC_GUIDANCE =
+  'A Google Docs (.gdoc) file is only a link to an online document and contains no document text. Open it in Google Docs, download it as .docx, .pdf, .epub, .rtf, .txt, or .html, and import that downloaded file instead.';
 
 export function isSupportedDocument(filename: string) {
   const extension = path.extname(filename).toLowerCase();
@@ -100,6 +107,7 @@ export async function readImportSource(source: string, assertCurrent: () => void
   source = path.resolve(source);
   assertCurrent();
   await assertNoSymlinks(source);
+  if (path.extname(source).toLowerCase() === '.gdoc') throw new Error(GDOC_GUIDANCE);
   if (path.extname(source).toLowerCase() === '.json' && !source.toLowerCase().endsWith('.mindmap.json'))
     throw new Error('Only .mindmap.json JSON assets are supported. Other JSON files cannot be imported as notes.');
   if (!isSupportedDocument(source))
@@ -107,9 +115,9 @@ export async function readImportSource(source: string, assertCurrent: () => void
       'Choose a supported note, document, image, or cognitive asset. There is no internal importer for this format; use Open With for supported external documents.',
     );
   const extension = path.extname(source).toLowerCase();
-  const limit = ['.pdf', '.epub', '.docx'].includes(extension)
+  const limit = ['.pdf', '.epub', '.docx', '.doc'].includes(extension)
     ? 40 * 1024 * 1024
-    : IMAGE_TYPES[extension]
+    : IMAGE_TYPES[extension] || extension === '.rtf'
       ? 20 * 1024 * 1024
       : 5 * 1024 * 1024;
   const before = await lstat(source);
@@ -147,7 +155,14 @@ export async function readImportSource(source: string, assertCurrent: () => void
   } finally {
     await handle.close();
   }
-  if (extension === '.docx') parseDocxStructure(bytes, { forImport: true });
+  if (extension === '.rtf') {
+    const rtfText = bytes.toString('latin1');
+    if (!isRtfSource(rtfText)) throw new Error('The selected file does not contain valid RTF data.');
+    convertRtfToHtml(rtfText); // Parse once here so a corrupt file fails before any copy is written.
+  } else if (extension === '.doc') {
+    if (!isDocSource(bytes)) throw new Error('The selected file is not a Word .doc document.');
+    extractDocText(bytes); // Extraction validates the container and piece table.
+  } else if (extension === '.docx') parseDocxStructure(bytes, { forImport: true });
   else if (extension === '.pdf') await validatePdfImport(bytes);
   else if (extension === '.epub') extractEpubPages(bytes, { forImport: true });
   else if (IMAGE_TYPES[extension]) {
@@ -179,10 +194,30 @@ export async function readImportSource(source: string, assertCurrent: () => void
   return bytes;
 }
 
+/**
+ * Convert bytes from a supported source format into their stored form: RTF
+ * becomes a sanitized standalone HTML note, and legacy .doc becomes an
+ * editable plain-text note holding the extracted text (the binary format's
+ * formatting is not extracted). Other formats are stored unchanged.
+ */
+export function convertImportedBytes(source: string, bytes: Buffer): { bytes: Buffer; extension: string } {
+  const extension = path.extname(source).toLowerCase();
+  if (extension === '.rtf') {
+    const title = path.basename(source).slice(0, -extension.length);
+    const html = standaloneHtml(title, sanitizeHtmlFragment(convertRtfToHtml(bytes.toString('latin1'))));
+    return { bytes: Buffer.from(html, 'utf8'), extension: '.html' };
+  }
+  if (extension === '.doc') {
+    return { bytes: Buffer.from(extractDocText(bytes), 'utf8'), extension: '.txt' };
+  }
+  return { bytes, extension };
+}
+
 export async function readImport(source: string, assertCurrent: () => void, allowUnsupported = false) {
   const absolute = path.resolve(source);
   await assertNoSymlinks(absolute);
   const extension = path.extname(source).toLowerCase();
+  if (extension === '.gdoc') throw new Error(GDOC_GUIDANCE);
   const asset = createAssetRegistry(assetTypes).resolve(source);
   const note = ['.md', '.html', '.htm'].includes(extension);
   const text = note || asset || extension === '.txt';
@@ -216,6 +251,10 @@ export async function readImport(source: string, assertCurrent: () => void, allo
     )
       throw new Error('The source file changed during import. Retry importing it.');
     const content = bytes.subarray(0, length);
+    if (extension === '.rtf' || extension === '.doc') {
+      assertCurrent();
+      return convertImportedBytes(source, content);
+    }
     if (text) {
       let value = new TextDecoder('utf-8', { fatal: true }).decode(content);
       if (isEncryptedNoteSource(value))

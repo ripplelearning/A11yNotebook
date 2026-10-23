@@ -762,9 +762,7 @@ export default function App() {
     const panel = tabPanelRef.current;
     const cells = panel ? Array.from(panel.querySelectorAll<HTMLElement>('[role="grid"] [role="gridcell"]')) : [];
     const target =
-      cells.find(
-        (cell) => cell.dataset.path === pendingGridFocusPath && cell.getAttribute('aria-colindex') === '1',
-      ) ??
+      cells.find((cell) => cell.dataset.path === pendingGridFocusPath && cell.getAttribute('aria-colindex') === '1') ??
       cells.find((cell) => cell.tabIndex === 0) ??
       panel;
     if (target) {
@@ -900,7 +898,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub|docx)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (!canOpen()) return;
         setAttachment(preview);
@@ -3093,7 +3091,13 @@ export default function App() {
                     notePath={currentNote.path}
                     editorRef={editorRef}
                     content={currentNote.content}
-                    format={/\.html?$/i.test(currentNote.path) ? 'html' : 'markdown'}
+                    format={
+                      /\.html?$/i.test(currentNote.path)
+                        ? 'html'
+                        : /\.txt$/i.test(currentNote.path)
+                          ? 'text'
+                          : 'markdown'
+                    }
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}

@@ -15,6 +15,8 @@ describe('internal import compatibility', () => {
     'Book.epub',
     'Document.pdf',
     'Document.docx',
+    'Letter.rtf',
+    'Legacy.doc',
     'Image.jpeg',
   ])('offers explicit compatible import for %s', (path) => {
     expect(isInternallySupportedPath(path)).toBe(true);
