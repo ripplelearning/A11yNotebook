@@ -77,9 +77,18 @@ export const READER_CONTRACTS: readonly ReaderContract[] = [
   noteReader('markdown-notes'),
   noteReader('html-notes'),
   noteReader('text-notes'),
-  // ePub: TOC, semantic chapters, bounded search, and persisted reading
-  // position exist; annotations are a separate open item.
-  contract('epub', 'epub-cfi', ['outline', 'sequential-navigation', 'semantic-structure', 'search', 'reading-position', 'lifecycle-cleanup']),
+  // ePub: TOC, semantic chapters, bounded search, persisted reading
+  // position, and full annotations (CFI anchors validated against the
+  // section text, with quote export and orphan status).
+  contract('epub', 'epub-cfi', [
+    'outline',
+    'sequential-navigation',
+    'semantic-structure',
+    'search',
+    'reading-position',
+    ...NOTE_ANNOTATIONS,
+    'lifecycle-cleanup',
+  ]),
   // DOCX: semantic reading with headings/lists/tables/links, navigation
   // and search, and full annotations (block/cell text anchors with
   // anchored/ambiguous/orphaned status and quote export).
