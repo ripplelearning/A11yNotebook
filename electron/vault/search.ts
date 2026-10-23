@@ -239,6 +239,14 @@ export interface SearchIndexProtectionAdapter {
   isProtected(): boolean;
   read(): Promise<unknown>;
   write(value: unknown): Promise<void>;
+  /**
+   * Whole-library encryption hook: given a file's raw bytes, return
+   * the decrypted bytes when the file is an encryption container,
+   * or null when it is not (or cannot be decrypted right now, e.g.
+   * while locked — the file is then indexed as empty rather than
+   * leaking container bytes into the index).
+   */
+  decryptBytes?(relativePath: string, bytes: Buffer): Buffer | null;
 }
 
 export function createSearchIndex(root: string, protection?: SearchIndexProtectionAdapter) {
@@ -341,10 +349,19 @@ export function createSearchIndex(root: string, protection?: SearchIndexProtecti
               extension === '.docx' ||
               extension === '.rtf' ||
               extension === '.doc';
-            const textRead =
+            let textRead =
               TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES
                 ? await readSafeText(root, relative, MAX_FILE_BYTES)
                 : null;
+            if (textRead && protection?.decryptBytes) {
+              const raw = await readSafeBuffer(root, relative, MAX_FILE_BYTES).catch(() => null);
+              if (raw) {
+                const decrypted = protection.decryptBytes(relative, raw.content);
+                if (decrypted) textRead = { content: decrypted.toString('utf8'), stat: textRead.stat };
+                else if (raw.content.subarray(0, 8).toString('ascii') === 'A11YLIB1')
+                  textRead = { content: '', stat: textRead.stat };
+              }
+            }
             const documentRead =
               isDocument && stat.size <= MAX_INDEXED_DOCUMENT_BYTES
                 ? await readSafeBuffer(root, relative, MAX_INDEXED_DOCUMENT_BYTES)
