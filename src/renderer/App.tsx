@@ -33,6 +33,7 @@ import type {
   VaultTask,
 } from '../shared/types';
 import CommandPalette from './components/CommandPalette';
+import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import UpdateDialog from './components/UpdateDialog';
@@ -101,6 +102,7 @@ type DialogId =
   | 'template'
   | 'attachment-insert'
   | 'web-capture'
+  | 'note-metadata'
   | 'new-task';
 type TreeAction = 'new-note' | 'new-template' | 'rename' | 'move' | 'delete' | 'reveal' | 'external' | 'bookmark';
 
@@ -208,6 +210,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'reveal-selected',
       'open-selected-external',
       'toggle-bookmark',
+      'edit-note-metadata',
       'encrypt-current-note',
       'convert-current-note',
       'convert-note-to-outline',
@@ -2403,6 +2406,18 @@ export default function App() {
       setItemDialog({ action: 'new-notebook' });
       return;
     }
+    if (commandId === 'edit-note-metadata') {
+      if (!currentNote) {
+        setStatusMessage('Open a note to edit its metadata.');
+        return;
+      }
+      if (/\.html?$/i.test(currentNote.path)) {
+        setStatusMessage('Front-matter editing is for Markdown and text notes, not HTML notes.');
+        return;
+      }
+      setActiveDialog('note-metadata');
+      return;
+    }
     if (commandId === 'refresh-links') {
       void refreshVault().then(refreshLinkIndex);
       setStatusMessage('Library and links refreshed.');
@@ -2672,6 +2687,7 @@ export default function App() {
       return !history || !canRedo(history);
     }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
+    if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);
     if (id === 'save-current-note')
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
     if (id === 'close-current-tab')
@@ -3696,6 +3712,19 @@ export default function App() {
             setSecurityEnabled(true);
             setRecoveryAvailable(true);
             setStatusMessage('Library password reset and library unlocked.');
+          }}
+        />
+      ) : null}
+      {activeDialog === 'note-metadata' && currentNote ? (
+        <NoteMetadataDialog
+          noteTitle={currentNote.title}
+          content={currentNote.content}
+          libraryTags={tags}
+          onClose={() => setActiveDialog(null)}
+          onApply={(nextContent) => {
+            updateNoteContent(currentNote.id, nextContent);
+            setActiveDialog(null);
+            setStatusMessage('Note metadata updated.');
           }}
         />
       ) : null}

@@ -22,6 +22,7 @@ export type CommandId =
   | 'edit-redo'
   | 'show-tasks'
   | 'toggle-bookmark'
+  | 'edit-note-metadata'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
   | 'toggle-right-pane'
@@ -574,6 +575,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Toggle note bookmark',
     description: 'Add or remove a bookmark for the active note.',
     shortcut: 'Ctrl+D',
+  },
+  {
+    id: 'edit-note-metadata',
+    label: 'Edit note metadata…',
+    description:
+      'View and edit the active note’s YAML front matter — title, tags, and other fields — with tag suggestions from the library.',
   },
   { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
   {
