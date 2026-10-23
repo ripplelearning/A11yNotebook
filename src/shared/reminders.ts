@@ -40,6 +40,7 @@ export interface ReminderStore {
 export type VaultReminderEvent =
   | { type: 'fired' | 'open'; vaultPath: string; reminder: Reminder }
   | { type: 'flashcard-due'; vaultPath: string }
+  | { type: 'locked-due'; vaultPath: string }
   | { type: 'changed'; vaultPath: string; reminders: Reminder[] }
   | { type: 'error'; vaultPath: string; message: string };
 

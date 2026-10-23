@@ -424,6 +424,23 @@ export function createReminderService(options: ReminderServiceOptions) {
       }),
     refresh,
     getReminders: refresh,
+    /**
+     * Privacy-safe view of what will come due: identifiers and times only,
+     * never titles or paths. Used to keep a generic due alert possible while
+     * the library is locked and this service is stopped.
+     */
+    dueSnapshot: (): Array<{ id: string; scheduledAt: string; kind: 'reminder' | 'flashcard' }> => {
+      if (!initialized || stopped) return [];
+      const entries: Array<{ id: string; scheduledAt: string; kind: 'reminder' | 'flashcard' }> = reminders
+        .filter((item) => item.status === 'pending')
+        .map((item) => ({ id: item.id, scheduledAt: item.scheduledAt, kind: 'reminder' as const }));
+      for (const review of reviews) {
+        if (store.reviewStates?.[review.id] !== review.scheduledAt) {
+          entries.push({ id: review.id, scheduledAt: review.scheduledAt, kind: 'flashcard' as const });
+        }
+      }
+      return entries.sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+    },
     createReminder: (input: CreateReminderInput) =>
       serial(async () => {
         requireActive();
