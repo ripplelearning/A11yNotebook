@@ -192,20 +192,19 @@ After release preparation is reviewed and merged through normal branch protectio
    The dispatch ref selects the reviewed workflow; its checkout still uses the exact release tag.
    Do not retry publication over a partial/existing release: inspect it and use a new version/tag if needed.
 
-   Desktop validation is strict by default. For a deliberate stable-publication exception, an authorized maintainer
-   may manually dispatch the workflow from reviewed `main` with
-   `allow_desktop_validation_failure` explicitly set to `true`:
+   Desktop validation does not gate publication. The Windows desktop UI Automation and
+   installed-upgrade checks require an interactive Windows desktop and cannot run on
+   GitHub-hosted runners (session 0), so the workflow runs them, records their outcomes in
+   `desktop-validation.json`, and discloses any failures in the workflow summary and the
+   release notes. Publication proceeds once every other gate passes (build, tests,
+   signing, tag, ancestry, checksum, and publication-safety checks are never waived).
+   Failed and not-run desktop checks remain failures on record; run them on a real
+   Windows desktop before production promotion. Tag pushes and manual dispatches behave
+   identically; dispatching `release.yml` only needs the `tag` input:
 
    ```sh
-   gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main \
-     -f tag=vX.Y.Z -f allow_desktop_validation_failure=true
+   gh workflow run release.yml --repo ripplelearning/A11yNotebook --ref main -f tag=vX.Y.Z
    ```
-
-   The input defaults to `false`; tag pushes and manual dispatches without explicit `true` retain the strict stable
-   gate. The override can waive only failed Windows desktop checks, never a cancellation or any build, test,
-   security, signing, tag, ancestry, checksum, or publication-safety gate. Failed and not-run checks remain failures
-   in `desktop-validation.json`; the workflow summary, release notes and uploaded artifacts state whether the
-   override was requested and actually used, and warn that overridden checks did not pass.
 
    The dispatch ref selects the workflow definition, but the workflow checks out the exact commit named by `tag`.
    Dispatching from updated `main` with an older tag does **not** make that tag use newer PowerShell smoke scripts.
