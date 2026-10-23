@@ -1,7 +1,7 @@
 import type ePubFactory from 'epubjs/src/index.js';
 import type { EpubTocItem } from 'epubjs/src/index.js';
 import DOMPurify from 'dompurify';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
@@ -9,6 +9,90 @@ import { createDocumentReaderModel, type DocumentReaderModel } from './document-
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
 import DocxReader from './DocxReader';
+import Modal from '../../components/Modal';
+import { ANNOTATION_COLORS } from '../../../shared/annotations';
+import {
+  formatEpubAnnotationsExport,
+  type EpubAnnotation,
+  type EpubAnnotationAnchor,
+} from '../../../shared/epub-annotations';
+
+const EPUB_HIGHLIGHT_FILLS: Record<EpubAnnotation['color'], string> = {
+  yellow: '#ffe082',
+  green: '#a5d6a7',
+  blue: '#90caf9',
+  pink: '#f48fb1',
+};
+
+function normalizeEpubText(value: string): string {
+  return value.replace(/\s+/g, ' ').trim();
+}
+
+function EpubAnnotationDialog({
+  quote,
+  initial,
+  busy,
+  onClose,
+  onSave,
+}: {
+  quote: string;
+  initial?: EpubAnnotation;
+  busy: boolean;
+  onClose: () => void;
+  onSave: (values: { color: EpubAnnotation['color']; label: string; comment: string }) => void;
+}) {
+  const id = useId();
+  const [color, setColor] = useState<EpubAnnotation['color']>(initial?.color ?? 'yellow');
+  const [label, setLabel] = useState(initial?.label ?? '');
+  const [comment, setComment] = useState(initial?.comment ?? '');
+  return (
+    <Modal titleId={`${id}-title`} title={initial ? 'Edit ePub annotation' : 'Add ePub annotation'} onClose={onClose}>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          onSave({ color, label: label.trim(), comment });
+        }}
+      >
+        <blockquote>{quote}</blockquote>
+        <div>
+          <label htmlFor={`${id}-color`}>Highlight color</label>
+          <select
+            id={`${id}-color`}
+            value={color}
+            onChange={(event) => setColor(event.target.value as EpubAnnotation['color'])}
+          >
+            {ANNOTATION_COLORS.map((value) => (
+              <option key={value} value={value}>
+                {value}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label htmlFor={`${id}-label`}>Highlight label</label>
+          <input id={`${id}-label`} value={label} maxLength={100} onChange={(event) => setLabel(event.target.value)} />
+        </div>
+        <div>
+          <label htmlFor={`${id}-comment`}>Comment</label>
+          <textarea
+            id={`${id}-comment`}
+            value={comment}
+            maxLength={10_000}
+            onChange={(event) => setComment(event.target.value)}
+          />
+        </div>
+        <div>
+          <button type="submit" disabled={busy || !label.trim()}>
+            {busy ? 'Saving…' : 'Save annotation'}
+          </button>
+          <button type="button" disabled={busy} onClick={onClose}>
+            Cancel
+          </button>
+        </div>
+      </form>
+    </Modal>
+  );
+}
 
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
@@ -314,6 +398,14 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
   const [book, setBook] = useState<Awaited<ReturnType<typeof ePubFactory>> | null>(null);
+  const [epubAnnotations, setEpubAnnotations] = useState<EpubAnnotation[]>([]);
+  const [sectionTexts, setSectionTexts] = useState<ReadonlyMap<string, string>>(new Map());
+  const [pendingCapture, setPendingCapture] = useState<EpubAnnotationAnchor | null>(null);
+  const [epubDraft, setEpubDraft] = useState<{ anchor: EpubAnnotationAnchor; editing?: EpubAnnotation } | null>(null);
+  const [epubBusy, setEpubBusy] = useState(false);
+  const [epubStatus, setEpubStatus] = useState('');
+  const appliedHighlightsRef = useRef(new Map<string, string>());
+  const [renditionTick, setRenditionTick] = useState(0);
   const renditionRef = useRef<ReturnType<Awaited<ReturnType<typeof ePubFactory>>['renderTo']> | null>(null);
   const renditionContainerRef = useRef<HTMLDivElement>(null);
   const pendingHrefRef = useRef<string | null>(null);
@@ -381,6 +473,114 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.listEpubAnnotations) return;
+    void vault
+      .listEpubAnnotations(path)
+      .then((items) => {
+        if (!cancelled) setEpubAnnotations(items);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  // An annotation is orphaned when its section text is available and the
+  // quote no longer appears in it; sections past the search-text cap
+  // cannot be verified and are treated as anchored rather than condemned.
+  const epubStatuses = useMemo(() => {
+    const statuses = new Map<string, 'anchored' | 'orphan'>();
+    for (const annotation of epubAnnotations) {
+      const text = sectionTexts.get(annotation.anchor.sectionHref);
+      statuses.set(
+        annotation.id,
+        text !== undefined && !text.includes(normalizeEpubText(annotation.anchor.quote)) ? 'orphan' : 'anchored',
+      );
+    }
+    return statuses;
+  }, [epubAnnotations, sectionTexts]);
+
+  const captureFromCfi = useCallback(
+    (cfiRange: string, quoteText: string) => {
+      if (!book || !quoteText) return;
+      let sectionHref = '';
+      try {
+        const spine = book.spine as unknown as { get?: (target: string) => { href?: string } | undefined };
+        sectionHref = spine.get?.(cfiRange)?.href ?? '';
+      } catch {
+        sectionHref = '';
+      }
+      if (!sectionHref) return;
+      const text = sectionTexts.get(sectionHref) ?? '';
+      const quote = normalizeEpubText(quoteText);
+      const at = text.indexOf(quote);
+      setPendingCapture({
+        cfiRange,
+        sectionHref,
+        quote,
+        prefix: at >= 0 ? text.slice(Math.max(0, at - 64), at) : '',
+        suffix: at >= 0 ? text.slice(at + quote.length, at + quote.length + 64) : '',
+      });
+    },
+    [book, sectionTexts],
+  );
+  const captureRef = useRef(captureFromCfi);
+  captureRef.current = captureFromCfi;
+
+  const beginEpubAnnotation = useCallback(() => {
+    if (!pendingCapture) {
+      setEpubStatus('Select text in the book view before adding an annotation.');
+      return;
+    }
+    setEpubStatus('');
+    setEpubDraft({ anchor: pendingCapture });
+  }, [pendingCapture]);
+
+  const saveEpubAnnotation = useCallback(
+    async (values: { color: EpubAnnotation['color']; label: string; comment: string }) => {
+      const vault = window.a11yNotebook?.vault;
+      if (!vault || !epubDraft) return;
+      setEpubBusy(true);
+      try {
+        if (epubDraft.editing) {
+          const saved = await vault.updateEpubAnnotation(path, epubDraft.editing.id, values);
+          setEpubAnnotations((items) => items.map((item) => (item.id === saved.id ? saved : item)));
+        } else {
+          const saved = await vault.addEpubAnnotation({ path, anchor: epubDraft.anchor, ...values });
+          setEpubAnnotations((items) => [...items, saved]);
+        }
+        setEpubDraft(null);
+        setEpubStatus('Annotation saved.');
+      } catch {
+        setEpubStatus('The annotation could not be saved.');
+      } finally {
+        setEpubBusy(false);
+      }
+    },
+    [epubDraft, path],
+  );
+
+  const deleteEpubAnnotation = useCallback(
+    async (annotation: EpubAnnotation) => {
+      const vault = window.a11yNotebook?.vault;
+      if (!vault) return;
+      setEpubBusy(true);
+      try {
+        await vault.deleteEpubAnnotation(path, annotation.id);
+        setEpubAnnotations((items) => items.filter((item) => item.id !== annotation.id));
+        setEpubStatus('Annotation deleted.');
+      } catch {
+        setEpubStatus('The annotation could not be deleted.');
+      } finally {
+        setEpubBusy(false);
+      }
+    },
+    [path],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
     let book: Awaited<ReturnType<typeof ePubFactory>> | undefined;
     void import('epubjs/src/index.js')
       .then(({ default: ePub }) =>
@@ -402,6 +602,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         }
         const items = opened.spine.spineItems.slice(0, MAX_SEARCHABLE_PAGES);
         const loaded: Array<{ label: string; text: string }> = [];
+        const texts = new Map<string, string>();
         let size = 0;
         for (const section of items) {
           const content = await section.load();
@@ -409,10 +610,12 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           size += text.length;
           if (size > MAX_SEARCHABLE_TEXT) break;
           loaded.push({ label: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
+          texts.set(section.href, text);
           if (cancelled) break;
         }
         if (!cancelled) {
           setReaderModel(createDocumentReaderModel(loaded));
+          setSectionTexts(texts);
         }
       })
       .catch(() => {
@@ -440,12 +643,42 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     observer.observe(renditionContainerRef.current, { childList: true, subtree: true });
     labelFrames();
     renditionRef.current = rendition;
+    setRenditionTick((tick) => tick + 1);
     // epub.js emits 'relocated' after every display or page turn; its bundled
     // types omit the event API, so it is reached through a structural view.
     const evented = rendition as unknown as {
       on?: (event: string, handler: (location: { start?: { cfi?: string } }) => void) => void;
     };
     if (typeof evented.on === 'function') {
+      const selectable = rendition as unknown as {
+        on?: (event: string, handler: (...args: never[]) => void) => void;
+      };
+      selectable.on?.('selected', ((cfiRange: string, contents: { range?: (cfi: string) => Range }) => {
+        try {
+          const range = contents?.range?.(cfiRange);
+          captureRef.current(cfiRange, range?.toString() ?? '');
+        } catch {
+          // A selection that cannot be read simply does not arm the button.
+        }
+      }) as never);
+      // Keyboard selections inside a section view may never fire
+      // epub.js's 'selected' (it listens for pointer selection), so also
+      // watch each rendered view's selection directly and derive the CFI.
+      selectable.on?.('rendered', ((section: { cfiFromRange?: (range: Range) => string }, view: { document?: Document; contents?: { cfiFromRange?: (range: Range) => string } }) => {
+        const doc = view?.document;
+        if (!doc) return;
+        doc.addEventListener('selectionchange', () => {
+          const selection = doc.getSelection();
+          if (!selection || selection.isCollapsed || !selection.rangeCount) return;
+          const range = selection.getRangeAt(0);
+          try {
+            const cfi = view.contents?.cfiFromRange?.(range) ?? section?.cfiFromRange?.(range);
+            if (cfi) captureRef.current(cfi, range.toString());
+          } catch {
+            // Best effort only; the pointer path above remains primary.
+          }
+        });
+      }) as never);
       evented.on('relocated', (location) => {
         const cfi = location?.start?.cfi;
         if (!cfi) return;
@@ -466,6 +699,42 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       renditionRef.current = null;
     };
   }, [book, queueSavePosition]);
+
+  // Keep the rendition's highlights in sync with the stored annotations.
+  useEffect(() => {
+    const rendition = renditionRef.current as unknown as {
+      annotations?: {
+        add: (type: string, cfi: string, data: object, cb: () => void, className: string, styles: object) => void;
+        remove: (cfi: string, type: string) => void;
+      };
+    } | null;
+    if (!rendition?.annotations) return;
+    const applied = appliedHighlightsRef.current;
+    const wanted = new Map(epubAnnotations.map((annotation) => [annotation.id, annotation]));
+    for (const [id, cfi] of [...applied]) {
+      if (!wanted.has(id) || wanted.get(id)!.anchor.cfiRange !== cfi) {
+        try {
+          rendition.annotations.remove(cfi, 'highlight');
+        } catch {
+          // Removing a stale highlight is best effort.
+        }
+        applied.delete(id);
+      }
+    }
+    for (const annotation of epubAnnotations) {
+      if (applied.get(annotation.id) === annotation.anchor.cfiRange) continue;
+      try {
+        rendition.annotations.add('highlight', annotation.anchor.cfiRange, {}, () => undefined, 'a11y-epub-highlight', {
+          fill: EPUB_HIGHLIGHT_FILLS[annotation.color],
+          'fill-opacity': '0.45',
+        });
+        applied.set(annotation.id, annotation.anchor.cfiRange);
+      } catch {
+        // A CFI the rendition rejects simply renders no highlight; the
+        // pane still lists the annotation with its status.
+      }
+    }
+  }, [epubAnnotations, book, renditionTick]);
 
   useEffect(() => {
     if (!positionReady) return;
@@ -501,6 +770,9 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           onClick={() => setSectionIndex((index) => Math.min(readerModel.sections.length - 1, index + 1))}
         >
           Next section
+        </button>
+        <button type="button" onClick={beginEpubAnnotation}>
+          Annotate selection
         </button>
       </div>
       {book?.navigation.toc.length ? (
@@ -543,6 +815,88 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       ) : (
         <p>Loading ePub content…</p>
       )}
+      <section aria-label="ePub annotations">
+        <h4>Annotations</h4>
+        {epubStatus ? <p role="status">{epubStatus}</p> : null}
+        {!epubAnnotations.length ? <p>No annotations for this book.</p> : null}
+        <ul>
+          {epubAnnotations.map((annotation) => {
+            const status = epubStatuses.get(annotation.id) ?? 'anchored';
+            return (
+              <li key={annotation.id} data-annotation-id={annotation.id}>
+                <strong>{annotation.label}</strong> <span>({annotation.color} highlight)</span>
+                <blockquote>{annotation.anchor.quote}</blockquote>
+                {annotation.comment ? <p>{annotation.comment}</p> : null}
+                {status === 'orphan' ? (
+                  <p>Highlight unavailable: the quoted text no longer appears in its section.</p>
+                ) : null}
+                <button
+                  type="button"
+                  disabled={status === 'orphan'}
+                  aria-label={`Jump to annotation: ${annotation.label}`}
+                  onClick={() => {
+                    void renditionRef.current?.display(annotation.anchor.cfiRange).catch(() => {
+                      setEpubStatus('That annotation could not be opened in the book view.');
+                    });
+                  }}
+                >
+                  Jump to text
+                </button>{' '}
+                <button
+                  type="button"
+                  disabled={epubBusy}
+                  aria-label={`Edit annotation: ${annotation.label}`}
+                  onClick={() => setEpubDraft({ anchor: annotation.anchor, editing: annotation })}
+                >
+                  Edit
+                </button>{' '}
+                <button
+                  type="button"
+                  disabled={epubBusy}
+                  aria-label={`Delete annotation: ${annotation.label}`}
+                  onClick={() => void deleteEpubAnnotation(annotation)}
+                >
+                  Delete
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+        {epubAnnotations.length ? (
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(
+                  formatEpubAnnotationsExport(
+                    path,
+                    epubAnnotations.map((annotation) => ({
+                      annotation,
+                      status: epubStatuses.get(annotation.id) ?? 'anchored',
+                    })),
+                  ),
+                );
+                setEpubStatus(
+                  `Copied ${epubAnnotations.length} annotation${epubAnnotations.length === 1 ? '' : 's'} to the clipboard.`,
+                );
+              } catch {
+                setEpubStatus('Could not copy annotations to the clipboard.');
+              }
+            }}
+          >
+            Copy annotations to clipboard
+          </button>
+        ) : null}
+      </section>
+      {epubDraft ? (
+        <EpubAnnotationDialog
+          quote={epubDraft.editing?.anchor.quote ?? epubDraft.anchor.quote}
+          initial={epubDraft.editing}
+          busy={epubBusy}
+          onClose={() => setEpubDraft(null)}
+          onSave={(values) => void saveEpubAnnotation(values)}
+        />
+      ) : null}
     </section>
   );
 }
