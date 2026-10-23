@@ -153,7 +153,7 @@ describe('contextual navigation and creation', () => {
     shortcut('3');
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New note' });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Name' }), { target: { value: 'Created' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New Note Name' }), { target: { value: 'Created' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Research/Created.md'));
   });
@@ -244,7 +244,7 @@ describe('contextual navigation and creation', () => {
     shortcut('3');
     fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'New note' }));
     const dialog = screen.getByRole('dialog', { name: 'New note' });
-    expect(within(dialog).getByRole('textbox', { name: 'Name' })).toHaveFocus();
+    expect(within(dialog).getByRole('textbox', { name: 'New Note Name' })).toHaveFocus();
     await act(async () => new Promise((resolve) => setTimeout(resolve, 75)));
     expect(status()).not.toHaveTextContent('Notes and Files in Research');
     fireEvent.keyDown(dialog, { key: 'Escape' });

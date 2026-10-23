@@ -144,7 +144,7 @@ describe('Help menu', () => {
     search.focus();
     menu('new-notebook');
     let dialog = screen.getByRole('dialog', { name: 'New notebook' });
-    const nameInput = within(dialog).getByRole('textbox', { name: 'Name' });
+    const nameInput = within(dialog).getByRole('textbox', { name: 'New Notebook Name' });
     expect(nameInput).toHaveFocus();
     fireEvent.change(nameInput, { target: { value: 'Research' } });
     await act(async () => {

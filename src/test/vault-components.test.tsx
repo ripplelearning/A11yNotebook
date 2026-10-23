@@ -68,7 +68,7 @@ describe('accessible vault tree', () => {
     fireEvent.keyDown(item, { key: 'F2' });
 
     const dialog = screen.getByRole('dialog', { name: 'Rename item' });
-    const input = screen.getByRole('textbox', { name: 'Name' });
+    const input = screen.getByRole('textbox', { name: 'New Name' });
     expect(input).toHaveFocus();
     fireEvent.change(input, { target: { value: '  Archive  ' } });
     fireEvent.click(screen.getByRole('button', { name: 'Rename item' }));
@@ -90,6 +90,38 @@ describe('accessible vault tree', () => {
     expect(onRename).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     expect(item).toHaveFocus();
+  });
+});
+
+describe('item dialog naming', () => {
+  it('labels the new-note field for what is being named and titles the window while open', () => {
+    const originalTitle = document.title;
+    const { unmount } = render(
+      <ItemDialog
+        request={{ action: 'new-note' }}
+        notebooks={[]}
+        onSubmit={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'New note' })).toBeInTheDocument();
+    expect(screen.getByRole('textbox', { name: 'New Note Name' })).toHaveFocus();
+    expect(document.title).toBe('New note – A11y Notebook');
+    unmount();
+    expect(document.title).toBe(originalTitle);
+  });
+
+  it('labels the new-notebook field for what is being named', () => {
+    render(
+      <ItemDialog
+        request={{ action: 'new-notebook' }}
+        notebooks={[]}
+        onSubmit={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'New Notebook Name' })).toBeInTheDocument();
+    expect(document.title).toBe('New notebook – A11y Notebook');
   });
 });
 

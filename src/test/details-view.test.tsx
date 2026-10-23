@@ -412,7 +412,7 @@ describe('accessible details view', () => {
         );
       if (action === 'rename') {
         fireEvent.keyDown(research, { key: 'F2' });
-        fireEvent.change(screen.getByRole('textbox', { name: 'Name' }), { target: { value: 'Renamed' } });
+        fireEvent.change(screen.getByRole('textbox', { name: 'New Name' }), { target: { value: 'Renamed' } });
       } else {
         fireEvent.keyDown(research, { key: 'F10', shiftKey: true });
         fireEvent.click(screen.getByRole('menuitem', { name: 'Move' }));
