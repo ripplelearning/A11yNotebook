@@ -20,7 +20,29 @@ import {
 import { createVaultWatcher } from './watcher';
 import { readImport } from './import';
 import { createProvenanceStore, type Provenance } from './provenance';
-import { readBoundedMetadata } from './metadata-protection';
+import {
+  decryptLibraryFile,
+  encryptLibraryFile,
+  LIBRARY_CHUNK_SIZE,
+  LIBRARY_CONTAINER_MAGIC,
+  newLibraryFileId,
+} from './library-crypto';
+import type { LibraryEncryptionManifest, LibraryManifestFile } from './library-manifest';
+
+/**
+ * Bridge for whole-library encryption. The manifest is owned by the
+ * caller (ipc persists it as library-encryption.json); the service
+ * keeps the working copy and reports every mutation. The content key
+ * is supplied lazily so it exists only while the library is unlocked.
+ * When a manifest is present, note files are containers on disk and
+ * plaintext in memory: reads fail closed for a listed path stored in
+ * plaintext or an unlisted container, and every note write encrypts.
+ */
+export interface VaultLibraryEncryptionAdapter {
+  manifest(): LibraryEncryptionManifest | null;
+  contentKey(): Buffer | null;
+  manifestChanged(manifest: LibraryEncryptionManifest): void;
+}
 
 function isNotePath(value: string) {
   return ['.md', '.html', '.htm', '.txt'].includes(path.extname(value).toLowerCase());
@@ -58,6 +80,7 @@ export function createVaultService(
   vaultPath: string,
   onChanged?: (event: VaultChangedEvent) => void | Promise<void>,
   protectedMetadata?: VaultProtectedMetadataAdapter,
+  libraryEncryption?: VaultLibraryEncryptionAdapter,
 ) {
   let root = '';
   let searchIndex: ReturnType<typeof createSearchIndex> | undefined;
@@ -67,6 +90,51 @@ export function createVaultService(
   let initialization: Promise<VaultInfo> | undefined;
   let noteWrites: Promise<unknown> = Promise.resolve();
   const provenance = createProvenanceStore({ resolveMetadata }, liveProvenanceIdentities);
+  let libraryManifest: LibraryEncryptionManifest | null = libraryEncryption?.manifest() ?? null;
+
+  function requireLibraryContentKey(): Buffer {
+    const key = libraryEncryption?.contentKey() ?? null;
+    if (!key) throw new Error('Unlock the library to use whole-library encryption.');
+    return key;
+  }
+
+  function isLibraryContainer(bytes: Buffer): boolean {
+    return bytes.length >= LIBRARY_CONTAINER_MAGIC.length && bytes.subarray(0, 8).toString('ascii') === LIBRARY_CONTAINER_MAGIC;
+  }
+
+  function decodeNoteBytes(relativePath: string, bytes: Buffer): string {
+    if (!libraryManifest) return bytes.toString('utf8');
+    const entry = libraryManifest.files[relativePath];
+    if (isLibraryContainer(bytes)) {
+      if (!entry) throw new Error('This note is encrypted but is not listed in the library encryption manifest.');
+      return decryptLibraryFile(requireLibraryContentKey(), entry.fileId, bytes).toString('utf8');
+    }
+    if (entry) throw new Error('This note should be encrypted but is stored in plaintext.');
+    return bytes.toString('utf8');
+  }
+
+  function decryptSearchBytes(relativePath: string, bytes: Buffer): Buffer | null {
+    if (!libraryManifest || !isLibraryContainer(bytes)) return null;
+    const entry = libraryManifest.files[relativePath];
+    if (!entry) return null;
+    const key = libraryEncryption?.contentKey() ?? null;
+    if (!key) return null;
+    try {
+      return decryptLibraryFile(key, entry.fileId, bytes);
+    } catch {
+      return null;
+    }
+  }
+
+  function recordManifestEntry(relativePath: string, entry: LibraryManifestFile) {
+    if (!libraryManifest) return;
+    libraryManifest.files[relativePath] = entry;
+    libraryEncryption?.manifestChanged(libraryManifest);
+  }
+
+  function fileIdFor(relativePath: string): string {
+    return libraryManifest?.files[relativePath]?.fileId ?? newLibraryFileId();
+  }
 
   async function liveProvenanceIdentities() {
     const identities = new Set<string>();
@@ -104,7 +172,14 @@ export function createVaultService(
       const stat = await lstat(root);
       if (!stat.isDirectory()) throw new Error('Library must be a folder.');
       await ensureMetadataDirectory(root);
-      searchIndex = createSearchIndex(root, protectedMetadata?.searchIndex);
+      searchIndex = createSearchIndex(root, {
+        ...(protectedMetadata?.searchIndex ?? {
+          isProtected: () => false,
+          read: async () => null,
+          write: async () => undefined,
+        }),
+        decryptBytes: (relativePath, bytes) => decryptSearchBytes(relativePath, bytes),
+      });
       await searchIndex.initialize();
       if (onChanged) await startWatcher(onChanged);
       return getVault();
@@ -329,22 +404,30 @@ export function createVaultService(
   async function readNote(relativePath: string, maximumBytes?: number) {
     const target = await resolveEntry(relativePath);
     if (!isNotePath(target)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
-    if (maximumBytes === undefined) return readFile(target, 'utf8');
+    if (maximumBytes === undefined) return decodeNoteBytes(relativePath, await readFile(target));
     const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const stat = await file.stat();
       if (!stat.isFile()) throw new Error('Notes must be regular files.');
-      if (stat.size > maximumBytes) throw new NoteReadSizeLimitError();
-      const bytes = Buffer.alloc(Math.min(stat.size + 1, maximumBytes + 1));
+      // A container is slightly larger than its plaintext; allow the
+      // container overhead on top of the plaintext limit and enforce
+      // the limit on the decoded text.
+      const overhead = libraryManifest
+        ? 16 * 1024 + Math.ceil(maximumBytes / LIBRARY_CHUNK_SIZE) * 32
+        : 0;
+      if (stat.size > maximumBytes + overhead) throw new NoteReadSizeLimitError();
+      const bytes = Buffer.alloc(Math.min(stat.size + 1, maximumBytes + overhead + 1));
       let length = 0;
       while (length < bytes.length) {
         const { bytesRead } = await file.read(bytes, length, bytes.length - length, length);
         if (!bytesRead) break;
         length += bytesRead;
       }
-      if (length > maximumBytes) throw new NoteReadSizeLimitError();
+      if (length > maximumBytes + overhead) throw new NoteReadSizeLimitError();
       if (length > stat.size) throw new Error('The note changed while reading. Reopen it.');
-      return bytes.subarray(0, length).toString('utf8');
+      const text = decodeNoteBytes(relativePath, bytes.subarray(0, length));
+      if (Buffer.byteLength(text, 'utf8') > maximumBytes) throw new NoteReadSizeLimitError();
+      return text;
     } finally {
       await file.close();
     }
@@ -360,14 +443,31 @@ export function createVaultService(
     const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
     try {
       const stat = await lstat(target);
-      await writeFile(temporary, content, { encoding: 'utf8', flag: 'wx', mode: stat.mode & 0o777 });
+      let outgoing: string | Buffer = content;
+      let manifestEntry: LibraryManifestFile | null = null;
+      if (libraryManifest) {
+        const fileId = fileIdFor(relativePath);
+        const container = encryptLibraryFile(
+          requireLibraryContentKey(),
+          fileId,
+          Buffer.from(content, 'utf8'),
+        );
+        outgoing = container;
+        manifestEntry = {
+          fileId,
+          plainLength: Buffer.byteLength(content, 'utf8'),
+          containerLength: container.length,
+        };
+      }
+      await writeFile(temporary, outgoing, { flag: 'wx', mode: stat.mode & 0o777 });
       await resolveEntry(path.relative(root, temporary));
       await resolveEntry(relativePath);
-      if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent)
+      if (expectedContent !== undefined && decodeNoteBytes(relativePath, await readFile(target)) !== expectedContent)
         throw new Error('Note changed on disk. Resolve the conflict before saving.');
       const retirePrevious = await preserveProvenance(relativePath, temporary, assertCurrent);
       assertCurrent?.();
       await rename(temporary, target);
+      if (manifestEntry) recordManifestEntry(relativePath, manifestEntry);
       await retirePrevious().catch(() => undefined);
     } finally {
       await rm(temporary, { force: true }).catch(() => undefined);
@@ -389,7 +489,7 @@ export function createVaultService(
       try {
         target = await resolveEntry(relativePath);
         await mkdir(path.dirname(target), { recursive: true });
-        if (expectedContent !== undefined && (await readFile(target, 'utf8')) !== expectedContent) {
+        if (expectedContent !== undefined && decodeNoteBytes(relativePath, await readFile(target)) !== expectedContent) {
           throw new Error('Note changed on disk. Resolve the conflict before saving.');
         }
       } catch (error) {
@@ -431,7 +531,10 @@ export function createVaultService(
     if (!isNotePath(relativePath)) throw new Error('Only encrypted Markdown and HTML notes can be recovered.');
     const identity = await provenance.identity(absolute);
     if (!identity) throw new Error('This filesystem cannot reliably identify the encrypted note for managed recovery.');
-    if ((await readBoundedMetadata(absolute, 40 * 1024 * 1024)) !== expectedCiphertext)
+    const adoptedStat = await lstat(absolute);
+    if (!adoptedStat.isFile() || adoptedStat.size > 40 * 1024 * 1024)
+      throw new Error('The encrypted note changed. Retry recovery.');
+    if (decodeNoteBytes(relativePath, await readFile(absolute)) !== expectedCiphertext)
       throw new Error('The encrypted note changed. Retry recovery.');
     assertCurrent();
     await provenance.record(absolute, 'imported', assertCurrent, identity);
@@ -469,6 +572,17 @@ export function createVaultService(
     assertCurrent?.();
     assertVisibleCreationPath(relativePath);
     const target = await resolveEntry(relativePath, true);
+    let pendingManifestEntry: LibraryManifestFile | null = null;
+    if (libraryManifest && isNotePath(relativePath) && typeof content === 'string') {
+      const fileId = fileIdFor(relativePath);
+      const container = encryptLibraryFile(requireLibraryContentKey(), fileId, Buffer.from(content, 'utf8'));
+      pendingManifestEntry = {
+        fileId,
+        plainLength: Buffer.byteLength(content, 'utf8'),
+        containerLength: container.length,
+      };
+      content = container;
+    }
     const staging = path.join(path.dirname(target), `.import-${randomUUID()}.tmp`);
     let committed = false;
     let stagingKey: string | null = null;
@@ -535,6 +649,7 @@ export function createVaultService(
       throw error;
     } finally {
       await rm(staging, { force: true }).catch(() => undefined);
+      if (committed && pendingManifestEntry) recordManifestEntry(relativePath, pendingManifestEntry);
       const retired = [stagingKey, ...(!committed ? [targetKey] : [])].filter(
         (key): key is string => key !== null && (!committed || key !== targetKey),
       );
@@ -734,7 +849,21 @@ export function createVaultService(
   }
 
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
+  async function migrateManifestPaths(sourceRelative: string, nextRelative: string) {
+    if (!libraryManifest) return;
+    let changed = false;
+    for (const key of Object.keys(libraryManifest.files)) {
+      if (key === sourceRelative || key.startsWith(`${sourceRelative}/`)) {
+        libraryManifest.files[`${nextRelative}${key.slice(sourceRelative.length)}`] = libraryManifest.files[key];
+        delete libraryManifest.files[key];
+        changed = true;
+      }
+    }
+    if (changed) libraryEncryption?.manifestChanged(libraryManifest);
+  }
+
   async function migrateMoveMetadata(sourceRelative: string, nextRelative: string): Promise<void> {
+    await migrateManifestPaths(sourceRelative, nextRelative);
     // Read bookmarks.json raw: getBookmarks() drops entries whose files are
     // missing, which after a rename (or a crash mid-move) is exactly the
     // stale source path this migration exists to fix.
@@ -1065,10 +1194,77 @@ export function createVaultService(
     await writeReadingPositions(retained.slice(-500));
   }
 
+  function setLibraryManifest(manifest: LibraryEncryptionManifest | null) {
+    libraryManifest = manifest;
+  }
+
+  function libraryEncryptionManifest(): LibraryEncryptionManifest | null {
+    return libraryManifest;
+  }
+
+  /**
+   * Convert every note file to a container, resumably: files already
+   * containerized and listed are verified and skipped, the manifest
+   * is reported after each file so a crash mid-migration resumes
+   * from the persisted state, manifest entries for missing files
+   * are pruned, and the state flips to 'active' only at the end.
+   * Any inconsistency (unlisted container, listed plaintext) stops
+   * the migration loudly instead of guessing.
+   */
+  async function migrateToLibraryEncryption(assertCurrent: () => void = () => undefined): Promise<void> {
+    if (!libraryManifest) throw new Error('Whole-library encryption is not enabled for this library.');
+    const key = requireLibraryContentKey();
+    const info = await getVault();
+    const notes: string[] = [];
+    const collect = (entries: VaultEntry[]) => {
+      for (const entry of entries) {
+        if (entry.kind === 'note') notes.push(entry.path);
+        if (entry.children) collect(entry.children);
+      }
+    };
+    collect(info.entries);
+    const present = new Set(notes);
+    let pruned = false;
+    for (const listed of Object.keys(libraryManifest.files)) {
+      if (!present.has(listed)) {
+        delete libraryManifest.files[listed];
+        pruned = true;
+      }
+    }
+    if (pruned) libraryEncryption?.manifestChanged(libraryManifest);
+    for (const relative of notes) {
+      assertCurrent();
+      const target = await resolveEntry(relative);
+      const raw = await readFile(target);
+      const existing = libraryManifest.files[relative];
+      if (isLibraryContainer(raw)) {
+        if (!existing)
+          throw new Error(`The note ${relative} is an encryption container but is not in the manifest.`);
+        const plain = decryptLibraryFile(key, existing.fileId, raw);
+        recordManifestEntry(relative, {
+          fileId: existing.fileId,
+          plainLength: plain.length,
+          containerLength: raw.length,
+        });
+        continue;
+      }
+      if (existing) throw new Error(`The note ${relative} should be encrypted but is stored in plaintext.`);
+      await replaceNote(relative, raw.toString('utf8'), undefined, assertCurrent);
+    }
+    if (libraryManifest.state !== 'active') {
+      libraryManifest.state = 'active';
+      libraryEncryption?.manifestChanged(libraryManifest);
+    }
+    await refreshSearchIndex();
+  }
+
   return {
     initialize,
     getVault,
     readNote,
+    setLibraryManifest,
+    libraryEncryptionManifest,
+    migrateToLibraryEncryption,
     saveNote,
     createFolder,
     createNote,

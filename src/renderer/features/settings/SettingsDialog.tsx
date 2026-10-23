@@ -92,6 +92,13 @@ export default function SettingsDialog({
   const [pdfConfirmation, setPdfConfirmation] = useState('');
   const [soundNotice, setSoundNotice] = useState('');
   const [metadataProtection, setMetadataProtection] = useState<MetadataProtectionStatus>();
+  const [libraryEncryption, setLibraryEncryption] = useState<{
+    enabled: boolean;
+    state: 'migrating' | 'active' | null;
+    files: number;
+  }>();
+  const [libraryEncryptionConsent, setLibraryEncryptionConsent] = useState(false);
+  const [libraryEncryptionSaving, setLibraryEncryptionSaving] = useState(false);
   const [metadataConsent, setMetadataConsent] = useState(false);
   const [extendConsent, setExtendConsent] = useState<Partial<Record<ProtectedStoreName, boolean>>>({});
   const [metadataSaving, setMetadataSaving] = useState(false);
@@ -112,6 +119,14 @@ export default function SettingsDialog({
       metadataGeneration.current += 1;
     };
   }, [securityEnabled, recoveryAvailable]);
+  useEffect(() => {
+    const load = window.a11yNotebook?.vault.libraryEncryptionStatus;
+    if (load) {
+      void load()
+        .then(setLibraryEncryption)
+        .catch(() => undefined);
+    }
+  }, [securityEnabled]);
   useEffect(() => stopReminderSound, []);
   useEffect(() => {
     let cancelled = false;
@@ -815,6 +830,64 @@ export default function SettingsDialog({
                   }}
                 >
                   {metadataSaving ? 'Enabling metadata encryption…' : 'Enable scoped metadata encryption'}
+                </button>
+              </>
+            )}
+          </fieldset>
+        ) : null}
+        {securityEnabled && libraryEncryption ? (
+          <fieldset>
+            <legend>
+              <h3>Whole-library encryption</h3>
+            </legend>
+            {libraryEncryption.enabled ? (
+              <p>
+                Whole-library encryption is {libraryEncryption.state === 'active' ? 'on' : 'still migrating'} for
+                this library: {libraryEncryption.files} note file{libraryEncryption.files === 1 ? '' : 's'} encrypted
+                at rest. Notes open only while the library is unlocked. Attachments are not covered yet and remain
+                ordinary files.
+              </p>
+            ) : (
+              <>
+                <p>
+                  Whole-library encryption stores every note file in this library as an authenticated encrypted
+                  container, readable only while the library is unlocked. It is separate from metadata encryption
+                  above. Notes can no longer be read by other apps or editors, search works only while unlocked, and
+                  if you lose both the password and the recovery key the notes are unrecoverable. Attachments are
+                  not covered yet and remain ordinary files. Migration runs now and resumes automatically after an
+                  interruption.
+                </p>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={libraryEncryptionConsent}
+                    onChange={(event) => setLibraryEncryptionConsent(event.target.checked)}
+                  />
+                  I understand my note files will be encrypted at rest and only open inside this app while unlocked
+                </label>
+                <button
+                  type="button"
+                  disabled={!libraryEncryptionConsent || libraryEncryptionSaving}
+                  onClick={() => {
+                    const enable = window.a11yNotebook?.vault.enableLibraryEncryption;
+                    if (!enable) return;
+                    setLibraryEncryptionSaving(true);
+                    void enable(true)
+                      .then(() => {
+                        setLibraryEncryptionConsent(false);
+                        setSecurityNotice('Whole-library encryption is on. Your notes are encrypted at rest.');
+                        return window.a11yNotebook?.vault.libraryEncryptionStatus?.();
+                      })
+                      .then((status) => {
+                        if (status) setLibraryEncryption(status);
+                      })
+                      .catch(() =>
+                        setError('Could not enable whole-library encryption. Unlock the library and try again.'),
+                      )
+                      .finally(() => setLibraryEncryptionSaving(false));
+                  }}
+                >
+                  {libraryEncryptionSaving ? 'Encrypting notes…' : 'Encrypt all notes in this library'}
                 </button>
               </>
             )}

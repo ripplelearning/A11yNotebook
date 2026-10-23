@@ -110,6 +110,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultSecurityRecover: 'vault:security-recover',
   vaultSecurityRevokeRecovery: 'vault:security-revoke-recovery',
   vaultSecurityRotateDataKey: 'vault:security-rotate-data-key',
+  vaultLibraryEncryptionStatus: 'vault:library-encryption-status',
+  vaultLibraryEncryptionEnable: 'vault:library-encryption-enable',
   vaultNoteEncrypt: 'vault:note-encrypt',
   vaultNoteEncryptionStatus: 'vault:note-encryption-status',
   vaultCredentialsRead: 'vault:credentials-read',
@@ -236,6 +238,9 @@ const bridge: NotebookBridge = {
     revokeVaultRecovery: (password) => ipcRenderer.invoke(CHANNELS.vaultSecurityRevokeRecovery, password),
     rotateVaultDataKey: (password, recoveryKey) =>
       ipcRenderer.invoke(CHANNELS.vaultSecurityRotateDataKey, password, recoveryKey),
+    libraryEncryptionStatus: () => ipcRenderer.invoke(CHANNELS.vaultLibraryEncryptionStatus),
+    enableLibraryEncryption: (acknowledge) =>
+      ipcRenderer.invoke(CHANNELS.vaultLibraryEncryptionEnable, acknowledge),
     encryptNote: (relative, expected, password) =>
       ipcRenderer.invoke(CHANNELS.vaultNoteEncrypt, relative, expected, password),
     isNoteEncrypted: (relative) => ipcRenderer.invoke(CHANNELS.vaultNoteEncryptionStatus, relative),

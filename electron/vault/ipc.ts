@@ -33,6 +33,12 @@ import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/d
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
+import {
+  createLibraryEncryptionManifest,
+  openLibraryContentKey,
+  validateLibraryEncryptionManifest,
+  type LibraryEncryptionManifest,
+} from './library-manifest';
 import { LOCKED_DUE_SNAPSHOT_FILE, serializeDueSnapshot, validateDueSnapshot } from './locked-due-store';
 import {
   createScheduledReminderManager,
@@ -109,6 +115,14 @@ let sendReminder: (event: VaultReminderEvent) => void = () => undefined;
 // locked, when the reminder service itself is stopped.
 let dueSnapshotCache: DueSnapshotEntry[] = [];
 let dueSnapshotVaultPath = '';
+// Whole-library encryption content key, derived lazily from the
+// current master key + manifest and zeroed whenever either changes.
+let libraryContentKeyCache: { forKey: Buffer; key: Buffer } | null = null;
+
+function clearLibraryContentKeyCache() {
+  libraryContentKeyCache?.key.fill(0);
+  libraryContentKeyCache = null;
+}
 const lockedDueWatcher = createLockedDueWatcher({
   onDue: (vaultPath) => {
     sendReminder({ type: 'locked-due', vaultPath });
@@ -327,6 +341,7 @@ function lockVault() {
   const wasUnlocked = masterKey !== null;
   masterKey?.fill(0);
   masterKey = null;
+  clearLibraryContentKeyCache();
   for (const key of noteKeys.values()) key.fill(0);
   noteKeys.clear();
   pendingRecovery?.key?.fill(0);
@@ -628,6 +643,32 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
         return protectedMetadata.write('search-index', value);
       },
     },
+  },
+  {
+    // The manifest itself is loaded right after creation (below),
+    // before initialize; the service-local copy is authoritative
+    // from there and every mutation is reported back for persisting.
+    manifest: () => null,
+    contentKey: () => {
+      if (service !== nextService || !masterKey) return null;
+      const manifest = nextService.libraryEncryptionManifest();
+      if (!manifest) return null;
+      if (libraryContentKeyCache?.forKey !== masterKey) {
+        clearLibraryContentKeyCache();
+        try {
+          libraryContentKeyCache = { forKey: masterKey, key: openLibraryContentKey(masterKey, manifest) };
+        } catch {
+          return null;
+        }
+      }
+      return libraryContentKeyCache.key;
+    },
+    manifestChanged: (manifest) => {
+      if (service !== nextService) return;
+      void metadataFor(nextService)
+        .write('library-encryption.json', manifest)
+        .catch(() => undefined);
+    },
   });
   let vault: VaultInfo;
   let nextSecurity: VaultSecurityConfig | null = null;
@@ -641,6 +682,20 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
       preSecurity?.version === 3 && preSecurity.metadataProtection?.stores?.['search-index'],
     );
     vault = await nextService.initialize();
+    // Whole-library encryption manifest (plaintext metadata holding
+    // only the wrapped content key, file ids and lengths). A
+    // malformed manifest fails the open closed rather than risking
+    // plaintext reads of container files. Loaded after initialize
+    // (the metadata resolver needs the opened root); the search
+    // index's first rebuild therefore ran without decryption — its
+    // container guard indexed those files as empty — so rebuild it
+    // now that the manifest is known.
+    const savedManifest = await createMetadataStore(nextService).read('library-encryption.json');
+    if (savedManifest !== null && savedManifest !== undefined) {
+      validateLibraryEncryptionManifest(savedManifest);
+      nextService.setLibraryManifest(savedManifest as LibraryEncryptionManifest);
+      await nextService.refreshSearchIndex();
+    }
     const savedSecurity = await readVaultSecurityMetadata(nextService);
     // Plaintext read on purpose: at open time the library is still
     // locked, so protected settings cannot be decrypted. A protected
@@ -987,6 +1042,18 @@ function routedMetadataFor(vault: VaultService) {
       else await base.write(name, value, assertCurrent);
     },
   };
+}
+
+/**
+ * Resume an interrupted whole-library migration. Runs inside the
+ * caller's serialized unlock operation; failures leave the state
+ * 'migrating' (reads stay safe: listed files must be containers,
+ * unlisted files may still be plaintext) and retry next unlock.
+ */
+async function resumeLibraryEncryptionMigration() {
+  const manifest = service?.libraryEncryptionManifest();
+  if (!manifest || manifest.state !== 'migrating' || !masterKey) return;
+  await service?.migrateToLibraryEncryption().catch(() => undefined);
 }
 
 async function finishProtectedMetadataCleanup() {
@@ -1431,6 +1498,7 @@ export function setupVaultIpc(
       securityConfig = config;
       masterKey = key;
       await finishProtectedMetadataCleanup();
+      await resumeLibraryEncryptionMigration();
       resetIdleLock();
     });
   });
@@ -1628,6 +1696,7 @@ export function setupVaultIpc(
         masterKey = recovered.key;
         await finishLegacyCredentialCleanup(requireService(), recovered.key);
         await finishProtectedMetadataCleanup();
+        await resumeLibraryEncryptionMigration();
         resetIdleLock();
         const vault = await requireService().getVault();
         await startReminders(requireService(), vault);
@@ -1711,6 +1780,44 @@ export function setupVaultIpc(
           if (masterKey !== newKey) newKey.fill(0);
           throw error;
         }
+      });
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultLibraryEncryptionStatus, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    const manifest = service?.libraryEncryptionManifest() ?? null;
+    return {
+      enabled: manifest !== null,
+      state: manifest?.state ?? null,
+      files: manifest ? Object.keys(manifest.files).length : 0,
+    };
+  });
+  handleAudited(
+    IPC_CHANNELS.vaultLibraryEncryptionEnable,
+    'library-encryption.enable',
+    async (audit, event, acknowledge: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        if (acknowledge !== true)
+          throw new Error('Confirm that you understand whole-library encryption before enabling it.');
+        if (!securityConfig || securityConfig.version !== 3 || !masterKey)
+          throw new Error('Unlock a version-3 library first.');
+        const vault = requireService();
+        if (vault.libraryEncryptionManifest())
+          throw new Error('Whole-library encryption is already enabled for this library.');
+        const { manifest, contentKey } = createLibraryEncryptionManifest(masterKey);
+        await metadataFor(vault).write('library-encryption.json', manifest);
+        audit.committed();
+        vault.setLibraryManifest(manifest);
+        clearLibraryContentKeyCache();
+        libraryContentKeyCache = { forKey: masterKey, key: contentKey };
+        // If this throws partway, the library stays in 'migrating'
+        // state and the migration resumes on the next unlock; note
+        // reads remain safe in the interim by the manifest rules.
+        await vault.migrateToLibraryEncryption(() => access.assertCurrent());
+        resetIdleLock();
       });
     },
   );
