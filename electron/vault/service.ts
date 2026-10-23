@@ -707,8 +707,12 @@ export function createVaultService(
 
   async function readBookmarksRaw(): Promise<unknown> {
     if (protectedMetadata?.isProtected('bookmarks.json')) return protectedMetadata.read('bookmarks.json');
+    // Resolve outside the try: resolver rejections (symlinked or
+    // escaping metadata paths) are security failures and must
+    // propagate, not be mistaken for a missing file.
+    const bookmarkPath = await resolveMetadata('bookmarks.json', true);
     try {
-      return JSON.parse(await readFile(await resolveMetadata('bookmarks.json', true), 'utf8'));
+      return JSON.parse(await readFile(bookmarkPath, 'utf8'));
     } catch {
       return null;
     }
