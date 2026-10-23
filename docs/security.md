@@ -96,7 +96,7 @@ PDF annotation paths are validated inside the current library, including symlink
 checks. Quotes, context, labels, and comments are stored in plaintext metadata
 for ordinary PDFs; a library password gate is **not** metadata encryption.
 Protected-content checks reject annotation access that would expose protected
-plaintext. Annotation-metadata encryption is implemented per store (above); whole-library encryption covers note files (below) with attachments still plaintext.
+plaintext. Annotation-metadata encryption is implemented per store (above); whole-library encryption covers all library files (below).
 
 PDF.js renders one bounded-scale canvas page with selectable text and stable
 canonical-range annotation mapping. Changed file hashes require explicit
@@ -315,7 +315,7 @@ the new key before the rotated config commits; the old key is kept only as the n
 until the credentials store and library-encrypted notes are re-encrypted, after which a completion reseal drops
 it. Content that cannot be rotated keeps opening through that legacy fallback.
 
-**Whole-library encryption for notes (PRs #92, #96–#97):** an opt-in mode, separate from the per-store metadata
+**Whole-library encryption (PRs #92, #96–#97, #99):** an opt-in mode, separate from the per-store metadata
 protection above. Enabling it (Settings, explicit consent, unlocked version-3 library) creates
 `library-encryption.json`, a manifest holding a content key wrapped under the library data key plus, per note
 file, a random file identity and lengths. Every note file is then stored as an authenticated chunked container
@@ -326,9 +326,11 @@ current data key only while unlocked and zeroed on lock. Search indexes decrypte
 treats containers as empty while locked, so container bytes never enter the index. Migration (and the
 decrypt-and-turn-off opt-out, via a persisted `decrypting` state) is resumable: each file is recorded as it
 converts, stale entries are pruned, and the manifest file is deleted on opt-out only after its file map is
-verifiably empty. Attachments (PDFs, images and other non-note files) are NOT covered and remain ordinary
-files; filenames stay visible; independently password-encrypted notes compose (their envelope text is the
-container's plaintext).
+verifiably empty. Attachments are covered on the same terms (PR #99): every read path decrypts (the vault-file protocol,
+previews, conversions, DOCX parsing, the asset store, search extraction), imports are born encrypted, and
+open-externally refuses encrypted files rather than writing plaintext temp copies — the same rule the app
+already applies to password-encrypted notes. Filenames stay visible; independently password-encrypted
+notes compose (their envelope text is the container's plaintext).
 
 Encryption and filesystem access remain in the main process behind explicit typed, sender-validated IPC.
 Versioned authenticated AES-GCM records use separate annotation/checkpoint domains and fresh nonces. The authenticated

@@ -132,7 +132,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ **Scoped sensitive-action audit logging** — bounded schema/retention, redaction, interruption/error tests; OS-user tampering and coverage limits apply
 - ✅ **Scoped encrypted annotations/checkpoints** — stable v3 keys, per-store authenticated envelopes and pointer migration
 - ⏳ **Excluded indexes and metadata** — search, links, bookmarks, reminders, settings and other documented exclusions remain plaintext/open
-- ✅ **Whole-library encryption (notes)** — opt-in mode shipped (PRs #92, #96, #97): authenticated streaming containers for note files, resumable migration and opt-out; attachment coverage remains open
+- ✅ **Whole-library encryption** — shipped (PRs #92, #96, #97, #99): authenticated streaming containers for all library files, resumable migration and opt-out
 
 ### Phase 8 — Import and Document Support
 
@@ -214,7 +214,7 @@ implementation, and mocks are not actual Windows verification.
 - **Audit history follow-ups** — native warning Windows AT validation, viewer/repair UI and broader automatic event coverage remain; scoped logging implemented
 - ✅ **Broader encrypted indexes/metadata** — every library metadata store can now be individually migrated into encrypted protection from Settings: reminder defaults, milestones, bookmarks, the link index, image descriptions, flashcard schedules, reminders, library settings, and the persisted search-index cache, on top of the base annotations + checkpoints pair (PRs #83–#89). The settings save path no longer mirrors library settings into the plaintext app-global file while a library's settings are encrypted, and enabling settings encryption deletes the stale global mirror
 - ✅ **Data-key rotation** — the actual library data key can be rotated from Settings (PRs #90, #91): both factors are verified, protected metadata is staged under the new key before the rotated config commits, the credentials store and library-encrypted notes are re-encrypted, and anything not yet rotated keeps opening through the legacy-key fallback. Distinct from recovery-key rotation, which rewraps the same key
-- ✅ **Whole-library encryption (notes)** — the PR #92 format and manifest are wired end to end (PRs #96, #97): notes are containers on disk and plaintext only in the unlocked app; migration and the decrypt-and-disable opt-out are resumable; search never indexes container bytes; Settings carries the opt-in with plain-language limits. Attachments remain ordinary files — the last uncovered file class.
+- ✅ **Whole-library encryption** — the PR #92 format and manifest are wired end to end (PRs #96, #97, #99): files are containers on disk and plaintext only in the unlocked app; migration and the decrypt-and-disable opt-out are resumable; every read path (readers, previews, the vault-file protocol, the asset store, search) decrypts, and open-externally refuses encrypted files instead of leaking plaintext temp copies; Settings carries the opt-in with plain-language limits.
 - ✅ **Background reminder alerts (Windows)** — opt-in `backgroundReminders` setting (PR #93): a Windows Task Scheduler task briefly launches the app at each due time to show a generic alert after the app exits. The task and its persisted due snapshot contain only ids and due times, never titles or content; disabling deletes the task. Delivery on a real Windows machine is not yet verified
 
 ### Other Requested Features
@@ -241,7 +241,7 @@ implementation, and mocks are not actual Windows verification.
 **Production readiness:** Not established. Implemented functionality still has explicit security/storage limitations and unrun Windows accessibility/packaging gates.  
 **Testable on Windows:** Core app, installer, updater, UI Automation smoke tests, portable `.exe`  
 **Manual AT Validation Needed:** All new security workflows, recovery flows, PDF/ePub navigation, milestone planning  
-**Design & Implementation Open:** Whole-library encryption coverage for attachments (notes wired in PRs #96–#97). Windows sound/focus, Task Scheduler delivery, and new recovery/alert AT workflows require manual validation.
+**Design & Implementation Open:** (Whole-library encryption completed for all file classes in PR #99.) Windows sound/focus, Task Scheduler delivery, and new recovery/alert AT workflows require manual validation.
 
 ---
 
