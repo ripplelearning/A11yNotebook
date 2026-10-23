@@ -80,6 +80,48 @@ export function planLinkRepair(
         return `${prefix}${encoded}${split < 0 ? '' : href.slice(split)}${suffix}`;
       },
     );
-    return after === note.content ? [] : [{ path: note.path, nextPath, before: note.content, after }];
+    // Reference-style links keep the target in a definition line
+    // (`[id]: path "title"`); rewriting the definition repairs every usage
+    // at once. Same rules as inline links: code and external URLs untouched,
+    // only targets that resolve to a known note or attachment.
+    const repairedDefinitions = after.replace(
+      /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)|`+[^`\n]*`+|(^|\n)([ \t]{0,3}\[[^\]\n]+\]:[ \t]*)(<[^>\n]+>|\S+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)(?=\n|$)/g,
+      (
+        match,
+        _fenceLine: string | undefined,
+        _fence: string | undefined,
+        line: string | undefined,
+        prefix: string | undefined,
+        rawHref: string | undefined,
+        suffix: string | undefined,
+      ) => {
+        if (prefix === undefined || rawHref === undefined || line === undefined) return match;
+        const bracketed = rawHref.startsWith('<');
+        const href = bracketed ? rawHref.slice(1, -1) : rawHref;
+        if (/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i.test(href)) return match;
+        const split = href.search(/[?#]/);
+        const clean = split < 0 ? href : href.slice(0, split);
+        let decoded: string;
+        try {
+          decoded = decodeURIComponent(clean);
+        } catch {
+          return match;
+        }
+        let resolved = path.posix.normalize(path.posix.join(path.posix.dirname(note.path), decoded));
+        const extensionless = !path.posix.extname(resolved);
+        if (extensionless) resolved += '.md';
+        if (!notePaths.has(resolved)) return match;
+        const target = movedPath(resolved, source, destination);
+        if (target === resolved && nextPath === note.path) return match;
+        let relative = path.posix.relative(path.posix.dirname(nextPath), target);
+        if (extensionless) relative = relative.replace(/\.md$/i, '');
+        const encoded = relative.split('/').map(encodeURIComponent).join('/');
+        const rewritten = `${encoded}${split < 0 ? '' : href.slice(split)}`;
+        return `${line}${prefix}${bracketed ? `<${rewritten}>` : rewritten}${suffix ?? ''}`;
+      },
+    );
+    return repairedDefinitions === note.content
+      ? []
+      : [{ path: note.path, nextPath, before: note.content, after: repairedDefinitions }];
   });
 }
