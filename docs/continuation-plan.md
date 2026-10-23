@@ -43,7 +43,7 @@ validation. Do not combine unrelated data migrations or infer that a feature is 
    encrypted. Global preferences and the audit log remain documented plaintext exclusions. Actual data-key
    rotation (not recovery-key rotation) is implemented (PRs #90–#91), including protected-store staging, the
    legacy-key fallback for unrotated content, and completion reseal.
-3. **Whole-library encryption — notes wired (PRs #96–#97); attachment coverage open.** This is a separate opt-in storage mode, not password
+3. **Whole-library encryption — complete for all file classes (PRs #96–#99).** This is a separate opt-in storage mode, not password
    gating. Before implementation, specify threat model and behavior for ordinary-file interoperability, filenames and
    attachments, external editors/watchers, search, export, lock, migration, and recovery. Require a bounded authenticated
    streaming/container format and a safe resumable migration with explicit rollback and crash-restart tests. Do not
