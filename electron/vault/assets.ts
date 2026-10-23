@@ -9,6 +9,13 @@ interface Resolver {
   resolveEntry(relative: string, missing?: boolean): Promise<string>;
   createDocument?(relative: string, content: string, origin: 'created', assertCurrent?: () => void): Promise<unknown>;
   preserveProvenance?(relative: string, staging: string, assertCurrent?: () => void): Promise<() => Promise<void>>;
+  decodeFileBytes?(relative: string, bytes: Buffer): Buffer;
+  replaceTextFile?(
+    relative: string,
+    content: string,
+    expectedContent?: string,
+    assertCurrent?: () => void,
+  ): Promise<void>;
 }
 
 export function validateSchedule(value: unknown): CardSchedule {
@@ -53,7 +60,7 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
     const target = await vault.resolveEntry(relative);
     const stat = await lstat(target);
     if (!stat.isFile() || stat.size > 2 * 1024 * 1024) throw new Error('Assets must be files smaller than 2 MB.');
-    const content = await readFile(target, 'utf8');
+    const content = (vault.decodeFileBytes ? vault.decodeFileBytes(relative, await readFile(target)) : await readFile(target)).toString('utf8');
     let envelope: unknown;
     try {
       envelope = JSON.parse(content);
@@ -84,6 +91,10 @@ export function createAssetStore(vault: Resolver, metadata: ReturnType<typeof cr
         if (typeof content !== 'string' || Buffer.byteLength(content) > 2 * 1024 * 1024 || typeof expected !== 'string')
           throw new Error('Invalid asset content.');
         type.parse(content);
+        if (vault.replaceTextFile) {
+          await vault.replaceTextFile(relative, content, expected, assertCurrent);
+          return;
+        }
         const target = await vault.resolveEntry(relative);
         if ((await read(relative)).content !== expected)
           throw new Error('Asset changed on disk. Reload before saving; copy your changes first.');

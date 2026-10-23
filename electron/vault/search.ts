@@ -349,23 +349,35 @@ export function createSearchIndex(root: string, protection?: SearchIndexProtecti
               extension === '.docx' ||
               extension === '.rtf' ||
               extension === '.doc';
-            let textRead =
-              TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES
-                ? await readSafeText(root, relative, MAX_FILE_BYTES)
-                : null;
-            if (textRead && protection?.decryptBytes) {
-              const raw = await readSafeBuffer(root, relative, MAX_FILE_BYTES).catch(() => null);
-              if (raw) {
-                const decrypted = protection.decryptBytes(relative, raw.content);
-                if (decrypted) textRead = { content: decrypted.toString('utf8'), stat: textRead.stat };
-                else if (raw.content.subarray(0, 8).toString('ascii') === 'A11YLIB1')
-                  textRead = { content: '', stat: textRead.stat };
+            // With a decryption hook, read bytes first: the text
+            // reader rejects NUL bytes, which every container has,
+            // so it can never see past an encrypted file. The NUL
+            // and size guards then apply to the PLAINTEXT.
+            let textRead: Awaited<ReturnType<typeof readSafeText>> = null;
+            if (TEXT_EXTENSIONS.has(extension) && stat.size <= MAX_FILE_BYTES) {
+              if (protection?.decryptBytes) {
+                const raw = await readSafeBuffer(root, relative, MAX_FILE_BYTES).catch(() => null);
+                if (raw) {
+                  const decrypted = protection.decryptBytes(relative, raw.content);
+                  const content = (decrypted ?? raw.content).toString('utf8');
+                  if (Buffer.byteLength(content) <= MAX_FILE_BYTES && !content.includes('\0'))
+                    textRead = { content, stat: raw.stat };
+                  else if (!decrypted && raw.content.subarray(0, 8).toString('ascii') === 'A11YLIB1')
+                    textRead = { content: '', stat: raw.stat };
+                }
+              } else {
+                textRead = await readSafeText(root, relative, MAX_FILE_BYTES);
               }
             }
-            const documentRead =
+            let documentRead =
               isDocument && stat.size <= MAX_INDEXED_DOCUMENT_BYTES
                 ? await readSafeBuffer(root, relative, MAX_INDEXED_DOCUMENT_BYTES)
                 : null;
+            if (documentRead && protection?.decryptBytes) {
+              const decrypted = protection.decryptBytes(relative, documentRead.content);
+              if (decrypted) documentRead = { content: Buffer.from(decrypted), stat: documentRead.stat };
+              else if (documentRead.content.subarray(0, 8).toString('ascii') === 'A11YLIB1') documentRead = null;
+            }
             const content = textRead?.content ?? '';
             const documentText = documentRead
               ? extractDocumentText(documentRead.content, extension)

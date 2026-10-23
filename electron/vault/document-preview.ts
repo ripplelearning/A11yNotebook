@@ -414,12 +414,16 @@ export function extractEpubPages(bytes: Buffer, options?: { forImport?: boolean 
   return pages;
 }
 
-export async function readDocumentAttachment(resolve: (relative: string) => Promise<string>, relative: string) {
+export async function readDocumentAttachment(
+  resolve: (relative: string) => Promise<string>,
+  relative: string,
+  decode: (relative: string, bytes: Buffer) => Buffer = (_relative, bytes) => bytes,
+) {
   if (!/\.(?:pdf|epub)$/i.test(relative)) throw new Error('Only PDF and ePub documents are supported.');
   const target = await resolve(relative);
   const stat = await lstat(target);
   if (!stat.isFile() || stat.size > MAX_DOCUMENT_BYTES) throw new Error('Document is too large to preview.');
-  const bytes = await readFile(target);
+  const bytes = decode(relative, await readFile(target));
   const kind = relative.toLowerCase().endsWith('.pdf') ? '.pdf' : '.epub';
   const pages = kind === '.pdf' ? extractPdfPages(bytes) : extractEpubPages(bytes);
   return { path: relative, kind, text: pages.join('\n\n'), pages };

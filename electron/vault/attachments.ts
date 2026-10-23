@@ -28,14 +28,22 @@ export function protocolPath(url: string): string {
   return relative.join('/');
 }
 
-export async function readTextAttachment(resolve: (relative: string) => Promise<string>, relative: string) {
+export async function readTextAttachment(
+  resolve: (relative: string) => Promise<string>,
+  relative: string,
+  decode: (relative: string, bytes: Buffer) => Buffer = (_relative, bytes) => bytes,
+) {
   if (typeof relative !== 'string' || !/\.(?:txt|csv|html?)$/i.test(relative)) {
     throw new Error('Only text, CSV, and HTML previews are supported here.');
   }
   const target = await resolve(relative);
   const stat = await lstat(target);
   if (!stat.isFile() || stat.size > 5 * 1024 * 1024) throw new Error('Preview requires a file smaller than 5 MB.');
-  return { path: relative, text: await readFile(target, 'utf8'), kind: path.extname(relative).toLowerCase() };
+  return {
+    path: relative,
+    text: decode(relative, await readFile(target)).toString('utf8'),
+    kind: path.extname(relative).toLowerCase(),
+  };
 }
 
 /**
@@ -43,14 +51,18 @@ export async function readTextAttachment(resolve: (relative: string) => Promise<
  * converted to a sanitized HTML fragment and legacy .doc text is extracted,
  * so both read as structured documents instead of raw file bytes.
  */
-export async function readConvertedAttachment(resolve: (relative: string) => Promise<string>, relative: string) {
+export async function readConvertedAttachment(
+  resolve: (relative: string) => Promise<string>,
+  relative: string,
+  decode: (relative: string, bytes: Buffer) => Buffer = (_relative, bytes) => bytes,
+) {
   const extension = path.extname(relative).toLowerCase();
   if (extension !== '.rtf' && extension !== '.doc') throw new Error('Only RTF and DOC previews are converted here.');
   const target = await resolve(relative);
   const stat = await lstat(target);
   const limit = extension === '.rtf' ? 20 * 1024 * 1024 : 40 * 1024 * 1024;
   if (!stat.isFile() || stat.size > limit) throw new Error('Preview requires a smaller document file.');
-  const bytes = await readFile(target);
+  const bytes = decode(relative, await readFile(target));
   if (extension === '.rtf') {
     return { path: relative, text: sanitizeHtmlFragment(convertRtfToHtml(bytes.toString('latin1'))), kind: '.html' };
   }

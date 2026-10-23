@@ -274,7 +274,7 @@ async function prepareHtmlExport(content: string, notePath: string, vault: Vault
       const absolute = await vault.resolveEntry(relative);
       const stat = await lstat(absolute);
       if (!stat.isFile() || stat.size > 20 * 1024 * 1024) throw new Error('Unsupported image size.');
-      const bytes = await readFile(absolute);
+      const bytes = vault.decodeFileBytes(relative, await readFile(absolute));
       const dataUri = `data:${IMAGE_TYPES[path.extname(relative).toLowerCase()]};base64,${bytes.toString('base64')}`;
       replacements.push({
         source: tag,
@@ -377,6 +377,10 @@ function requireService() {
 }
 
 async function externalDocument(vault: VaultService, relative: string) {
+  if (vault.libraryEncryptionCovers(relative))
+    throw new Error(
+      'This file is encrypted by whole-library encryption and cannot be opened externally. Turn off whole-library encryption in Settings first, or use the file inside the app.',
+    );
   if (!isExternalDocumentPath(relative))
     throw new Error(
       'Only supported office, text, document, and image files can be opened externally. Executables, scripts, and shortcuts are not supported.',
@@ -2459,7 +2463,7 @@ export function setupVaultIpc(
       const target = await vault.resolveEntry(relative);
       const stat = await lstat(target);
       if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return new Response('Attachment too large.', { status: 413 });
-      const bytes = await readFile(target);
+      const bytes = vault.decodeFileBytes(relative, await readFile(target));
       if (service !== vault || securityGeneration !== generation || (securityConfig && !masterKey))
         return new Response('Library access changed.', { status: 423 });
       return new Response(new Uint8Array(bytes), {
@@ -2864,13 +2868,14 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReadAttachment, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid attachment path.');
-    if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative);
+    const decode = (entry: string, bytes: Buffer) => requireService().decodeFileBytes(entry, bytes);
+    if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative, decode);
     if (/\.docx$/i.test(relative)) {
       await requireService().resolveEntry(relative);
       return { path: relative, kind: '.docx', text: '' };
     }
-    if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative);
-    return readTextAttachment(requireService().resolveEntry, relative);
+    if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative, decode);
+    return readTextAttachment(requireService().resolveEntry, relative, decode);
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadDocxStructure, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
