@@ -83,7 +83,8 @@ export type CommandId =
   | 'reveal-selected'
   | 'open-selected-external'
   | 'encrypt-current-note'
-  | 'convert-current-note';
+  | 'convert-current-note'
+  | 'convert-note-to-outline';
 
 export type MenuContext =
   | 'general'
@@ -360,6 +361,11 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'convert-current-note',
     label: 'Convert current note to another format…',
     description: 'Create a Markdown or HTML copy of the active note.',
+  },
+  {
+    id: 'convert-note-to-outline',
+    label: 'Convert current note to outline…',
+    description: 'Create an outline asset from the active Markdown note, keeping its heading structure.',
   },
   {
     id: 'insert-attachment',
