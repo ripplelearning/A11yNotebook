@@ -178,7 +178,7 @@ describe('PDF annotation IPC security and persistence', () => {
     const moved = (await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')) as PdfAnnotation[];
     expect(moved[0].target.documentIdentity.vaultPath).toBe('Archive/Research.pdf');
     const saved = JSON.parse(await readFile(path.join(mock.root, '.a11ynotebook', 'annotations.json'), 'utf8'));
-    expect(saved.version).toBe(3);
+    expect(saved.version).toBe(4);
     await invoke(IPC_CHANNELS.vaultPdfAnnotationDelete, 'Archive/Research.pdf', added.id);
     expect(await invoke(IPC_CHANNELS.vaultPdfAnnotations, 'Archive/Research.pdf')).toEqual([]);
   });

@@ -7,13 +7,19 @@ import {
   type NewAnnotation,
   type NoteAnnotation,
 } from '../../src/shared/annotations';
-import type { DocxAnnotationStore, PdfAnnotationStore } from '../../src/shared/annotation-store';
+import type { DocxAnnotationStore, EpubAnnotationStore, PdfAnnotationStore } from '../../src/shared/annotation-store';
 import {
   DOCX_ANNOTATION_LIMITS,
   DOCX_ANNOTATION_SCHEMA_VERSION,
   type DocxAnnotation,
   type DocxAnnotationAnchor,
 } from '../../src/shared/docx-annotations';
+import {
+  EPUB_ANNOTATION_LIMITS,
+  EPUB_ANNOTATION_SCHEMA_VERSION,
+  type EpubAnnotation,
+  type EpubAnnotationAnchor,
+} from '../../src/shared/epub-annotations';
 import {
   PDF_ANNOTATION_COLORS,
   PDF_ANNOTATION_LIMITS,
@@ -30,14 +36,16 @@ export interface AnnotationStoreOptions {
   validateNote: (path: string) => Promise<void>;
   validatePdf?: (path: string) => Promise<void>;
   validateDocx?: (path: string) => Promise<void>;
+  validateEpub?: (path: string) => Promise<void>;
   captureAuthorization?: () => () => void;
 }
 
 export interface AnnotationMetadata {
-  version: 3;
+  version: 4;
   annotations: NoteAnnotation[];
   pdfAnnotations: PdfAnnotation[];
   docxAnnotations: DocxAnnotation[];
+  epubAnnotations: EpubAnnotation[];
 }
 
 function object(value: unknown): Record<string, unknown> {
@@ -325,12 +333,49 @@ function docxRecord(value: unknown): DocxAnnotation {
   };
 }
 
+function epubAnchor(value: unknown): EpubAnnotationAnchor {
+  const data = object(value);
+  const cfiRange = text(data.cfiRange, EPUB_ANNOTATION_LIMITS.cfiRange, true);
+  if (!cfiRange.startsWith('epubcfi(')) throw new Error('Invalid ePub annotation CFI.');
+  return {
+    cfiRange,
+    sectionHref: text(data.sectionHref, EPUB_ANNOTATION_LIMITS.sectionHref, true),
+    quote: text(data.quote, EPUB_ANNOTATION_LIMITS.quote, true),
+    prefix: text(data.prefix, EPUB_ANNOTATION_LIMITS.context),
+    suffix: text(data.suffix, EPUB_ANNOTATION_LIMITS.context),
+  };
+}
+
+function epubRecord(value: unknown): EpubAnnotation {
+  const data = object(value);
+  const id = text(data.id, 36, true);
+  if (!/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(id)) {
+    throw new Error('Invalid annotation identifier.');
+  }
+  const createdAt = text(data.createdAt, 30, true);
+  const updatedAt = text(data.updatedAt, 30, true);
+  if (!Number.isFinite(Date.parse(createdAt)) || !Number.isFinite(Date.parse(updatedAt))) {
+    throw new Error('Invalid annotation date.');
+  }
+  if (data.schemaVersion !== EPUB_ANNOTATION_SCHEMA_VERSION) throw new Error('Invalid ePub annotation schema.');
+  return {
+    id,
+    path: notePath(data.path),
+    anchor: epubAnchor(data.anchor),
+    ...fields(data),
+    createdAt,
+    updatedAt,
+    schemaVersion: EPUB_ANNOTATION_SCHEMA_VERSION,
+  };
+}
+
 export function createAnnotationStore({
   read,
   write: persist,
   validateNote,
   validatePdf,
   validateDocx,
+  validateEpub,
   captureAuthorization,
 }: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
@@ -356,30 +401,28 @@ export function createAnnotationStore({
     const raw = await read();
     activeAuthorization?.();
     if (raw === undefined || raw === null)
-      return { version: 3, annotations: [], pdfAnnotations: [], docxAnnotations: [] };
+      return { version: 4, annotations: [], pdfAnnotations: [], docxAnnotations: [], epubAnnotations: [] };
     const data = object(raw);
+    const version = data.version as number;
+    const collectionValid = (value: unknown, limit: number) => Array.isArray(value) && value.length <= limit;
     if (
-      ![1, 2, 3].includes(data.version as number) ||
-      !Array.isArray(data.annotations) ||
-      data.annotations.length > ANNOTATION_LIMITS.records ||
-      (data.version === 2 &&
-        (!Array.isArray(data.pdfAnnotations) || data.pdfAnnotations.length > PDF_ANNOTATION_LIMITS.records)) ||
-      (data.version === 3 &&
-        (!Array.isArray(data.pdfAnnotations) ||
-          data.pdfAnnotations.length > PDF_ANNOTATION_LIMITS.records ||
-          !Array.isArray(data.docxAnnotations) ||
-          data.docxAnnotations.length > DOCX_ANNOTATION_LIMITS.records))
+      ![1, 2, 3, 4].includes(version) ||
+      !collectionValid(data.annotations, ANNOTATION_LIMITS.records) ||
+      (version >= 2 && !collectionValid(data.pdfAnnotations, PDF_ANNOTATION_LIMITS.records)) ||
+      (version >= 3 && !collectionValid(data.docxAnnotations, DOCX_ANNOTATION_LIMITS.records)) ||
+      (version >= 4 && !collectionValid(data.epubAnnotations, EPUB_ANNOTATION_LIMITS.records))
     ) {
       throw new Error('Invalid annotation metadata.');
     }
-    const annotations = data.annotations.map(record);
-    const pdfAnnotations = (data.version as number) >= 2 ? (data.pdfAnnotations as unknown[]).map(pdfRecord) : [];
-    const docxAnnotations = data.version === 3 ? (data.docxAnnotations as unknown[]).map(docxRecord) : [];
-    const ids = [...annotations, ...pdfAnnotations, ...docxAnnotations].map((item) => item.id);
+    const annotations = (data.annotations as unknown[]).map(record);
+    const pdfAnnotations = version >= 2 ? (data.pdfAnnotations as unknown[]).map(pdfRecord) : [];
+    const docxAnnotations = version >= 3 ? (data.docxAnnotations as unknown[]).map(docxRecord) : [];
+    const epubAnnotations = version >= 4 ? (data.epubAnnotations as unknown[]).map(epubRecord) : [];
+    const ids = [...annotations, ...pdfAnnotations, ...docxAnnotations, ...epubAnnotations].map((item) => item.id);
     if (new Set(ids).size !== ids.length) {
       throw new Error('Duplicate annotation identifier.');
     }
-    return { version: 3, annotations, pdfAnnotations, docxAnnotations };
+    return { version: 4, annotations, pdfAnnotations, docxAnnotations, epubAnnotations };
   }
   async function validate(path: unknown) {
     const safe = notePath(path);
@@ -464,6 +507,75 @@ export function createAnnotationStore({
       });
     },
   };
+  async function validateEpubPath(path: unknown) {
+    const safe = notePath(path);
+    if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid ePub annotation path.');
+    if (!/\.epub$/i.test(safe)) throw new Error('ePub annotations require an ePub book.');
+    if (!validateEpub) throw new Error('ePub annotation validation is unavailable.');
+    await validateEpub(safe);
+    return safe;
+  }
+  const epub: EpubAnnotationStore = {
+    list(path) {
+      return serial(async () => {
+        const safe = await validateEpubPath(path);
+        return (await load()).epubAnnotations.filter((item) => item.path === safe);
+      });
+    },
+    add(input) {
+      return serial(async () => {
+        const data = object(input);
+        const path = await validateEpubPath(data.path);
+        const validAnchor = epubAnchor(data.anchor);
+        const validFields = fields(data);
+        const metadata = await load();
+        if (metadata.epubAnnotations.length >= EPUB_ANNOTATION_LIMITS.records)
+          throw new Error('ePub annotation limit reached.');
+        const now = new Date().toISOString();
+        const added: EpubAnnotation = {
+          id: randomUUID(),
+          path,
+          anchor: validAnchor,
+          ...validFields,
+          createdAt: now,
+          updatedAt: now,
+          schemaVersion: EPUB_ANNOTATION_SCHEMA_VERSION,
+        };
+        metadata.epubAnnotations.push(added);
+        await write(metadata);
+        return added;
+      });
+    },
+    update(path, id, patch) {
+      return serial(async () => {
+        const safe = await validateEpubPath(path);
+        const data = object(patch);
+        if (Object.keys(data).some((key) => !['color', 'label', 'comment'].includes(key)))
+          throw new Error('Invalid ePub annotation update.');
+        const metadata = await load();
+        const index = metadata.epubAnnotations.findIndex((item) => item.id === id && item.path === safe);
+        if (index < 0) throw new Error('ePub annotation not found.');
+        const updated: EpubAnnotation = {
+          ...metadata.epubAnnotations[index],
+          ...fields({ ...metadata.epubAnnotations[index], ...data }),
+          updatedAt: new Date().toISOString(),
+        };
+        metadata.epubAnnotations[index] = updated;
+        await write(metadata);
+        return updated;
+      });
+    },
+    delete(path, id) {
+      return serial(async () => {
+        const safe = await validateEpubPath(path);
+        const metadata = await load();
+        const index = metadata.epubAnnotations.findIndex((item) => item.id === id && item.path === safe);
+        if (index < 0) throw new Error('ePub annotation not found.');
+        metadata.epubAnnotations.splice(index, 1);
+        await write(metadata);
+      });
+    },
+  };
   const pdf: PdfAnnotationStore = {
     list(path) {
       return serial(async () => {
@@ -533,6 +645,7 @@ export function createAnnotationStore({
   return {
     pdf,
     docx,
+    epub,
     snapshot: () => serial(load),
     restore: (value: AnnotationMetadata) => serial(() => write(value)),
     list(path: string): Promise<NoteAnnotation[]> {
@@ -612,6 +725,11 @@ export function createAnnotationStore({
         for (const item of metadata.docxAnnotations) {
           if (item.path === source || item.path.startsWith(`${source}/`)) {
             item.path = await validateDocxPath(`${destination}${item.path.slice(source.length)}`);
+          }
+        }
+        for (const item of metadata.epubAnnotations) {
+          if (item.path === source || item.path.startsWith(`${source}/`)) {
+            item.path = await validateEpubPath(`${destination}${item.path.slice(source.length)}`);
           }
         }
         await write(metadata);
