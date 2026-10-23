@@ -58,4 +58,9 @@ export interface ExtendMetadataProtectionInput {
 }
 
 /** Stores the settings UI may offer for one-at-a-time extension. */
-export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = ['reminder-defaults', 'milestones'];
+export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
+  'reminder-defaults',
+  'milestones',
+  'bookmarks',
+  'links',
+];

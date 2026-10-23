@@ -34,7 +34,24 @@ function assertVisibleCreationPath(relative: string) {
 }
 
 /** Create an operations facade for one canonical vault folder. */
-export function createVaultService(vaultPath: string, onChanged?: (event: VaultChangedEvent) => void | Promise<void>) {
+/**
+ * Optional bridge to encrypted metadata protection for the two index
+ * files this service writes directly. When a file is protected, the
+ * service must not touch its plaintext path at all: reads come from
+ * the adapter (errors propagate — a tampered protected store fails
+ * closed rather than looking empty) and writes go through it.
+ */
+export interface VaultProtectedMetadataAdapter {
+  isProtected(name: 'bookmarks.json' | 'links.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json'): Promise<unknown>;
+  write(name: 'bookmarks.json' | 'links.json', value: unknown): Promise<void>;
+}
+
+export function createVaultService(
+  vaultPath: string,
+  onChanged?: (event: VaultChangedEvent) => void | Promise<void>,
+  protectedMetadata?: VaultProtectedMetadataAdapter,
+) {
   let root = '';
   let searchIndex: ReturnType<typeof createSearchIndex> | undefined;
   let watcher: Awaited<ReturnType<typeof createVaultWatcher>> | undefined;
@@ -688,6 +705,27 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     return getVault();
   }
 
+  async function readBookmarksRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('bookmarks.json')) return protectedMetadata.read('bookmarks.json');
+    // Resolve outside the try: resolver rejections (symlinked or
+    // escaping metadata paths) are security failures and must
+    // propagate, not be mistaken for a missing file.
+    const bookmarkPath = await resolveMetadata('bookmarks.json', true);
+    try {
+      return JSON.parse(await readFile(bookmarkPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeBookmarksRaw(value: VaultBookmark[]): Promise<void> {
+    if (protectedMetadata?.isProtected('bookmarks.json')) {
+      await protectedMetadata.write('bookmarks.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
   async function migrateMoveMetadata(sourceRelative: string, nextRelative: string): Promise<void> {
     // Read bookmarks.json raw: getBookmarks() drops entries whose files are
@@ -695,7 +733,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     // stale source path this migration exists to fix.
     let bookmarks: VaultBookmark[] = [];
     try {
-      const parsed: unknown = JSON.parse(await readFile(await resolveMetadata('bookmarks.json', true), 'utf8'));
+      const parsed: unknown = await readBookmarksRaw();
       if (Array.isArray(parsed)) {
         bookmarks = parsed.filter(
           (item): item is VaultBookmark =>
@@ -722,7 +760,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         : bookmark,
     );
     if (updatedBookmarks.some((bookmark, index) => bookmark !== bookmarks[index])) {
-      await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(updatedBookmarks, null, 2), 'utf8');
+      await writeBookmarksRaw(updatedBookmarks);
     }
     const positions = await readReadingPositions();
     const updatedPositions = positions.map((position) =>
@@ -845,14 +883,17 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     const vault = await getVault();
     await collect(vault.entries);
     const index = buildVaultLinkIndex(notes, vault.entries);
-    await writeFile(await resolveMetadata('links.json', true), JSON.stringify(index, null, 2), 'utf8');
+    if (protectedMetadata?.isProtected('links.json')) await protectedMetadata.write('links.json', index);
+    else await writeFile(await resolveMetadata('links.json', true), JSON.stringify(index, null, 2), 'utf8');
     return index;
   }
 
   async function getBookmarks(): Promise<VaultBookmark[]> {
-    const bookmarkPath = await resolveMetadata('bookmarks.json', true);
+    // Protected reads fail closed: a tampered protected store throws
+    // here instead of being mistaken for an empty bookmark list that
+    // a later toggle would then write back over the real data.
+    const parsed: unknown = await readBookmarksRaw();
     try {
-      const parsed: unknown = JSON.parse(await readFile(bookmarkPath, 'utf8'));
       const candidates = Array.isArray(parsed)
         ? parsed.filter(
             (item): item is VaultBookmark =>
@@ -906,7 +947,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
             created: new Date().toISOString(),
           },
         ];
-    await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+    await writeBookmarksRaw(next);
     return next;
   }
 
@@ -937,7 +978,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         ...(cleanAnchor ? { anchor: cleanAnchor } : {}),
       },
     ];
-    await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+    await writeBookmarksRaw(next);
     return next;
   }
 
@@ -945,7 +986,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     const bookmarks = await getBookmarks();
     const next = bookmarks.filter((bookmark) => bookmark.id !== id);
     if (next.length !== bookmarks.length) {
-      await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+      await writeBookmarksRaw(next);
     }
     return next;
   }
