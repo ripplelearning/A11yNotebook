@@ -204,7 +204,8 @@ if (!app.requestSingleInstanceLock()) {
       pendingReminderAlerts = [];
       return pending;
     });
-    setupVaultIpc(
+    const wakeLaunch = process.argv.includes('--a11y-reminder-wake');
+    const vaultIpc = setupVaultIpc(
       isTrustedSender,
       (event) => {
         if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(IPC_CHANNELS.vaultChanged, event);
@@ -245,6 +246,16 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
+    if (wakeLaunch) {
+      // Task Scheduler wake: show generic due alerts from the
+      // persisted snapshot, re-register the next trigger, and exit
+      // without ever opening a window or the library.
+      void vaultIpc
+        .runReminderWake()
+        .catch(() => undefined)
+        .then(() => setTimeout(() => app.quit(), 1500));
+      return;
+    }
     rebuildApplicationMenu();
     ipcMain.on(IPC_CHANNELS.menuState, (event, value: unknown) => {
       if (!isTrustedSender(event) || !isNativeMenuState(value)) return;
@@ -254,7 +265,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
-    createWindow();
+    if (!wakeLaunch) createWindow();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {

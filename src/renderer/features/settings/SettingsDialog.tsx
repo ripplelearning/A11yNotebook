@@ -300,6 +300,20 @@ export default function SettingsDialog({
             Sound and in-app alerts are independent of native notification consent. Background alerts wait for window
             focus.
           </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.backgroundReminders ?? false}
+              onChange={(event) => setDraft({ ...draft, backgroundReminders: event.target.checked })}
+            />
+            Alert me after the app closes (Windows only)
+          </label>
+          <p>
+            When this is on, Windows Task Scheduler briefly launches the app at each due time to show a generic alert,
+            even after you close the app. The scheduled task and the small snapshot it reads contain only due times —
+            never reminder titles or note content — and alerts stay generic until you unlock the library. Turning this
+            off deletes the scheduled task.
+          </p>
           <p role="status">{soundNotice}</p>
         </fieldset>
         <fieldset aria-describedby="pdf-reading-help" disabled={pdfLoading || pdfSaving}>
