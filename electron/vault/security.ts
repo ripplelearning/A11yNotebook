@@ -1,5 +1,6 @@
 import { createCipheriv, createDecipheriv, hkdfSync, randomBytes, scrypt as scryptCallback } from 'node:crypto';
-import type { MetadataProtectionPointer } from '../../src/shared/metadata-protection';
+import type { MetadataProtectionPointer, ProtectedStoreName } from '../../src/shared/metadata-protection';
+import { BASE_PROTECTED_STORES, PROTECTED_STORE_NAMES } from '../../src/shared/metadata-protection';
 const KEY_BYTES = 32;
 const SALT_BYTES = 16;
 const NONCE_BYTES = 12;
@@ -346,7 +347,11 @@ export function validateMetadataProtectionPointer(value: unknown): asserts value
     !uuid.test(pointer.vaultId) ||
     !pointer.stores ||
     typeof pointer.stores !== 'object' ||
-    Object.keys(pointer.stores).sort().join(',') !== 'annotations,checkpoints'
+    // The base pair is migrated together by the original opt-in and
+    // must always be present; any further stores are optional
+    // extensions, and unknown store names are rejected outright.
+    !BASE_PROTECTED_STORES.every((store) => store in pointer.stores) ||
+    !Object.keys(pointer.stores).every((store) => (PROTECTED_STORE_NAMES as readonly string[]).includes(store))
   )
     throw new Error('Invalid protected metadata pointer.');
   for (const store of Object.values(pointer.stores)) {
@@ -716,8 +721,7 @@ export function encryptRecord(
     | 'credentials'
     | 'legacy-vault-key'
     | 'vault-config-integrity'
-    | 'metadata-annotations'
-    | 'metadata-checkpoints',
+    | `metadata-${ProtectedStoreName}`,
   id: string,
   plaintext: string,
 ): EncryptedRecord {
@@ -741,8 +745,7 @@ export function decryptRecord(
     | 'credentials'
     | 'legacy-vault-key'
     | 'vault-config-integrity'
-    | 'metadata-annotations'
-    | 'metadata-checkpoints',
+    | `metadata-${ProtectedStoreName}`,
   value: unknown,
 ): string {
   if (
