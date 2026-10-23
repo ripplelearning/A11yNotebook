@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { PdfAnnotation, PdfAnnotationTarget } from '../../../shared/pdf-annotation';
+import { formatPdfNotesExport } from '../../../shared/pdf-annotation-export';
 import type { PdfDocument, PdfPage } from '../../pdf-semantic';
 import PdfNoteDialog, { type PdfNoteValues } from './PdfNoteDialog';
 import PdfQuoteDialog from './PdfQuoteDialog';
@@ -380,6 +381,22 @@ export default function PdfNotes({
     }
   };
 
+  const copyNotesToClipboard = async () => {
+    if (!isCurrentDocument() || operation.current) return;
+    const items = notes.map(({ note, resolutions }) => ({
+      note,
+      status: resolutions.some((resolution) => !isLocated(resolution))
+        ? 'Orphaned or ambiguous: no unique location found in the current document.'
+        : [...new Set(resolutions.map((resolution) => resolution.classification))].join(', '),
+    }));
+    try {
+      await navigator.clipboard.writeText(formatPdfNotesExport(path, items));
+      setMessage(`Copied ${notes.length} PDF note${notes.length === 1 ? '' : 's'} to the clipboard.`);
+    } catch {
+      setError('Could not copy PDF notes to the clipboard.');
+    }
+  };
+
   return (
     <section aria-label="PDF notes" className="pdf-notes">
       <button
@@ -392,6 +409,9 @@ export default function PdfNotes({
         disabled={!rendered || !notesLoaded}
       >
         Create PDF note
+      </button>
+      <button type="button" disabled={!notesLoaded || notes.length === 0} onClick={() => void copyNotesToClipboard()}>
+        Copy notes to clipboard
       </button>
       <button
         type="button"
@@ -420,6 +440,21 @@ export default function PdfNotes({
         Select text, focus an accessible paragraph, heading or cell, or create a note by finding a quotation. Only one
         PDF page is displayed at a time.
       </p>
+      {rendered && notesLoaded
+        ? (() => {
+            const pageNotes = notes.filter(({ resolutions }) =>
+              resolutions.some((resolution) => isLocated(resolution) && resolution.page === rendered.page.pageNum),
+            );
+            return pageNotes.length ? (
+              <p>
+                {pageNotes.length} note{pageNotes.length === 1 ? '' : 's'} on page {rendered.page.pageNum}.{' '}
+                <button type="button" onClick={() => setFocusNote(pageNotes[0].note.id)}>
+                  Go to first note on this page
+                </button>
+              </p>
+            ) : null;
+          })()
+        : null}
       <p role="status">{message}</p>
       {error ? <p role="alert">{error}</p> : null}
       {notes.length ? (
