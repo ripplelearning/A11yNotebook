@@ -1,8 +1,8 @@
 # A11y Notebook — Implementation Status
 
-**Last Updated:** 2026-10-10  
-**Current Version:** 1.1.1
-**Starting main:** ea347f3 (includes PR #26 audit logging, PR #27 DOCX and PR #28 investigation)
+**Last Updated:** 2026-10-22  
+**Current Version:** 1.2.0
+**Scope:** releases through v1.1.5 plus the October 22, 2026 feature batch (PRs #62–#67)
 
 Status marks below mean **implemented**, **partial**, **open**, or **externally blocked**. They do not mean
 production-ready or manually verified. Automated DOM/mocked OS tests do not establish Windows toast delivery,
@@ -10,15 +10,15 @@ installer behavior, screen-reader speech, or secure erasure.
 
 ## Requested six-feature increment
 
-| Feature                               | Evidence-based status                                                                                                                                                                                                                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions.                                              |
-| Opt-in encrypted metadata/indexes     | **Scoped implementation:** Markdown/HTML/PDF annotations and cognitive checkpoints only, stable unlocked v3 config, explicit exclusion consent, authenticated per-store containers/pointers and resumable cleanup. Other metadata/indexes remain plaintext/open; not whole-library encryption.                                 |
-| Cognitive unsaved-edit crash recovery | **Scoped implementation:** bounded encrypted debounced checkpoints, baseline conflict detection and explicit unsaved Restore/Discard/Compare. Malformed structured drafts are compare/copy-only (partial); no plaintext fallback. Debounce-window loss and manual Windows AT checks remain.                                    |
-| Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                                                               |
-| DOCX accessible local reading         | **Implemented on main (PR #27).** Bounded local ZIP/XML parser, semantic reader, navigation/search and hostile fixtures. DOCX annotations remain open; legacy `.doc` remains unsupported.                                                                                                                                      |
-| Exited-process Windows reminders      | **Not implemented.** No Task Scheduler/helper registration, consent/status API or cleanup. In-process scheduling is not delivery after exit; Windows verification remains unrun.                                                                                                                                               |
-| Custom in-app reminder alerts         | **Partial on existing scheduler:** persisted alert/sound settings, bundled sound, focused dialog/unfocused queue, complete/dismiss/snooze actions and hidden-title privacy. Locking stops delivery; generic locked alert/sound remains open. Windows minimized audio/focus and AT need manual validation. Alerts stop on exit. |
+| Feature                               | Evidence-based status                                                                                                                                                                                                                                                                                                                                                                                                               |
+| ------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Sensitive-action audit logging        | Scoped main-process implementation and automated tests: allowlisted operation/outcome/time, bounded versioned log, atomic staging, redaction and explicit independent storage failures. Not a tamper-proof/comprehensive forensic history; see `docs/security.md` for exclusions.                                                                                                                                                   |
+| Opt-in encrypted metadata/indexes     | **Scoped implementation:** Markdown/HTML/PDF annotations and cognitive checkpoints only, stable unlocked v3 config, explicit exclusion consent, authenticated per-store containers/pointers and resumable cleanup. Other metadata/indexes remain plaintext/open; not whole-library encryption.                                                                                                                                      |
+| Cognitive unsaved-edit crash recovery | **Scoped implementation:** bounded encrypted debounced checkpoints, baseline conflict detection and explicit unsaved Restore/Discard/Compare. Malformed structured drafts are compare/copy-only (partial); no plaintext fallback. Debounce-window loss and manual Windows AT checks remain.                                                                                                                                         |
+| Milestone planning UI                 | Accessible planning UI on existing service/typed IPC; automated UI tests. Manual Windows AT checks remain unrun.                                                                                                                                                                                                                                                                                                                    |
+| DOCX accessible local reading         | **Implemented on main (PR #27).** Bounded local ZIP/XML parser, semantic reader, navigation/search and hostile fixtures. DOCX annotations remain open. Legacy `.doc` text extraction was added in PR #62 via a bounded local spec-based parser (text only, no formatting).                                                                                                                                                          |
+| Exited-process Windows reminders      | **Not implemented.** No Task Scheduler/helper registration, consent/status API or cleanup. In-process scheduling is not delivery after exit; Windows verification remains unrun.                                                                                                                                                                                                                                                    |
+| Custom in-app reminder alerts         | **Implemented including the locked case (PR #66):** persisted alert/sound settings, bundled sound, focused dialog/unfocused queue, complete/dismiss/snooze actions and hidden-title privacy. While locked, a privacy-safe snapshot of due times (ids only) drives a generic "A reminder is due. Unlock the library to view it." alert with sound. Windows minimized audio/focus and AT need manual validation. Alerts stop on exit. |
 
 The exact unfinished acceptance criteria and Windows matrix are in `docs/continuation-plan.md`. Designs are not
 implementation, and mocks are not actual Windows verification.
@@ -39,6 +39,7 @@ implementation, and mocks are not actual Windows verification.
 ### Phase 2 — Library and Notebook Model
 
 - ✅ Local library folders with notebooks, Markdown/HTML notes, and attachments
+- ✅ Recent-library picker: up to ten recent libraries with a guarded open action on the Libraries screen (PR #64)
 - ✅ Human-readable hidden `.a11ynotebook/` metadata directory
 - ✅ Filesystem service with path validation and symlink rejection
 - ✅ Accessible tree navigation (roving focus, expansion, Home/End, type-ahead, F2 rename, Delete)
@@ -51,6 +52,7 @@ implementation, and mocks are not actual Windows verification.
 ### Phase 3 — Reader and Editor Experience
 
 - ✅ Sanitized semantic Markdown rendering and plain-text source editing
+- ✅ Structured plain-text reading view: `.txt` notes and attachments render as paragraphs/line breaks, never as Markdown or a bare `<pre>` block (PR #62)
 - ✅ Tab management: close controls, unsaved state, Ctrl+W, Ctrl+Tab, autosave
 - ✅ Wiki and relative Markdown links with link index, outgoing links, backlinks
 - ✅ Persistent note bookmarks with accessible list and jump action
@@ -93,6 +95,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Unified reminder and opt-in flashcard scheduler with persistent deduplication
 - ✅ Library switch and lock cancellation for scheduled tasks
 - ✅ Settings-controlled in-app reminder alert queue and bundled sound; independent native notification preference
+- ✅ Generic due alerts while the library is locked: privacy-safe due-time snapshot, configured sound, and a content-free alert (PR #66)
 - ⏳ **Exited-process notification delivery** — open; design needed for opt-in Windows integration
 - ✅ **Milestone planning UI** — existing-service list/detail/create/edit/delete and associations; manual AT verification open
 
@@ -110,7 +113,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Extensible shared asset-type registry (no executable plugin loading)
 - ⏳ **Rich mind-map visual layouts** — open; semantic tree is authoritative
 - ⏳ **Background flashcard review notifications** — open
-- ⏳ **General Markdown-to-outline conversion** — open; heading hierarchy/content preservation design needed
+- ✅ **General Markdown-to-outline conversion** — headings/lists nest into a valid outline with every transformation reported as a warning before confirming (PR #65)
 - ✅ **Encrypted cognitive checkpoints** — opted-in bounded drafts and explicit unsaved restore/discard/compare; manual Windows AT validation remains
 
 ### Phase 7 — Security and Local Protection
@@ -147,10 +150,12 @@ implementation, and mocks are not actual Windows verification.
 - ✅ ePub chapter sanitization and section text navigation/search
 - ✅ Bounded ePub text extraction for search indexing
 - 🚧 **ePub annotations** — open; lifecycle validation and manual accessibility checks remain
-- ⏳ **PDF sidebar/export/lifecycle workflows** — open; annotation sidebar, bidirectional navigation, clipboard export
-- ⏳ **ePub reading-progress persistence** — open
+- ✅ **PDF notes export and navigation** — clipboard export with original quotes and status, notes-on-this-page indicator with a page-to-note focus jump (PR #67)
+- ✅ **ePub reading-progress persistence** — CFI + section position saved per book and restored on open (PR #63)
 - ✅ **DOCX local reading** — bounded semantic parser, reader/navigation/search and hostile-archive tests; annotations and manual AT validation remain open
-- ⏳ **Legacy `.doc` support** — unsupported; pending vetted local parser/converter strategy
+- ✅ **Legacy `.doc` text extraction** — bounded local CFB/piece-table parser (text only, no formatting), import and preview (PR #62)
+- ✅ **RTF import and preview** — bounded local converter to sanitized semantic HTML (PR #62)
+- ✅ **Google Docs guidance** — `.gdoc` pointer files explain that the document must be downloaded in a supported format and imported (PR #62)
 
 ### Phase 9 — Accessibility Validation and Release Readiness
 
@@ -171,7 +176,6 @@ implementation, and mocks are not actual Windows verification.
 
 ### Remaining Phase 2 Work
 
-- Recent-library picker UI (only automatic last-library restoration currently exists)
 - Reference-style Markdown link repair
 - Crash-atomic multi-file moves
 
@@ -195,21 +199,15 @@ implementation, and mocks are not actual Windows verification.
 ### Remaining Phase 6 Work
 
 - **Cognitive recovery manual validation** — JAWS/NVDA/Narrator, keyboard focus and speech on Windows remain unrun
-- **Markdown-to-outline conversion** — requires heading hierarchy preservation and content-loss preview
 - **Mind-map visual layouts** — semantic tree is authoritative; visual enhancements remain
 - **Due flashcard background notifications** — depends on Phase 5 out-of-process delivery
 
 ### Shared Accessible Reader (Cross-document)
 
 - Common reader capability contract for outline/TOC, sequential navigation, headings/links/tables, search, bookmarks
-- Original-quote export with confidence/orphan status reporting
-- Reading position persistence (especially for ePub)
 - Markdown and sanitized HTML annotation parity verification
 - ePub hostile-archive and remote-resource validation
 - DOCX annotations and manual Windows assistive-technology validation
-- Legacy `.doc` support: pending safe local parser/converter strategy
-- PDF annotation sidebar and bidirectional navigation (Phase 5 work)
-- PDF clipboard export with original quotes (Phase 6 work)
 
 ### Security and Storage
 
@@ -241,7 +239,20 @@ implementation, and mocks are not actual Windows verification.
 **Production readiness:** Not established. Implemented functionality still has explicit security/storage limitations and unrun Windows accessibility/packaging gates.  
 **Testable on Windows:** Core app, installer, updater, UI Automation smoke tests, portable `.exe`  
 **Manual AT Validation Needed:** All new security workflows, recovery flows, PDF/ePub navigation, milestone planning  
-**Design & Implementation Open:** Exited-process delivery, excluded indexes/metadata, whole-library encryption, shared reader contract, DOCX annotations; legacy `.doc` unsupported. Windows sound/focus and new recovery/alert AT workflows require manual validation.
+**Design & Implementation Open:** Exited-process delivery, excluded indexes/metadata, whole-library encryption, shared reader contract, DOCX annotations. Windows sound/focus and new recovery/alert AT workflows require manual validation.
+
+---
+
+## October 22, 2026 feature batch (PRs #62–#67, released as v1.2.0)
+
+- **PR #62 — reading view and import formats:** structured plain-text rendering for `.txt` notes/attachments; local RTF→HTML import/preview; local spec-based `.doc` text extraction (the vetted strategy the continuation plan required: no external service, explicit text-only limits); `.gdoc` download guidance.
+- **PR #63 — ePub reading positions:** per-book CFI/section persistence with path migration on move/rename.
+- **PR #64 — recent-library picker:** ten most recent libraries on the Libraries screen; opening by path restricted to that list.
+- **PR #65 — Markdown-to-outline conversion:** warning-surfacing conversion that always emits a valid `.outline.md`; source note unchanged.
+- **PR #66 — locked-library due alerts:** completes the Phase 5 in-app criterion (privacy-safe snapshot, sound, generic alert, race-guarded watcher).
+- **PR #67 — PDF notes export/navigation:** clipboard export with original quotes and status; page-to-note focus jump.
+
+Validation: each PR passed typecheck, lint, its targeted suites locally, and the full GitHub CI suite (Ubuntu + Windows) before merge. Manual Windows JAWS/NVDA/Narrator validation of the new surfaces remains open, as does the Phase 12 matrix.
 
 ---
 
