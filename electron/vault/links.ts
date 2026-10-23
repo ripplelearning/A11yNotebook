@@ -21,6 +21,19 @@ export function parseMarkdownLinks(content: string): MarkdownReference[] {
     if (/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i.test(target)) continue;
     references.push({ target, isWiki: false });
   }
+  // Reference-style links carry the target in a definition elsewhere in the
+  // document (`[id]: path`); usages (`[text][id]`, `[id][]`, `[id]`) add no
+  // new target, so each local definition contributes one reference. The
+  // first definition of a label wins, as in CommonMark.
+  const seenLabels = new Set<string>();
+  for (const match of searchable.matchAll(/^[ \t]{0,3}\[([^\]\n]+)\]:[ \t]*(<[^>\n]+>|\S+)/gm)) {
+    const label = match[1].trim().replace(/\s+/g, ' ').toLocaleLowerCase();
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    const target = match[2].startsWith('<') ? match[2].slice(1, -1) : match[2];
+    if (/^(?:[a-z][a-z\d+.-]*:|#|\/\/)/i.test(target)) continue;
+    references.push({ target, isWiki: false });
+  }
   return references;
 }
 

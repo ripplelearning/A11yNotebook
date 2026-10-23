@@ -25,6 +25,14 @@ describe('Markdown links', () => {
     ]);
   });
 
+  it('parses reference-style definitions as links, first definition wins', () => {
+    expect(
+      parseMarkdownLinks(
+        '[Full][t] and [t][] and shortcut [t].\n\n[t]: ./Target.md "Title"\n[t]: ./Other.md\n[web]: https://example.com/page\n',
+      ),
+    ).toEqual([{ target: './Target.md', isWiki: false }]);
+  });
+
   it('builds resolved backlinks and marks missing notes', () => {
     const entries: VaultEntry[] = [
       {

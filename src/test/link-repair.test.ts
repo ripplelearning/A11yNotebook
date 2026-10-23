@@ -42,6 +42,37 @@ describe('rename and move link repair', () => {
     ).toEqual([]);
   });
 
+  it('repairs reference-style definitions when the target moves, keeping usages and titles', () => {
+    const plan = planLinkRepair(
+      [
+        { path: 'Target.md', content: '' },
+        { path: 'Ref.md', content: 'See [the guide][g] and [g][].\n\n[g]: Target.md "Guide title"\n' },
+      ],
+      'Target.md',
+      'Docs/Target.md',
+    );
+    expect(plan).toHaveLength(1);
+    expect(plan[0].after).toBe('See [the guide][g] and [g][].\n\n[g]: Docs/Target.md "Guide title"\n');
+  });
+
+  it('recomputes reference definitions when the referencing note moves, skipping code and web targets', () => {
+    const plan = planLinkRepair(
+      [
+        { path: 'Target.md', content: '' },
+        {
+          path: 'Ref.md',
+          content: '[a]: Target.md\n[b]: https://example.com/x.md\n```\n[c]: Target.md\n```\n[d]: <Target.md>\n',
+        },
+      ],
+      'Ref.md',
+      'Deep/Ref.md',
+    );
+    expect(plan).toHaveLength(1);
+    expect(plan[0].after).toBe(
+      '[a]: ../Target.md\n[b]: https://example.com/x.md\n```\n[c]: Target.md\n```\n[d]: <../Target.md>\n',
+    );
+  });
+
   it('repairs references to every note under a moved notebook', () => {
     expect(
       planLinkRepair(
