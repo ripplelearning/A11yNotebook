@@ -4,7 +4,12 @@ import { lstat, mkdtemp, open, readFile, readdir, rm, symlink, unlink, writeFile
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
-import { createProtectedMetadataStore, writeProtectedSecurityConfig } from '../../electron/vault/metadata-protection';
+import {
+  createProtectedMetadataStore,
+  PROTECTED_LEGACY_FILENAMES,
+  writeProtectedSecurityConfig,
+} from '../../electron/vault/metadata-protection';
+import { validateMetadataProtectionPointer } from '../../electron/vault/security';
 import {
   createVaultSecurityConfig,
   generateVaultRecoveryKey,
@@ -271,4 +276,68 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.write('annotations', { secret: 'never published' })).rejects.toThrow('locked');
     for (const key of [f.key, reset.key, unlocked]) key.fill(0);
   }, 30_000);
+
+  it('extends protection to an additional store and removes its plaintext', async () => {
+    PROTECTED_LEGACY_FILENAMES.milestones = 'milestones.json';
+    const f = await fixture();
+    await f.store.enable();
+    const milestones = [{ id: 'm1', title: 'private milestone words' }];
+    await writeFile(path.join(f.folder, 'milestones.json'), JSON.stringify(milestones));
+    await f.store.extend('milestones', milestones);
+    await expect(f.store.read('milestones')).resolves.toEqual(milestones);
+    await expect(lstat(path.join(f.folder, 'milestones.json'))).rejects.toThrow();
+    const names = await readdir(f.folder);
+    expect(names.some((name) => name.startsWith('protected-milestones-'))).toBe(true);
+    for (const name of names) {
+      const text = await readFile(path.join(f.folder, name), 'utf8');
+      expect(text).not.toContain('private milestone words');
+    }
+    const next = [{ id: 'm2', title: 'second milestone' }];
+    await f.store.write('milestones', next);
+    await expect(f.store.read('milestones')).resolves.toEqual(next);
+    // The base stores still work alongside the extension.
+    await expect(f.store.read('annotations')).resolves.toEqual(f.content);
+    delete PROTECTED_LEGACY_FILENAMES.milestones;
+  });
+
+  it('refuses extension when protection is off, the store is already protected, or no legacy file is registered', async () => {
+    const f = await fixture();
+    await expect(f.store.extend('milestones', [])).rejects.toThrow('not enabled');
+    await f.store.enable();
+    await expect(f.store.extend('annotations', {})).rejects.toThrow('already under encrypted protection');
+    await expect(f.store.extend('links', {})).rejects.toThrow('No legacy filename is registered');
+    await expect(f.store.read('links')).rejects.toThrow('not under encrypted protection');
+  });
+
+  it('fails closed when an extended store container is tampered with', async () => {
+    PROTECTED_LEGACY_FILENAMES.milestones = 'milestones.json';
+    const f = await fixture();
+    await f.store.enable();
+    await writeFile(path.join(f.folder, 'milestones.json'), JSON.stringify([{ id: 'm1' }]));
+    await f.store.extend('milestones', [{ id: 'm1' }]);
+    const containerName = (await readdir(f.folder)).find((name) => name.startsWith('protected-milestones-'))!;
+    const containerPath = path.join(f.folder, containerName);
+    const bytes = await readFile(containerPath, 'utf8');
+    await writeFile(containerPath, bytes.replace(/[a-f0-9]{8}/, 'deadbeef'));
+    await expect(f.store.read('milestones')).rejects.toThrow();
+    delete PROTECTED_LEGACY_FILENAMES.milestones;
+  });
+
+  it('validates pointers with extension stores and rejects unknown or base-less pointers', async () => {
+    const f = await fixture();
+    await f.store.enable();
+    const config = f.config();
+    if (config.version !== 3) throw new Error('expected v3');
+    const pointer = config.metadataProtection!;
+    const entry = { generation: randomUUID(), digest: 'a'.repeat(64), cleanupRequired: false };
+    expect(() =>
+      validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, milestones: entry } }),
+    ).not.toThrow();
+    expect(() =>
+      validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, bogus: entry } }),
+    ).toThrow('Invalid protected metadata pointer.');
+    expect(() =>
+      validateMetadataProtectionPointer({ ...pointer, stores: { annotations: pointer.stores.annotations! } }),
+    ).toThrow('Invalid protected metadata pointer.');
+  });
 });

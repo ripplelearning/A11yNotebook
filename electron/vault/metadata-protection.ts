@@ -3,12 +3,39 @@ import { lstat, open, readdir, rename, unlink } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { MetadataResolver } from './metadata';
-import type { MetadataProtectionPointer, ProtectedStoreName } from '../../src/shared/metadata-protection';
+import type {
+  MetadataProtectionPointer,
+  ProtectedStoreName,
+  ProtectedStorePointer,
+} from '../../src/shared/metadata-protection';
+import { PROTECTED_STORE_NAMES } from '../../src/shared/metadata-protection';
 import { decryptRecord, encryptRecord, updateMetadataProtection, type VaultSecurityConfig } from './security';
 
 export const PROTECTED_METADATA_MAX_BYTES = 16 * 1024 * 1024;
 const MAX_CONTAINER_BYTES = Math.ceil((PROTECTED_METADATA_MAX_BYTES * 4) / 3) + 4096;
 const filename = (store: ProtectedStoreName, generation: string) => `protected-${store}-${generation}.json`;
+
+/**
+ * The plaintext file each store is migrated from. A store can only be
+ * extended into protection once its legacy file is registered here —
+ * that registration is part of wiring the store's writers through the
+ * protected store, so an unregistered store fails loudly instead of
+ * silently leaving a plaintext copy behind.
+ */
+export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, string>> = {
+  annotations: 'annotations.json',
+  checkpoints: 'checkpoints.json',
+};
+
+function storeEntry(identity: MetadataProtectionPointer, store: ProtectedStoreName): ProtectedStorePointer {
+  const entry = identity.stores[store];
+  if (!entry) throw new Error(`The ${store} store is not under encrypted protection.`);
+  return entry;
+}
+
+const ORPHAN_PATTERN = new RegExp(
+  `^protected-(${PROTECTED_STORE_NAMES.join('|')})-([\\da-f-]{36})\\.json$`,
+);
 
 export async function readBoundedMetadata(source: string, maxBytes = MAX_CONTAINER_BYTES) {
   const sourceStat = await lstat(source);
@@ -92,19 +119,18 @@ export function createProtectedMetadataStore(options: {
     const active = pointer();
     const directory = path.dirname(await resolver.resolveMetadata('security.json', true));
     for (const name of await readdir(directory)) {
-      const match = /^protected-(annotations|checkpoints)-([\da-f-]{36})\.json$/.exec(name);
+      const match = ORPHAN_PATTERN.exec(name);
       if (!match) continue;
       const store = match[1] as ProtectedStoreName;
-      if (active?.stores[store].generation === match[2]) continue;
+      if (active?.stores[store]?.generation === match[2]) continue;
       await unlink(await resolver.resolveMetadata(name, true));
     }
   }
   async function atomic(name: string, value: unknown, access: ProtectedMetadataAccess) {
     const destination = await resolver.resolveMetadata(name, true);
-    const stagingName = name.startsWith('protected-annotations-')
-      ? 'pending-protected-annotations.json'
-      : 'pending-protected-checkpoints.json';
-    const staging = await resolver.resolveMetadata(stagingName, true);
+    const store = PROTECTED_STORE_NAMES.find((candidate) => name.startsWith(`protected-${candidate}-`));
+    if (!store) throw new Error('Invalid protected metadata container name.');
+    const staging = await resolver.resolveMetadata(`pending-protected-${store}.json`, true);
     access.assertCurrent();
     await unlink(staging).catch((error: NodeJS.ErrnoException) => {
       if (error.code !== 'ENOENT') throw error;
@@ -136,7 +162,8 @@ export function createProtectedMetadataStore(options: {
     if (typeof plaintext !== 'string' || Buffer.byteLength(plaintext) > PROTECTED_METADATA_MAX_BYTES)
       throw new Error('Protected metadata exceeds the allowed size.');
     access.assertCurrent();
-    const generation = identity.stores[store].generation;
+    const entry = storeEntry(identity, store);
+    const generation = entry.generation;
     const record = encryptRecord(
       access.key,
       `metadata-${store}`,
@@ -144,7 +171,7 @@ export function createProtectedMetadataStore(options: {
       plaintext,
     );
     const container = { version: 1, store, vaultId: identity.vaultId, generation, record };
-    identity.stores[store].digest = createHash('sha256').update(JSON.stringify(container), 'utf8').digest('hex');
+    entry.digest = createHash('sha256').update(JSON.stringify(container), 'utf8').digest('hex');
     await atomic(filename(store, generation), container, access);
   }
   async function commit(identity: MetadataProtectionPointer, access: ProtectedMetadataAccess) {
@@ -158,15 +185,16 @@ export function createProtectedMetadataStore(options: {
     const access = options.access();
     const identity = pointer();
     if (!identity) throw new Error('Encrypted metadata protection is not enabled.');
-    if (!cleaning && Object.values(identity.stores).some((item) => item.cleanupRequired))
+    const entry = storeEntry(identity, store);
+    if (!cleaning && Object.values(identity.stores).some((item) => item?.cleanupRequired))
       throw new Error('Finish protected metadata cleanup before accessing content.');
-    const source = await resolver.resolveMetadata(filename(store, identity.stores[store].generation));
+    const source = await resolver.resolveMetadata(filename(store, entry.generation));
     const bytes = await readBoundedMetadata(source);
     access.assertCurrent();
-    if (createHash('sha256').update(bytes, 'utf8').digest('hex') !== identity.stores[store].digest)
+    if (createHash('sha256').update(bytes, 'utf8').digest('hex') !== entry.digest)
       throw new Error('Protected metadata digest does not match its authenticated pointer.');
     const container = JSON.parse(bytes);
-    const generation = identity.stores[store].generation;
+    const generation = entry.generation;
     if (
       !container ||
       typeof container !== 'object' ||
@@ -188,31 +216,32 @@ export function createProtectedMetadataStore(options: {
   }
   async function finishCleanup() {
     const identity = pointer();
-    if (!identity || !Object.values(identity.stores).some((item) => item.cleanupRequired)) return;
+    if (!identity || !Object.values(identity.stores).some((item) => item?.cleanupRequired)) return;
     const access = options.access();
-    await read('annotations', true);
-    await read('checkpoints', true);
+    const pending = (Object.entries(identity.stores) as Array<[ProtectedStoreName, ProtectedStorePointer]>).filter(
+      ([, entry]) => entry.cleanupRequired,
+    );
+    // Authenticate every protected store's container before removing
+    // any plaintext: cleanup never deletes the only copy of a store
+    // whose ciphertext does not verify.
+    for (const store of Object.keys(identity.stores) as ProtectedStoreName[]) await read(store, true);
     access.assertCurrent();
     // The authenticated pointer is authoritative even when plaintext removal was interrupted.
-    for (const store of ['annotations', 'checkpoints'] as const) {
-      if (!identity.stores[store].cleanupRequired) continue;
-      const source = await resolver.resolveMetadata(`${store}.json`, true);
+    for (const [store] of pending) {
+      const legacy = PROTECTED_LEGACY_FILENAMES[store];
+      if (!legacy) throw new Error(`No legacy filename is registered for the ${store} store.`);
+      const source = await resolver.resolveMetadata(legacy, true);
       access.assertCurrent();
       await unlink(source).catch((error: NodeJS.ErrnoException) => {
         if (error.code !== 'ENOENT') throw error;
       });
       access.assertCurrent();
     }
-    await commit(
-      {
-        ...identity,
-        stores: {
-          annotations: { ...identity.stores.annotations, cleanupRequired: false },
-          checkpoints: { ...identity.stores.checkpoints, cleanupRequired: false },
-        },
-      },
-      access,
-    );
+    const stores: MetadataProtectionPointer['stores'] = {};
+    for (const [store, entry] of Object.entries(identity.stores) as Array<[ProtectedStoreName, ProtectedStorePointer]>) {
+      stores[store] = entry.cleanupRequired ? { ...entry, cleanupRequired: false } : entry;
+    }
+    await commit({ ...identity, stores }, access);
   }
   return {
     enabled: () => pointer() !== undefined,
@@ -228,20 +257,19 @@ export function createProtectedMetadataStore(options: {
       };
       access.assertCurrent();
       const previous = pointer();
-      if (!previous || Object.values(previous.stores).some((item) => item.cleanupRequired))
+      if (!previous || Object.values(previous.stores).some((item) => item?.cleanupRequired))
         throw new Error('Encrypted metadata protection is unavailable.');
       await read(store);
       await collectOrphans();
       access.assertCurrent();
+      const previousGeneration = storeEntry(previous, store).generation;
       const next = {
         ...previous,
         stores: { ...previous.stores, [store]: { generation: randomUUID(), digest: '', cleanupRequired: false } },
       };
       await stage(store, value, next, access);
       await commit(next, access);
-      await unlink(await resolver.resolveMetadata(filename(store, previous.stores[store].generation), true)).catch(
-        () => undefined,
-      );
+      await unlink(await resolver.resolveMetadata(filename(store, previousGeneration), true)).catch(() => undefined);
     },
     async enable() {
       const access = options.access();
@@ -274,6 +302,37 @@ export function createProtectedMetadataStore(options: {
       };
       await stage('annotations', legacy ?? { version: 2, annotations: [], pdfAnnotations: [] }, identity, access);
       await stage('checkpoints', { version: 1, drafts: [] }, identity, access);
+      await commit(identity, access);
+      await finishCleanup();
+    },
+    /**
+     * Migrate one additional store into protection. The caller supplies
+     * the store's current validated plaintext value; its writers must
+     * already be routed through this protected store (or paused) so no
+     * plaintext write can land after migration. The legacy plaintext
+     * file is removed by the shared cleanup path, which first
+     * authenticates every protected container — an interrupted
+     * extension leaves cleanupRequired set and all reads fail closed
+     * until cleanup finishes, exactly like the original opt-in.
+     */
+    async extend(store: ProtectedStoreName, legacyValue: unknown) {
+      const access = options.access();
+      const previous = pointer();
+      if (!previous) throw new Error('Encrypted metadata protection is not enabled.');
+      if (previous.stores[store]) throw new Error(`The ${store} store is already under encrypted protection.`);
+      if (Object.values(previous.stores).some((item) => item?.cleanupRequired))
+        throw new Error('Finish protected metadata cleanup before extending protection.');
+      if (!PROTECTED_LEGACY_FILENAMES[store])
+        throw new Error(`No legacy filename is registered for the ${store} store.`);
+      access.assertCurrent();
+      const identity: MetadataProtectionPointer = {
+        ...previous,
+        stores: {
+          ...previous.stores,
+          [store]: { generation: randomUUID(), digest: '', cleanupRequired: true },
+        },
+      };
+      await stage(store, legacyValue, identity, access);
       await commit(identity, access);
       await finishCleanup();
     },
