@@ -326,7 +326,7 @@ current data key only while unlocked and zeroed on lock. Search indexes decrypte
 treats containers as empty while locked, so container bytes never enter the index. Migration (and the
 decrypt-and-turn-off opt-out, via a persisted `decrypting` state) is resumable: each file is recorded as it
 converts, stale entries are pruned, and the manifest file is deleted on opt-out only after its file map is
-verifiably empty. Attachments are covered on the same terms (PR #99): every read path decrypts (the vault-file protocol,
+verifiably empty. Attachments are covered on the same terms (PR #99): every read path decrypts (the attachment protocol,
 previews, conversions, DOCX parsing, the asset store, search extraction), imports are born encrypted, and
 open-externally refuses encrypted files rather than writing plaintext temp copies — the same rule the app
 already applies to password-encrypted notes. Filenames stay visible; independently password-encrypted
