@@ -9,8 +9,10 @@ import {
   encryptNoteWithPassword,
   isEncryptedRecord,
   isPasswordEncryptedNote,
+  completeVaultDataKeyRotation,
   generateVaultRecoveryKey,
   prepareVaultRecovery,
+  rotateVaultDataKey,
   resetVaultPasswordWithRecovery,
   rotateVaultRecoveryKey,
   unlockVaultWithRecovery,
@@ -222,6 +224,66 @@ describe('vault security primitives', () => {
     key.fill(0);
     unlocked.key.fill(0);
   });
+
+  it('rotates the data key: both factors unwrap the new key, the old key survives only as legacy', async () => {
+    const password = 'correct horse battery';
+    const recoveryKey = generateVaultRecoveryKey();
+    const legacy = await createVaultSecurityConfig(password);
+    const prepared = await prepareVaultRecovery(legacy.config, password, recoveryKey, null);
+    legacy.key.fill(0);
+    const note = encryptRecord(prepared.key, 'note', 'note-1', 'private note text');
+    const { config: rotated, oldKey, newKey } = await rotateVaultDataKey(prepared.config, password, recoveryKey);
+    try {
+      expect(oldKey.equals(prepared.key)).toBe(true);
+      expect(newKey.equals(oldKey)).toBe(false);
+      const byPassword = await unlockVault(rotated, password);
+      expect(byPassword.equals(newKey)).toBe(true);
+      byPassword.fill(0);
+      const byRecovery = unlockVaultWithRecovery(rotated, recoveryKey);
+      expect(byRecovery.equals(newKey)).toBe(true);
+      byRecovery.fill(0);
+      // New content encrypts under the new key; old content opens via legacy.
+      expect(() => decryptRecord(oldKey, 'note', note)).not.toThrow();
+      const legacyKey = unwrapLegacyVaultKey(rotated, newKey);
+      expect(legacyKey?.equals(oldKey)).toBe(true);
+      expect(decryptRecord(legacyKey!, 'note', note)).toBe('private note text');
+      legacyKey?.fill(0);
+      expect(() => decryptRecord(newKey, 'note', note)).toThrow();
+      // Wrong recovery key and wrong password are both refused.
+      await expect(rotateVaultDataKey(prepared.config, password, generateVaultRecoveryKey())).rejects.toThrow();
+      await expect(rotateVaultDataKey(prepared.config, 'wrong password here', recoveryKey)).rejects.toThrow();
+      // Completion drops the old key: legacy becomes a self-wrap.
+      const completed = completeVaultDataKeyRotation(rotated, newKey);
+      const completedLegacy = unwrapLegacyVaultKey(completed, newKey);
+      expect(completedLegacy?.equals(newKey)).toBe(true);
+      completedLegacy?.fill(0);
+      const reopened = await unlockVault(completed, password);
+      expect(reopened.equals(newKey)).toBe(true);
+      reopened.fill(0);
+    } finally {
+      oldKey.fill(0);
+      newKey.fill(0);
+      prepared.key.fill(0);
+    }
+  }, 30_000);
+
+  it('rotates the data key when recovery is revoked, keeping recovery off', async () => {
+    const password = 'correct horse battery';
+    const legacy = await createVaultSecurityConfig(password);
+    const prepared = await prepareVaultRecovery(legacy.config, password, generateVaultRecoveryKey(), null);
+    legacy.key.fill(0);
+    const revoked = rotateVaultRecoveryKey(prepared.config, prepared.key, null);
+    const { config: rotated, newKey } = await rotateVaultDataKey(revoked, password, null);
+    try {
+      expect(rotated.recoveryWrappedDataKey).toBeNull();
+      const byPassword = await unlockVault(rotated, password);
+      expect(byPassword.equals(newKey)).toBe(true);
+      byPassword.fill(0);
+    } finally {
+      newKey.fill(0);
+      prepared.key.fill(0);
+    }
+  }, 30_000);
 
   it('rejects malformed password-encrypted note envelopes', async () => {
     const { record, key } = await encryptNoteWithPassword('note-specific password', 'private note', 'note-1');
