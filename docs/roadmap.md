@@ -106,8 +106,8 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Scoped opt-in encrypted Markdown/HTML/PDF/DOCX/ePub annotations and cognitive checkpoints using stable v3 keys, authenticated pointers and resumable plaintext cleanup.
 - ✅ Broader per-store encrypted metadata (PRs #83–#89): reminder defaults, milestones, bookmarks, link index, image descriptions, flashcard schedules, reminders, library settings and the search-index cache, each individually consented and migrated.
 - ✅ Data-key rotation (PRs #90–#91) with protected-store staging, legacy-key fallback and completion reseal.
-- 🚧 Whole-library encryption: authenticated streaming container format and migration manifest implemented (PR #92); file-migration wiring open.
-- 🚧 Whole-library encryption remains open at the wiring level (format and manifest implemented, PR #92). The formerly excluded indexes/metadata are covered per-store (see above); audit history and global preferences remain documented plaintext exclusions.
+- ✅ Whole-library encryption for notes (PRs #92, #96, #97): format, wiring, resumable migration and opt-out; attachment coverage open.
+- 🚧 Whole-library encryption covers notes; attachments remain open. The formerly excluded indexes/metadata are covered per-store (see above); audit history and global preferences remain documented plaintext exclusions.
 - ✅ Implemented protection limits and unsupported formats documented in `security.md`.
 
 ## Phase 8 — Import and document support
