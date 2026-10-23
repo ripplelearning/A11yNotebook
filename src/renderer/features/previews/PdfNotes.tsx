@@ -56,6 +56,7 @@ export default function PdfNotes({
 }) {
   const [notes, setNotes] = useState<ResolvedNote[]>([]);
   const [targets, setTargets] = useState<PdfAnnotationTarget[] | null>(null);
+  const [spanStart, setSpanStart] = useState<{ page: number; start: number } | null>(null);
   const [reanchorNote, setReanchorNote] = useState<PdfAnnotation | null>(null);
   const [quoteDialog, setQuoteDialog] = useState(false);
   const [error, setError] = useState('');
@@ -96,6 +97,7 @@ export default function PdfNotes({
     const documentState = activeDocument.current;
     documentState.disposed = false;
     setNotes([]);
+    setSpanStart(null);
     setNotesLoaded(false);
     void window.a11yNotebook?.vault
       ?.listPdfAnnotations?.(path)
@@ -165,6 +167,19 @@ export default function PdfNotes({
       }
     }
   };
+  const currentSelectionRange = (): PdfSelectionRange | null => {
+    if (!rendered || !visualRef.current || !semanticRef.current) return null;
+    const visualRanges = groupedPdfSelection(window.getSelection(), [
+      { page: rendered.page.pageNum, element: visualRef.current },
+    ]);
+    const ranges = visualRanges.length
+      ? visualRanges
+      : groupedPdfSelection(window.getSelection(), [
+          { page: rendered.page.pageNum, element: semanticRef.current },
+        ]);
+    return ranges[0] ?? null;
+  };
+
   const createSelection = (range?: Range) => {
     if (!isCurrentDocument() || !notesLoaded || !rendered || !visualRef.current || !semanticRef.current) return;
     const visualRanges = groupedPdfSelection(range ?? window.getSelection(), [
@@ -177,6 +192,73 @@ export default function PdfNotes({
         ]);
     if (ranges.length) void begin(ranges);
     else setQuoteDialog(true);
+  };
+
+  // Cross-page notes: the reader shows one page at a time, so a passage
+  // spanning pages is captured in two steps — mark where it starts on
+  // one page, turn to where it ends, and finish. The result is one
+  // grouped note with a target per page, which the store already
+  // supports; whole pages between the two marks are included in full.
+  const MAX_SPAN_PAGES = 500;
+  const startSpan = () => {
+    if (!isCurrentDocument() || !notesLoaded || !rendered) return;
+    setReanchorNote(null);
+    const range = currentSelectionRange();
+    if (!range) {
+      setError('Select the first words of the passage on this page, then start the cross-page note.');
+      return;
+    }
+    setError('');
+    setSpanStart({ page: range.page, start: range.start });
+    setMessage(
+      `Note selection started on page ${range.page}. Turn to the last page of the passage, select its final words, then finish the cross-page note.`,
+    );
+  };
+
+  const finishSpan = async () => {
+    if (!isCurrentDocument() || !notesLoaded || !rendered || !spanStart) return;
+    const range = currentSelectionRange();
+    if (!range) {
+      setError('Select the final words of the passage on this page, then finish the cross-page note.');
+      return;
+    }
+    if (range.page < spanStart.page) {
+      setError(`The finishing page must come after page ${spanStart.page}.`);
+      return;
+    }
+    if (range.page - spanStart.page + 1 > MAX_SPAN_PAGES) {
+      setError(`A cross-page note can span at most ${MAX_SPAN_PAGES} pages.`);
+      return;
+    }
+    try {
+      const ranges: PdfSelectionRange[] = [];
+      if (range.page === spanStart.page) {
+        const length = range.start + range.length - spanStart.start;
+        if (length <= 0) {
+          setError('The finishing selection must come after the starting selection on this page.');
+          return;
+        }
+        ranges.push({ page: spanStart.page, start: spanStart.start, length });
+      } else {
+        const firstPage = await pdf.getPage(spanStart.page);
+        ranges.push({
+          page: spanStart.page,
+          start: spanStart.start,
+          length: firstPage.textModel.fullText.length - spanStart.start,
+        });
+        for (let pageNumber = spanStart.page + 1; pageNumber < range.page; pageNumber += 1) {
+          const page = await pdf.getPage(pageNumber);
+          if (page.textModel.fullText.length)
+            ranges.push({ page: pageNumber, start: 0, length: page.textModel.fullText.length });
+        }
+        ranges.push({ page: range.page, start: 0, length: range.start + range.length });
+      }
+      setSpanStart(null);
+      setMessage('');
+      await begin(ranges);
+    } catch {
+      setError('That cross-page selection could not be read. Select the passage again.');
+    }
   };
 
   useEffect(() => {
@@ -436,9 +518,30 @@ export default function PdfNotes({
       >
         Annotate current semantic element
       </button>
+      {spanStart ? (
+        <>
+          <button type="button" disabled={!rendered || !notesLoaded} onClick={() => void finishSpan()}>
+            Finish cross-page note on this page
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setSpanStart(null);
+              setMessage('');
+            }}
+          >
+            Cancel cross-page note
+          </button>
+        </>
+      ) : (
+        <button type="button" disabled={!rendered || !notesLoaded} onClick={startSpan}>
+          Start cross-page note
+        </button>
+      )}
       <p className="pdf-note-instructions">
         Select text, focus an accessible paragraph, heading or cell, or create a note by finding a quotation. Only one
-        PDF page is displayed at a time.
+        PDF page is displayed at a time; for a passage that spans pages, start a cross-page note on the first page and
+        finish it on the last.
       </p>
       {rendered && notesLoaded
         ? (() => {
