@@ -397,7 +397,7 @@ function openVault(vaultPath: string) {
  */
 async function recoverInterruptedMove(vaultService: VaultService, vault: VaultInfo) {
   try {
-    const store = metadataFor(vaultService);
+    const store = routedMetadataFor(vaultService);
     const journal = parseMoveJournal(await store.read('move-journal.json').catch(() => null));
     if (!journal) return;
     const exists = async (relative: string) => {
@@ -581,7 +581,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     },
   });
   const nextProtectedMetadata = protectedMetadata;
-  assets = createAssetStore(nextService, metadata);
+  assets = createAssetStore(nextService, routedMetadataFor(nextService));
   milestones = createMilestoneStore({
     readStore: () => routedMetadataFor(nextService).read('milestones.json'),
     writeStore: (value) => routedMetadataFor(nextService).write('milestones.json', value),
@@ -824,6 +824,8 @@ const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'milestones.json': 'milestones',
   'bookmarks.json': 'bookmarks',
   'links.json': 'links',
+  'image-alts.json': 'image-alts',
+  'flashcards.json': 'flashcard-schedules',
 };
 
 /**
@@ -1167,6 +1169,11 @@ export function setupVaultIpc(
           const raw = await metadataFor(vault).read('bookmarks.json');
           if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
           legacy = raw ?? [];
+        } else if (store === 'image-alts' || store === 'flashcard-schedules') {
+          const raw = await metadataFor(vault).read(store === 'image-alts' ? 'image-alts.json' : 'flashcards.json');
+          if (raw !== null && (typeof raw !== 'object' || Array.isArray(raw)))
+            throw new Error('Invalid metadata.');
+          legacy = raw ?? {};
         } else {
           // Links: the index is a pure rebuildable cache, so the
           // current rebuilt index is the value to protect.
@@ -2467,7 +2474,7 @@ export function setupVaultIpc(
       throw new Error('Invalid image path.');
     const vault = requireService();
     await vault.resolveEntry(relative);
-    const saved = await metadataFor(vault).read('image-alts.json');
+    const saved = await routedMetadataFor(vault).read('image-alts.json');
     const alt = saved && typeof saved === 'object' ? (saved as Record<string, unknown>)[relative] : '';
     return typeof alt === 'string' ? alt : '';
   });
@@ -2482,7 +2489,7 @@ export function setupVaultIpc(
       throw new Error('Invalid image description.');
     const vault = requireService();
     await vault.resolveEntry(relative);
-    const store = metadataFor(vault);
+    const store = routedMetadataFor(vault);
     const saved = await store.read('image-alts.json');
     await store.write('image-alts.json', {
       ...(saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}),
