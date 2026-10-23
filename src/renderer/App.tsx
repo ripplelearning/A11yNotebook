@@ -40,6 +40,16 @@ import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
+import {
+  canRedo,
+  canUndo,
+  createEditHistory,
+  recordEdit,
+  redoEdit,
+  undoEdit,
+  type EditHistory,
+  type EditSnapshot,
+} from '../shared/edit-history';
 import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
@@ -260,6 +270,11 @@ export default function App() {
     anchor: BookmarkAnchor;
     nonce: number;
   } | null>(null);
+  // Fallback undo: one recorded edit history per open note, so undo works
+  // even when the textarea's native undo stack is unavailable.
+  const editHistoriesRef = useRef(new Map<string, EditHistory>());
+  const noteSnapshotsRef = useRef(new Map<string, EditSnapshot>());
+  const [, setHistoryVersion] = useState(0);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
   const [milestoneTabOpen, setMilestoneTabOpen] = useState(false);
@@ -281,8 +296,98 @@ export default function App() {
   vaultPathRef.current = vault?.path;
   const updateNoteContent = (id: string, content: string) => {
     if (switchingRef.current) return;
+    const note = openNotes.find((item) => item.id === id);
+    if (note && note.content !== content) {
+      const textarea = editorRef.current;
+      const caret =
+        textarea && document.activeElement === textarea ? (textarea.selectionStart ?? content.length) : content.length;
+      const before: EditSnapshot = noteSnapshotsRef.current.get(id) ?? {
+        content: note.content,
+        selectionStart: caret,
+        selectionEnd: caret,
+      };
+      const after: EditSnapshot = {
+        content,
+        selectionStart: caret,
+        selectionEnd: textarea && document.activeElement === textarea ? (textarea.selectionEnd ?? caret) : caret,
+      };
+      const kind = Math.abs(content.length - before.content.length) <= 2 ? 'typing' : 'edit';
+      const history = editHistoriesRef.current.get(id) ?? createEditHistory();
+      const next = recordEdit(history, before, after, kind, Date.now());
+      if (next !== history) {
+        editHistoriesRef.current.set(id, next);
+        setHistoryVersion((version) => version + 1);
+      }
+      noteSnapshotsRef.current.set(id, after);
+    }
     setOpenNotes((items) => items.map((note) => (note.id === id ? { ...note, content } : note)));
   };
+
+  /** Apply one recorded undo/redo step to the active note. Returns false when it has none. */
+  const applyEditHistory = (direction: 'undo' | 'redo'): boolean => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    const history = note ? editHistoriesRef.current.get(note.id) : undefined;
+    if (note && history) {
+      const textarea = editorRef.current;
+      const current: EditSnapshot = noteSnapshotsRef.current.get(note.id) ?? {
+        content: note.content,
+        selectionStart: textarea?.selectionStart ?? note.content.length,
+        selectionEnd: textarea?.selectionEnd ?? note.content.length,
+      };
+      const result = direction === 'undo' ? undoEdit(history, current) : redoEdit(history, current);
+      if (result) {
+        editHistoriesRef.current.set(note.id, result.history);
+        noteSnapshotsRef.current.set(note.id, result.snapshot);
+        setHistoryVersion((version) => version + 1);
+        setOpenNotes((items) =>
+          items.map((item) => (item.id === note.id ? { ...item, content: result.snapshot.content } : item)),
+        );
+        requestAnimationFrame(() => {
+          const editor = editorRef.current;
+          if (editor && document.activeElement === editor) {
+            try {
+              editor.setSelectionRange(result.snapshot.selectionStart, result.snapshot.selectionEnd);
+            } catch {
+              // Caret restore is best-effort; the content is restored regardless.
+            }
+          }
+        });
+        setStatusMessage(direction === 'undo' ? 'Undid the last edit.' : 'Redid the edit.');
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const stepEditHistory = (direction: 'undo' | 'redo') => {
+    // No recorded history for this note: fall back to the native undo so
+    // fields outside the note editor keep their standard behavior.
+    if (!applyEditHistory(direction)) document.execCommand(direction);
+  };
+
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y are reserved native editing keys: the
+  // Edit menu's native roles own them while the menu is active, and they
+  // can never be command shortcuts. When a keypress does reach the
+  // renderer (for example while the native menu is disabled), the
+  // recorded history owns it inside the note editor's textarea when it
+  // has a step to apply; otherwise it falls through to the native undo
+  // untouched. The commands above remain the always-available path via
+  // the command palette.
+  const applyEditHistoryRef = useRef(applyEditHistory);
+  applyEditHistoryRef.current = applyEditHistory;
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if (!editorRef.current || event.target !== editorRef.current) return;
+      if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
+      const key = event.key.toLowerCase();
+      const direction =
+        key === 'z' && !event.shiftKey ? 'undo' : key === 'z' || key === 'y' ? 'redo' : null;
+      if (!direction) return;
+      if (applyEditHistoryRef.current(direction)) event.preventDefault();
+    };
+    window.addEventListener('keydown', handler, true);
+    return () => window.removeEventListener('keydown', handler, true);
+  }, []);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
   const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'low' | 'normal' | 'high' | 'urgent'>('all');
@@ -1284,6 +1389,17 @@ export default function App() {
     setStatusMessage('Opened at the bookmarked place.');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingBookmarkAnchor, currentNote]);
+
+  // Drop fallback-undo histories for notes that are no longer open.
+  useEffect(() => {
+    const openIds = new Set(openNotes.map((note) => note.id));
+    for (const id of editHistoriesRef.current.keys()) {
+      if (!openIds.has(id)) {
+        editHistoriesRef.current.delete(id);
+        noteSnapshotsRef.current.delete(id);
+      }
+    }
+  }, [openNotes]);
 
   const deleteEntry = async (entryPath: string) => {
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
@@ -2307,6 +2423,10 @@ export default function App() {
       setStatusMessage('Save this note before editing it again.');
       return;
     }
+    if (commandId === 'edit-undo' || commandId === 'edit-redo') {
+      stepEditHistory(commandId === 'edit-undo' ? 'undo' : 'redo');
+      return;
+    }
     const result = dispatchCommand(commandId, {
       mode,
       rightPaneOpen,
@@ -2412,6 +2532,7 @@ export default function App() {
         ].includes(command.id)
       )
         return;
+
       event.preventDefault();
       handleCommand(command.id);
     }
@@ -2542,6 +2663,14 @@ export default function App() {
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
     }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'edit-undo') {
+      const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
+      return !history || !canUndo(history);
+    }
+    if (id === 'edit-redo') {
+      const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
+      return !history || !canRedo(history);
+    }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
     if (id === 'save-current-note')
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
