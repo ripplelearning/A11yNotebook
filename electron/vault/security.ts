@@ -697,7 +697,10 @@ export async function rotateVaultDataKey(
   password: string,
   recoveryKey: unknown,
   metadataPointer?: MetadataProtectionPointer,
+  prescribedNewKey?: Buffer,
 ): Promise<{ config: RecoverableVaultSecurityConfig; oldKey: Buffer; newKey: Buffer }> {
+  if (prescribedNewKey !== undefined && prescribedNewKey.length !== KEY_BYTES)
+    throw new Error('Invalid data key.');
   if (config.version !== 3) throw new Error('Library recovery is not configured.');
   validatePassword(password);
   validateRecoverableConfig(config);
@@ -713,7 +716,7 @@ export async function rotateVaultDataKey(
         recovered.fill(0);
       }
     }
-    const newKey = randomBytes(KEY_BYTES);
+    const newKey = prescribedNewKey ?? randomBytes(KEY_BYTES);
     try {
       const passwordFields = await passwordWrap(newKey, password);
       let recoveryFields: Pick<RecoverableVaultSecurityConfig, 'recoveryNonce' | 'recoveryTag' | 'recoveryWrappedDataKey'> = {
