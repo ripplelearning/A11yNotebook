@@ -32,6 +32,19 @@ interface Props {
 }
 
 const registry = createAssetRegistry(assetTypes);
+
+/** The parse error for structured asset source, or null when it parses cleanly. */
+function structuredParseError(type: VaultAsset['type'], content: string): string | null {
+  try {
+    if (type === 'outline') parseOutline(content);
+    else if (type === 'mindmap') parseMindMap(content);
+    else if (type === 'grid') parseCsv(content);
+    else if (type === 'markdown-grid') parseGridMarkdown(content);
+    return null;
+  } catch (failure) {
+    return (failure as Error).message;
+  }
+}
 const STARTERS: Record<string, { extension: string; source: string }> = {
   outline: { extension: '.outline.md', source: '- First item\n' },
   mindmap: { extension: '.mindmap.json', source: '{"id":"root","text":"Main idea","children":[]}\n' },
@@ -66,6 +79,8 @@ export default function AssetsWorkspace({
   const [reviewReady, setReviewReady] = useState(false);
   const [recovery, setRecovery] = useState<AssetDraftRecovery | null>(null);
   const [compare, setCompare] = useState(false);
+  const [sourceRecovery, setSourceRecovery] = useState<{ text: string } | null>(null);
+  const [draftParseError, setDraftParseError] = useState('');
   const [checkpointStatus, setCheckpointStatus] = useState('');
   const [restoredConflict, setRestoredConflict] = useState(false);
   const session = useRef(0);
@@ -103,6 +118,19 @@ export default function AssetsWorkspace({
       setGrid(value.type === 'grid' ? parseCsv(value.content) : parseGridMarkdown(value.content));
     if (value.type === 'flashcards') setDeckSource(value.content);
   }, []);
+
+  /** Enter source recovery mode with the given raw structured source text. */
+  const enterSourceRecovery = (text: string) => {
+    setSourceRecovery({ text });
+    setDirty(true);
+    setReviewReady(false);
+    setCompare(false);
+    setDraftParseError('');
+    returnToEditor.current = true;
+    announce(
+      'Recovery mode: edit the source text until it is valid, then open it in the structured editor or save the source text.',
+    );
+  };
   useEffect(() => onDirty(dirty), [dirty, onDirty]);
   useEffect(() => onBusy(busy), [busy, onBusy]);
   useEffect(() => {
@@ -124,12 +152,21 @@ export default function AssetsWorkspace({
     returnToEditor.current = false;
     setCompare(false);
     setRestoredConflict(false);
+    setSourceRecovery(null);
+    setDraftParseError('');
     setCheckpointStatus('');
     void window
       .a11yNotebook!.vault.readAsset(path)
       .then(async (value) => {
         if (cancelled) return;
-        loadContent(value);
+        try {
+          loadContent(value);
+        } catch {
+          // A malformed structured file opens in source recovery mode
+          // instead of failing: the raw text stays editable and fixable.
+          setSourceRecovery({ text: value.content });
+          announce('This file could not be opened in the structured editor. Recovery mode shows its source text.');
+        }
         if (value.type === 'flashcards') {
           setDeckSource(value.content);
           const stored = await window.a11yNotebook!.vault.getFlashcardSchedules(path);
@@ -153,10 +190,11 @@ export default function AssetsWorkspace({
       cancelled = true;
       session.current += 1;
     };
-  }, [path, loadContent]);
+  }, [path, loadContent, announce]);
 
-  const source =
-    asset?.type === 'outline'
+  const source = sourceRecovery
+    ? sourceRecovery.text
+    : asset?.type === 'outline'
       ? serializeOutline(outline)
       : asset?.type === 'mindmap'
         ? serializeMindMap(mindmap)
@@ -201,6 +239,7 @@ export default function AssetsWorkspace({
       setRecovery(next);
       returnToEditor.current = true;
       setCompare(false);
+      setDraftParseError('');
       announce('Recovered draft discarded. The source file was not changed.');
     } catch (failure) {
       if (session.current === generation) setError((failure as Error).message);
@@ -221,7 +260,14 @@ export default function AssetsWorkspace({
       if (session.current !== generation) return;
       const next = latest?.enabled ? await window.a11yNotebook!.vault.readAssetDraft!(asset.path) : latest;
       if (session.current !== generation) return;
-      loadContent(asset);
+      try {
+        loadContent(asset);
+        setSourceRecovery(null);
+      } catch {
+        // The file on disk is itself malformed: stay in recovery mode
+        // with the on-disk text restored.
+        setSourceRecovery({ text: asset.content });
+      }
       setDirty(false);
       setRestoredConflict(false);
       setReviewReady(asset.type === 'flashcards');
@@ -274,6 +320,8 @@ export default function AssetsWorkspace({
         if (session.current === saveGeneration) setBusy(false);
       });
   };
+  const recoveryError = sourceRecovery && asset ? structuredParseError(asset.type, sourceRecovery.text) : null;
+
   return (
     <section aria-labelledby="assets-heading">
       <h2 id="assets-heading">{title}</h2>
@@ -309,8 +357,9 @@ export default function AssetsWorkspace({
                 setCompare(false);
                 announce('Draft restored as unsaved changes. The source file was not changed.');
               } catch (failure) {
+                setDraftParseError((failure as Error).message);
                 setError(
-                  `Draft source is incomplete. Compare and copy it before discarding: ${(failure as Error).message}`,
+                  `Draft source is incomplete: ${(failure as Error).message} Compare it, or restore it as source text to fix it in recovery mode.`,
                 );
                 setCompare(true);
               }
@@ -318,6 +367,19 @@ export default function AssetsWorkspace({
           >
             Restore as unsaved changes
           </button>
+          {draftParseError ? (
+            <button
+              disabled={busy}
+              onClick={() => {
+                const draft = recovery.draft!;
+                setRestoredConflict(draft.baselineContent !== asset.content);
+                setRecovery({ ...recovery, draft: null });
+                enterSourceRecovery(draft.content);
+              }}
+            >
+              Restore as source text
+            </button>
+          ) : null}
           <button disabled={busy} onClick={() => void discardRecovery(recovery.draft!)}>
             Discard recovered draft
           </button>
@@ -419,7 +481,52 @@ export default function AssetsWorkspace({
         </p>
       ) : null}
       <div ref={editor} aria-busy={busy}>
-        {asset?.type === 'outline' ? (
+        {sourceRecovery && asset ? (
+          <section role="region" aria-labelledby="asset-source-recovery-heading">
+            <h3 id="asset-source-recovery-heading">Source recovery mode</h3>
+            <p>
+              This structured content could not be parsed, so the structured editor cannot open it. Edit the source
+              text directly; checkpoints keep protecting your edits, and nothing is written to the file until you
+              save.
+            </p>
+            <label>
+              Asset source
+              <textarea
+                value={sourceRecovery.text}
+                disabled={busy}
+                rows={16}
+                onChange={(event) => {
+                  setSourceRecovery({ text: event.target.value });
+                  setDirty(true);
+                }}
+              />
+            </label>
+            {recoveryError ? (
+              <p role="alert">Still not valid: {recoveryError}</p>
+            ) : (
+              <p role="status">This source is valid. You can open it in the structured editor.</p>
+            )}
+            <button
+              type="button"
+              disabled={busy || !!recoveryError}
+              onClick={() => {
+                try {
+                  loadContent({ ...asset, content: sourceRecovery.text });
+                  setSourceRecovery(null);
+                  announce('Opened in the structured editor as unsaved changes.');
+                } catch (failure) {
+                  setError((failure as Error).message);
+                }
+              }}
+            >
+              Open in structured editor
+            </button>{' '}
+            <button type="button" disabled={busy} onClick={() => save(sourceRecovery.text)}>
+              Save source text
+            </button>
+          </section>
+        ) : null}
+        {!sourceRecovery && asset?.type === 'outline' ? (
           <OutlineEditor
             value={outline}
             readOnly={busy || !!recovery?.draft}
@@ -430,7 +537,7 @@ export default function AssetsWorkspace({
             onSave={save}
           />
         ) : null}
-        {asset?.type === 'mindmap' ? (
+        {!sourceRecovery && asset?.type === 'mindmap' ? (
           <MindMapEditor
             value={mindmap}
             readOnly={busy || !!recovery?.draft}
@@ -452,7 +559,7 @@ export default function AssetsWorkspace({
             }}
           />
         ) : null}
-        {asset && ['grid', 'markdown-grid'].includes(asset.type) ? (
+        {!sourceRecovery && asset && ['grid', 'markdown-grid'].includes(asset.type) ? (
           <GridEditor
             value={grid}
             format={asset.type === 'grid' ? 'csv' : 'markdown'}
