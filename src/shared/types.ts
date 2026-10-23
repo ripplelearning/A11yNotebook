@@ -90,11 +90,17 @@ export interface VaultLinkIndex {
 }
 
 /** A user bookmark that points to a note in a local vault. */
+/** A position inside a note that a bookmark points at, beyond the file itself. */
+export type BookmarkAnchor =
+  | { kind: 'heading'; text: string; occurrence: number }
+  | { kind: 'offset'; offset: number };
+
 export interface VaultBookmark {
   id: string;
   path: string;
   title: string;
   created: string;
+  anchor?: BookmarkAnchor;
 }
 
 /** The last reading position in a document, used to resume where the reader stopped. */

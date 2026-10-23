@@ -78,6 +78,8 @@ describe('local vault workflow', () => {
             created: '2026-09-30T00:00:00.000Z',
           },
         ]),
+        addBookmark: vi.fn(async () => []),
+        removeBookmark: vi.fn(async () => []),
       },
       onMenuCommand: (callback) => {
         menuListener = callback;

@@ -20,6 +20,7 @@ import { captureWebPage } from './web-capture';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
+import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
@@ -2604,6 +2605,16 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
     return requireService().toggleBookmark(relativePath);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultAddBookmark, async (event, relativePath: unknown, anchor: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
+    return requireService().addBookmark(relativePath, sanitizeBookmarkAnchor(anchor));
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultRemoveBookmark, async (event, id: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof id !== 'string') throw new Error('Bookmark id must be text.');
+    return requireService().removeBookmark(id);
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetReadingPosition, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

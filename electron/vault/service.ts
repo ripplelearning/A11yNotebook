@@ -4,7 +4,8 @@ import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writ
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { ReadingPosition, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import type { BookmarkAnchor, ReadingPosition, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
@@ -838,7 +839,16 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
         candidates.map(async (bookmark) => {
           try {
             const target = await resolveEntry(bookmark.path);
-            return isNotePath(target) || path.extname(target).toLowerCase() === '.docx' ? bookmark : null;
+            if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') return null;
+            const anchor = sanitizeBookmarkAnchor(bookmark.anchor);
+            const clean: VaultBookmark = {
+              id: bookmark.id,
+              path: bookmark.path,
+              title: bookmark.title,
+              created: bookmark.created,
+            };
+            if (anchor) clean.anchor = anchor;
+            return clean;
           } catch {
             return null;
           }
@@ -868,6 +878,46 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
           },
         ];
     await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+    return next;
+  }
+
+  /** Add a bookmark, optionally anchored to a heading or character position. Idempotent per path+anchor. */
+  async function addBookmark(relativePath: string, anchor?: BookmarkAnchor) {
+    const target = await resolveEntry(relativePath);
+    if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') {
+      throw new Error('Only notes and DOCX documents can be bookmarked.');
+    }
+    const cleanAnchor = sanitizeBookmarkAnchor(anchor);
+    const bookmarks = await getBookmarks();
+    const duplicate = bookmarks.some(
+      (bookmark) =>
+        bookmark.path === relativePath &&
+        JSON.stringify(bookmark.anchor ?? null) === JSON.stringify(cleanAnchor ?? null),
+    );
+    if (duplicate) return bookmarks;
+    const next = [
+      ...bookmarks,
+      {
+        id: randomUUID(),
+        path: relativePath,
+        title:
+          cleanAnchor?.kind === 'heading'
+            ? cleanAnchor.text
+            : path.basename(relativePath, path.extname(relativePath)),
+        created: new Date().toISOString(),
+        ...(cleanAnchor ? { anchor: cleanAnchor } : {}),
+      },
+    ];
+    await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+    return next;
+  }
+
+  async function removeBookmark(id: string) {
+    const bookmarks = await getBookmarks();
+    const next = bookmarks.filter((bookmark) => bookmark.id !== id);
+    if (next.length !== bookmarks.length) {
+      await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(next, null, 2), 'utf8');
+    }
     return next;
   }
 
@@ -965,6 +1015,8 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     getLinkIndex,
     getBookmarks,
     toggleBookmark,
+    addBookmark,
+    removeBookmark,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,
