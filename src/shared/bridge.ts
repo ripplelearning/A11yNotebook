@@ -89,6 +89,9 @@ export interface VaultBridge {
   enableMetadataProtection?(
     input: import('./metadata-protection').EnableMetadataProtectionInput,
   ): Promise<import('./metadata-protection').MetadataProtectionStatus>;
+  extendMetadataProtection?(
+    input: import('./metadata-protection').ExtendMetadataProtectionInput,
+  ): Promise<import('./metadata-protection').MetadataProtectionStatus>;
   setupVaultPassword?(password: string): Promise<void>;
   unlockVault?(password: string): Promise<VaultInfo>;
   lockVault?(): Promise<void>;

@@ -8,7 +8,13 @@ import {
   usePdfReadingPreferences,
 } from '../../hooks/usePdfReadingPreferences';
 import type { PdfReadingPreferences } from '../../../shared/pdf-reading-preferences';
-import type { MetadataProtectionStatus } from '../../../shared/metadata-protection';
+import type { MetadataProtectionStatus, ProtectedStoreName } from '../../../shared/metadata-protection';
+import { EXTENDABLE_PROTECTED_STORES } from '../../../shared/metadata-protection';
+
+const EXTENDABLE_STORE_LABELS: Record<string, string> = {
+  'reminder-defaults': 'Reminder defaults',
+  milestones: 'Milestones',
+};
 import { playReminderSound, stopReminderSound } from '../reminders/reminderSound';
 import { useShortcutCapture } from './useShortcutCapture';
 
@@ -75,6 +81,7 @@ export default function SettingsDialog({
   const [soundNotice, setSoundNotice] = useState('');
   const [metadataProtection, setMetadataProtection] = useState<MetadataProtectionStatus>();
   const [metadataConsent, setMetadataConsent] = useState(false);
+  const [extendConsent, setExtendConsent] = useState<Partial<Record<ProtectedStoreName, boolean>>>({});
   const [metadataSaving, setMetadataSaving] = useState(false);
   const metadataGeneration = useRef(0);
   useEffect(() => {
@@ -608,21 +615,75 @@ export default function SettingsDialog({
               <h3>Scoped metadata encryption</h3>
             </legend>
             <p>
-              This is not whole-library encryption. It encrypts Markdown, HTML and PDF annotations and recovery drafts
-              for outlines, mindmaps, grids and flashcards. DOCX annotations do not exist in this build. Ordinary notes,
-              attachments, saved cognitive asset files (including saved flashcards), filenames, reminders, reminder
-              defaults, milestones, settings (both library and global copies), flashcard schedules, global preferences,
-              image descriptions, bookmarks, search/link indexes and the audit log remain plaintext. Notes, source
+              This is not whole-library encryption. It encrypts Markdown, HTML, PDF, DOCX and ePub annotations and recovery drafts
+              for outlines, mindmaps, grids and flashcards. Ordinary notes,
+              attachments, saved cognitive asset files (including saved flashcards), filenames, reminders,
+              settings (both library and global copies), flashcard schedules, global preferences,
+              image descriptions, bookmarks, search/link indexes and the audit log remain plaintext. Reminder defaults
+              and milestones can each be migrated into encryption below once the base protection is on. Notes, source
               attachments, exports and backups remain plaintext, not whole-library encrypted. Flashcard drafts are
               encrypted, but their saved source files remain plaintext. Unlocked application memory is not protected.
               Plaintext cleanup is not secure erasure. A stable version 3 library recovery envelope is required.
             </p>
             {metadataProtection.enabled ? (
-              <p role="status">
-                {metadataProtection.cleanupRequired
-                  ? 'Metadata encryption is enabled, but plaintext cleanup must finish. Reopen and unlock the library to retry.'
-                  : 'Annotations and cognitive checkpoints are encrypted at rest.'}
-              </p>
+              <>
+                <p role="status">
+                  {metadataProtection.cleanupRequired
+                    ? 'Metadata encryption is enabled, but plaintext cleanup must finish. Reopen and unlock the library to retry.'
+                    : `Encrypted at rest: ${metadataProtection.protectedStores
+                        .map((store) => EXTENDABLE_STORE_LABELS[store] ?? store)
+                        .join(', ')}.`}
+                </p>
+                {EXTENDABLE_PROTECTED_STORES.filter(
+                  (store) => !metadataProtection.protectedStores.includes(store),
+                ).map((store) => (
+                  <div key={store}>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={extendConsent[store] ?? false}
+                        disabled={!metadataProtection.eligible || metadataProtection.locked}
+                        onChange={(event) =>
+                          setExtendConsent((current) => ({ ...current, [store]: event.target.checked }))
+                        }
+                      />
+                      I consent to encrypting {EXTENDABLE_STORE_LABELS[store] ?? store}; I understand everything else
+                      listed above remains plaintext, not whole-library encrypted
+                    </label>
+                    <button
+                      type="button"
+                      disabled={
+                        !extendConsent[store] || !metadataProtection.eligible || metadataProtection.locked
+                      }
+                      onClick={() => {
+                        const extend = window.a11yNotebook?.vault.extendMetadataProtection;
+                        if (!extend) {
+                          setError('Metadata encryption is unavailable.');
+                          return;
+                        }
+                        const generation = metadataGeneration.current;
+                        setMetadataSaving(true);
+                        void extend({ store, acknowledgeExclusions: true })
+                          .then((value) => {
+                            if (metadataGeneration.current !== generation) return;
+                            setMetadataProtection(value);
+                            setExtendConsent((current) => ({ ...current, [store]: false }));
+                            setSecurityNotice(`${EXTENDABLE_STORE_LABELS[store] ?? store} are now encrypted at rest.`);
+                          })
+                          .catch(() => {
+                            if (metadataGeneration.current === generation)
+                              setError('Could not extend metadata encryption. No success is assumed; check status and retry.');
+                          })
+                          .finally(() => {
+                            if (metadataGeneration.current === generation) setMetadataSaving(false);
+                          });
+                      }}
+                    >
+                      {metadataSaving ? 'Encrypting…' : `Encrypt ${EXTENDABLE_STORE_LABELS[store] ?? store}`}
+                    </button>
+                  </div>
+                ))}
+              </>
             ) : (
               <>
                 <p>

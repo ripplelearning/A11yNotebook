@@ -13,7 +13,12 @@ import {
   writeProtectedSecurityConfig,
   type ProtectedMetadataAccess,
 } from './metadata-protection';
-import type { MetadataProtectionStatus } from '../../src/shared/metadata-protection';
+import type {
+  MetadataProtectionStatus,
+  ProtectedStoreName,
+} from '../../src/shared/metadata-protection';
+import { EXTENDABLE_PROTECTED_STORES } from '../../src/shared/metadata-protection';
+import { DEFAULT_REMINDER_DEFAULTS, validateReminderDefaults } from '../../src/shared/reminder-defaults';
 import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
@@ -32,7 +37,7 @@ import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-jou
 import { createReminderService, parseTaskReminders } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
-import { createMilestoneStore } from './milestones';
+import { createMilestoneStore, validateMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
 import { createAssetDraftStore } from './asset-drafts';
 import {
@@ -562,8 +567,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
   const nextProtectedMetadata = protectedMetadata;
   assets = createAssetStore(nextService, metadata);
   milestones = createMilestoneStore({
-    readStore: () => metadataFor(nextService).read('milestones.json'),
-    writeStore: (value) => metadataFor(nextService).write('milestones.json', value),
+    readStore: () => routedMetadataFor(nextService).read('milestones.json'),
+    writeStore: (value) => routedMetadataFor(nextService).write('milestones.json', value),
     getTasks: () => nextService.getTasks(),
     readNote: (relative) => nextService.readNote(relative),
     saveNote: (relative, content, expected) => {
@@ -677,7 +682,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       return notes;
     },
     getFlashcardReviews: async () => {
-      const defaults = await createReminderDefaultsStore(metadataFor(nextService)).get();
+      const defaults = await createReminderDefaultsStore(routedMetadataFor(nextService)).get();
       if (!defaults.notification.flashcards || !assets || service !== nextService) return [];
       return (await assets.getScheduledFlashcards()).map((review) => ({
         id: review.id,
@@ -687,7 +692,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
     },
     notify: async (reminder) => {
       const preferences =
-        reminder.source === 'task' ? await createReminderDefaultsStore(metadataFor(nextService)).get() : null;
+        reminder.source === 'task' ? await createReminderDefaultsStore(routedMetadataFor(nextService)).get() : null;
       if (service !== nextService || (securityConfig && !masterKey)) return;
       const visible =
         (reminder.privacy ?? preferences?.privacy) === 'hide-title'
@@ -791,7 +796,40 @@ function metadataProtectionStatus(): MetadataProtectionStatus {
     enabled: pointer !== undefined,
     eligible: securityConfig?.version === 3 && masterKey !== null,
     locked: securityConfig !== null && masterKey === null,
-    cleanupRequired: pointer !== undefined && Object.values(pointer.stores).some((store) => store.cleanupRequired),
+    cleanupRequired:
+      pointer !== undefined && Object.values(pointer.stores).some((store) => store?.cleanupRequired),
+    protectedStores: pointer ? (Object.keys(pointer.stores) as ProtectedStoreName[]) : [],
+  };
+}
+
+/** Metadata files whose stores can be migrated into encrypted protection. */
+const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
+  'reminder-defaults.json': 'reminder-defaults',
+  'milestones.json': 'milestones',
+};
+
+/**
+ * A metadata store that routes migrated files through encrypted
+ * protection and everything else to the plaintext store. Every writer
+ * of a migratable file must go through this seam (or the protected
+ * store directly), so no plaintext write can land after migration.
+ */
+function routedMetadataFor(vault: VaultService) {
+  const base = metadataFor(vault);
+  const routed = (name: string): ProtectedStoreName | null => {
+    const store = PROTECTED_FILE_STORES[name];
+    return store && protectedMetadata?.protects(store) ? store : null;
+  };
+  return {
+    read: async (name: string): Promise<unknown> => {
+      const store = routed(name);
+      return store ? protectedMetadata!.read(store) : base.read(name);
+    },
+    write: async (name: string, value: unknown, assertCurrent?: () => void): Promise<void> => {
+      const store = routed(name);
+      if (store) await protectedMetadata!.write(store, value, assertCurrent);
+      else await base.write(name, value, assertCurrent);
+    },
   };
 }
 
@@ -850,7 +888,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
     if ((await vault.readNote(item.path)) !== item.before)
       throw new Error('A note changed while confirming. Please retry.');
   }
-  const store = metadataFor(vault);
+  const store = routedMetadataFor(vault);
   const annotationSnapshot = await currentAnnotations?.snapshot();
   const checkpointSnapshot = currentProtected?.enabled() ? await currentProtected.read('checkpoints') : null;
   const flashcards = await store.read('flashcards.json');
@@ -1065,6 +1103,55 @@ export function setupVaultIpc(
           return metadataProtectionStatus();
         } catch (error) {
           if (protectedMetadata.enabled()) {
+            audit.committed();
+            lockVault();
+          }
+          throw error;
+        }
+      });
+    },
+  );
+  handleAudited(
+    IPC_CHANNELS.vaultMetadataProtectionExtend,
+    'metadata-protection.extend',
+    async (audit, event, input: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const candidate = input as { store?: unknown; acknowledgeExclusions?: unknown } | null;
+        if (
+          !candidate ||
+          typeof candidate !== 'object' ||
+          Array.isArray(candidate) ||
+          Object.keys(candidate).sort().join(',') !== 'acknowledgeExclusions,store' ||
+          candidate.acknowledgeExclusions !== true ||
+          !(EXTENDABLE_PROTECTED_STORES as readonly unknown[]).includes(candidate.store)
+        )
+          throw new Error('Explicit acknowledgement and a supported store are required.');
+        const store = candidate.store as ProtectedStoreName;
+        if (!protectedMetadata || !metadataProtectionStatus().eligible)
+          throw new Error('Unlock a version-3 library with metadata protection enabled first.');
+        if (protectedMetadata.protects(store))
+          throw new Error('That store is already under encrypted protection.');
+        const vault = requireService();
+        // Validate the current plaintext through the store's own
+        // validator before it is staged as ciphertext; the protected
+        // copy must be exactly what the plaintext readers would use.
+        const legacy =
+          store === 'reminder-defaults'
+            ? validateReminderDefaults(
+                (await metadataFor(vault).read('reminder-defaults.json')) ?? DEFAULT_REMINDER_DEFAULTS,
+              )
+            : validateMilestoneStore(await metadataFor(vault).read('milestones.json'));
+        access.assertCurrent();
+        try {
+          await protectedMetadata.extend(store, legacy);
+          audit.committed();
+          access.assertCurrent();
+          return metadataProtectionStatus();
+        } catch (error) {
+          if (protectedMetadata.protects(store)) {
             audit.committed();
             lockVault();
           }
@@ -1795,7 +1882,7 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (!reminderService) throw new Error('Open a library first.');
     if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Invalid reminder.');
-    const defaults = await createReminderDefaultsStore(metadataFor(requireService())).get();
+    const defaults = await createReminderDefaultsStore(routedMetadataFor(requireService())).get();
     const request = input as CreateReminderInput;
     await reminderService.createReminder(applyReminderDefaults(request, defaults));
     return reminderService.getReminders();
@@ -1856,11 +1943,11 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsGet, async (event) => {
     assertTrusted(event, isTrustedSender);
-    return createReminderDefaultsStore(metadataFor(requireService())).get();
+    return createReminderDefaultsStore(routedMetadataFor(requireService())).get();
   });
   ipcMain.handle(IPC_CHANNELS.vaultReminderDefaultsSet, async (event, defaults: unknown) => {
     assertTrusted(event, isTrustedSender);
-    const updated = await createReminderDefaultsStore(metadataFor(requireService())).set(defaults);
+    const updated = await createReminderDefaultsStore(routedMetadataFor(requireService())).set(defaults);
     await reminderService?.refresh();
     return updated;
   });

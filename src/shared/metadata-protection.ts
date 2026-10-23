@@ -44,8 +44,18 @@ export interface MetadataProtectionStatus {
   eligible: boolean;
   locked: boolean;
   cleanupRequired: boolean;
+  /** Stores currently under protection; empty when protection is off. */
+  protectedStores: ProtectedStoreName[];
 }
 
 export interface EnableMetadataProtectionInput {
   acknowledgeExclusions: true;
 }
+
+export interface ExtendMetadataProtectionInput {
+  store: ProtectedStoreName;
+  acknowledgeExclusions: true;
+}
+
+/** Stores the settings UI may offer for one-at-a-time extension. */
+export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = ['reminder-defaults', 'milestones'];
