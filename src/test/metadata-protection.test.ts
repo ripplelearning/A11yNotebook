@@ -326,7 +326,9 @@ describe('scoped encrypted metadata storage', () => {
   it('validates pointers with extension stores and rejects unknown or base-less pointers', async () => {
     const f = await fixture();
     await f.store.enable();
-    const pointer = f.config().metadataProtection!;
+    const config = f.config();
+    if (config.version !== 3) throw new Error('expected v3');
+    const pointer = config.metadataProtection!;
     const entry = { generation: randomUUID(), digest: 'a'.repeat(64), cleanupRequired: false };
     expect(() =>
       validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, milestones: entry } }),
