@@ -552,15 +552,15 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'edit-undo',
-    label: 'Undo',
+    label: 'Undo edit (recorded history)',
     description:
-      'Undo the last edit in the active note, using the recorded edit history when the editor’s native undo is unavailable. Ctrl+Z stays a reserved native editing key; in the note editor it is routed to this history by the editor itself.',
+      'Undo the last edit in the active note from the recorded edit history. This is the guaranteed fallback when the editor’s native undo stack is unavailable (for example after tool edits); the Edit menu keeps the native Undo, and Ctrl+Z stays a reserved native editing key.',
   },
   {
     id: 'edit-redo',
-    label: 'Redo',
+    label: 'Redo edit (recorded history)',
     description:
-      'Redo the last undone edit in the active note. Ctrl+Shift+Z and Ctrl+Y stay reserved native editing keys; in the note editor they are routed to this history by the editor itself.',
+      'Redo the last undone edit in the active note from the recorded edit history, when the editor’s native redo is unavailable.',
   },
   {
     id: 'show-tasks',

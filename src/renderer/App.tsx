@@ -365,11 +365,14 @@ export default function App() {
     if (!applyEditHistory(direction)) document.execCommand(direction);
   };
 
-  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y are reserved native editing keys, so
-  // they are not command shortcuts. Inside the note editor's textarea the
-  // recorded history owns them when it has a step to apply (that is the
-  // guaranteed fallback); otherwise the keypress falls through to the
-  // native undo untouched.
+  // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y are reserved native editing keys: the
+  // Edit menu's native roles own them while the menu is active, and they
+  // can never be command shortcuts. When a keypress does reach the
+  // renderer (for example while the native menu is disabled), the
+  // recorded history owns it inside the note editor's textarea when it
+  // has a step to apply; otherwise it falls through to the native undo
+  // untouched. The commands above remain the always-available path via
+  // the command palette.
   const applyEditHistoryRef = useRef(applyEditHistory);
   applyEditHistoryRef.current = applyEditHistory;
   useEffect(() => {
