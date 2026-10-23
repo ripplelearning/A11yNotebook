@@ -7,6 +7,7 @@ export const AUDIT_OPERATIONS = [
   'protection.unlock',
   'protection.lock',
   'metadata-protection.enable',
+  'metadata-protection.extend',
   'recovery.prepare',
   'recovery.commit',
   'recovery.reset-password',

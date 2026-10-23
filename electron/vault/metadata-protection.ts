@@ -25,6 +25,8 @@ const filename = (store: ProtectedStoreName, generation: string) => `protected-$
 export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, string>> = {
   annotations: 'annotations.json',
   checkpoints: 'checkpoints.json',
+  'reminder-defaults': 'reminder-defaults.json',
+  milestones: 'milestones.json',
 };
 
 function storeEntry(identity: MetadataProtectionPointer, store: ProtectedStoreName): ProtectedStorePointer {
@@ -245,6 +247,8 @@ export function createProtectedMetadataStore(options: {
   }
   return {
     enabled: () => pointer() !== undefined,
+    /** Whether one specific store has been migrated into protection. */
+    protects: (store: ProtectedStoreName) => pointer()?.stores[store] !== undefined,
     read: (store: ProtectedStoreName) => read(store),
     async write(store: ProtectedStoreName, value: unknown, authorize: () => void = () => undefined) {
       const captured = options.access();
