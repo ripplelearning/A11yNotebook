@@ -186,7 +186,11 @@ export class PdfDocument {
     pages.forEach((page, index) => page.setInferredPage(classified[index]));
   }
 
+  private destroyed = false;
+
   async destroy(): Promise<void> {
+    if (this.destroyed) return;
+    this.destroyed = true;
     this.pages.clear();
     const task = await this.loadingTask;
     await task.destroy();
