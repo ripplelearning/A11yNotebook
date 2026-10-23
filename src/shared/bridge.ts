@@ -100,8 +100,9 @@ export interface VaultBridge {
   recoverVault?(recoveryKey: string, newPassword: string): Promise<VaultInfo>;
   revokeVaultRecovery?(password: string): Promise<void>;
   rotateVaultDataKey?(password: string, recoveryKey: string | null): Promise<void>;
-  libraryEncryptionStatus?(): Promise<{ enabled: boolean; state: 'migrating' | 'active' | null; files: number }>;
+  libraryEncryptionStatus?(): Promise<{ enabled: boolean; state: 'migrating' | 'active' | 'decrypting' | null; files: number }>;
   enableLibraryEncryption?(acknowledge: boolean): Promise<void>;
+  disableLibraryEncryption?(acknowledge: boolean): Promise<void>;
   encryptNote?(path: string, expectedContent: string, password: string): Promise<void>;
   isNoteEncrypted?(path: string): Promise<boolean>;
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;

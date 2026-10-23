@@ -27,7 +27,7 @@ export interface LibraryManifestFile {
 
 export interface LibraryEncryptionManifest {
   version: 1;
-  state: 'migrating' | 'active';
+  state: 'migrating' | 'active' | 'decrypting';
   wrappedContentKey: EncryptedRecord;
   files: Record<string, LibraryManifestFile>;
 }
@@ -75,7 +75,7 @@ export function validateLibraryEncryptionManifest(value: unknown): asserts value
   const manifest = value as LibraryEncryptionManifest;
   if (
     manifest.version !== 1 ||
-    (manifest.state !== 'migrating' && manifest.state !== 'active') ||
+    (manifest.state !== 'migrating' && manifest.state !== 'active' && manifest.state !== 'decrypting') ||
     !manifest.wrappedContentKey ||
     typeof manifest.wrappedContentKey !== 'object' ||
     !manifest.files ||

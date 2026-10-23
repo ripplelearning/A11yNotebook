@@ -94,9 +94,11 @@ export default function SettingsDialog({
   const [metadataProtection, setMetadataProtection] = useState<MetadataProtectionStatus>();
   const [libraryEncryption, setLibraryEncryption] = useState<{
     enabled: boolean;
-    state: 'migrating' | 'active' | null;
+    state: 'migrating' | 'active' | 'decrypting' | null;
     files: number;
   }>();
+  const [libraryDecryptionConsent, setLibraryDecryptionConsent] = useState(false);
+  const [libraryDecryptionSaving, setLibraryDecryptionSaving] = useState(false);
   const [libraryEncryptionConsent, setLibraryEncryptionConsent] = useState(false);
   const [libraryEncryptionSaving, setLibraryEncryptionSaving] = useState(false);
   const [metadataConsent, setMetadataConsent] = useState(false);
@@ -841,12 +843,52 @@ export default function SettingsDialog({
               <h3>Whole-library encryption</h3>
             </legend>
             {libraryEncryption.enabled ? (
-              <p>
-                Whole-library encryption is {libraryEncryption.state === 'active' ? 'on' : 'still migrating'} for
-                this library: {libraryEncryption.files} note file{libraryEncryption.files === 1 ? '' : 's'} encrypted
-                at rest. Notes open only while the library is unlocked. Attachments are not covered yet and remain
-                ordinary files.
-              </p>
+              <>
+                <p>
+                  Whole-library encryption is{' '}
+                  {libraryEncryption.state === 'active'
+                    ? 'on'
+                    : libraryEncryption.state === 'decrypting'
+                      ? 'being turned off — decryption will finish next time you unlock'
+                      : 'still migrating'}{' '}
+                  for this library: {libraryEncryption.files} note file{libraryEncryption.files === 1 ? '' : 's'}{' '}
+                  encrypted at rest. Notes open only while the library is unlocked. Attachments are not covered yet
+                  and remain ordinary files.
+                </p>
+                {libraryEncryption.state === 'active' ? (
+                  <>
+                    <label>
+                      <input
+                        type="checkbox"
+                        checked={libraryDecryptionConsent}
+                        onChange={(event) => setLibraryDecryptionConsent(event.target.checked)}
+                      />
+                      I understand my notes will be decrypted back into ordinary files that any app can read
+                    </label>
+                    <button
+                      type="button"
+                      disabled={!libraryDecryptionConsent || libraryDecryptionSaving}
+                      onClick={() => {
+                        const disable = window.a11yNotebook?.vault.disableLibraryEncryption;
+                        if (!disable) return;
+                        setLibraryDecryptionSaving(true);
+                        void disable(true)
+                          .then(() => {
+                            setLibraryDecryptionConsent(false);
+                            setSecurityNotice('Whole-library encryption is off. Your notes are ordinary files again.');
+                            setLibraryEncryption({ enabled: false, state: null, files: 0 });
+                          })
+                          .catch(() =>
+                            setError('Could not turn off whole-library encryption. Unlock the library and try again.'),
+                          )
+                          .finally(() => setLibraryDecryptionSaving(false));
+                      }}
+                    >
+                      {libraryDecryptionSaving ? 'Decrypting notes…' : 'Decrypt all notes and turn off'}
+                    </button>
+                  </>
+                ) : null}
+              </>
             ) : (
               <>
                 <p>
