@@ -155,12 +155,12 @@ describe('PDF annotation persistence', () => {
     await Promise.all([store.pdf.add(input), store.add(note), store.pdf.add(input)]);
     expect(await store.list(note.path)).toEqual([original, expect.objectContaining(note)]);
     expect(await store.pdf.list(input.path)).toHaveLength(2);
-    expect(snapshot()).toMatchObject({ version: 2, annotations: [original, expect.anything()] });
+    expect(snapshot()).toMatchObject({ version: 3, annotations: [original, expect.anything()] });
     expect(original).not.toHaveProperty('schemaVersion');
     const records: AnnotationRecord[] = [original, ...(await store.pdf.list(input.path))];
     expect(records).toHaveLength(3);
     expect([NOTE_ANNOTATION_SCHEMA_VERSION, PDF_ANNOTATION_SCHEMA_VERSION]).toEqual([1, 1]);
-    expect(ANNOTATION_SCHEMA_VERSIONS).toEqual({ pdf: 1, markdown: 1, html: 1 });
+    expect(ANNOTATION_SCHEMA_VERSIONS).toEqual({ pdf: 1, markdown: 1, html: 1, docx: 1 });
   });
 
   it('rejects unsafe paths, bad PDF extensions, malformed offsets and identities before writing', async () => {

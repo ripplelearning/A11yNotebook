@@ -212,6 +212,17 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     }
   }
 
+  async function validateDocxAnnotationDocument(relativePath: string) {
+    if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX annotations require a Word document.');
+    const absolute = await resolveEntry(relativePath);
+    const stat = await lstat(absolute);
+    if (!stat.isFile()) throw new Error('Annotations require a document file.');
+    // The reader's bounded parser is the structural gate: a file it
+    // cannot parse renders no blocks, so no anchor can be created or
+    // resolved against it.
+    await readDocxStructure(relativePath);
+  }
+
   async function readDocxStructure(relativePath: string): Promise<DocxStructure> {
     if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX reading requires a .docx document.');
     const absolute = await resolveEntry(relativePath);
@@ -1021,6 +1032,7 @@ export function createVaultService(vaultPath: string, onChanged?: (event: VaultC
     setReadingPosition,
     resolveEntry,
     validatePdfAnnotationDocument,
+    validateDocxAnnotationDocument,
     readDocxStructure,
     resolveMetadata,
     search,
