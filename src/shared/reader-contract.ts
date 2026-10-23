@@ -81,8 +81,16 @@ export const READER_CONTRACTS: readonly ReaderContract[] = [
   // position exist; annotations are a separate open item.
   contract('epub', 'epub-cfi', ['outline', 'sequential-navigation', 'semantic-structure', 'search', 'reading-position', 'lifecycle-cleanup']),
   // DOCX: semantic reading with headings/lists/tables/links, navigation
-  // and search; annotations are a separate open item.
-  contract('docx', 'docx-paragraph-run', ['outline', 'sequential-navigation', 'semantic-structure', 'search', 'lifecycle-cleanup']),
+  // and search, and full annotations (block/cell text anchors with
+  // anchored/ambiguous/orphaned status and quote export).
+  contract('docx', 'docx-paragraph-run', [
+    'outline',
+    'sequential-navigation',
+    'semantic-structure',
+    'search',
+    ...NOTE_ANNOTATIONS,
+    'lifecycle-cleanup',
+  ]),
   // PDF: full annotation support with quote export and orphan status;
   // notes/bookmarks concepts from the vault do not apply to previews,
   // and the reader does not surface the document outline.

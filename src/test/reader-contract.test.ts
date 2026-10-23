@@ -32,7 +32,7 @@ describe('reader capability contract', () => {
   it('pins the staged gaps for the other adapters so closing them updates the contract', () => {
     const annotationSet = READER_CAPABILITIES.filter((capability) => capability.startsWith('annotation-'));
     expect(missingCapabilities(getReaderContract('epub')!, annotationSet)).toEqual(annotationSet);
-    expect(missingCapabilities(getReaderContract('docx')!, annotationSet)).toEqual(annotationSet);
+    expect(missingCapabilities(getReaderContract('docx')!, annotationSet)).toEqual([]);
     expect(getReaderContract('epub')!.anchorKind).toBe('epub-cfi');
     expect(getReaderContract('docx')!.anchorKind).toBe('docx-paragraph-run');
     const pdf = getReaderContract('pdf')!;
