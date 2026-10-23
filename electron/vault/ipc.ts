@@ -1052,8 +1052,22 @@ function routedMetadataFor(vault: VaultService) {
  */
 async function resumeLibraryEncryptionMigration() {
   const manifest = service?.libraryEncryptionManifest();
-  if (!manifest || manifest.state !== 'migrating' || !masterKey) return;
-  await service?.migrateToLibraryEncryption().catch(() => undefined);
+  if (!manifest || !masterKey || !service) return;
+  if (manifest.state === 'migrating') {
+    await service.migrateToLibraryEncryption().catch(() => undefined);
+  } else if (manifest.state === 'decrypting') {
+    // Finish an interrupted opt-out: decrypt what remains, and only
+    // delete the manifest once its file map is verifiably empty.
+    const completed = await service
+      .migrateFromLibraryEncryption()
+      .then(() => Object.keys(service?.libraryEncryptionManifest()?.files ?? {}).length === 0)
+      .catch(() => false);
+    if (completed) {
+      await unlink(await service.resolveMetadata('library-encryption.json')).catch(() => undefined);
+      service.setLibraryManifest(null);
+      clearLibraryContentKeyCache();
+    }
+  }
 }
 
 async function finishProtectedMetadataCleanup() {
@@ -1817,6 +1831,35 @@ export function setupVaultIpc(
         // state and the migration resumes on the next unlock; note
         // reads remain safe in the interim by the manifest rules.
         await vault.migrateToLibraryEncryption(() => access.assertCurrent());
+        resetIdleLock();
+      });
+    },
+  );
+  handleAudited(
+    IPC_CHANNELS.vaultLibraryEncryptionDisable,
+    'library-encryption.disable',
+    async (audit, event, acknowledge: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        if (acknowledge !== true)
+          throw new Error('Confirm that you understand the notes will be decrypted before turning this off.');
+        if (!masterKey) throw new Error('Unlock the library first.');
+        const vault = requireService();
+        const manifest = vault.libraryEncryptionManifest();
+        if (!manifest) throw new Error('Whole-library encryption is not enabled for this library.');
+        manifest.state = 'decrypting';
+        await metadataFor(vault).write('library-encryption.json', manifest);
+        audit.committed();
+        await vault.migrateFromLibraryEncryption(() => access.assertCurrent());
+        // Never delete the manifest while a container remains
+        // listed: that would orphan the file's key reference.
+        if (Object.keys(vault.libraryEncryptionManifest()?.files ?? {}).length > 0)
+          throw new Error('Some notes could not be decrypted. Unlock and try again to finish.');
+        await unlink(await vault.resolveMetadata('library-encryption.json'));
+        vault.setLibraryManifest(null);
+        clearLibraryContentKeyCache();
         resetIdleLock();
       });
     },

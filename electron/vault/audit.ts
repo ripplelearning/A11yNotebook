@@ -10,6 +10,7 @@ export const AUDIT_OPERATIONS = [
   'metadata-protection.extend',
   'data-key.rotate',
   'library-encryption.enable',
+  'library-encryption.disable',
   'recovery.prepare',
   'recovery.commit',
   'recovery.reset-password',

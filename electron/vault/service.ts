@@ -1258,6 +1258,56 @@ export function createVaultService(
     await refreshSearchIndex();
   }
 
+  /** Atomically replace a file's raw bytes (provenance-preserving). */
+  async function rewriteRawBytes(relativePath: string, bytes: Buffer, assertCurrent?: () => void) {
+    const target = await resolveEntry(relativePath);
+    const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+    try {
+      const stat = await lstat(target);
+      await writeFile(temporary, bytes, { flag: 'wx', mode: stat.mode & 0o777 });
+      await resolveEntry(path.relative(root, temporary));
+      await resolveEntry(relativePath);
+      const retirePrevious = await preserveProvenance(relativePath, temporary, assertCurrent);
+      assertCurrent?.();
+      await rename(temporary, target);
+      await retirePrevious().catch(() => undefined);
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
+  /**
+   * Reverse migration for turning whole-library encryption off:
+   * decrypt every listed note back to an ordinary file, removing
+   * its manifest entry as it converts so an interruption resumes
+   * cleanly (already-plaintext listed files just lose their entry;
+   * missing files are pruned). The caller owns the manifest's
+   * 'decrypting' state and deletes the manifest file afterwards;
+   * when this resolves, the manifest's file map is empty.
+   */
+  async function migrateFromLibraryEncryption(assertCurrent: () => void = () => undefined): Promise<void> {
+    if (!libraryManifest) throw new Error('Whole-library encryption is not enabled for this library.');
+    const key = requireLibraryContentKey();
+    for (const relative of Object.keys(libraryManifest.files)) {
+      assertCurrent();
+      const entry = libraryManifest.files[relative];
+      if (!entry) continue;
+      const target = await resolveEntry(relative).catch(() => null);
+      if (target) {
+        const raw = await readFile(target);
+        if (isLibraryContainer(raw)) {
+          const plain = decryptLibraryFile(key, entry.fileId, raw);
+          await rewriteRawBytes(relative, plain, assertCurrent);
+        } else if (libraryManifest.state !== 'decrypting') {
+          throw new Error(`The note ${relative} should be encrypted but is stored in plaintext.`);
+        }
+      }
+      delete libraryManifest.files[relative];
+      libraryEncryption?.manifestChanged(libraryManifest);
+    }
+    await refreshSearchIndex();
+  }
+
   return {
     initialize,
     getVault,
@@ -1265,6 +1315,7 @@ export function createVaultService(
     setLibraryManifest,
     libraryEncryptionManifest,
     migrateToLibraryEncryption,
+    migrateFromLibraryEncryption,
     saveNote,
     createFolder,
     createNote,
