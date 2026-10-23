@@ -25,6 +25,7 @@ import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotatio
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
+import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
 import { createReminderService, parseTaskReminders } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
@@ -380,7 +381,94 @@ function openVault(vaultPath: string) {
   return serializeVaultOperation(() => openVaultNow(vaultPath));
 }
 
+/**
+ * Roll forward a move that was journaled but never finished (the process
+ * died mid-move). Runs before the reminder scheduler starts so every
+ * consumer sees migrated paths. Never throws: a failed recovery must not
+ * block opening or unlocking the library.
+ */
+async function recoverInterruptedMove(vaultService: VaultService, vault: VaultInfo) {
+  try {
+    const store = metadataFor(vaultService);
+    const journal = parseMoveJournal(await store.read('move-journal.json').catch(() => null));
+    if (!journal) return;
+    const exists = async (relative: string) => {
+      try {
+        await lstat(await vaultService.resolveEntry(relative));
+        return true;
+      } catch {
+        return false;
+      }
+    };
+    const contents = new Map<string, string | null>();
+    for (const repair of journal.repairs) {
+      contents.set(repair.nextPath, await vaultService.readNote(repair.nextPath).catch(() => null));
+    }
+    const actions = planMoveRecovery(journal, {
+      sourceExists: await exists(journal.source),
+      destinationExists: await exists(journal.destination),
+      contents,
+    });
+    let conflicts = 0;
+    for (const action of actions) {
+      if (action.kind === 'rename') {
+        await vaultService.moveEntry(journal.source, journal.destination).catch(() => {
+          conflicts += 1;
+        });
+      } else if (action.kind === 'write-note') {
+        const repair = journal.repairs.find((item) => item.nextPath === action.path);
+        if (repair)
+          await vaultService.saveNote(repair.nextPath, repair.after, repair.before).catch(() => {
+            conflicts += 1;
+          });
+      } else if (action.kind === 'migrate') {
+        await vaultService.migrateMoveMetadata(journal.source, journal.destination).catch(() => undefined);
+        await annotations?.migratePaths(journal.source, journal.destination).catch(() => undefined);
+        await milestones?.migratePaths(journal.source, journal.destination).catch(() => undefined);
+        if (protectedMetadata?.enabled()) {
+          await draftStore(() => {
+            if (service !== vaultService) throw new Error('The open library changed.');
+          })
+            .migratePaths(journal.source, journal.destination)
+            .catch(() => undefined);
+        }
+        for (const filename of ['flashcards.json', 'image-alts.json'] as const) {
+          const snapshot = await store.read(filename).catch(() => null);
+          if (snapshot && typeof snapshot === 'object' && !Array.isArray(snapshot)) {
+            await store
+              .write(
+                filename,
+                Object.fromEntries(
+                  Object.entries(snapshot).map(([key, value]) => [
+                    key === journal.source || key.startsWith(`${journal.source}/`)
+                      ? journal.destination + key.slice(journal.source.length)
+                      : key,
+                    value,
+                  ]),
+                ),
+              )
+              .catch(() => undefined);
+          }
+        }
+      } else {
+        conflicts += 1;
+      }
+    }
+    await store.write('move-journal.json', null).catch(() => undefined);
+    sendReminder({
+      type: 'error',
+      vaultPath: vault.path,
+      message: conflicts
+        ? `Recovered an interrupted move of "${journal.source}" to "${journal.destination}", but ${conflicts} part(s) could not be completed automatically. Check the affected items.`
+        : `Recovered an interrupted move of "${journal.source}" to "${journal.destination}".`,
+    });
+  } catch {
+    // Recovery must never block opening or unlocking a library.
+  }
+}
+
 async function startReminders(vaultService: VaultService, vault: VaultInfo) {
+  await recoverInterruptedMove(vaultService, vault);
   cancelLockedDueAlerts();
   const nextReminders = makeReminders(vaultService, vault);
   reminderService = nextReminders;
@@ -835,6 +923,18 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
       throw error;
     }
   };
+  // Journal the confirmed move before touching anything: if the process
+  // dies mid-move, the next open/unlock rolls it forward (see
+  // recoverInterruptedMove). In-process failures roll back below and clear
+  // the journal themselves.
+  const journal: MoveJournal = {
+    version: 1,
+    source: relative,
+    destination,
+    repairs: repairs.map((item) => ({ path: item.path, nextPath: item.nextPath, before: item.before, after: item.after })),
+    startedAt: new Date().toISOString(),
+  };
+  await store.write('move-journal.json', journal);
   try {
     const result = currentReminders
       ? await currentReminders.withPathMigration(relative, destination, operation)
@@ -843,9 +943,11 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
       if (target.path === relative || target.path.startsWith(`${relative}/`))
         target.path = destination + target.path.slice(relative.length);
     }
+    await store.write('move-journal.json', null).catch(() => undefined);
     return result;
   } catch (error) {
     await rollback();
+    await store.write('move-journal.json', null).catch(() => undefined);
     if (moved && currentReminders && service === vault) {
       currentReminders.stop();
       const vaultInfo = await vault.getVault();
