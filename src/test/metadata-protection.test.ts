@@ -305,8 +305,8 @@ describe('scoped encrypted metadata storage', () => {
     await expect(f.store.extend('milestones', [])).rejects.toThrow('not enabled');
     await f.store.enable();
     await expect(f.store.extend('annotations', {})).rejects.toThrow('already under encrypted protection');
-    await expect(f.store.extend('links', {})).rejects.toThrow('No legacy filename is registered');
-    await expect(f.store.read('links')).rejects.toThrow('not under encrypted protection');
+    await expect(f.store.extend('search-index', {})).rejects.toThrow('No legacy filename is registered');
+    await expect(f.store.read('search-index')).rejects.toThrow('not under encrypted protection');
   });
 
   it('fails closed when an extended store container is tampered with', async () => {

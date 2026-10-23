@@ -27,6 +27,8 @@ export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, stri
   checkpoints: 'checkpoints.json',
   'reminder-defaults': 'reminder-defaults.json',
   milestones: 'milestones.json',
+  bookmarks: 'bookmarks.json',
+  links: 'links.json',
 };
 
 function storeEntry(identity: MetadataProtectionPointer, store: ProtectedStoreName): ProtectedStorePointer {

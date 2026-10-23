@@ -494,7 +494,23 @@ async function startReminders(vaultService: VaultService, vault: VaultInfo) {
 }
 
 async function openVaultNow(vaultPath: string, assertCurrent: () => void = () => undefined) {
-  const nextService = createVaultService(vaultPath);
+  // The adapter resolves the module-level protected store lazily: the
+  // store is created from this very service a few steps later, and by
+  // the time any bookmark/link operation runs, both are wired. The
+  // instance check keeps a stale service from touching the new
+  // library's protection state.
+  const nextService = createVaultService(vaultPath, undefined, {
+    isProtected: (name) =>
+      service === nextService && (protectedMetadata?.protects(name === 'bookmarks.json' ? 'bookmarks' : 'links') ?? false),
+    read: (name) => {
+      if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
+      return protectedMetadata!.read(name === 'bookmarks.json' ? 'bookmarks' : 'links');
+    },
+    write: (name, value) => {
+      if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
+      return protectedMetadata!.write(name === 'bookmarks.json' ? 'bookmarks' : 'links', value);
+    },
+  });
   let vault: VaultInfo;
   let nextSecurity: VaultSecurityConfig | null = null;
   let nextIdleLockMinutes = 15;
@@ -806,6 +822,8 @@ function metadataProtectionStatus(): MetadataProtectionStatus {
 const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'reminder-defaults.json': 'reminder-defaults',
   'milestones.json': 'milestones',
+  'bookmarks.json': 'bookmarks',
+  'links.json': 'links',
 };
 
 /**
@@ -1138,12 +1156,22 @@ export function setupVaultIpc(
         // Validate the current plaintext through the store's own
         // validator before it is staged as ciphertext; the protected
         // copy must be exactly what the plaintext readers would use.
-        const legacy =
-          store === 'reminder-defaults'
-            ? validateReminderDefaults(
-                (await metadataFor(vault).read('reminder-defaults.json')) ?? DEFAULT_REMINDER_DEFAULTS,
-              )
-            : validateMilestoneStore(await metadataFor(vault).read('milestones.json'));
+        let legacy: unknown;
+        if (store === 'reminder-defaults') {
+          legacy = validateReminderDefaults(
+            (await metadataFor(vault).read('reminder-defaults.json')) ?? DEFAULT_REMINDER_DEFAULTS,
+          );
+        } else if (store === 'milestones') {
+          legacy = validateMilestoneStore(await metadataFor(vault).read('milestones.json'));
+        } else if (store === 'bookmarks') {
+          const raw = await metadataFor(vault).read('bookmarks.json');
+          if (raw !== null && !Array.isArray(raw)) throw new Error('Invalid bookmark metadata.');
+          legacy = raw ?? [];
+        } else {
+          // Links: the index is a pure rebuildable cache, so the
+          // current rebuilt index is the value to protect.
+          legacy = await vault.getLinkIndex();
+        }
         access.assertCurrent();
         try {
           await protectedMetadata.extend(store, legacy);
