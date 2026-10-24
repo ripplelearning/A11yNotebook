@@ -2913,9 +2913,11 @@ export default function App() {
     const setMenuState = window.a11yNotebook?.setMenuState;
     if (setMenuState) setMenuState(JSON.parse(nativeMenuStateJson) as NativeMenuState);
   }, [nativeMenuStateJson]);
-  // The titlebar names the current view first, so keyboard view switches
-  // are announced by the window title itself. An open note keeps its
-  // existing title only while it is the selected tab.
+  // The titlebar names the current view and the current library, in
+  // exactly the form "View | Library", so keyboard view switches update
+  // it immediately. An open note keeps its title only while it is the
+  // selected tab, in the same "Note | Library" form. With no library
+  // open, the app name stands in for the library.
   const titleView =
     activeDialog === 'settings'
       ? 'Settings'
@@ -2924,9 +2926,7 @@ export default function App() {
         : selectedTab === 'notebooks'
           ? 'Notebooks'
           : selectedTab === 'notes-files'
-            ? selectedNotebookName
-              ? `Notes and Files in ${selectedNotebookName}`
-              : 'Notes and Files'
+            ? 'Files'
             : selectedTab === 'tasks'
               ? 'Tasks'
               : selectedTab === 'assets'
@@ -2941,8 +2941,8 @@ export default function App() {
   useEffect(() => {
     document.title =
       currentNote && vault && selectedTab === currentNote.id
-        ? `${currentNote.title} – ${vault.name} – A11y Notebook`
-        : [titleView, vault?.name, 'A11y Notebook'].filter(Boolean).join(' – ');
+        ? `${currentNote.title} | ${vault.name}`
+        : `${titleView} | ${vault?.name ?? 'A11y Notebook'}`;
   }, [titleView, currentNote, vault, selectedTab]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
