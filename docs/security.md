@@ -374,3 +374,12 @@ disable sandboxing, context isolation, web security or navigation restrictions. 
 mute still apply. No focus is taken from another application; dialogs wait until A11y Notebook is focused.
 Real Windows minimized audio/focus and JAWS/NVDA/Narrator behavior require manual validation and were not verified
 on this runner. Alerts do not fire after the app exits.
+
+## Dependency audit — 2026-10-24
+
+- **Method:** a report-only Dependency audit workflow (`.github/workflows/audit.yml`, weekly on Mondays plus manual runs) that runs `npm audit` for all and production-only dependencies on a GitHub runner and uploads the JSON reports. `npm audit` cannot run from the development VM (the registry audit endpoint is blocked there by policy, 403), so the runner is the honest route to a real scan.
+- **First run (2026-10-24, main after PR #105):** 10 findings in total (critical 3, high 6, moderate 1); production had a critical DOMPurify issue and a high markdown-it issue.
+- **Fixes (PRs #106 and #107, no major-version bumps):** DOMPurify 3.4.16 -> 3.4.17, markdown-it 15.0.2 -> 15.0.3, Electron 44.5.1 -> 44.9.3 (stays on 44.x), Vite 6.4.3 -> 6.4.5 (stays on 6.x), concurrently 9.2.4 -> 9.2.5 (shell-quote 1.12.0), and transitive fixes via the existing overrides pattern: follow-redirects 1.16.1, http-cache-semantics 4.3.0, undici 7.30.1 with node-gyp's copy at 6.29.1, and fast-uri 3.1.9.
+- **Final run (2026-10-24, main after PR #107):** 0 vulnerabilities for all dependencies and 0 for production dependencies.
+- **Code review (same audit):** the main window runs with context isolation on, node integration off, sandbox on, and web security on; new windows are denied except the project's GitHub pages in the user's browser; webviews are blocked; and HTML rendering goes through the sanitizer or DOMPurify. One caveat: the scheduled-reminder wake and locked-library notifications say "a reminder is due" even when only flashcards are due; that wording is fixed separately as the flashcard-alerts work.
+- **Remaining gaps, stated plainly:** Dependabot alerts are disabled on the repository, and no code-scanning analysis exists for it, so the weekly audit workflow is the recurring dependency check until those are enabled.
