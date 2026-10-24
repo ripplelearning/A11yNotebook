@@ -146,7 +146,11 @@ not discard your edits. Switching libraries is blocked until unsaved work is sav
 
 Type in **Global search**; queries wait 250 ms after typing. A main-process index is stored under
 `.a11ynotebook/search-index.json` and refreshed incrementally when files change. Results show match context and
-announce the displayed count through the status bar. Search filters select notebook, note/attachment kind, tag,
+announce the displayed count through the status bar. **Search scope** is a visible control above the filters:
+**Current notebook** searches only the selected notebook (including its sub-notebooks) and, with no notebook
+selected, shows guidance instead of searching the whole library; **Whole library** searches every notebook.
+The scope is remembered on this device. In Whole library scope, the notebook filter in Search filters can still
+narrow results to one notebook. Search filters also select note/attachment kind, tag,
 and modified-date range. `#tag` terms also filter by tag. Inline hashtags and supported front-matter tag fields
 are indexed; this is not a general YAML editor. Text/CSV/HTML attachment and note contents, plus bounded PDF/ePub
 extracted text, are searchable. Unsupported or invalid attachments are searchable by filename. Results are capped at

@@ -1,5 +1,7 @@
 import type { VaultSearchQuery, VaultSearchResult } from '../../../shared/search';
 
+export type SearchScope = 'current' | 'library';
+
 interface Props {
   filters: Omit<VaultSearchQuery, 'text'>;
   onFilters: (value: Omit<VaultSearchQuery, 'text'>) => void;
@@ -7,18 +9,63 @@ interface Props {
   results: VaultSearchResult[];
   active: boolean;
   onOpen: (relative: string) => void;
+  scope: SearchScope;
+  onScope: (value: SearchScope) => void;
+  selectedNotebookPath?: string;
+  selectedNotebookName?: string;
+  scopeBlocked: boolean;
 }
 
-export default function SearchResults({ filters, onFilters, notebooks, results, active, onOpen }: Props) {
+export default function SearchResults({
+  filters,
+  onFilters,
+  notebooks,
+  results,
+  active,
+  onOpen,
+  scope,
+  onScope,
+  selectedNotebookPath,
+  selectedNotebookName,
+  scopeBlocked,
+}: Props) {
+  const scopeLabel =
+    scope === 'current'
+      ? `Current notebook${selectedNotebookName ? `: ${selectedNotebookName}` : ''}`
+      : 'Whole library';
   return (
     <section aria-labelledby="search-results-heading">
       <h3 id="search-results-heading">Search</h3>
+      <fieldset>
+        <legend>Search scope</legend>
+        <label>
+          <input
+            type="radio"
+            name="search-scope"
+            value="current"
+            checked={scope === 'current'}
+            onChange={() => onScope('current')}
+          />
+          {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+        </label>
+        <label>
+          <input
+            type="radio"
+            name="search-scope"
+            value="library"
+            checked={scope === 'library'}
+            onChange={() => onScope('library')}
+          />
+          Whole library
+        </label>
+      </fieldset>
       <details>
         <summary>Search filters</summary>
         <label>
           Search notebook
           <select
-            value={filters.notebook ?? ''}
+            value={scope === 'current' ? (selectedNotebookPath ?? '') : (filters.notebook ?? '')}
+            disabled={scope === 'current'}
             onChange={(event) => onFilters({ ...filters, notebook: event.target.value || undefined })}
           >
             <option value="">All notebooks</option>
@@ -29,6 +76,7 @@ export default function SearchResults({ filters, onFilters, notebooks, results, 
             ))}
           </select>
         </label>
+        {scope === 'current' ? <p>The notebook filter follows the selected notebook in this scope.</p> : null}
         <label>
           Search kind
           <select
@@ -72,28 +120,34 @@ export default function SearchResults({ filters, onFilters, notebooks, results, 
         </label>
       </details>
       {active ? (
-        <>
-          <p>{results.length} results shown (up to 100).</p>
-          <ul aria-label="Search results">
-            {results.map((result) => (
-              <li key={result.path}>
-                <button
-                  type="button"
-                  data-context="search-result"
-                  data-path={result.path}
-                  onClick={() => onOpen(result.path)}
-                >
-                  {result.title}
-                </button>
-                <p>{result.snippet}</p>
-                <small>
-                  {result.path} · {result.tags.join(', ')}
-                </small>
-              </li>
-            ))}
-          </ul>
-          {!results.length ? <p>No matching results.</p> : null}
-        </>
+        scopeBlocked ? (
+          <p>Select a notebook to search it, or switch search scope to Whole library.</p>
+        ) : (
+          <>
+            <p>
+              {results.length} results shown (up to 100) in {scopeLabel}.
+            </p>
+            <ul aria-label="Search results">
+              {results.map((result) => (
+                <li key={result.path}>
+                  <button
+                    type="button"
+                    data-context="search-result"
+                    data-path={result.path}
+                    onClick={() => onOpen(result.path)}
+                  >
+                    {result.title}
+                  </button>
+                  <p>{result.snippet}</p>
+                  <small>
+                    {result.path} · {result.tags.join(', ')}
+                  </small>
+                </li>
+              ))}
+            </ul>
+            {!results.length ? <p>No matching results.</p> : null}
+          </>
+        )
       ) : null}
     </section>
   );

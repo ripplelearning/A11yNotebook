@@ -295,3 +295,7 @@ a separate read-only reviewer identified two reminder issues that were fixed and
 - **PR #94 — store inventory cleanup:** removed the phantom `asset-drafts` protected-store name (drafts live in the checkpoints store).
 
 Validation: each PR passed typecheck, the full lint, targeted suites locally, and the full GitHub CI suite (Ubuntu + Windows) before merge. Still open and honestly unverified: manual JAWS/NVDA/Narrator and forced-colors validation, UI Automation smoke runs, code signing, Task Scheduler delivery on a real Windows machine, and the whole-library encryption file-migration wiring.
+
+## October 24, 2026 feature batch — search scope
+
+- **Search scope:** a visible Search scope control above the search filters. Current notebook searches only the selected notebook (including its sub-notebooks) and shows guidance instead of searching the whole library when no notebook is selected; Whole library searches every notebook. The scope is remembered on the device, the notebook filter is disabled while Current notebook is active, and results and status messages announce the active scope.

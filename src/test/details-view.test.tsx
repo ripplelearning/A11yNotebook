@@ -335,6 +335,48 @@ describe('accessible details view', () => {
     expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
   });
 
+  it('searches the whole library by default and announces the scope', async () => {
+    window.localStorage.clear();
+    const { bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    expect(screen.getByRole('radio', { name: 'Whole library' })).toBeChecked();
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    await waitFor(() => expect(bridge.vault.search).toHaveBeenCalledWith({ text: 'Idea', limit: 100 }));
+    expect(await screen.findByText(/0 results shown \(up to 100\) in Whole library\./)).toBeInTheDocument();
+  });
+
+  it('searches only the selected notebook in current-notebook scope and remembers the scope', async () => {
+    window.localStorage.clear();
+    const { bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    navigate('2');
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expectResearchContext();
+    fireEvent.click(screen.getByRole('radio', { name: 'Current notebook: Research' }));
+    expect(window.localStorage.getItem('a11y-notebook.search-scope')).toBe('current');
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    await waitFor(() =>
+      expect(bridge.vault.search).toHaveBeenCalledWith({ text: 'Idea', notebook: 'Research', limit: 100 }),
+    );
+    expect(
+      await screen.findByText(/0 results shown \(up to 100\) in Current notebook: Research\./),
+    ).toBeInTheDocument();
+  });
+
+  it('does not search the whole library when current-notebook scope has no notebook selected', async () => {
+    window.localStorage.clear();
+    const { bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    fireEvent.click(screen.getByRole('radio', { name: 'Current notebook (none selected)' }));
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    await waitFor(() =>
+      expect(
+        screen.getAllByText('Select a notebook to search it, or switch search scope to Whole library.').length,
+      ).toBeGreaterThan(0),
+    );
+    expect(bridge.vault.search).not.toHaveBeenCalled();
+  });
+
   it.each([
     { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
     { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report' },
