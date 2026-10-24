@@ -136,6 +136,13 @@ export interface VaultBridge {
   createTask?(input: { notebookPath?: string; text: string }): Promise<VaultTask[]>;
   toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;
   setHtmlTaskDueDate(path: string, taskId: string, dueDate: string, revision: string): Promise<VaultTask[]>;
+  setHtmlTaskSchedule?(
+    path: string,
+    taskId: string,
+    schedule: { dueDate: string; dueTime: string; remindAt: string },
+    revision: string,
+  ): Promise<VaultTask[]>;
+  setHtmlTaskPriority?(path: string, taskId: string, priority: string, revision: string): Promise<VaultTask[]>;
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;

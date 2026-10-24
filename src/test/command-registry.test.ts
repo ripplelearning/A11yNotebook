@@ -171,6 +171,7 @@ describe('command registry', () => {
     expect(getContextMenuCommands('tab').map(({ id }) => id)).toContain('context-close-other-tabs');
     expect(getContextMenuCommands('reader-link').map(({ id }) => id)).toContain('context-copy-link');
     expect(getContextMenuCommands('task-row').map(({ id }) => id)).toContain('context-set-due-date');
+    expect(getContextMenuCommands('task-row').map(({ id }) => id)).toContain('context-set-priority');
     expect(getContextMenuCommands('search-result').map(({ id }) => id)).toContain('context-open');
     expect(getContextMenuCommands('annotation').map(({ id }) => id)).toContain('context-delete');
     expect(getContextMenuCommands('reminder').map(({ id }) => id)).toContain('context-delete');

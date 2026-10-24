@@ -3289,6 +3289,45 @@ export function setupVaultIpc(
       return requireService().setHtmlTaskDueDate(relativePath, taskId, dueDate, revision);
     },
   );
+  ipcMain.handle(
+    IPC_CHANNELS.vaultTaskSchedule,
+    async (event, relativePath: unknown, taskId: unknown, schedule: unknown, revision: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        typeof relativePath !== 'string' ||
+        typeof taskId !== 'string' ||
+        typeof revision !== 'string' ||
+        typeof schedule !== 'object' ||
+        schedule === null ||
+        typeof (schedule as { dueDate?: unknown }).dueDate !== 'string' ||
+        typeof (schedule as { dueTime?: unknown }).dueTime !== 'string' ||
+        typeof (schedule as { remindAt?: unknown }).remindAt !== 'string'
+      ) {
+        throw new Error('Invalid HTML task schedule request.');
+      }
+      return requireService().setHtmlTaskSchedule(
+        relativePath,
+        taskId,
+        schedule as { dueDate: string; dueTime: string; remindAt: string },
+        revision,
+      );
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.vaultTaskPriority,
+    async (event, relativePath: unknown, taskId: unknown, priority: unknown, revision: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        typeof relativePath !== 'string' ||
+        typeof taskId !== 'string' ||
+        typeof priority !== 'string' ||
+        typeof revision !== 'string'
+      ) {
+        throw new Error('Invalid HTML task priority request.');
+      }
+      return requireService().setHtmlTaskPriority(relativePath, taskId, priority, revision);
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultGetLinkIndex, async (event) => {
     assertTrusted(event, isTrustedSender);
     return requireService().getLinkIndex();

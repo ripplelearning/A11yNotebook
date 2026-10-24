@@ -12,10 +12,12 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
     const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->$/.exec(checkbox[2])?.[1];
     const text = checkbox[2].replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '').trim();
     const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
-    const priority = text.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase() as VaultTask['priority'];
+    const dueTime = text.match(/due-time:(\d{2}:\d{2})/i)?.[1];
+    const priority = text.match(/priority:([A-Za-z0-9][A-Za-z0-9_-]{0,29})/i)?.[1];
     const title = text
       .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
-      .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
+      .replace(/due-time:\d{2}:\d{2}/gi, '')
+      .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
       .trim();
     return [
       {
@@ -26,6 +28,7 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
         text: title,
         complete: checkbox[1].toLowerCase() === 'x',
         ...(dueDate ? { dueDate } : {}),
+        ...(dueTime ? { dueTime } : {}),
         ...(priority ? { priority } : {}),
       },
     ];
@@ -150,7 +153,8 @@ function htmlTaskRecords(content: string) {
       }
     }
     const due = token.attributes.get('data-a11y-task-due')?.value ?? '';
-    const priority = token.attributes.get('data-a11y-task-priority')?.value?.toLowerCase();
+    const dueTime = token.attributes.get('data-a11y-task-due-time')?.value ?? '';
+    const priority = token.attributes.get('data-a11y-task-priority')?.value ?? '';
     const reminder = token.attributes.get('data-a11y-task-remind')?.value ?? '';
     return [
       {
@@ -159,9 +163,8 @@ function htmlTaskRecords(content: string) {
         text: taskText(content.slice(token.end, close)),
         complete: complete === 'true',
         ...(validDate(due) ? { dueDate: due } : {}),
-        ...(priority && ['low', 'normal', 'high', 'urgent'].includes(priority)
-          ? { priority: priority as VaultTask['priority'] }
-          : {}),
+        ...(/^\d{2}:\d{2}$/.test(dueTime) ? { dueTime } : {}),
+        ...(/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(priority) ? { priority } : {}),
         ...(parseReminderDate(reminder) ? { reminder } : {}),
       },
     ];
@@ -187,6 +190,7 @@ export function parseHtmlTasks(content: string, relativePath: string, revision?:
             complete: item.complete,
             ...(item.reminder ? { remindAt: item.reminder } : {}),
             ...(item.dueDate ? { dueDate: item.dueDate } : {}),
+            ...(item.dueTime ? { dueTime: item.dueTime } : {}),
             ...(item.priority ? { priority: item.priority } : {}),
           },
         ]
@@ -223,4 +227,59 @@ export function updateHtmlTaskDueDate(content: string, taskId: string, dueDate: 
   const tag = content.slice(token.start, token.end);
   const updated = tag.replace(/\/?>$/, (ending) => ` data-a11y-task-due="${dueDate}"${ending}`);
   return `${content.slice(0, token.start)}${updated}${content.slice(token.end)}`;
+}
+
+/** Set or remove one data attribute on a single stable HTML task, leaving all other source bytes intact. */
+function withTaskAttribute(content: string, taskId: string, name: string, value: string): string {
+  const matches = htmlTaskRecords(content).filter((item) => item.id === taskId);
+  if (matches.length !== 1) throw new Error('The HTML task no longer exists or its identity is ambiguous.');
+  const token = matches[0].token;
+  const attribute = token.attributes.get(name);
+  const tag = content.slice(token.start, token.end);
+  if (!value) {
+    if (!attribute) return content;
+    const removed = tag.replace(
+      new RegExp(`\\s+${name}\\s*=\\s*(?:"[^"]*"|'[^']*'|[^\\s>]+)`, 'i'),
+      '',
+    );
+    return `${content.slice(0, token.start)}${removed}${content.slice(token.end)}`;
+  }
+  if (attribute) {
+    return `${content.slice(0, attribute.valueStart)}${value}${content.slice(attribute.valueEnd)}`;
+  }
+  const updated = tag.replace(/\/?>$/, (ending) => ` ${name}="${value}"${ending}`);
+  return `${content.slice(0, token.start)}${updated}${content.slice(token.end)}`;
+}
+
+export interface TaskSchedule {
+  dueDate: string;
+  dueTime: string;
+  /** Reminder in "YYYY-MM-DD HH:mm" form, or '' for none. */
+  remindAt: string;
+}
+
+function validTime(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return false;
+  return Number(match[1]) < 24 && Number(match[2]) < 60;
+}
+
+/** Update the due date, due time, and reminder of one stable HTML task. */
+export function updateHtmlTaskSchedule(content: string, taskId: string, schedule: TaskSchedule): string {
+  if (schedule.dueDate && !validDate(schedule.dueDate)) throw new Error('Enter a real date in YYYY-MM-DD format.');
+  if (schedule.dueTime && !validTime(schedule.dueTime)) throw new Error('Enter a time in HH:mm format.');
+  if (schedule.remindAt && !parseReminderDate(schedule.remindAt)) {
+    throw new Error('Enter a real reminder date and time.');
+  }
+  let updated = withTaskAttribute(content, taskId, 'data-a11y-task-due', schedule.dueDate);
+  updated = withTaskAttribute(updated, taskId, 'data-a11y-task-due-time', schedule.dueTime);
+  return withTaskAttribute(updated, taskId, 'data-a11y-task-remind', schedule.remindAt);
+}
+
+/** Update the priority of one stable HTML task. */
+export function updateHtmlTaskPriority(content: string, taskId: string, priority: string): string {
+  if (priority && !/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(priority)) {
+    throw new Error('Priority names use one word of letters, digits, hyphens, or underscores.');
+  }
+  return withTaskAttribute(content, taskId, 'data-a11y-task-priority', priority);
 }

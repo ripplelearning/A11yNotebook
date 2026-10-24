@@ -45,6 +45,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
   vaultTaskDueDate: 'vault:task-due-date',
+  vaultTaskSchedule: 'vault:task-schedule',
+  vaultTaskPriority: 'vault:task-priority',
   vaultGetLinkIndex: 'vault:get-link-index',
   vaultGetBookmarks: 'vault:get-bookmarks',
   vaultToggleBookmark: 'vault:toggle-bookmark',
@@ -271,6 +273,10 @@ const bridge: NotebookBridge = {
       ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, location, complete, revision),
     setHtmlTaskDueDate: (relativePath, taskId, dueDate, revision) =>
       ipcRenderer.invoke(CHANNELS.vaultTaskDueDate, relativePath, taskId, dueDate, revision),
+    setHtmlTaskSchedule: (relativePath, taskId, schedule, revision) =>
+      ipcRenderer.invoke(CHANNELS.vaultTaskSchedule, relativePath, taskId, schedule, revision),
+    setHtmlTaskPriority: (relativePath, taskId, priority, revision) =>
+      ipcRenderer.invoke(CHANNELS.vaultTaskPriority, relativePath, taskId, priority, revision),
     getLinkIndex: () => ipcRenderer.invoke(CHANNELS.vaultGetLinkIndex),
     getBookmarks: () => ipcRenderer.invoke(CHANNELS.vaultGetBookmarks),
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),

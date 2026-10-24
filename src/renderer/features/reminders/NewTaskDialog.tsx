@@ -52,15 +52,25 @@ interface AssociatedTaskProps {
   initialPath?: string;
   busy: boolean;
   error: string;
+  priorityOptions?: string[];
   onClose: () => void;
   onCreate: (path: string, text: string, due: string, priority: string) => Promise<void>;
 }
 
-export function AssociatedTaskDialog({ paths, initialPath, busy, error, onClose, onCreate }: AssociatedTaskProps) {
+export function AssociatedTaskDialog({
+  paths,
+  initialPath,
+  busy,
+  error,
+  priorityOptions,
+  onClose,
+  onCreate,
+}: AssociatedTaskProps) {
+  const options = priorityOptions?.length ? priorityOptions : ['Critical', 'High', 'Medium', 'Low', 'Optional'];
   const [path, setPath] = useState(initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''));
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
-  const [priority, setPriority] = useState('normal');
+  const [priority, setPriority] = useState(options.includes('Medium') ? 'Medium' : (options[0] ?? ''));
   useEffect(() => {
     setPath((current) =>
       paths.includes(current) ? current : initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''),
@@ -112,8 +122,10 @@ export function AssociatedTaskDialog({ paths, initialPath, busy, error, onClose,
         <label>
           Priority
           <select value={priority} disabled={busy} onChange={(event) => setPriority(event.target.value)}>
-            {['low', 'normal', 'high', 'urgent'].map((value) => (
-              <option key={value}>{value}</option>
+            {options.map((value) => (
+              <option key={value} value={value}>
+                {value.charAt(0).toUpperCase() + value.slice(1)}
+              </option>
             ))}
           </select>
         </label>

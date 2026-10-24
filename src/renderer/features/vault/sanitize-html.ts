@@ -9,6 +9,7 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
       'data-a11y-task-id',
       'data-a11y-task-complete',
       'data-a11y-task-due',
+      'data-a11y-task-due-time',
       'data-a11y-task-priority',
       'data-a11y-task-remind',
     ],

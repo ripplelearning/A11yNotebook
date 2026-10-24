@@ -9,7 +9,15 @@ import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
-import { parseHtmlTasks, parseMarkdownTasks, toggleHtmlTask, updateHtmlTaskDueDate } from './tasks';
+import {
+  parseHtmlTasks,
+  parseMarkdownTasks,
+  toggleHtmlTask,
+  updateHtmlTaskDueDate,
+  updateHtmlTaskPriority,
+  updateHtmlTaskSchedule,
+  type TaskSchedule,
+} from './tasks';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import {
   checkedVaultPath,
@@ -1025,6 +1033,50 @@ export function createVaultService(
     });
   }
 
+  function setHtmlTaskSchedule(relativePath: string, taskId: string, schedule: TaskSchedule, revision: string) {
+    return serializeNoteWrite(async () => {
+      const target = await resolveEntry(relativePath);
+      if (
+        path.extname(target).toLowerCase() !== '.html' ||
+        !/^[\w-]{8,80}$/.test(taskId) ||
+        !/^[\da-f]{64}$/i.test(revision) ||
+        typeof schedule?.dueDate !== 'string' ||
+        typeof schedule?.dueTime !== 'string' ||
+        typeof schedule?.remindAt !== 'string'
+      ) {
+        throw new Error('Invalid HTML task schedule request.');
+      }
+      const original = decodeNoteBytes(relativePath, await readFile(target));
+      if (createHash('sha256').update(original, 'utf8').digest('hex') !== revision) {
+        throw new Error('Note changed on disk. Refresh tasks before updating this task.');
+      }
+      await replaceNote(relativePath, updateHtmlTaskSchedule(original, taskId, schedule), original);
+      await refreshSearchIndex();
+      return getTasks();
+    });
+  }
+
+  function setHtmlTaskPriority(relativePath: string, taskId: string, priority: string, revision: string) {
+    return serializeNoteWrite(async () => {
+      const target = await resolveEntry(relativePath);
+      if (
+        path.extname(target).toLowerCase() !== '.html' ||
+        !/^[\w-]{8,80}$/.test(taskId) ||
+        !/^[\da-f]{64}$/i.test(revision) ||
+        typeof priority !== 'string'
+      ) {
+        throw new Error('Invalid HTML task priority request.');
+      }
+      const original = decodeNoteBytes(relativePath, await readFile(target));
+      if (createHash('sha256').update(original, 'utf8').digest('hex') !== revision) {
+        throw new Error('Note changed on disk. Refresh tasks before updating this task.');
+      }
+      await replaceNote(relativePath, updateHtmlTaskPriority(original, taskId, priority), original);
+      await refreshSearchIndex();
+      return getTasks();
+    });
+  }
+
   async function getLinkIndex(): Promise<VaultLinkIndex> {
     const notes: Array<{ path: string; content: string }> = [];
     const collect = async (entries: VaultEntry[]) => {
@@ -1366,6 +1418,8 @@ export function createVaultService(
     getTasks,
     toggleTask,
     setHtmlTaskDueDate,
+    setHtmlTaskSchedule,
+    setHtmlTaskPriority,
     getLinkIndex,
     getBookmarks,
     toggleBookmark,

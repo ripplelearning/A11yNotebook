@@ -10,6 +10,8 @@ export interface NotebookSettings {
   noteEditLockMinutes?: number;
   defaultNoteOpenMode?: 'read-only' | 'edit';
   reminderAlerts?: boolean;
+  /** User-managed task priority options, highest first. Single words only, so they survive in task lines. */
+  priorityOptions?: string[];
   reminderSound?: boolean;
   reminderSoundChoice?: 'gentle-chime';
   reminderVolume?: number;
@@ -31,6 +33,38 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderVolume: 50,
   backgroundReminders: false,
 };
+
+export const DEFAULT_PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low', 'Optional'];
+
+/**
+ * Normalize a stored priority list: keep single-word names (letters, digits,
+ * hyphens, underscores), drop blanks and case-insensitive duplicates, and
+ * fall back to the defaults when nothing valid remains.
+ */
+export function normalizePriorityOptions(options: unknown): string[] {
+  if (!Array.isArray(options)) return [...DEFAULT_PRIORITY_OPTIONS];
+  const seen = new Set<string>();
+  const normalized: string[] = [];
+  for (const option of options) {
+    if (typeof option !== 'string') continue;
+    const value = option.trim();
+    if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(value)) continue;
+    const key = value.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    normalized.push(value);
+  }
+  return normalized.length ? normalized : [...DEFAULT_PRIORITY_OPTIONS];
+}
+
+export function resolvePriorityOptions(settings: NotebookSettings): string[] {
+  return normalizePriorityOptions(settings.priorityOptions);
+}
+
+/** Display a stored priority name with its first letter capitalized. */
+export function formatPriorityName(value: string): string {
+  return value ? value.charAt(0).toUpperCase() + value.slice(1) : value;
+}
 
 const RESERVED_SHORTCUTS = [
   'F6',
