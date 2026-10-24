@@ -49,6 +49,7 @@ import {
 import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
 import { createReminderService, parseTaskReminders, validateReminderStore } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
+import { lockedDueText, type LockedDueKind } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
 import { createMilestoneStore, validateMilestoneStore } from './milestones';
 import { createAssetStore } from './assets';
@@ -125,12 +126,15 @@ function clearLibraryContentKeyCache() {
   libraryContentKeyCache = null;
 }
 const lockedDueWatcher = createLockedDueWatcher({
-  onDue: (vaultPath) => {
-    sendReminder({ type: 'locked-due', vaultPath });
+  onDue: (vaultPath, due) => {
+    const kinds: LockedDueKind[] = [];
+    for (const entry of due) if (!kinds.includes(entry.kind)) kinds.push(entry.kind);
+    sendReminder({ type: 'locked-due', vaultPath, kinds });
     if (Notification.isSupported()) {
+      const { headline, detail } = lockedDueText(kinds, due.length);
       const notification = new Notification({
         title: 'A11y Notebook',
-        body: 'A reminder is due. Unlock the library to view it.',
+        body: `${headline} ${detail}`,
       });
       notifications.add(notification);
       notification.on('close', () => notifications.delete(notification));
@@ -208,12 +212,12 @@ async function runReminderWake(): Promise<void> {
   }
   const { due, remaining } = planWake(entries, new Date());
   if (due.length && Notification.isSupported()) {
+    const kinds: LockedDueKind[] = [];
+    for (const entry of due) if (!kinds.includes(entry.kind)) kinds.push(entry.kind);
+    const { headline, detail } = lockedDueText(kinds, due.length);
     const notification = new Notification({
       title: 'A11y Notebook',
-      body:
-        due.length === 1
-          ? 'A reminder is due. Unlock the library to view it.'
-          : `${due.length} reminders are due. Unlock the library to view them.`,
+      body: `${headline} ${detail}`,
     });
     notifications.add(notification);
     notification.on('close', () => notifications.delete(notification));

@@ -194,13 +194,13 @@ implementation, and mocks are not actual Windows verification.
   - Explicit consent, uninstall/disable cleanup, no shell injection/secrets/plaintext
   - Duplicate/restart/race prevention and privacy/lock behavior design
 - **Milestone Windows accessibility validation** — UI implemented; real AT speech/focus checks remain
-- **Due flashcard notifications** — requires out-of-process delivery infrastructure
+- **Due flashcard notifications** — implemented: flashcard due times already ride the privacy-safe due snapshot, and the locked-library and Task Scheduler wake alerts now name flashcards (flashcard-only, reminder-only, or mixed wording) instead of always saying "a reminder is due"
 
 ### Remaining Phase 6 Work
 
 - **Cognitive recovery manual validation** — JAWS/NVDA/Narrator, keyboard focus and speech on Windows remain unrun
 - **Mind-map visual layouts** — semantic tree is authoritative; visual enhancements remain
-- **Due flashcard background notifications** — depends on Phase 5 out-of-process delivery
+- **Due flashcard background notifications** — implemented with the same due-snapshot delivery as the Phase 5 item above
 
 ### Shared Accessible Reader (Cross-document)
 

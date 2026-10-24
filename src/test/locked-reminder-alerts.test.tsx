@@ -50,6 +50,23 @@ describe('locked-library generic reminder alerts', () => {
     expect(screen.getByRole('button', { name: 'Dismiss' })).toHaveProperty('disabled', true);
   });
 
+  it('names flashcards for a flashcard-only locked batch', async () => {
+    render(<LockedReminderAlerts vaultPath="/vault" settings={SETTINGS} announce={vi.fn()} />);
+    act(() => listener({ type: 'locked-due', vaultPath: '/vault', kinds: ['flashcard'] }));
+    expect(await screen.findByRole('alertdialog')).toBeTruthy();
+    expect(screen.getByText('A flashcard is due for review.')).toBeTruthy();
+    expect(screen.getByText('Unlock the library to review it.')).toBeTruthy();
+    expect(screen.getByText('1 flashcard waiting.')).toBeTruthy();
+  });
+
+  it('names both kinds for a mixed locked batch', async () => {
+    render(<LockedReminderAlerts vaultPath="/vault" settings={SETTINGS} announce={vi.fn()} />);
+    act(() => listener({ type: 'locked-due', vaultPath: '/vault', kinds: ['reminder', 'flashcard'] }));
+    expect(await screen.findByRole('alertdialog')).toBeTruthy();
+    expect(screen.getByText('Reminders and flashcards are due.')).toBeTruthy();
+    expect(screen.getByText('Unlock the library to view them.')).toBeTruthy();
+  });
+
   it('plays the sound while unfocused but waits for focus to show the dialog', async () => {
     focused = false;
     render(<LockedReminderAlerts vaultPath="/vault" settings={SETTINGS} announce={vi.fn()} />);

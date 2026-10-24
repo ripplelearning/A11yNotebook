@@ -37,10 +37,13 @@ export interface ReminderStore {
   reviewStates?: Record<string, string>;
 }
 
+/** Kinds a locked-library due batch can contain. Absent means reminders only. */
+export type LockedDueKind = 'reminder' | 'flashcard';
+
 export type VaultReminderEvent =
   | { type: 'fired' | 'open'; vaultPath: string; reminder: Reminder }
   | { type: 'flashcard-due'; vaultPath: string }
-  | { type: 'locked-due'; vaultPath: string }
+  | { type: 'locked-due'; vaultPath: string; kinds?: LockedDueKind[] }
   | { type: 'changed'; vaultPath: string; reminders: Reminder[] }
   | { type: 'error'; vaultPath: string; message: string };
 
@@ -48,6 +51,42 @@ export interface DueFlashcardReview {
   id: string;
   path: string;
   scheduledAt: string;
+}
+
+/**
+ * Wording for a locked-library due batch. Reminder-only batches keep the
+ * long-standing text exactly; flashcard-only batches name flashcards, and
+ * mixed batches name both. The locked alert never names a reminder, a
+ * flashcard, or any content — only the kind of thing that is due.
+ */
+export function lockedDueText(
+  kinds: LockedDueKind[],
+  count: number,
+): { headline: string; detail: string; waiting: string; title: string } {
+  const hasReminder = kinds.includes('reminder');
+  const hasFlashcard = kinds.includes('flashcard');
+  if (hasFlashcard && !hasReminder) {
+    return {
+      headline: count === 1 ? 'A flashcard is due for review.' : `${count} flashcards are due for review.`,
+      detail: count === 1 ? 'Unlock the library to review it.' : 'Unlock the library to review them.',
+      waiting: count === 1 ? '1 flashcard waiting.' : `${count} flashcards waiting.`,
+      title: 'Flashcard review',
+    };
+  }
+  if (hasReminder && hasFlashcard) {
+    return {
+      headline: 'Reminders and flashcards are due.',
+      detail: 'Unlock the library to view them.',
+      waiting: 'Reminders and flashcards waiting.',
+      title: 'Due reminders and flashcards',
+    };
+  }
+  return {
+    headline: count === 1 ? 'A reminder is due.' : `${count} reminders are due.`,
+    detail: count === 1 ? 'Unlock the library to view it.' : 'Unlock the library to view them.',
+    waiting: count === 1 ? '1 reminder waiting.' : `${count} reminders waiting.`,
+    title: 'Reminder',
+  };
 }
 
 /** Calendar validation avoids Date's silent rollover of impossible dates. */
