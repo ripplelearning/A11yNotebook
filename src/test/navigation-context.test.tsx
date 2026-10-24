@@ -164,7 +164,8 @@ describe('contextual navigation names and repeated announcements', () => {
       ],
     });
     vault.adoptEncrypted = consent;
-    navigate('3');
+    navigate('2');
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
     const file = screen.getByRole('gridcell', { name: 'Legacy.md' });
     fireEvent.keyDown(file, { key: 'Enter' });
     await waitFor(() => expect(consent).toHaveBeenCalledOnce());

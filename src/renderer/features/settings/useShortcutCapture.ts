@@ -51,7 +51,7 @@ export function useShortcutCapture(
       }
       if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
       if (event.isComposing || event.keyCode === 229 || event.getModifierState('AltGraph') || event.metaKey) {
-        setNotice('That input cannot be captured. Use Ctrl/Alt plus a letter or number, or F1–F12. Escape cancels.');
+        setNotice('That input cannot be captured. Use Ctrl/Alt plus a letter, number, or navigation key, or F1–F12. Escape cancels.');
         return;
       }
       try {
