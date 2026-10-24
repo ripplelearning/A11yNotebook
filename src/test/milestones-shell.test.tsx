@@ -118,7 +118,7 @@ describe('milestone shell wiring', () => {
     setup();
     await ready();
     fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
-    const search = screen.getByRole('searchbox', { name: 'Search commands' });
+    const search = screen.getByRole('searchbox', { name: 'Search Command Palette' });
     expect(search).toHaveFocus();
     fireEvent.change(search, { target: { value: 'milestone' } });
     fireEvent.click(

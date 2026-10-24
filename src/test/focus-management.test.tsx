@@ -105,7 +105,7 @@ describe('command palette', () => {
     render(<App />);
     fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
-    const search = within(dialog).getByRole('searchbox', { name: 'Search commands' });
+    const search = within(dialog).getByRole('searchbox', { name: 'Search Command Palette' });
 
     fireEvent.change(search, { target: { value: 'Open command search' } });
     expect(within(dialog).getByRole('button', { name: 'Command Palette' })).toBeInTheDocument();
@@ -122,7 +122,7 @@ describe('command palette', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');
-    const input = within(dialog).getByRole('searchbox', { name: 'Search commands' });
+    const input = within(dialog).getByRole('searchbox', { name: 'Search Command Palette' });
     expect(input).toHaveFocus();
 
     const buttons = within(dialog).getAllByRole('button');

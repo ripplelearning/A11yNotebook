@@ -440,7 +440,7 @@ describe('accessible details view', () => {
     expectResearchContext();
     fireEvent.keyDown(document, { key: 'p', ctrlKey: true, shiftKey: true });
     const palette = screen.getByRole('dialog', { name: 'Command palette' });
-    expect(within(palette).getByRole('searchbox', { name: 'Search commands' })).toHaveFocus();
+    expect(within(palette).getByRole('searchbox', { name: 'Search Command Palette' })).toHaveFocus();
     fireEvent.change(within(palette).getByRole('searchbox'), { target: { value: 'show-notes-files' } });
     fireEvent.click(within(palette).getByRole('button', { name: 'Notes & Files' }));
     expectResearchContext();
