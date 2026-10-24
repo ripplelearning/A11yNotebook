@@ -1,13 +1,25 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
 
+export interface NewTaskFields {
+  text: string;
+  due: string;
+  reminder: string;
+  priority: string;
+}
+
+const PRIORITIES = ['low', 'normal', 'high', 'urgent'];
+
 interface Props {
-  onCreate: (text: string) => Promise<void>;
+  onCreate: (fields: NewTaskFields) => Promise<void>;
   onClose: () => void;
 }
 
 export default function NewTaskDialog({ onCreate, onClose }: Props) {
   const [text, setText] = useState('');
+  const [due, setDue] = useState('');
+  const [reminder, setReminder] = useState('');
+  const [priority, setPriority] = useState('normal');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const close = () => {
@@ -25,7 +37,7 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           }
           setBusy(true);
           setError('');
-          void onCreate(text.trim())
+          void onCreate({ text: text.trim(), due, reminder, priority })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
             .finally(() => setBusy(false));
@@ -34,6 +46,27 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
         <label>
           Task text
           <input data-autofocus value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
+        </label>
+        <label>
+          Due date
+          <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
+        </label>
+        <label>
+          Reminder time
+          <input
+            type="datetime-local"
+            value={reminder}
+            disabled={busy}
+            onChange={(event) => setReminder(event.target.value)}
+          />
+        </label>
+        <label>
+          Priority
+          <select value={priority} disabled={busy} onChange={(event) => setPriority(event.target.value)}>
+            {PRIORITIES.map((value) => (
+              <option key={value}>{value}</option>
+            ))}
+          </select>
         </label>
         {error ? <p role="alert">{error}</p> : null}
         <button type="submit" disabled={busy}>
@@ -53,13 +86,14 @@ interface AssociatedTaskProps {
   busy: boolean;
   error: string;
   onClose: () => void;
-  onCreate: (path: string, text: string, due: string, priority: string) => Promise<void>;
+  onCreate: (path: string, text: string, due: string, priority: string, reminder: string) => Promise<void>;
 }
 
 export function AssociatedTaskDialog({ paths, initialPath, busy, error, onClose, onCreate }: AssociatedTaskProps) {
   const [path, setPath] = useState(initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''));
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
+  const [reminder, setReminder] = useState('');
   const [priority, setPriority] = useState('normal');
   useEffect(() => {
     setPath((current) =>
@@ -77,7 +111,7 @@ export function AssociatedTaskDialog({ paths, initialPath, busy, error, onClose,
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (path && text.trim() && !busy) void onCreate(path, text.trim(), due, priority);
+          if (path && text.trim() && !busy) void onCreate(path, text.trim(), due, priority, reminder);
         }}
       >
         <p>Tasks are saved as checkboxes in their associated note.</p>
@@ -110,9 +144,18 @@ export function AssociatedTaskDialog({ paths, initialPath, busy, error, onClose,
           <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
         </label>
         <label>
+          Reminder time
+          <input
+            type="datetime-local"
+            value={reminder}
+            disabled={busy}
+            onChange={(event) => setReminder(event.target.value)}
+          />
+        </label>
+        <label>
           Priority
           <select value={priority} disabled={busy} onChange={(event) => setPriority(event.target.value)}>
-            {['low', 'normal', 'high', 'urgent'].map((value) => (
+            {PRIORITIES.map((value) => (
               <option key={value}>{value}</option>
             ))}
           </select>

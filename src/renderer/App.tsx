@@ -1235,7 +1235,7 @@ export default function App() {
     setItemDialog({ action: 'new-note', path: selectedNotebookPath });
   };
 
-  const createTask = async (path: string, text: string, due: string, priority: string) => {
+  const createTask = async (path: string, text: string, due: string, priority: string, reminder = '') => {
     if (!vault || switchingRef.current || securityLocked || taskCreating) return;
     const root = vault.path;
     const generation = vaultGenerationRef.current;
@@ -1262,6 +1262,7 @@ export default function App() {
         item.setAttribute('data-a11y-task-id', crypto.randomUUID());
         item.setAttribute('data-a11y-task-complete', 'false');
         if (due) item.setAttribute('data-a11y-task-due', due);
+        if (reminder) item.setAttribute('data-a11y-task-remind', reminder.replace('T', ' '));
         item.setAttribute('data-a11y-task-priority', priority);
         item.textContent = text;
         list.append(item);
@@ -1269,7 +1270,8 @@ export default function App() {
         content = sanitizeNoteHtml(document.body.innerHTML, path);
       } else {
         const description = text.replace(/[\r\n]+/g, ' ');
-        content = `${baseline}${baseline.endsWith('\n') || !baseline ? '' : '\n'}- [ ] ${description}${due ? ` due:${due}` : ''} priority:${priority} <!-- a11y-task-id:${crypto.randomUUID()} -->\n`;
+        const reminderSuffix = reminder ? ` remind:${reminder.replace('T', ' ')}` : '';
+        content = `${baseline}${baseline.endsWith('\n') || !baseline ? '' : '\n'}- [ ] ${description}${due ? ` due:${due}` : ''} priority:${priority}${reminderSuffix} <!-- a11y-task-id:${crypto.randomUUID()} -->\n`;
       }
       if (!isCurrent()) return;
       await bridge.saveNote(path, content, baseline);
@@ -4000,10 +4002,18 @@ export default function App() {
       {activeDialog === 'new-task' && !securityLocked ? (
         <NewTaskDialog
           onClose={closeDialog}
-          onCreate={async (text) => {
+          onCreate={async ({ text, due, reminder, priority }) => {
             const bridge = window.a11yNotebook?.vault;
             if (!bridge?.createTask || switchingRef.current) throw new Error('Task creation is unavailable.');
-            setTasks(await bridge.createTask({ notebookPath: taskCreationNotebookPath, text }));
+            setTasks(
+              await bridge.createTask({
+                notebookPath: taskCreationNotebookPath,
+                text,
+                due: due || undefined,
+                reminder: reminder ? reminder.replace('T', ' ') : undefined,
+                priority,
+              }),
+            );
             await refreshVault();
             setStatusMessage('Task created.');
           }}

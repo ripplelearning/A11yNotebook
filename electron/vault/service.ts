@@ -702,14 +702,25 @@ export function createVaultService(
 
   async function createTask(input: unknown, assertCurrent: () => void = () => undefined) {
     if (!input || typeof input !== 'object') throw new Error('Invalid task creation request.');
-    const { text, notebookPath = '' } = input as { text?: unknown; notebookPath?: unknown };
+    const {
+      text,
+      notebookPath = '',
+      due = '',
+      reminder = '',
+      priority = 'normal',
+    } = input as { text?: unknown; notebookPath?: unknown; due?: unknown; reminder?: unknown; priority?: unknown };
     if (
       typeof text !== 'string' ||
       !text.trim() ||
       text.length > 1000 ||
       [...text].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) ||
       /[\u2028\u2029]/.test(text) ||
-      typeof notebookPath !== 'string'
+      typeof notebookPath !== 'string' ||
+      typeof due !== 'string' ||
+      (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) ||
+      typeof reminder !== 'string' ||
+      (reminder && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(reminder)) ||
+      !['low', 'normal', 'high', 'urgent'].includes(priority as string)
     )
       throw new Error('Enter a single-line task of 1 to 1000 characters.');
     assertCurrent();
@@ -717,7 +728,7 @@ export function createVaultService(
     if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
     await createNote(
       path.posix.join(notebookPath, `Tasks-${randomUUID()}.md`),
-      `- [ ] ${text.trim()}\n`,
+      `- [ ] ${text.trim()}${due ? ` due:${due}` : ''} priority:${priority}${reminder ? ` remind:${reminder}` : ''}\n`,
       'created',
       assertCurrent,
     );

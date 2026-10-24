@@ -13,9 +13,11 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
     const text = checkbox[2].replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '').trim();
     const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
     const priority = text.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase() as VaultTask['priority'];
+    const remindAt = text.match(/(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
     const title = text
       .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
       .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
+      .replace(/(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '')
       .trim();
     return [
       {
@@ -27,6 +29,7 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
         complete: checkbox[1].toLowerCase() === 'x',
         ...(dueDate ? { dueDate } : {}),
         ...(priority ? { priority } : {}),
+        ...(remindAt ? { remindAt } : {}),
       },
     ];
   });
