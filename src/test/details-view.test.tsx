@@ -398,6 +398,34 @@ describe('accessible details view', () => {
     expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
   });
 
+  it('moves back and forward through browsing history with Alt+Arrow keys', async () => {
+    renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+
+    // At the start of history there is nowhere to go back to.
+    fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
+    expect(screen.getAllByText('Nothing to go back to.').length).toBeGreaterThan(0);
+
+    navigate('2');
+    expect(screen.getByRole('heading', { name: 'Notebooks in Study' })).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expectResearchContext();
+
+    fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
+    expect(screen.getByRole('heading', { name: 'Notebooks in Study' })).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'ArrowRight', altKey: true });
+    expectResearchContext();
+
+    // A fresh navigation after going back truncates the forward stack.
+    fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
+    expect(screen.getByRole('heading', { name: 'Notebooks in Study' })).toBeInTheDocument();
+    navigate('0');
+    expect(screen.getByRole('heading', { name: 'Contents in Study' })).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'ArrowRight', altKey: true });
+    expect(screen.getAllByText('Nothing to go forward to.').length).toBeGreaterThan(0);
+  });
+
   it.each([
     { action: 'rename', cancelled: false, watcherRefresh: false },
     { action: 'move', cancelled: false, watcherRefresh: false },

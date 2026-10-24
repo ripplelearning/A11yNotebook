@@ -119,7 +119,7 @@ describe('Settings interface and shortcut capture', () => {
       ['j', { ctrlKey: true, isComposing: true }],
       ['Process', { keyCode: 229 }],
       ['Enter', {}],
-      ['ArrowLeft', { ctrlKey: true }],
+      ['F13', { altKey: true }],
       ['j', {}],
       ['j', { metaKey: true }],
     ] as const) {
@@ -142,6 +142,11 @@ describe('Settings interface and shortcut capture', () => {
     expect(onSave).not.toHaveBeenCalled();
     press('F12', { altKey: true });
     expect(shortcutInput).toHaveValue('Alt+F12');
+    // Navigation keys are supported shortcuts now (Back/Forward
+    // default to Alt+ArrowLeft / Alt+ArrowRight).
+    arm();
+    press('ArrowLeft', { ctrlKey: true });
+    expect(shortcutInput).toHaveValue('Ctrl+ArrowLeft');
   }, 10000);
 
   it('rejects reserved keys and collisions without changing the old value, and permits retry', () => {
