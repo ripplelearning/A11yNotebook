@@ -119,7 +119,8 @@ describe('Help menu', () => {
     const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
     expect(within(dialog).getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
+    // Ctrl+K is deliberately shared: Insert link in the editor, Command Palette elsewhere.
+    expect(within(dialog).getAllByRole('cell', { name: 'Ctrl+K' })).toHaveLength(2);
     const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
     expect(within(searchRow).getByRole('cell', { name: 'Alt+Q' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('cell', { name: 'Ctrl+L' })).not.toBeInTheDocument();
