@@ -68,7 +68,7 @@ export interface VaultTask {
   dueDate?: string;
   /** Optional due time, HH:mm, paired with dueDate. */
   dueTime?: string;
-  /** A priority option name, e.g. Critical, High, Medium, Low, Optional, or a user-added option. */
+  /** A priority option value, lowercase single word, e.g. critical, high, medium, low, optional. */
   priority?: string;
 }
 

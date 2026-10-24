@@ -13,7 +13,7 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
     const text = checkbox[2].replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '').trim();
     const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
     const dueTime = text.match(/due-time:(\d{2}:\d{2})/i)?.[1];
-    const priority = text.match(/priority:([A-Za-z0-9][A-Za-z0-9_-]{0,29})/i)?.[1];
+    const priority = text.match(/priority:([A-Za-z0-9][A-Za-z0-9_-]{0,29})/i)?.[1]?.toLowerCase();
     const title = text
       .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
       .replace(/due-time:\d{2}:\d{2}/gi, '')
@@ -154,7 +154,7 @@ function htmlTaskRecords(content: string) {
     }
     const due = token.attributes.get('data-a11y-task-due')?.value ?? '';
     const dueTime = token.attributes.get('data-a11y-task-due-time')?.value ?? '';
-    const priority = token.attributes.get('data-a11y-task-priority')?.value ?? '';
+    const priority = token.attributes.get('data-a11y-task-priority')?.value?.toLowerCase() ?? '';
     const reminder = token.attributes.get('data-a11y-task-remind')?.value ?? '';
     return [
       {

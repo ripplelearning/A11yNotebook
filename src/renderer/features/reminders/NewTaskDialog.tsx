@@ -66,11 +66,11 @@ export function AssociatedTaskDialog({
   onClose,
   onCreate,
 }: AssociatedTaskProps) {
-  const options = priorityOptions?.length ? priorityOptions : ['Critical', 'High', 'Medium', 'Low', 'Optional'];
+  const options = priorityOptions?.length ? priorityOptions : ['critical', 'high', 'medium', 'low', 'optional'];
   const [path, setPath] = useState(initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''));
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
-  const [priority, setPriority] = useState(options.includes('Medium') ? 'Medium' : (options[0] ?? ''));
+  const [priority, setPriority] = useState(options.includes('medium') ? 'medium' : (options[0] ?? ''));
   useEffect(() => {
     setPath((current) =>
       paths.includes(current) ? current : initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''),

@@ -13,7 +13,7 @@ const task: VaultTask = {
   dueDate: '2026-10-05',
   dueTime: '09:30',
   remindAt: '2026-10-04 08:00',
-  priority: 'High',
+  priority: 'high',
 };
 
 describe('task schedule dialog', () => {
@@ -89,8 +89,8 @@ describe('task priority dialog', () => {
     );
     fireEvent.change(screen.getByLabelText('Add a priority option'), { target: { value: 'Soon' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add option' }));
-    expect(onOptionsChange).toHaveBeenCalledWith([...options, 'Soon']);
+    expect(onOptionsChange).toHaveBeenCalledWith(['critical', 'high', 'medium', 'low', 'optional', 'soon']);
     fireEvent.click(screen.getByRole('button', { name: 'Set priority' }));
-    expect(onSave).toHaveBeenCalledWith('High');
+    expect(onSave).toHaveBeenCalledWith('high');
   });
 });

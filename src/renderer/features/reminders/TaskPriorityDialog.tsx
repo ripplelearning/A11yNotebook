@@ -14,11 +14,15 @@ interface Props {
 }
 
 export default function TaskPriorityDialog({ task, options, onSave, onOptionsChange, onClose }: Props) {
-  const initialOptions = task.priority && !options.some((option) => option.toLowerCase() === task.priority!.toLowerCase())
-    ? [task.priority, ...options]
-    : options;
+  // Stored values are lowercase single words; display capitalizes them.
+  const normalizedOptions = Array.from(new Set(options.map((option) => option.toLowerCase())));
+  const currentPriority = task.priority?.toLowerCase();
+  const initialOptions =
+    currentPriority && !normalizedOptions.includes(currentPriority)
+      ? [currentPriority, ...normalizedOptions]
+      : normalizedOptions;
   const [currentOptions, setCurrentOptions] = useState<string[]>(initialOptions);
-  const [selected, setSelected] = useState(task.priority ?? initialOptions[0] ?? '');
+  const [selected, setSelected] = useState(currentPriority ?? initialOptions[0] ?? '');
   const [newName, setNewName] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
@@ -42,7 +46,7 @@ export default function TaskPriorityDialog({ task, options, onSave, onOptionsCha
     if (!NAME_PATTERN.test(name)) {
       return 'Priority names use one word of letters, digits, hyphens, or underscores (up to 30 characters).';
     }
-    if (currentOptions.some((option) => option.toLowerCase() === name.toLowerCase() && option !== except)) {
+    if (currentOptions.some((option) => option === name && option !== except)) {
       return 'That priority option already exists.';
     }
     return null;
@@ -95,14 +99,14 @@ export default function TaskPriorityDialog({ task, options, onSave, onOptionsCha
                 <form
                   onSubmit={(event) => {
                     event.preventDefault();
-                    const problem = validateName(editName.trim(), option);
+                    const problem = validateName(editName.trim().toLowerCase(), option);
                     if (problem) {
                       setManageError(problem);
                       return;
                     }
                     setManageError('');
-                    const next = currentOptions.map((item) => (item === option ? editName.trim() : item));
-                    if (selected === option) setSelected(editName.trim());
+                    const next = currentOptions.map((item) => (item === option ? editName.trim().toLowerCase() : item));
+                    if (selected === option) setSelected(editName.trim().toLowerCase());
                     setEditing(null);
                     void applyOptions(next).catch((failure: Error) => setManageError(failure.message));
                   }}
@@ -156,13 +160,13 @@ export default function TaskPriorityDialog({ task, options, onSave, onOptionsCha
         <form
           onSubmit={(event) => {
             event.preventDefault();
-            const problem = validateName(newName.trim());
+            const problem = validateName(newName.trim().toLowerCase());
             if (problem) {
               setManageError(problem);
               return;
             }
             setManageError('');
-            const name = newName.trim();
+            const name = newName.trim().toLowerCase();
             setNewName('');
             void applyOptions([...currentOptions, name]).catch((failure: Error) => setManageError(failure.message));
           }}

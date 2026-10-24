@@ -19,7 +19,7 @@ describe('task schedule and priority storage', () => {
     );
     expect(task.dueDate).toBe('2026-10-05');
     expect(task.dueTime).toBe('09:30');
-    expect(task.priority).toBe('Critical');
+    expect(task.priority).toBe('critical');
     expect(task.text).toBe('Read chapter');
   });
 
@@ -58,7 +58,7 @@ describe('task schedule and priority storage', () => {
   });
 
   it('sets and clears an HTML task priority', () => {
-    const updated = updateHtmlTaskPriority(HTML_NOTE, 'task-1234', 'Critical');
+    const updated = updateHtmlTaskPriority(HTML_NOTE, 'task-1234', 'critical');
     expect(updated).toContain('data-a11y-task-priority="Critical"');
     expect(updateHtmlTaskPriority(updated, 'task-1234', '')).not.toContain('data-a11y-task-priority');
     expect(() => updateHtmlTaskPriority(HTML_NOTE, 'task-1234', 'very high')).toThrow();
@@ -67,8 +67,8 @@ describe('task schedule and priority storage', () => {
 
 describe('priority option lists', () => {
   it('defaults, dedupes, and drops multi-word names', () => {
-    expect(normalizePriorityOptions(undefined)).toEqual(['Critical', 'High', 'Medium', 'Low', 'Optional']);
-    expect(normalizePriorityOptions(['High', 'high', 'very high', 'Soon', ''])).toEqual(['High', 'Soon']);
-    expect(normalizePriorityOptions(['very high'])).toEqual(['Critical', 'High', 'Medium', 'Low', 'Optional']);
+    expect(normalizePriorityOptions(undefined)).toEqual(['critical', 'high', 'medium', 'low', 'optional']);
+    expect(normalizePriorityOptions(['High', 'high', 'very high', 'Soon', ''])).toEqual(['high', 'soon']);
+    expect(normalizePriorityOptions(['very high'])).toEqual(['critical', 'high', 'medium', 'low', 'optional']);
   });
 });

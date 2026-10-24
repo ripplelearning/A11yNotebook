@@ -2901,7 +2901,7 @@ export default function App() {
     .filter(
       (task) =>
         taskPriorityFilter === 'all' ||
-        (task.priority ?? 'Medium').toLowerCase() === taskPriorityFilter.toLowerCase(),
+        (task.priority ?? 'medium').toLowerCase() === taskPriorityFilter.toLowerCase(),
     )
     .filter((task) => {
       if (taskDueFilter === 'any') return true;
@@ -2914,7 +2914,7 @@ export default function App() {
         // Options are stored highest first; sorting uses lowest first, unknown values last.
         const order = [...priorityOptions].reverse().map((option) => option.toLowerCase());
         const rank = (priority: string | undefined) => {
-          const index = order.indexOf((priority ?? 'Medium').toLowerCase());
+          const index = order.indexOf((priority ?? 'medium').toLowerCase());
           return index < 0 ? order.length : index;
         };
         return (rank(left.priority) - rank(right.priority)) * (priorityAscending ? 1 : -1);
@@ -3619,7 +3619,7 @@ export default function App() {
                           </th>
                           <td>{notebookForTask(task)}</td>
                           <td>{task.dueDate ?? 'No due date'}</td>
-                          <td>{formatPriorityName(task.priority ?? 'Medium')}</td>
+                          <td>{formatPriorityName(task.priority ?? 'medium')}</td>
                         </tr>
                       ))}
                     </tbody>

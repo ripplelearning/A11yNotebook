@@ -34,12 +34,19 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   backgroundReminders: false,
 };
 
-export const DEFAULT_PRIORITY_OPTIONS = ['Critical', 'High', 'Medium', 'Low', 'Optional'];
+/**
+ * Canonical priority values are lowercase single words; display capitalizes
+ * them. Lowercasing here keeps stored values stable across the old
+ * low/normal/high/urgent set, the new Critical/High/Medium/Low/Optional
+ * set, and user-added options, so filters, sorting, and existing task
+ * lines keep working.
+ */
+export const DEFAULT_PRIORITY_OPTIONS = ['critical', 'high', 'medium', 'low', 'optional'];
 
 /**
  * Normalize a stored priority list: keep single-word names (letters, digits,
- * hyphens, underscores), drop blanks and case-insensitive duplicates, and
- * fall back to the defaults when nothing valid remains.
+ * hyphens, underscores), lowercased, drop blanks and duplicates, and fall
+ * back to the defaults when nothing valid remains.
  */
 export function normalizePriorityOptions(options: unknown): string[] {
   if (!Array.isArray(options)) return [...DEFAULT_PRIORITY_OPTIONS];
@@ -47,11 +54,10 @@ export function normalizePriorityOptions(options: unknown): string[] {
   const normalized: string[] = [];
   for (const option of options) {
     if (typeof option !== 'string') continue;
-    const value = option.trim();
+    const value = option.trim().toLowerCase();
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(value)) continue;
-    const key = value.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
+    if (seen.has(value)) continue;
+    seen.add(value);
     normalized.push(value);
   }
   return normalized.length ? normalized : [...DEFAULT_PRIORITY_OPTIONS];
