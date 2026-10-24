@@ -59,7 +59,7 @@ describe('task schedule and priority storage', () => {
 
   it('sets and clears an HTML task priority', () => {
     const updated = updateHtmlTaskPriority(HTML_NOTE, 'task-1234', 'critical');
-    expect(updated).toContain('data-a11y-task-priority="Critical"');
+    expect(updated).toContain('data-a11y-task-priority="critical"');
     expect(updateHtmlTaskPriority(updated, 'task-1234', '')).not.toContain('data-a11y-task-priority');
     expect(() => updateHtmlTaskPriority(HTML_NOTE, 'task-1234', 'very high')).toThrow();
   });
