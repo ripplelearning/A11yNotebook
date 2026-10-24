@@ -283,6 +283,8 @@ a separate read-only reviewer identified two reminder issues that were fixed and
 
 ## October 23, 2026 completion batch (PRs #69–#94)
 
+- **Notebook silo browsing (PR #101):** Notes and Files shows only the selected notebook's items; with no notebook selected it shows guidance instead of the whole library. Cross-notebook discovery is global search's job.
+- **Browsing history (PR #101):** Back / Forward commands on Alt+ArrowLeft / Alt+ArrowRight move through previously viewed tabs and notebook contexts (pure history model, restores never re-record); the shortcut validator and Settings capture also accept named navigation keys (arrows, Home, End, PageUp, PageDown) with Ctrl/Alt.
 - **PRs #69–#75 — continuation-plan items:** reference-style Markdown link repair; crash-atomic multi-file moves with a write-ahead journal; heading/position bookmarks; guaranteed fallback undo via the command palette; general recovery mode for malformed structured drafts; general YAML front-matter metadata editing; the shared reader capability contract with Markdown/HTML annotation parity and copyable note annotations.
 - **PRs #76–#79 — DOCX and ePub annotations:** anchor models, shared versioned annotation store envelopes, reader UI with anchored/ambiguous/orphan status, jump/edit/delete, and clipboard export with original quotes.
 - **PRs #80–#82 — PDF Phase 7 and mind maps:** cross-page grouped notes; PDF lifecycle/resource-limit validation with an idempotent destroy; rich mind-map visual layouts (hierarchical and radial) with the semantic keyboard tree remaining authoritative.
