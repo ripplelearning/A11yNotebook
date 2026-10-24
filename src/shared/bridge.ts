@@ -133,7 +133,13 @@ export interface VaultBridge {
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
-  createTask?(input: { notebookPath?: string; text: string }): Promise<VaultTask[]>;
+  createTask?(input: {
+    notebookPath?: string;
+    text: string;
+    due?: string;
+    reminder?: string;
+    priority?: string;
+  }): Promise<VaultTask[]>;
   toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;
   setHtmlTaskDueDate(path: string, taskId: string, dueDate: string, revision: string): Promise<VaultTask[]>;
   getLinkIndex(): Promise<VaultLinkIndex>;

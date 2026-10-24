@@ -32,6 +32,20 @@ describe('trusted creation and import workflows', () => {
     expect(await service.getProvenance(first[0].path)).toBe('app-created');
   });
 
+  it('stores due date, reminder time, and priority on a created task note', async () => {
+    const [created] = await service.createTask({
+      text: 'Dated task',
+      due: '2026-11-01',
+      reminder: '2026-11-01 09:00',
+      priority: 'high',
+    });
+    expect(created.dueDate).toBe('2026-11-01');
+    expect(created.priority).toBe('high');
+    expect(created.remindAt).toBe('2026-11-01 09:00');
+    await expect(service.createTask({ text: 'Bad due', due: 'Nov 1' })).rejects.toThrow();
+    await expect(service.createTask({ text: 'Bad priority', priority: 'critical' })).rejects.toThrow();
+  });
+
   it('rejects malformed tasks and queued revoked access without creating files', async () => {
     for (const input of [
       null,

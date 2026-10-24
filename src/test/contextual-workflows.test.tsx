@@ -194,7 +194,7 @@ describe('contextual navigation and creation', () => {
     fireEvent.change(input, { target: { value: 'Plan review' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() =>
-      expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath: 'Research', text: 'Plan review' }),
+      expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath: 'Research', text: 'Plan review', due: undefined, reminder: undefined, priority: 'normal' }),
     );
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
   });
@@ -234,7 +234,7 @@ describe('contextual navigation and creation', () => {
         target: { value: 'Review plan' },
       });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-      await waitFor(() => expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath, text: 'Review plan' }));
+      await waitFor(() => expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath, text: 'Review plan', due: undefined, reminder: undefined, priority: 'normal' }));
     },
   );
 

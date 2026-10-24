@@ -37,6 +37,23 @@ describe('Markdown task indexing', () => {
     ]);
   });
 
+  it('parses a reminder time into remindAt, like the HTML task shape', () => {
+    expect(
+      parseMarkdownTasks('- [ ] Call back due:2026-11-01 priority:normal remind:2026-11-01 09:00', 'Class.md'),
+    ).toEqual([
+      {
+        id: 'Class.md:1',
+        path: 'Class.md',
+        line: 1,
+        text: 'Call back',
+        complete: false,
+        dueDate: '2026-11-01',
+        priority: 'normal',
+        remindAt: '2026-11-01 09:00',
+      },
+    ]);
+  });
+
   describe('HTML checklist tasks', () => {
     const task =
       '<li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="2026-10-05" data-a11y-task-priority="high"><strong>Read</strong> chapter</li>';
