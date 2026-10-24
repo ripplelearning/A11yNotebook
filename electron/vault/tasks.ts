@@ -14,10 +14,12 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
     const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
     const dueTime = text.match(/due-time:(\d{2}:\d{2})/i)?.[1];
     const priority = text.match(/priority:([A-Za-z0-9][A-Za-z0-9_-]{0,29})/i)?.[1]?.toLowerCase();
+    const remindAt = text.match(/(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
     const title = text
       .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
       .replace(/due-time:\d{2}:\d{2}/gi, '')
       .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
+      .replace(/(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '')
       .trim();
     return [
       {
@@ -30,6 +32,7 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
         ...(dueDate ? { dueDate } : {}),
         ...(dueTime ? { dueTime } : {}),
         ...(priority ? { priority } : {}),
+        ...(remindAt ? { remindAt } : {}),
       },
     ];
   });

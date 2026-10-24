@@ -30,6 +30,20 @@ export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   createLibrary?(): Promise<VaultInfo | null>;
   backupLibrary?(): Promise<{ cancelled: boolean; path?: string; files?: number; bytes?: number }>;
+  /** Resolve an OS-copied File to its filesystem path. Unverified on real Windows clipboard paste. */
+  getPathForFile?(file: File): string;
+  pasteInspect?(source: string): Promise<{
+    kind: 'folder' | 'file';
+    name: string;
+    folders: string[];
+    files: string[];
+  }>;
+  pasteChooseFolder?(title: string): Promise<string | null>;
+  pasteLibraryCopy?(source: string, parent: string): Promise<{ path: string; files: number; bytes: number }>;
+  pasteLibraryOpen?(source: string): Promise<import('./types').VaultInfo>;
+  pasteNotebook?(source: string): Promise<{ notebook: string; files: number }>;
+  pasteFiles?(sources: string[], notebookPath: string): Promise<{ files: string[] }>;
+  pasteOrganize?(libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file'): Promise<string[]>;
   getRecentLibraries?(): Promise<RecentLibrary[]>;
   openLibraryPath?(path: string): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;
@@ -133,7 +147,13 @@ export interface VaultBridge {
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   getTasks(): Promise<VaultTask[]>;
-  createTask?(input: { notebookPath?: string; text: string }): Promise<VaultTask[]>;
+  createTask?(input: {
+    notebookPath?: string;
+    text: string;
+    due?: string;
+    reminder?: string;
+    priority?: string;
+  }): Promise<VaultTask[]>;
   toggleTask(path: string, location: string | number, complete: boolean, revision?: string): Promise<VaultTask[]>;
   setHtmlTaskDueDate(path: string, taskId: string, dueDate: string, revision: string): Promise<VaultTask[]>;
   setHtmlTaskSchedule?(

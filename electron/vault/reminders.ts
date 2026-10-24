@@ -66,7 +66,10 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
         title:
           task[2]
             .replace(marker[0], '')
+            .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+            .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
             .replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '')
+            .replace(/\s+/g, ' ')
             .trim() || 'Task reminder',
         path,
         line: index + 1,

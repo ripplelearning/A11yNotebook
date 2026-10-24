@@ -1,6 +1,6 @@
 // Preload runs in a sandbox, so it may only require('electron'). Everything imported
 // from src/shared below is type-only and erased at compile time.
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from 'electron';
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from 'electron';
 import type { NotebookBridge } from '../src/shared/bridge';
 import type { IPC_CHANNELS as SharedChannels, MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import type { UpdaterStatus } from '../src/shared/updater';
@@ -26,6 +26,13 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenPath: 'vault:open-path',
   vaultCreateLibrary: 'vault:create-library',
   vaultBackupLibrary: 'vault:backup-library',
+  vaultPasteInspect: 'vault:paste-inspect',
+  vaultPasteChooseFolder: 'vault:paste-choose-folder',
+  vaultPasteLibraryCopy: 'vault:paste-library-copy',
+  vaultPasteLibraryOpen: 'vault:paste-library-open',
+  vaultPasteNotebook: 'vault:paste-notebook',
+  vaultPasteFiles: 'vault:paste-files',
+  vaultPasteOrganize: 'vault:paste-organize',
   vaultCreateTask: 'vault:create-task',
   vaultOpenWith: 'vault:open-with',
   vaultGet: 'vault:get',
@@ -165,6 +172,17 @@ const bridge: NotebookBridge = {
     openLibraryPath: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultOpenPath, libraryPath),
     createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
     backupLibrary: () => ipcRenderer.invoke(CHANNELS.vaultBackupLibrary),
+    getPathForFile: (file: File) => webUtils.getPathForFile(file),
+    pasteInspect: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteInspect, source),
+    pasteChooseFolder: (title: string) => ipcRenderer.invoke(CHANNELS.vaultPasteChooseFolder, title),
+    pasteLibraryCopy: (source: string, parent: string) =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteLibraryCopy, source, parent),
+    pasteLibraryOpen: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteLibraryOpen, source),
+    pasteNotebook: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteNotebook, source),
+    pasteFiles: (sources: string[], notebookPath: string) =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteFiles, sources, notebookPath),
+    pasteOrganize: (libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file') =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteOrganize, libraryPath, orphanFiles, mode),
     createTask: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateTask, input),
     openWith: (relativePath, options) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath, options),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),
