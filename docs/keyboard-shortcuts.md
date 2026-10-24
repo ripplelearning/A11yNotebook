@@ -32,7 +32,6 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Alt+2          | Focus main content         |
 | Alt+3          | Focus right pane           |
 | Ctrl+Shift+P   | Command Palette            |
-| Ctrl+K         | Command Palette            |
 | F5             | Refresh links              |
 | F1             | Keyboard Shortcuts         |
 

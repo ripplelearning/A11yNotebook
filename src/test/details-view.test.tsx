@@ -438,7 +438,7 @@ describe('accessible details view', () => {
     expect(screen.getByRole('heading', { name: 'Notebooks in Study' })).toBeInTheDocument();
     navigate('3');
     expectResearchContext();
-    navigate('k');
+    fireEvent.keyDown(document, { key: 'p', ctrlKey: true, shiftKey: true });
     const palette = screen.getByRole('dialog', { name: 'Command palette' });
     expect(within(palette).getByRole('searchbox', { name: 'Search commands' })).toHaveFocus();
     fireEvent.change(within(palette).getByRole('searchbox'), { target: { value: 'show-notes-files' } });
@@ -673,5 +673,19 @@ describe('accessible details view', () => {
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     fireEvent.keyDown(editor, { key: 'k', ctrlKey: true });
     expect(await screen.findByRole('dialog', { name: 'Insert link' })).toBeInTheDocument();
+  });
+
+  it('titles the window with the current view and names the tasks grid for its library', async () => {
+    const { menu } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    menu('show-notebooks');
+    expect(document.title).toBe('Notebooks | Study');
+    menu('show-tasks');
+    expect(await screen.findByRole('table', { name: 'Tasks in Study' })).toBeInTheDocument();
+    expect(document.title).toBe('Tasks | Study');
+    menu('show-assets');
+    expect(document.title).toBe('Cognitive Tools | Study');
+    menu('show-notes-files');
+    expect(document.title).toBe('Files | Study');
   });
 });

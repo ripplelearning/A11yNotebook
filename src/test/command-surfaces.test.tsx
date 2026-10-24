@@ -301,7 +301,7 @@ describe('command surface visibility', () => {
     expect(screen.getByRole('dialog', { name: 'Settings' })).toBe(dialog);
     fireEvent.keyDown(dialog, { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     expect(screen.getByRole('dialog', { name: 'Command palette' })).toBeInTheDocument();
   });
 

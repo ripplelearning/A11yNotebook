@@ -60,7 +60,7 @@ describe('PDF contextual command routing', () => {
 
   it('explains palette PDF commands when no PDF is open', async () => {
     render(<App />);
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     fireEvent.click(await screen.findByRole('button', { name: 'Annotate PDF selection' }));
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Open a PDF before adding a PDF note.');
   });

@@ -101,9 +101,9 @@ describe('focus commands', () => {
 });
 
 describe('command palette', () => {
-  it('opens with Ctrl+K and finds legacy command names without changing displayed labels', () => {
+  it('opens with Ctrl+Shift+P and finds legacy command names without changing displayed labels', () => {
     render(<App />);
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     const search = within(dialog).getByRole('searchbox', { name: 'Search commands' });
 
@@ -118,7 +118,7 @@ describe('command palette', () => {
     render(<App />);
     const opener = screen.getByRole('button', { name: /^(?:Open command search|Command Palette)$/i });
     opener.focus();
-    fireEvent.keyDown(opener, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(opener, { key: 'p', ctrlKey: true, shiftKey: true });
 
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     expect(dialog).toHaveAttribute('aria-modal', 'true');

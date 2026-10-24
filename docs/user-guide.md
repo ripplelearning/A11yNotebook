@@ -135,7 +135,7 @@ library, check both the installed and portable builds:
   unsafe HTML is removed, the original is unchanged, and rename/move/reopen retain the copy's provenance.
 
 The native Format menu and contextual formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
-Ctrl+B/Ctrl+I format the selection; Ctrl+Shift+L opens a link dialog with a note picker. The table dialog chooses
+Ctrl+B/Ctrl+I format the selection; Ctrl+K (or Ctrl+Shift+L) opens a link dialog with a note picker. The table dialog chooses
 rows and columns. Insert image or attachment chooses an already imported library file and requires a text description.
 Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
 headings, lists, block quotes, code, links, tables, and local images with required descriptions. Format conversion
@@ -428,7 +428,8 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
 | Alt+Q                                                        | Focus global search                            |
-| Ctrl+K                                                       | Open command palette                           |
+| Ctrl+Shift+P                                                 | Open command palette                           |
+| Ctrl+K                                                       | Insert link                                    |
 | Ctrl+Tab / Ctrl+Shift+Tab                                    | Switch to next / previous open tab             |
 | Ctrl+S                                                       | Save the current note                          |
 | Ctrl+D                                                       | Bookmark or unbookmark the current note        |

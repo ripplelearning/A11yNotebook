@@ -117,7 +117,7 @@ describe('milestone shell wiring', () => {
   it('is discoverable through keyboard command search and does not leave the palette open', async () => {
     setup();
     await ready();
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     const search = screen.getByRole('searchbox', { name: 'Search commands' });
     expect(search).toHaveFocus();
     fireEvent.change(search, { target: { value: 'milestone' } });

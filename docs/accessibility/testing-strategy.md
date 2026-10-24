@@ -14,7 +14,7 @@ A11y Notebook needs to pass both automated checks and human verification. The go
 ## Keyboard interaction tests
 
 - F6 and Shift+F6 move real keyboard focus through navigation → tabs → main → right pane → status bar and wrap. Shift+F6 moves back exactly one pane, and the hidden right pane is skipped (`src/test/focus-management.test.tsx`).
-- Ctrl+K opens the command palette and focuses its search box. Tab and Shift+Tab stay inside it, and Escape closes it and returns focus to where it was.
+- Ctrl+Shift+P opens the command palette and focuses its search box. Tab and Shift+Tab stay inside it, and Escape closes it and returns focus to where it was.
 - Tabs follow the WAI-ARIA tabs pattern: arrow keys, Home, and End move focus and selection, and tabindex is roving.
 - Native menu commands route through the typed command bridge; modal dialogs block subsequent menu commands, keep focus inside, close on Escape, and restore renderer focus (`src/test/help-menu.test.tsx`).
 - The update dialog walks through check → available → consented download → progress → install. Progress is announced every 10 percent and errors are announced as alerts.

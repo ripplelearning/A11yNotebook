@@ -2618,26 +2618,13 @@ export default function App() {
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
-    const matching = COMMANDS.filter((item) => {
+    const command = COMMANDS.find((item) => {
       const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
       return (
         (shortcut && matchesShortcut(event, shortcut)) ||
         item.shortcutAliases?.some((alias) => matchesShortcut(event, alias))
       );
     });
-    // Ctrl+K is shared: in the editing area, in edit mode, it inserts a
-    // link; everywhere else it opens the command palette. A context match
-    // wins in its own context, and a general match wins outside it, so
-    // neither binding swallows the other.
-    const editingArea =
-      mode === 'edit' &&
-      !!currentNote &&
-      event.target instanceof Element &&
-      event.target.closest('textarea, [contenteditable="true"], [role="textbox"]');
-    const command =
-      (editingArea
-        ? matching.find((item) => item.contexts?.includes('editor-selection'))
-        : matching.find((item) => !item.contexts?.includes('editor-selection'))) ?? matching[0];
     if (command) {
       const editing =
         event.target instanceof Element &&
@@ -2926,12 +2913,37 @@ export default function App() {
     const setMenuState = window.a11yNotebook?.setMenuState;
     if (setMenuState) setMenuState(JSON.parse(nativeMenuStateJson) as NativeMenuState);
   }, [nativeMenuStateJson]);
+  // The titlebar names the current view and the current library, in
+  // exactly the form "View | Library", so keyboard view switches update
+  // it immediately. An open note keeps its title only while it is the
+  // selected tab, in the same "Note | Library" form. With no library
+  // open, the app name stands in for the library.
+  const titleView =
+    activeDialog === 'settings'
+      ? 'Settings'
+      : selectedTab === 'libraries'
+        ? 'Libraries'
+        : selectedTab === 'notebooks'
+          ? 'Notebooks'
+          : selectedTab === 'notes-files'
+            ? 'Files'
+            : selectedTab === 'tasks'
+              ? 'Tasks'
+              : selectedTab === 'assets'
+                ? 'Cognitive Tools'
+                : selectedTab === 'contents'
+                  ? 'Contents'
+                  : selectedTab === 'reminders'
+                    ? 'Reminders'
+                    : selectedTab === 'milestones'
+                      ? 'Milestones'
+                      : activeViewTitle;
   useEffect(() => {
     document.title =
-      currentNote && vault
-        ? `${currentNote.title} – ${vault.name} – A11y Notebook`
-        : `A11y Notebook${vault ? ` – ${vault.name}` : ''}`;
-  }, [currentNote, vault]);
+      currentNote && vault && selectedTab === currentNote.id
+        ? `${currentNote.title} | ${vault.name}`
+        : `${titleView} | ${vault?.name ?? 'A11y Notebook'}`;
+  }, [titleView, currentNote, vault, selectedTab]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 
@@ -3363,7 +3375,7 @@ export default function App() {
                 </div>
                 <div className="table-scroll">
                   <table>
-                    <caption>Markdown and HTML checklist tasks in the open library</caption>
+                    <caption>{vault ? `Tasks in ${vault.name}` : 'Tasks in the open library'}</caption>
                     <thead>
                       <tr>
                         <th scope="col">Task</th>
@@ -3544,7 +3556,7 @@ export default function App() {
                 <h2>Welcome to A11y Notebook</h2>
                 <p>Open or create a local library to begin organizing Markdown notes and attachments.</p>
                 <p>
-                  Use F6 and Shift+F6 to move between panes, Ctrl+K for commands, and Ctrl+E to switch read/edit mode.
+                  Use F6 and Shift+F6 to move between panes, Ctrl+Shift+P for commands, Ctrl+K to insert a link, and Ctrl+E to switch read/edit mode.
                 </p>
               </div>
             )}

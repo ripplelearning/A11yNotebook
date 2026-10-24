@@ -652,7 +652,6 @@ export const COMMANDS: CommandDefinition[] = [
     aliases: ['Open command search'],
     description: 'Open the command palette to run key commands.',
     shortcut: 'Ctrl+Shift+P',
-    shortcutAliases: ['Ctrl+K'],
     contexts: ['general'],
   },
   {

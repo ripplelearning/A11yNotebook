@@ -120,7 +120,7 @@ describe('local vault workflow', () => {
     ).toHaveAttribute('aria-selected', 'true');
     act(() => menuListener?.('show-tasks'));
     const taskTable = await screen.findByRole('table', {
-      name: 'Markdown and HTML checklist tasks in the open library',
+      name: 'Tasks in Study',
     });
     fireEvent.click(within(taskTable).getByRole('checkbox', { name: 'Submit' }));
     await waitFor(() =>
