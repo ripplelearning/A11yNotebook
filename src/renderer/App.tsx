@@ -286,6 +286,13 @@ export default function App() {
   // even when the textarea's native undo stack is unavailable.
   const editHistoriesRef = useRef(new Map<string, EditHistory>());
   const noteSnapshotsRef = useRef(new Map<string, EditSnapshot>());
+  // Undoable task toggles, newest last. A toggle writes straight to its
+  // note file and never enters the note edit history, so without this
+  // stack Edit Undo / Ctrl+Z could not reverse an accidental check-off.
+  const taskToggleUndoRef = useRef<
+    Array<{ path: string; line?: number; taskId?: string; htmlTask: boolean; completeBefore: boolean }>
+  >([]);
+  const undoTaskToggleRef = useRef<() => Promise<boolean>>(async () => false);
   const [, setHistoryVersion] = useState(0);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
@@ -371,10 +378,28 @@ export default function App() {
     return false;
   };
 
-  const stepEditHistory = (direction: 'undo' | 'redo') => {
-    // No recorded history for this note: fall back to the native undo so
-    // fields outside the note editor keep their standard behavior.
-    if (!applyEditHistory(direction)) document.execCommand(direction);
+  const stepEditHistory = async (direction: 'undo' | 'redo') => {
+    // Note edits undo first (most recent action wins). When the active
+    // note has no step, an accidental task check-off is next: reverse
+    // the last recorded toggle. Otherwise fall back to the native undo
+    // so fields outside the note editor keep their standard behavior.
+    if (direction === 'undo') {
+      if (applyEditHistory('undo')) return;
+      if (await undoTaskToggleRef.current()) return;
+      try {
+        document.execCommand('undo');
+      } catch {
+        // No native undo target (e.g. a non-editor view with nothing to undo).
+      }
+      return;
+    }
+    if (!applyEditHistory('redo')) {
+      try {
+        document.execCommand('redo');
+      } catch {
+        // As above.
+      }
+    }
   };
 
   // Ctrl+Z / Ctrl+Shift+Z / Ctrl+Y are reserved native editing keys: the
@@ -395,7 +420,16 @@ export default function App() {
       const direction =
         key === 'z' && !event.shiftKey ? 'undo' : key === 'z' || key === 'y' ? 'redo' : null;
       if (!direction) return;
-      if (applyEditHistoryRef.current(direction)) event.preventDefault();
+      if (applyEditHistoryRef.current(direction)) {
+        event.preventDefault();
+        return;
+      }
+      // In the editor with no note step, Ctrl+Z still reverses a task
+      // toggle made from Tasks, instead of falling through to nothing.
+      if (direction === 'undo' && taskToggleUndoRef.current.length) {
+        event.preventDefault();
+        void undoTaskToggleRef.current();
+      }
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
@@ -2025,7 +2059,7 @@ export default function App() {
     }
   };
 
-  const toggleTask = async (task: VaultTask) => {
+  const toggleTask = async (task: VaultTask, recordUndo = true) => {
     if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
       setStatusMessage('Save or resolve unsaved note changes before toggling this task.');
       return;
@@ -2038,6 +2072,15 @@ export default function App() {
         task.revision,
       );
       if (!updated) return;
+      if (recordUndo && ((task.htmlTask && task.taskId) || task.line)) {
+        taskToggleUndoRef.current.push({
+          path: task.path,
+          line: task.line,
+          taskId: task.taskId,
+          htmlTask: !!task.htmlTask,
+          completeBefore: task.complete,
+        });
+      }
       setTasks(updated);
       const nextComplete = !task.complete;
       const note = openNotes.find((item) => item.path === task.path);
@@ -2063,6 +2106,41 @@ export default function App() {
       setStatusMessage('Could not update the task.');
     }
   };
+  /** Reverse the most recent task toggle, if it can still be found. */
+  const undoLastTaskToggle = async (): Promise<boolean> => {
+    const entry = taskToggleUndoRef.current.pop();
+    if (!entry) return false;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getTasks || !bridge?.toggleTask) {
+      taskToggleUndoRef.current.push(entry);
+      return false;
+    }
+    if (
+      openNotes.some((note) => note.path === entry.path && note.content !== note.saved) ||
+      activeConflict
+    ) {
+      taskToggleUndoRef.current.push(entry);
+      setStatusMessage('Save or resolve unsaved note changes before undoing this task.');
+      return true;
+    }
+    try {
+      const current = (await bridge.getTasks()).find((task) =>
+        entry.htmlTask ? task.taskId === entry.taskId : task.path === entry.path && task.line === entry.line,
+      );
+      if (!current || current.complete === entry.completeBefore) {
+        setStatusMessage('That task has changed since it was toggled, so it was not undone.');
+        return true;
+      }
+      await toggleTask(current, false);
+      setStatusMessage('Undid the task change.');
+      return true;
+    } catch {
+      taskToggleUndoRef.current.push(entry);
+      setStatusMessage('Could not undo the task change.');
+      return true;
+    }
+  };
+  undoTaskToggleRef.current = undoLastTaskToggle;
   const completeReminder = async (reminder: Reminder) => {
     if (
       switchingRef.current ||
@@ -2777,7 +2855,7 @@ export default function App() {
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
     if (id === 'edit-undo') {
       const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
-      return !history || !canUndo(history);
+      return (!history || !canUndo(history)) && taskToggleUndoRef.current.length === 0;
     }
     if (id === 'edit-redo') {
       const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
