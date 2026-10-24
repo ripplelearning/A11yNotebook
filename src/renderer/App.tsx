@@ -2913,12 +2913,37 @@ export default function App() {
     const setMenuState = window.a11yNotebook?.setMenuState;
     if (setMenuState) setMenuState(JSON.parse(nativeMenuStateJson) as NativeMenuState);
   }, [nativeMenuStateJson]);
+  // The titlebar names the current view first, so keyboard view switches
+  // are announced by the window title itself. An open note keeps its
+  // existing title only while it is the selected tab.
+  const titleView =
+    activeDialog === 'settings'
+      ? 'Settings'
+      : selectedTab === 'libraries'
+        ? 'Libraries'
+        : selectedTab === 'notebooks'
+          ? 'Notebooks'
+          : selectedTab === 'notes-files'
+            ? selectedNotebookName
+              ? `Notes and Files in ${selectedNotebookName}`
+              : 'Notes and Files'
+            : selectedTab === 'tasks'
+              ? 'Tasks'
+              : selectedTab === 'assets'
+                ? 'Cognitive Tools'
+                : selectedTab === 'contents'
+                  ? 'Contents'
+                  : selectedTab === 'reminders'
+                    ? 'Reminders'
+                    : selectedTab === 'milestones'
+                      ? 'Milestones'
+                      : activeViewTitle;
   useEffect(() => {
     document.title =
-      currentNote && vault
+      currentNote && vault && selectedTab === currentNote.id
         ? `${currentNote.title} – ${vault.name} – A11y Notebook`
-        : `A11y Notebook${vault ? ` – ${vault.name}` : ''}`;
-  }, [currentNote, vault]);
+        : [titleView, vault?.name, 'A11y Notebook'].filter(Boolean).join(' – ');
+  }, [titleView, currentNote, vault, selectedTab]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 
@@ -3350,7 +3375,7 @@ export default function App() {
                 </div>
                 <div className="table-scroll">
                   <table>
-                    <caption>Markdown and HTML checklist tasks in the open library</caption>
+                    <caption>{vault ? `Tasks in ${vault.name}` : 'Tasks in the open library'}</caption>
                     <thead>
                       <tr>
                         <th scope="col">Task</th>
