@@ -66,7 +66,10 @@ export interface VaultTask {
   text: string;
   complete: boolean;
   dueDate?: string;
-  priority?: 'low' | 'normal' | 'high' | 'urgent';
+  /** Optional due time, HH:mm, paired with dueDate. */
+  dueTime?: string;
+  /** A priority option name, e.g. Critical, High, Medium, Low, Optional, or a user-added option. */
+  priority?: string;
 }
 
 export interface VaultCaptureResult {
