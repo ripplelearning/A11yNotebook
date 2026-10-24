@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { sanitizeNoteHtml } from './sanitize-html';
+import { detectSmartTrigger } from './smart-formatting';
 
 interface Props {
   content: string;
@@ -77,6 +78,62 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
     onChange(next);
   };
 
+  const emitChange = () => {
+    if (!editor.current) return;
+    const next = sanitizeNoteHtml(editor.current.innerHTML, notePath);
+    if (editor.current.innerHTML !== next) editor.current.innerHTML = next;
+    onChange(next);
+  };
+
+  const onEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    const target = editor.current;
+    if (!target) return;
+    const selection = window.getSelection();
+    if (!selection?.isCollapsed || !selection.anchorNode) return;
+    const anchor = selection.anchorNode;
+    const anchorElement = anchor instanceof Element ? anchor : anchor.parentElement;
+    const listItem = anchorElement?.closest('li');
+
+    if (event.key === 'Enter' && listItem && listItem.textContent?.trim() === '') {
+      // Second Enter, on the empty item a first Enter created: leave the list.
+      event.preventDefault();
+      const list = listItem.closest('ol, ul');
+      document.execCommand(list?.tagName === 'OL' ? 'insertOrderedList' : 'insertUnorderedList');
+      emitChange();
+      return;
+    }
+
+    if (event.key !== ' ' || listItem) return;
+    const block = anchorElement?.closest('p, div, h1, h2, h3, h4, h5, h6, blockquote, pre');
+    if (!block || !target.contains(block) || block.tagName === 'PRE') return;
+    const beforeRange = document.createRange();
+    beforeRange.setStart(block, 0);
+    beforeRange.setEnd(selection.anchorNode, selection.anchorOffset);
+    const trigger = detectSmartTrigger(beforeRange.toString());
+    if (!trigger) return;
+    event.preventDefault();
+    beforeRange.deleteContents();
+    if (trigger.type === 'heading') {
+      document.execCommand('formatBlock', false, `h${trigger.level}`);
+    } else if (trigger.type === 'ordered') {
+      document.execCommand('insertOrderedList');
+      const list = selection.anchorNode instanceof Element
+        ? selection.anchorNode.closest('ol')
+        : selection.anchorNode?.parentElement?.closest('ol');
+      if (list && trigger.start !== 1) list.setAttribute('start', String(trigger.start));
+    } else if (trigger.type === 'unordered') {
+      document.execCommand('insertUnorderedList');
+    } else {
+      const id = crypto.randomUUID();
+      document.execCommand(
+        'insertHTML',
+        false,
+        `<ul><li data-a11y-task-id="${id}" data-a11y-task-complete="${trigger.checked}" data-a11y-task-due="" data-a11y-task-priority="normal"></li></ul>`,
+      );
+    }
+    emitChange();
+  };
+
   const onToolbarKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const offset = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0;
     const next =
@@ -118,6 +175,7 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
         data-path={notePath}
         contentEditable
         suppressContentEditableWarning
+        onKeyDown={onEditorKeyDown}
         onInput={() => {
           if (!editor.current) return;
           const next = sanitizeNoteHtml(editor.current.innerHTML, notePath);
