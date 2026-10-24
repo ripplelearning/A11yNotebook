@@ -48,6 +48,7 @@ export function buildApplicationMenu(
       submenu: [
         commandItem('open-vault'),
         commandItem('new-library'),
+        commandItem('backup-library'),
         { type: 'separator' },
         commandItem('new-contextual'),
         commandItem('new-notebook'),

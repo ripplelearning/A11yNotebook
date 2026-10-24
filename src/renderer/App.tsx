@@ -177,6 +177,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
     items: [
       'open-vault',
       'new-library',
+      'backup-library',
       'new-contextual',
       'new-notebook',
       'new-note',
@@ -2475,6 +2476,23 @@ export default function App() {
       openLibrary(commandId === 'new-library');
       return;
     }
+    if (commandId === 'backup-library') {
+      if (!vault || !window.a11yNotebook?.vault.backupLibrary) {
+        setStatusMessage('Open a library before backing it up.');
+        return;
+      }
+      void window.a11yNotebook.vault
+        .backupLibrary()
+        .then((result) => {
+          if (result.cancelled) setStatusMessage('Library backup cancelled.');
+          else
+            setStatusMessage(
+              `Library backup complete: ${result.files} files copied to ${result.path}. Open that folder as a library to restore it.`,
+            );
+        })
+        .catch(() => setStatusMessage('Could not back up the library.'));
+      return;
+    }
     if (commandId === 'new-notebook') {
       if (!vault || !window.a11yNotebook) {
         setStatusMessage('Open a library before creating a notebook.');
@@ -2810,6 +2828,7 @@ export default function App() {
         'show-assets',
         'show-notebooks',
         'show-notes-files',
+        'backup-library',
       ].includes(id)
     )
       return !vault;

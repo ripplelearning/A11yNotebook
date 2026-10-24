@@ -363,6 +363,21 @@ describe('accessible details view', () => {
     ).toBeInTheDocument();
   });
 
+  it('backs up the library from the File menu and announces the result', async () => {
+    window.localStorage.clear();
+    const { bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const backup = vi.fn(async () => ({ cancelled: false, path: 'C:/Backups/Study backup', files: 3, bytes: 42 }));
+    (bridge.vault as unknown as { backupLibrary: unknown }).backupLibrary = backup;
+    fireEvent.click(screen.getByRole('button', { name: 'Back up library' }));
+    await waitFor(() => expect(backup).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(
+        screen.getAllByText(/Library backup complete: 3 files copied to C:\/Backups\/Study backup\./).length,
+      ).toBeGreaterThan(0),
+    );
+  });
+
   it('does not search the whole library when current-notebook scope has no notebook selected', async () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();

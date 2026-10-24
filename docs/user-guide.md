@@ -5,6 +5,13 @@
 Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
 as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
 
+Choose **File → Back up library** to copy the whole open library to a new timestamped folder inside a folder you
+choose. The copy includes the library's private metadata, so the backup folder opens as a library in its own right.
+Encrypted files stay encrypted in the copy: nothing is decrypted for the backup. The app counts the copied files and
+verifies the copy matches the library before reporting success; a failed copy is removed rather than left behind as
+a partial backup. The backup never overwrites an existing folder, and it refuses a destination inside the library
+or one that contains it.
+
 ## Create in the current view
 
 **New** (Ctrl+N by default) creates the kind of item appropriate to the active view:
