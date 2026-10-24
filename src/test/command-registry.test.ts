@@ -88,15 +88,21 @@ describe('command registry', () => {
     ]);
   });
 
-  it('keeps legacy command names searchable and the Ctrl+K palette shortcut active', () => {
+  it('keeps legacy command names searchable and assigns Ctrl+K to Insert link only', () => {
     const openLibrary = getCommandById('open-vault');
     const commandSearch = getCommandById('command-search');
 
     expect(openLibrary?.aliases).toContain('Open library');
     expect(commandSearch?.aliases).toContain('Open command search');
     expect(commandSearch?.shortcut).toBe('Ctrl+Shift+P');
-    expect(commandSearch?.shortcutAliases).toContain('Ctrl+K');
+    expect(commandSearch?.shortcutAliases ?? []).not.toContain('Ctrl+K');
+    expect(getCommandById('insert-link')?.shortcutAliases).toContain('Ctrl+K');
     expect(getKeyboardShortcuts()).toContainEqual({
+      commandId: 'insert-link',
+      label: 'Insert link',
+      shortcut: 'Ctrl+K',
+    });
+    expect(getKeyboardShortcuts()).not.toContainEqual({
       commandId: 'command-search',
       label: 'Command Palette',
       shortcut: 'Ctrl+K',
@@ -114,8 +120,15 @@ describe('command registry', () => {
     expect(getContextMenuCommands('editor-selection', true).map(({ id }) => id)).not.toContain(
       'annotate-pdf-selection',
     );
-    const shortcuts = getKeyboardShortcuts().map(({ shortcut }) => shortcut);
-    expect(new Set(shortcuts).size).toBe(shortcuts.length);
+    // No default shortcut is shared: Ctrl+K belongs to Insert link only,
+    // and the Command Palette is Ctrl+Shift+P.
+    const shortcuts = getKeyboardShortcuts();
+    const byShortcut = new Map<string, string[]>();
+    for (const { commandId, shortcut } of shortcuts) {
+      byShortcut.set(shortcut, [...(byShortcut.get(shortcut) ?? []), commandId]);
+    }
+    const duplicates = [...byShortcut.entries()].filter(([, ids]) => ids.length > 1);
+    expect(duplicates).toEqual([]);
   });
 
   it('dispatches check-for-updates to the updater', () => {

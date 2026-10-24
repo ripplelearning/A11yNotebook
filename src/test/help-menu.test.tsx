@@ -119,6 +119,7 @@ describe('Help menu', () => {
     const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
     expect(within(dialog).getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
     expect(within(dialog).getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
+    // Ctrl+K belongs to Insert link only; the Command Palette is Ctrl+Shift+P.
     expect(within(dialog).getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
     const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
     expect(within(searchRow).getByRole('cell', { name: 'Alt+Q' })).toBeInTheDocument();
@@ -311,7 +312,7 @@ describe('Check for Updates', () => {
     menu('not-a-real-command');
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
 
-    fireEvent.keyDown(document.body, { key: 'k', ctrlKey: true });
+    fireEvent.keyDown(document.body, { key: 'p', ctrlKey: true, shiftKey: true });
     const palette = screen.getByRole('dialog', { name: 'Command palette' });
     fireEvent.click(within(palette).getByRole('button', { name: 'Check for Updates' }));
     expect(screen.getByRole('dialog', { name: 'Software update' })).toBeInTheDocument();

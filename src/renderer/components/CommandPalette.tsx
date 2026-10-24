@@ -31,14 +31,14 @@ export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisab
   return (
     <Modal titleId="command-palette-title" title="Command palette" onClose={onClose} className="command-palette">
       <label htmlFor="command-search" className="sr-only">
-        Search commands
+        Search Command Palette
       </label>
       <input
         id="command-search"
         type="search"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search commands"
+        placeholder="Search Command Palette"
         aria-describedby="command-count"
         autoComplete="off"
         data-autofocus

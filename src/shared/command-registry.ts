@@ -548,6 +548,7 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Insert link',
     description: 'Insert a web or wiki link with a labelled dialog.',
     shortcut: 'Ctrl+Shift+L',
+    shortcutAliases: ['Ctrl+K'],
     contexts: ['editor-selection'],
   },
   {
@@ -651,7 +652,6 @@ export const COMMANDS: CommandDefinition[] = [
     aliases: ['Open command search'],
     description: 'Open the command palette to run key commands.',
     shortcut: 'Ctrl+Shift+P',
-    shortcutAliases: ['Ctrl+K'],
     contexts: ['general'],
   },
   {

@@ -3556,7 +3556,7 @@ export default function App() {
                 <h2>Welcome to A11y Notebook</h2>
                 <p>Open or create a local library to begin organizing Markdown notes and attachments.</p>
                 <p>
-                  Use F6 and Shift+F6 to move between panes, Ctrl+K for commands, and Ctrl+E to switch read/edit mode.
+                  Use F6 and Shift+F6 to move between panes, Ctrl+Shift+P for commands, Ctrl+K to insert a link, and Ctrl+E to switch read/edit mode.
                 </p>
               </div>
             )}
