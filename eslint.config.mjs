@@ -22,7 +22,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['electron/**/*.ts', '*.config.{js,mjs,mts,ts}'],
+    files: ['electron/**/*.ts', 'scripts/**/*.mjs', '*.config.{js,mjs,mts,ts}'],
     languageOptions: {
       globals: globals.node,
     },
