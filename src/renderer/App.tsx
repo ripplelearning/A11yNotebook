@@ -4,6 +4,7 @@ import {
   useLayoutEffect,
   useRef,
   useState,
+  type ClipboardEvent as ReactClipboardEvent,
   type KeyboardEvent as ReactKeyboardEvent,
   type RefObject,
 } from 'react';
@@ -84,6 +85,8 @@ import RemindersView from './features/reminders/RemindersView';
 import MilestonesView from './features/milestones/MilestonesView';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
+import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
+import PasteOrphanDialog, { type PasteOrphanChoice } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
@@ -1307,6 +1310,176 @@ export default function App() {
       generation === vaultGenerationRef.current
     )
       setVault(latest);
+  };
+
+  const [pasteLibraryPrompt, setPasteLibraryPrompt] = useState<{ name: string } | null>(null);
+  const pasteLibraryResolver = useRef<((choice: PasteLibraryChoice) => void) | null>(null);
+  const [pasteOrphanPrompt, setPasteOrphanPrompt] = useState<{ files: string[] } | null>(null);
+  const pasteOrphanResolver = useRef<((choice: PasteOrphanChoice) => void) | null>(null);
+  const [pasteBusy, setPasteBusy] = useState(false);
+
+  const askPasteLibraryChoice = (name: string): Promise<PasteLibraryChoice> =>
+    new Promise((resolve) => {
+      pasteLibraryResolver.current = resolve;
+      setPasteLibraryPrompt({ name });
+    });
+
+  const askPasteOrphanChoice = (files: string[]): Promise<PasteOrphanChoice> =>
+    new Promise((resolve) => {
+      pasteOrphanResolver.current = resolve;
+      setPasteOrphanPrompt({ files });
+    });
+
+  const openPastedLibrary = async (libraryPath: string): Promise<boolean> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.pasteLibraryOpen) {
+      setStatusMessage('Opening a pasted library is unavailable.');
+      return false;
+    }
+    if (openNotes.some((note) => note.content !== note.saved) || activeConflict || switchingRef.current) {
+      setStatusMessage('Save or resolve unsaved changes before opening another library.');
+      return false;
+    }
+    switchingRef.current = true;
+    vaultGenerationRef.current += 1;
+    setSwitchingVault(true);
+    try {
+      const opened = await bridge.pasteLibraryOpen(libraryPath);
+      if (opened) {
+        vaultPathRef.current = opened.path;
+        setVault(opened);
+        setOpenNotes([]);
+        setNotePasswordDialog(null);
+        setAttachment(null);
+        setAssetTabOpen(false);
+        setAssetInitialPath(undefined);
+        setAssetDirty(false);
+        setSelectedTab('libraries');
+        setStatusMessage(`Opened library ${opened.name}.`);
+        refreshRecentLibraries();
+        return true;
+      }
+      return false;
+    } catch {
+      setStatusMessage('Could not open the pasted library.');
+      return false;
+    } finally {
+      switchingRef.current = false;
+      setSwitchingVault(false);
+    }
+  };
+
+  /** Paste OS-copied files/folders into the current view. Text pastes and editor pastes are untouched. */
+  const handlePanelPaste = async (event: ReactClipboardEvent<HTMLElement>) => {
+    const files = event.clipboardData?.files;
+    if (!files?.length || pasteBusy) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[contenteditable="true"], textarea, input, select')) return;
+    if (selectedTab !== 'libraries' && selectedTab !== 'notebooks' && selectedTab !== 'notes-files') return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getPathForFile || !bridge.pasteInspect) {
+      setStatusMessage('Pasting files is not available in this build.');
+      return;
+    }
+    const paths: string[] = [];
+    for (const file of Array.from(files)) {
+      const resolved = bridge.getPathForFile(file);
+      if (resolved) paths.push(resolved);
+    }
+    if (!paths.length) {
+      setStatusMessage('Could not read the pasted file paths.');
+      return;
+    }
+    event.preventDefault();
+    setPasteBusy(true);
+    try {
+      for (const source of paths) {
+        const info = await bridge.pasteInspect(source);
+        if (selectedTab === 'libraries') {
+          if (info.kind !== 'folder') {
+            setStatusMessage('Only folders can become libraries. Paste files into a notebook instead.');
+            continue;
+          }
+          const choice = await askPasteLibraryChoice(info.name);
+          if (choice === 'cancel') continue;
+          let libraryPath = source;
+          let copied = false;
+          if (choice === 'copy') {
+            if (!bridge.pasteChooseFolder || !bridge.pasteLibraryCopy) {
+              setStatusMessage('Copying a pasted library is unavailable.');
+              continue;
+            }
+            const parent = await bridge.pasteChooseFolder('Paste library — choose where to save the copy');
+            if (!parent) continue;
+            const result = await bridge.pasteLibraryCopy(source, parent);
+            libraryPath = result.path;
+            copied = true;
+          }
+          const libraryInfo = await bridge.pasteInspect(libraryPath);
+          if (libraryInfo.files.length) {
+            if (!bridge.pasteOrganize) {
+              setStatusMessage('Organizing pasted library files is unavailable.');
+              continue;
+            }
+            const mode = await askPasteOrphanChoice(libraryInfo.files);
+            if (mode === 'cancel') {
+              setStatusMessage(
+                copied
+                  ? `Paste cancelled. The copy remains at ${libraryPath}; open it from Libraries when ready.`
+                  : 'Paste cancelled. The original folder was not opened as a library.',
+              );
+              continue;
+            }
+            await bridge.pasteOrganize(libraryPath, libraryInfo.files, mode);
+          }
+          await openPastedLibrary(libraryPath);
+        } else if (selectedTab === 'notebooks') {
+          if (!vault || securityLocked) {
+            setStatusMessage('Open and unlock a library before pasting into it.');
+            continue;
+          }
+          if (info.kind === 'folder') {
+            if (!bridge.pasteNotebook) {
+              setStatusMessage('Pasting a folder as a notebook is unavailable.');
+              continue;
+            }
+            const result = await bridge.pasteNotebook(source);
+            await refreshVault();
+            setStatusMessage(`Pasted folder as notebook ${result.notebook}.`);
+          } else if (selectedNotebookPath) {
+            if (!bridge.pasteFiles) {
+              setStatusMessage('Pasting files is unavailable.');
+              continue;
+            }
+            await bridge.pasteFiles([source], selectedNotebookPath);
+            await refreshVault();
+            setStatusMessage(`Pasted ${info.name} into the selected notebook.`);
+          } else {
+            setStatusMessage('Select a notebook first, or paste the file in Notes and Files.');
+          }
+        } else {
+          if (!vault || securityLocked || !selectedNotebookPath) {
+            setStatusMessage('Select a notebook in Notes and Files before pasting files.');
+            continue;
+          }
+          if (info.kind !== 'file') {
+            setStatusMessage('Only files can be pasted into Notes and Files. Paste folders into Notebooks.');
+            continue;
+          }
+          if (!bridge.pasteFiles) {
+            setStatusMessage('Pasting files is unavailable.');
+            continue;
+          }
+          await bridge.pasteFiles([source], selectedNotebookPath);
+          await refreshVault();
+          setStatusMessage(`Pasted ${info.name} into the selected notebook.`);
+        }
+      }
+    } catch (failure) {
+      setStatusMessage(failure instanceof Error ? failure.message : 'Could not paste.');
+    } finally {
+      setPasteBusy(false);
+    }
   };
 
   const refreshLinkIndex = async () => {
@@ -3054,6 +3227,26 @@ export default function App() {
           onClose={() => setTaskDialogOpen(false)}
         />
       ) : null}
+      {pasteLibraryPrompt ? (
+        <PasteLibraryDialog
+          folderName={pasteLibraryPrompt.name}
+          onChoice={(choice) => {
+            setPasteLibraryPrompt(null);
+            pasteLibraryResolver.current?.(choice);
+            pasteLibraryResolver.current = null;
+          }}
+        />
+      ) : null}
+      {pasteOrphanPrompt ? (
+        <PasteOrphanDialog
+          files={pasteOrphanPrompt.files}
+          onChoice={(choice) => {
+            setPasteOrphanPrompt(null);
+            pasteOrphanResolver.current?.(choice);
+            pasteOrphanResolver.current = null;
+          }}
+        />
+      ) : null}
       <header className="app-header" aria-label="Application header">
         <div className="title-block">
           <h1>A11y Notebook</h1>
@@ -3258,6 +3451,7 @@ export default function App() {
             aria-label={activeViewTitle}
             aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
             tabIndex={0}
+            onPaste={(event) => void handlePanelPaste(event)}
           >
             {assetTabOpen ? (
               <div hidden={selectedTab !== 'assets'}>

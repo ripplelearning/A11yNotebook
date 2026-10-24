@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { lstat, mkdir, readFile, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -65,6 +65,12 @@ import { isExternalDocumentPath } from './external-documents';
 import { openWithWindows } from './open-with';
 import { createLocalLibrary } from './create-library';
 import { copyLibrary, resolveBackupDestination } from './library-backup';
+import {
+  copyFolder,
+  inspectPasteSource,
+  organizeLibraryOrphans,
+  resolveUniqueFolder,
+} from './paste';
 import { createAuditStore, runAudited, type AuditAttempt, type AuditOperation } from './audit';
 import {
   completeVaultDataKeyRotation,
@@ -2544,6 +2550,105 @@ export function setupVaultIpc(
       return { cancelled: false, ...copied };
     });
   });
+  ipcMain.handle(IPC_CHANNELS.vaultPasteInspect, async (event, source: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof source !== 'string' || !source) throw new Error('Pasted path must be text.');
+    return inspectPasteSource(source);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPasteChooseFolder, async (event, title: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const result = await dialog.showOpenDialog({
+      title: typeof title === 'string' && title ? title : 'Choose a folder',
+      buttonLabel: 'Choose folder',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultPasteLibraryCopy,
+    async (event, source: unknown, parent: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof source !== 'string' || typeof parent !== 'string' || !source || !parent) {
+        throw new Error('Pasted library copy needs a source folder and a destination folder.');
+      }
+      const destination = await resolveUniqueFolder(parent, path.basename(source));
+      const copied = await copyLibrary(source, destination);
+      return { path: copied.path, files: copied.files, bytes: copied.bytes };
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultPasteLibraryOpen, async (event, source: unknown) => {
+    assertTrusted(event, isTrustedSender, true);
+    if (typeof source !== 'string' || !source) throw new Error('Library path must be text.');
+    return openVault(source);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPasteNotebook, async (event, source: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof source !== 'string' || !source) throw new Error('Pasted folder path must be text.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const info = await access.vault.getVault();
+      const destination = await resolveUniqueFolder(info.path, path.basename(source));
+      access.assertCurrent();
+      const copied = await copyFolder(source, destination);
+      access.assertCurrent();
+      return { notebook: path.basename(destination), files: copied.files };
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultPasteFiles,
+    async (event, sources: unknown, notebookPath: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (!Array.isArray(sources) || !sources.every((item) => typeof item === 'string') || typeof notebookPath !== 'string') {
+        throw new Error('Pasted files need file paths and a notebook.');
+      }
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const notebook = await access.vault.resolveEntry(notebookPath);
+        if (!(await lstat(notebook)).isDirectory()) throw new Error('The destination notebook is no longer available.');
+        const copied: string[] = [];
+        for (const source of sources as string[]) {
+          const info = await inspectPasteSource(source);
+          if (info.kind !== 'file') throw new Error('Only files can be pasted into a notebook.');
+          let candidate = path.join(notebook, info.name);
+          for (let attempt = 0; ; attempt += 1) {
+            try {
+              await lstat(candidate);
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
+              throw error;
+            }
+            const ext = path.extname(info.name);
+            const stem = info.name.slice(0, info.name.length - ext.length);
+            candidate = path.join(
+              notebook,
+              `${stem} (imported${attempt > 0 ? ` ${attempt + 1}` : ''})${ext}`,
+            );
+          }
+          access.assertCurrent();
+          await copyFile(source, candidate);
+          copied.push(path.basename(candidate));
+        }
+        return { files: copied };
+      });
+    },
+  );
+  ipcMain.handle(
+    IPC_CHANNELS.vaultPasteOrganize,
+    async (event, libraryPath: unknown, orphanFiles: unknown, mode: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (
+        typeof libraryPath !== 'string' ||
+        !Array.isArray(orphanFiles) ||
+        !orphanFiles.every((item) => typeof item === 'string') ||
+        (mode !== 'one' && mode !== 'per-file')
+      ) {
+        throw new Error('Library orphan organization needs a library, file names, and a mode.');
+      }
+      return organizeLibraryOrphans(libraryPath, orphanFiles as string[], mode);
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultGet, async (event) => {
     assertTrusted(event, isTrustedSender, true);
     if (service) return presentVault(await service.getVault());
