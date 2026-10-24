@@ -1,11 +1,12 @@
 import { useState } from 'react';
-import type { Reminder, SnoozeDuration } from '../../../shared/reminders';
+import { lockedDueText, type LockedDueKind, type Reminder, type SnoozeDuration } from '../../../shared/reminders';
 import Modal from '../../components/Modal';
 
 interface Props {
   reminder: Reminder;
   count: number;
   locked?: boolean;
+  lockedKinds?: LockedDueKind[];
   onComplete: () => Promise<void>;
   onDismiss: () => Promise<void>;
   onSnooze: (duration: SnoozeDuration) => Promise<void>;
@@ -17,6 +18,7 @@ export default function ReminderAlertDialog({
   reminder,
   count,
   locked,
+  lockedKinds,
   onComplete,
   onDismiss,
   onSnooze,
@@ -26,6 +28,7 @@ export default function ReminderAlertDialog({
   const [duration, setDuration] = useState<SnoozeDuration>(15);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const lockedText = locked ? lockedDueText(lockedKinds?.length ? lockedKinds : ['reminder'], count) : null;
   const run = (operation: () => Promise<void>) => {
     if (busy) return;
     setBusy(true);
@@ -37,7 +40,7 @@ export default function ReminderAlertDialog({
   return (
     <Modal
       role="alertdialog"
-      title="Reminder"
+      title={lockedText?.title ?? 'Reminder'}
       titleId="reminder-alert-title"
       describedBy="reminder-alert-description"
       restoreFocusTo={restoreFocusTo}
@@ -46,11 +49,9 @@ export default function ReminderAlertDialog({
       }}
     >
       <div id="reminder-alert-description">
-        <p>{locked || reminder.privacy === 'hide-title' ? 'A reminder is due.' : reminder.title}</p>
-        {locked ? <p>Unlock the library to view it.</p> : null}
-        <p role="status">
-          {count} reminder{count === 1 ? '' : 's'} waiting.
-        </p>
+        <p>{lockedText ? lockedText.headline : locked || reminder.privacy === 'hide-title' ? 'A reminder is due.' : reminder.title}</p>
+        {lockedText ? <p>{lockedText.detail}</p> : null}
+        <p role="status">{lockedText ? lockedText.waiting : `${count} reminder${count === 1 ? '' : 's'} waiting.`}</p>
         <p>Escape or Later closes this alert without dismissing the reminder. It remains in Reminders.</p>
       </div>
       <button data-autofocus type="button" disabled={busy || locked} onClick={() => run(onComplete)}>

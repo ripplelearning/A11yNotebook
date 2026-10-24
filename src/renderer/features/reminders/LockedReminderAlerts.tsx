@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Reminder } from '../../../shared/reminders';
+import type { LockedDueKind, Reminder } from '../../../shared/reminders';
 import type { NotebookSettings } from '../../../shared/settings';
 import ReminderAlertDialog from './ReminderAlertDialog';
 import { playReminderSound } from './reminderSound';
@@ -33,6 +33,7 @@ const GENERIC_REMINDER: Reminder = {
  */
 export default function LockedReminderAlerts({ vaultPath, settings, announce }: Props) {
   const [due, setDue] = useState(false);
+  const [kinds, setKinds] = useState<LockedDueKind[]>(['reminder']);
   const [focused, setFocused] = useState(() => document.hasFocus() && !document.hidden);
   const current = useRef({ settings, announce });
   current.current = { settings, announce };
@@ -51,11 +52,13 @@ export default function LockedReminderAlerts({ vaultPath, settings, announce }: 
 
   useEffect(() => {
     setDue(false);
+    setKinds(['reminder']);
     const bridge = window.a11yNotebook?.vault;
     if (!bridge) return;
     let cancelled = false;
-    const handleDue = (withSound: boolean) => {
+    const handleDue = (withSound: boolean, dueKinds?: LockedDueKind[]) => {
       if (cancelled) return;
+      setKinds(dueKinds?.length ? dueKinds : ['reminder']);
       setDue(true);
       if (withSound && current.current.settings.reminderSound) {
         void playReminderSound(current.current.settings).catch(() => {
@@ -65,13 +68,14 @@ export default function LockedReminderAlerts({ vaultPath, settings, announce }: 
     };
     const unsubscribe = bridge.onReminder((event) => {
       if (event.vaultPath !== vaultPath) return;
-      if (event.type === 'locked-due') handleDue(true);
+      if (event.type === 'locked-due') handleDue(true, event.kinds);
     });
     void bridge
       .reminderAlertsReady?.()
       .then((pending) => {
-        if (pending?.some((event) => event.type === 'locked-due' && event.vaultPath === vaultPath)) {
-          handleDue(true);
+        const event = pending?.find((item) => item.type === 'locked-due' && item.vaultPath === vaultPath);
+        if (event && event.type === 'locked-due') {
+          handleDue(true, event.kinds);
         }
       })
       .catch(() => undefined);
@@ -87,6 +91,7 @@ export default function LockedReminderAlerts({ vaultPath, settings, announce }: 
       reminder={GENERIC_REMINDER}
       count={1}
       locked
+      lockedKinds={kinds}
       onComplete={async () => undefined}
       onDismiss={async () => undefined}
       onSnooze={async () => undefined}

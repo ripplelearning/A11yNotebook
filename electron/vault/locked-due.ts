@@ -28,7 +28,7 @@ export interface LockedDueWatcher {
 }
 
 export function createLockedDueWatcher(options: {
-  onDue: (vaultPath: string) => void;
+  onDue: (vaultPath: string, due: DueSnapshotEntry[]) => void;
   now?: () => number;
   setTimeout?: (callback: () => void, delay: number) => unknown;
   clearTimeout?: (handle: unknown) => void;
@@ -58,7 +58,7 @@ export function createLockedDueWatcher(options: {
         if (expectedGeneration !== generation) return; // cancelled while waiting
         const due = entries.filter((entry) => !fired.has(entry.id) && Date.parse(entry.scheduledAt) <= now());
         for (const entry of due) fired.add(entry.id);
-        if (due.length) options.onDue(vaultPath);
+        if (due.length) options.onDue(vaultPath, due);
         scheduleNext(expectedGeneration);
       },
       Math.max(0, nextAt - now()),
