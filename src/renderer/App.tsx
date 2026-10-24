@@ -66,7 +66,7 @@ import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
 import ConflictDialog from './features/vault/ConflictDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
-import SearchResults from './features/search/SearchResults';
+import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
@@ -412,6 +412,14 @@ export default function App() {
   const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
   const [tags, setTags] = useState<string[]>([]);
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
+  const [searchScope, setSearchScope] = useState<SearchScope>(() => {
+    try {
+      const stored = window.localStorage.getItem('a11y-notebook.search-scope');
+      return stored === 'current' ? 'current' : 'library';
+    } catch {
+      return 'library';
+    }
+  });
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
   const [settingsVaultPath, setSettingsVaultPath] = useState<string>();
   const [securityEnabled, setSecurityEnabled] = useState(false);
@@ -856,20 +864,39 @@ export default function App() {
   }, [vault]);
 
   useEffect(() => {
+    try {
+      window.localStorage.setItem('a11y-notebook.search-scope', searchScope);
+    } catch {
+      // Search scope is a UI preference; losing it is not an error.
+    }
+  }, [searchScope]);
+
+  useEffect(() => {
     const bridge = window.a11yNotebook;
     const active = searchText.trim() || Object.values(searchFilters).some(Boolean);
     if (!bridge || !vault || !active) {
       setSearchResults([]);
       return;
     }
+    if (searchScope === 'current' && !selectedNotebookPath) {
+      setSearchResults([]);
+      setStatusMessage('Select a notebook to search it, or switch search scope to Whole library.');
+      return;
+    }
     let cancelled = false;
     const timeout = window.setTimeout(() => {
+      const query: VaultSearchQuery =
+        searchScope === 'current'
+          ? { text: searchText, ...searchFilters, notebook: selectedNotebookPath, limit: 100 }
+          : { text: searchText, ...searchFilters, limit: 100 };
       void bridge.vault
-        .search({ text: searchText, ...searchFilters, limit: 100 })
+        .search(query)
         .then((matches) => {
           if (!cancelled) {
             setSearchResults(matches);
-            setStatusMessage(`${matches.length} search results shown.`);
+            setStatusMessage(
+              `${matches.length} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
+            );
           }
         })
         .catch(() => {
@@ -880,7 +907,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [searchText, searchFilters, vault]);
+  }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault]);
 
   const availableRegions = FOCUS_REGION_ORDER.filter((region) => region !== 'right-pane' || rightPaneOpen);
 
@@ -3025,6 +3052,11 @@ export default function App() {
               notebooks={notebooks}
               results={searchResults}
               active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
+              scope={searchScope}
+              onScope={setSearchScope}
+              selectedNotebookPath={selectedNotebookPath}
+              selectedNotebookName={selectedNotebookName}
+              scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
               onOpen={(relative) => {
                 const entry = findEntry(vault.entries, relative);
                 if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
