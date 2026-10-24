@@ -96,6 +96,7 @@ describe('command registry', () => {
     expect(commandSearch?.aliases).toContain('Open command search');
     expect(commandSearch?.shortcut).toBe('Ctrl+Shift+P');
     expect(commandSearch?.shortcutAliases).toContain('Ctrl+K');
+    expect(getCommandById('insert-link')?.shortcutAliases).toContain('Ctrl+K');
     expect(getKeyboardShortcuts()).toContainEqual({
       commandId: 'command-search',
       label: 'Command Palette',
@@ -114,8 +115,16 @@ describe('command registry', () => {
     expect(getContextMenuCommands('editor-selection', true).map(({ id }) => id)).not.toContain(
       'annotate-pdf-selection',
     );
-    const shortcuts = getKeyboardShortcuts().map(({ shortcut }) => shortcut);
-    expect(new Set(shortcuts).size).toBe(shortcuts.length);
+    // The one deliberate shared default is Ctrl+K: Insert link in the
+    // editor-selection context, Command Palette everywhere else. No
+    // other default shortcut is shared.
+    const shortcuts = getKeyboardShortcuts();
+    const byShortcut = new Map<string, string[]>();
+    for (const { commandId, shortcut } of shortcuts) {
+      byShortcut.set(shortcut, [...(byShortcut.get(shortcut) ?? []), commandId]);
+    }
+    const duplicates = [...byShortcut.entries()].filter(([, ids]) => ids.length > 1);
+    expect(duplicates).toEqual([['Ctrl+K', ['insert-link', 'command-search']]]);
   });
 
   it('dispatches check-for-updates to the updater', () => {

@@ -2618,13 +2618,26 @@ export default function App() {
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
-    const command = COMMANDS.find((item) => {
+    const matching = COMMANDS.filter((item) => {
       const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
       return (
         (shortcut && matchesShortcut(event, shortcut)) ||
         item.shortcutAliases?.some((alias) => matchesShortcut(event, alias))
       );
     });
+    // Ctrl+K is shared: in the editing area, in edit mode, it inserts a
+    // link; everywhere else it opens the command palette. A context match
+    // wins in its own context, and a general match wins outside it, so
+    // neither binding swallows the other.
+    const editingArea =
+      mode === 'edit' &&
+      !!currentNote &&
+      event.target instanceof Element &&
+      event.target.closest('textarea, [contenteditable="true"], [role="textbox"]');
+    const command =
+      (editingArea
+        ? matching.find((item) => item.contexts?.includes('editor-selection'))
+        : matching.find((item) => !item.contexts?.includes('editor-selection'))) ?? matching[0];
     if (command) {
       const editing =
         event.target instanceof Element &&

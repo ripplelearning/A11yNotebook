@@ -657,4 +657,21 @@ describe('accessible details view', () => {
     expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
     expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
   });
+
+  it('opens the Insert Link dialog with Ctrl+K in the editor', async () => {
+    const { menu } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    menu('show-notebooks');
+    const notebooks = screen.getByRole('grid', { name: 'Notebooks' });
+    fireEvent.keyDown(within(notebooks).getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    const notesFiles = await screen.findByRole('grid', { name: 'Notes and files' });
+    const item = within(notesFiles).getByRole('gridcell', { name: 'Idea.md' });
+    item.focus();
+    fireEvent.keyDown(item, { key: 'Enter' });
+    expect(await screen.findByRole('heading', { name: 'Idea', level: 2 })).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+    const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
+    fireEvent.keyDown(editor, { key: 'k', ctrlKey: true });
+    expect(await screen.findByRole('dialog', { name: 'Insert link' })).toBeInTheDocument();
+  });
 });

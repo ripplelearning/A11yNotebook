@@ -19,6 +19,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+B         | Bold                       |
 | Ctrl+I         | Italic                     |
 | Ctrl+Shift+L   | Insert link                |
+| Ctrl+K         | Insert link                |
 | Ctrl+O         | Open library               |
 | Ctrl+S         | Save note                  |
 | Ctrl+4         | Tasks                      |
