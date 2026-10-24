@@ -47,23 +47,35 @@ const RESERVED_SHORTCUTS = [
   'F11',
 ];
 
+const NAMED_SHORTCUT_KEYS: Record<string, string> = {
+  arrowleft: 'ArrowLeft',
+  arrowright: 'ArrowRight',
+  arrowup: 'ArrowUp',
+  arrowdown: 'ArrowDown',
+  home: 'Home',
+  end: 'End',
+  pageup: 'PageUp',
+  pagedown: 'PageDown',
+};
+
 export function normalizeShortcut(shortcut: string): string {
   if (!shortcut.trim()) return '';
   const parts = shortcut.split('+').map((part) => part.trim().toLowerCase());
   const key = parts.pop() ?? '';
+  const namedKey = NAMED_SHORTCUT_KEYS[key];
   if (
-    !/^(?:[a-z0-9]|f(?:[1-9]|1[0-2]))$/.test(key) ||
+    (!namedKey && !/^(?:[a-z0-9]|f(?:[1-9]|1[0-2]))$/.test(key)) ||
     parts.some((part) => !['ctrl', 'alt', 'shift'].includes(part)) ||
     new Set(parts).size !== parts.length ||
     (!/^f\d+$/.test(key) && !parts.includes('ctrl') && !parts.includes('alt'))
   ) {
-    throw new Error('Use Ctrl/Alt plus a letter or number, or an F1–F12 key.');
+    throw new Error('Use Ctrl/Alt plus a letter, number, or navigation key, or an F1–F12 key.');
   }
   return [
     ...(parts.includes('ctrl') ? ['Ctrl'] : []),
     ...(parts.includes('alt') ? ['Alt'] : []),
     ...(parts.includes('shift') ? ['Shift'] : []),
-    key.toUpperCase(),
+    namedKey ?? key.toUpperCase(),
   ].join('+');
 }
 

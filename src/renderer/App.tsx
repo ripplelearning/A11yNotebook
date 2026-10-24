@@ -19,6 +19,14 @@ import {
   type CommandId,
   type MenuContext,
 } from '../shared/command-registry';
+import {
+  emptyNavigationHistory,
+  goBack as historyGoBack,
+  goForward as historyGoForward,
+  recordLocation as recordHistoryLocation,
+  type NavigationHistoryState,
+  type NavigationLocation,
+} from '../shared/navigation-history';
 import { isMenuCommand, type NativeMenuState } from '../shared/ipc';
 import type {
   AppMode,
@@ -409,6 +417,48 @@ export default function App() {
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
+  const navigationHistoryRef = useRef<NavigationHistoryState>(emptyNavigationHistory());
+
+  const applyHistoryLocation = (location: NavigationLocation) => {
+    if (location.notebookPath) {
+      setSelectedNotebookPath(location.notebookPath);
+      setTreeSelection(location.notebookPath);
+    } else {
+      setSelectedNotebookPath(undefined);
+    }
+    setSelectedTab(location.tab);
+    setPendingFocus('main');
+  };
+  const goBackInHistory = () => {
+    const { state, location } = historyGoBack(navigationHistoryRef.current);
+    if (!location) {
+      setStatusMessage('Nothing to go back to.');
+      return;
+    }
+    navigationHistoryRef.current = state;
+    applyHistoryLocation(location);
+  };
+  const goForwardInHistory = () => {
+    const { state, location } = historyGoForward(navigationHistoryRef.current);
+    if (!location) {
+      setStatusMessage('Nothing to go forward to.');
+      return;
+    }
+    navigationHistoryRef.current = state;
+    applyHistoryLocation(location);
+  };
+
+  // Record browsing locations for Alt+ArrowLeft / Alt+ArrowRight. A
+  // location applied by going back or forward equals the entry the
+  // history index already points at, and recordLocation treats that
+  // as a no-op, so restores never truncate or duplicate the stack.
+  useEffect(() => {
+    if (!vault || securityLocked) return;
+    navigationHistoryRef.current = recordHistoryLocation(navigationHistoryRef.current, {
+      tab: selectedTab,
+      notebookPath: selectedNotebookPath,
+    });
+  }, [selectedTab, selectedNotebookPath, vault, securityLocked]);
   const securityLockedRef = useRef(securityLocked);
   securityLockedRef.current = securityLocked;
   const [lockedEditPaths, setLockedEditPaths] = useState<Set<string>>(() => new Set());
@@ -2456,6 +2506,8 @@ export default function App() {
       setCommandPaletteOpen: (open) => setActiveDialog(open ? 'palette' : null),
       setSelectedTab,
       newContextual: createContextual,
+      navigateBack: goBackInHistory,
+      navigateForward: goForwardInHistory,
       showContents: () => navigateScreen('contents'),
       showLibraries: () => navigateScreen('libraries'),
       showNotebooks: () => navigateScreen('notebooks'),

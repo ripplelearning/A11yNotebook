@@ -1,6 +1,8 @@
 import type { AppMode, FocusRegion, FocusTarget } from './types';
 
 export type CommandId =
+  | 'navigate-back'
+  | 'navigate-forward'
   | 'show-contents'
   | 'show-libraries'
   | 'show-notebooks'
@@ -120,6 +122,8 @@ export type CommandActionContext = {
   checkForUpdates: () => void;
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
+  navigateBack?: () => void;
+  navigateForward?: () => void;
   showContents?: () => void;
   showLibraries?: () => void;
   showNotebooks?: () => void;
@@ -213,6 +217,20 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Notes & Files',
     description: 'Show and manage notes and files.',
     shortcut: 'Ctrl+3',
+    contexts: ['general'],
+  },
+  {
+    id: 'navigate-back',
+    label: 'Back',
+    description: 'Go back to the previous view in browsing history.',
+    shortcut: 'Alt+ArrowLeft',
+    contexts: ['general'],
+  },
+  {
+    id: 'navigate-forward',
+    label: 'Forward',
+    description: 'Go forward to the next view in browsing history.',
+    shortcut: 'Alt+ArrowRight',
     contexts: ['general'],
   },
   {
@@ -747,6 +765,12 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return undefined;
     case 'new-asset':
       context.newAsset?.();
+      return undefined;
+    case 'navigate-back':
+      context.navigateBack?.();
+      return undefined;
+    case 'navigate-forward':
+      context.navigateForward?.();
       return undefined;
     case 'show-contents':
       if (context.showContents) {

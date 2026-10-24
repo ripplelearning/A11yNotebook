@@ -304,6 +304,37 @@ describe('accessible details view', () => {
     expect(screen.queryByRole('gridcell', { name: 'Archive' })).not.toBeInTheDocument();
   });
 
+  it('shows nothing in notes and files until a notebook is selected (notebook silo)', () => {
+    const entries: VaultEntry[] = [
+      {
+        name: 'Research',
+        path: 'Research',
+        kind: 'notebook',
+        children: [{ name: 'Idea.md', path: 'Research/Idea.md', kind: 'note' }],
+      },
+      {
+        name: 'Archive',
+        path: 'Archive',
+        kind: 'notebook',
+        children: [{ name: 'Old.md', path: 'Archive/Old.md', kind: 'note' }],
+      },
+      { name: 'Root.md', path: 'Root.md', kind: 'note' },
+    ];
+    const screenProps = {
+      entries,
+      hasLibrary: true,
+      selectedPath: null,
+      onSelect: vi.fn(),
+      onOpen: vi.fn(),
+    };
+    render(<NotesFilesScreen {...screenProps} notebookPath={undefined} />);
+    expect(screen.getByRole('grid', { name: 'Notes and files' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Old.md' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Root.md' })).not.toBeInTheDocument();
+    expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
+  });
+
   it.each([
     { name: 'Idea.md', path: 'Research/Idea.md', heading: 'Idea' },
     { name: 'Report.txt', path: 'Research/Report.txt', heading: 'Report' },
@@ -460,8 +491,13 @@ describe('accessible details view', () => {
       navigate('3');
       if (cancelled) expectResearchContext();
       else {
+        // Deleting the selected notebook moves the context to the
+        // remaining notebook: the view is siloed to Archive now.
         expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
-        expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+        expect(screen.getByText('Items in Archive')).toBeInTheDocument();
+        const grid = screen.getByRole('grid', { name: 'Notes and files' });
+        expect(within(grid).getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+        expect(within(grid).queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
       }
     },
   );
@@ -477,7 +513,10 @@ describe('accessible details view', () => {
     await screen.findByRole('heading', { name: 'Other', level: 2 });
     navigate('3');
     expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
-    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('grid', { name: 'Notes and files' })).queryByRole('gridcell', { name: 'Archived.md' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
   });
 
   it('clears notebook context when the library is locked', async () => {
@@ -495,7 +534,10 @@ describe('accessible details view', () => {
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Library locked' })).not.toBeInTheDocument());
     navigate('3');
     expect(screen.queryByText('Items in Research')).not.toBeInTheDocument();
-    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('grid', { name: 'Notes and files' })).queryByRole('gridcell', { name: 'Archived.md' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
   });
 
   it.each([
@@ -524,7 +566,10 @@ describe('accessible details view', () => {
       await act(async () => changed({ vaultPath: vault.path, paths: ['Research'] }));
     }
     await waitFor(() => expect(screen.queryByText('Items in Research')).not.toBeInTheDocument());
-    expect(screen.getByRole('gridcell', { name: 'Archived.md' })).toBeInTheDocument();
+    expect(
+      within(screen.getByRole('grid', { name: 'Notes and files' })).queryByRole('gridcell', { name: 'Archived.md' }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
     expect(screen.queryByRole('gridcell', { name: 'Idea.md' })).not.toBeInTheDocument();
   });
 });
