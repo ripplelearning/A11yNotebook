@@ -29,6 +29,7 @@ import type { DocxStructure } from './docx';
 export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   createLibrary?(): Promise<VaultInfo | null>;
+  backupLibrary?(): Promise<{ cancelled: boolean; path?: string; files?: number; bytes?: number }>;
   getRecentLibraries?(): Promise<RecentLibrary[]>;
   openLibraryPath?(path: string): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;

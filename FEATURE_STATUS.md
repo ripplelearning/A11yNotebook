@@ -299,3 +299,7 @@ Validation: each PR passed typecheck, the full lint, targeted suites locally, an
 ## October 24, 2026 feature batch — search scope
 
 - **Search scope:** a visible Search scope control above the search filters. Current notebook searches only the selected notebook (including its sub-notebooks) and shows guidance instead of searching the whole library when no notebook is selected; Whole library searches every notebook. The scope is remembered on the device, the notebook filter is disabled while Current notebook is active, and results and status messages announce the active scope.
+
+## October 24, 2026 feature batch — library backup
+
+- **Library backup:** File → Back up library copies the whole open library, including its private metadata, to a new timestamped folder inside a folder the user chooses. The copy is byte-for-byte and verified against the library before success is reported; a failed copy is removed. Encrypted files stay encrypted, nothing is decrypted, and the backup refuses destinations inside the library, containing it, or already existing.

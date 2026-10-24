@@ -63,6 +63,7 @@ import {
 import { isExternalDocumentPath } from './external-documents';
 import { openWithWindows } from './open-with';
 import { createLocalLibrary } from './create-library';
+import { copyLibrary, resolveBackupDestination } from './library-backup';
 import { createAuditStore, runAudited, type AuditAttempt, type AuditOperation } from './audit';
 import {
   completeVaultDataKeyRotation,
@@ -2514,6 +2515,29 @@ export function setupVaultIpc(
     return serializeVaultOperation(async () => {
       assertCurrent();
       return createLocalLibrary(result.filePath!, (root) => openVaultNow(root, assertCurrent), assertCurrent);
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultBackupLibrary, async (event) => {
+    // A backup is a byte copy, so it needs no decryption and works while
+    // the library is locked; the copy still aborts if the library or
+    // lock state changes mid-copy, and a failed copy is removed.
+    const access = captureVaultAccess(event, isTrustedSender, true);
+    const info = await access.vault.getVault();
+    const result = await dialog.showOpenDialog({
+      title: 'Back up library — choose a folder to contain the backup',
+      buttonLabel: 'Back up here',
+      properties: ['openDirectory', 'createDirectory'],
+    });
+    access.assertCurrent();
+    if (result.canceled || !result.filePaths[0]) return { cancelled: true };
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const destination = await resolveBackupDestination(result.filePaths[0]!, info.name);
+      access.assertCurrent();
+      const copied = await copyLibrary(info.path, destination);
+      // No post-copy lock check: a lock change during a byte copy does
+      // not invalidate the copy, and serialized writes cannot interleave.
+      return { cancelled: false, ...copied };
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultGet, async (event) => {
