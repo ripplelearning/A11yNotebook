@@ -425,6 +425,7 @@ editing are not logged. See the security documentation for exact limits.
 | F5                                                           | Refresh the library tree                       |
 | F6 / Shift+F6                                                | Move focus to next / previous pane             |
 | Alt+1 / Alt+2 / Alt+3                                        | Focus navigation / main / right pane           |
+| Alt+Left / Alt+Right                                         | Go back / forward in browsing history          |
 | F9                                                           | Show or hide the right pane                    |
 | Shift+F10 / Applications key / right-click                   | Open the context-aware command menu            |
 | In the tree: Up/Down, Left/Right, Home/End                   | Navigate and expand/collapse                   |
