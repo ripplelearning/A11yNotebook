@@ -420,7 +420,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'open-bibliography',
     label: 'Bibliography…',
     description: 'View, edit, and insert citations from this notebook’s bibliography.',
-    shortcut: 'Ctrl+Alt+B',
+    shortcut: 'Ctrl+Shift+J',
     contexts: ['general'],
   },
   {

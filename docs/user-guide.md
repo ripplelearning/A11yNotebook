@@ -224,7 +224,7 @@ Each notebook keeps its own bibliography. From the Insert menu, choose **Citatio
 conference paper, report, or thesis), then fill in the fields by hand or paste a DOI, ISBN, or web address
 and choose **Fill in from source** to fetch the public record (Crossref for DOIs, Open Library for ISBNs,
 the page's own metadata for URLs). Choose APA, MLA, or Chicago to preview the bibliography entry and the
-in-text citation, then save it to the notebook's bibliography. Choose **Bibliography…** (Ctrl+Alt+B) to
+in-text citation, then save it to the notebook's bibliography. Choose **Bibliography…** (Ctrl+Shift+J) to
 view, edit, or delete saved entries, insert an in-text citation for one of them (with an optional cited
 page), or insert the full bibliography into the current note. Entries are stored in the library's
 bibliography file, move with the notebook when it is renamed or moved, and stay encrypted when the
