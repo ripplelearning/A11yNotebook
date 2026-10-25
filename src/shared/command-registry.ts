@@ -61,6 +61,7 @@ export type CommandId =
   | 'format-code'
   | 'insert-link'
   | 'insert-table'
+  | 'insert-math'
   | 'insert-attachment'
   | 'context-open'
   | 'context-rename'
@@ -562,6 +563,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'insert-table',
     label: 'Insert table',
     description: 'Choose Markdown table rows and columns.',
+    contexts: ['editor-selection'],
+  },
+  {
+    id: 'insert-math',
+    label: 'Insert math',
+    description: 'Show the Mathematics toolbar to type ASCII math and insert it as MathML.',
+    shortcut: 'Alt+=',
     contexts: ['editor-selection'],
   },
   {

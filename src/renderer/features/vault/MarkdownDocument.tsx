@@ -7,7 +7,7 @@ import type { VaultTask } from '../../../shared/types';
 import { imageUrl } from '../../../shared/attachments';
 import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
-import { htmlToMarkdown, markdownToHtml } from './format-conversion';
+import { expandMathSpans, htmlToMarkdown, markdownToHtml } from './format-conversion';
 import { sanitizeNoteHtml } from './sanitize-html';
 
 function createMarkdown(links: VaultLink[], notePath?: string) {
@@ -164,10 +164,12 @@ export default function MarkdownDocument({
   const html =
     format === 'html'
       ? sanitizeNoteHtml(content, notePath)
-      : DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
-          ADD_URI_SAFE_ATTR: [],
-          ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-        });
+      : expandMathSpans(
+          DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
+            ADD_URI_SAFE_ATTR: [],
+            ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+          }),
+        );
   const renderedHtml =
     format === 'html' && mode === 'read-only' && htmlTasks.length
       ? (() => {

@@ -22,6 +22,21 @@ const ALLOWED_TAGS = new Set([
   'img',
   'li',
   'main',
+  'math',
+  'mi',
+  'mn',
+  'mo',
+  'mfrac',
+  'mroot',
+  'mrow',
+  'msqrt',
+  'msub',
+  'msubsup',
+  'msup',
+  'mtext',
+  'munder',
+  'munderover',
+  'mover',
   'ol',
   'p',
   'pre',
@@ -60,7 +75,6 @@ const BLOCKED_TAGS = new Set([
   'iframe',
   'input',
   'link',
-  'math',
   'meta',
   'noscript',
   'object',
@@ -213,7 +227,8 @@ export function sanitizeHtmlFragment(
     }
     const safeAttributes = new Map<string, string>();
     for (const [name, value] of attributes(raw)) {
-      if (['title', 'alt', 'scope', 'lang', 'dir'].includes(name)) safeAttributes.set(name, value);
+      if (['title', 'alt', 'alttext', 'scope', 'lang', 'dir'].includes(name)) safeAttributes.set(name, value);
+      else if (name === 'display' && ['block', 'inline'].includes(value)) safeAttributes.set(name, value);
       else if (name === 'href' || name === 'src') {
         const safe = validUrl(tag, name, value, options);
         if (safe) safeAttributes.set(name, safe);
