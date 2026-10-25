@@ -39,6 +39,8 @@ export type CommandId =
   | 'check-for-updates'
   | 'show-about'
   | 'show-settings'
+  | 'check-spelling-grammar'
+  | 'open-thesaurus'
   | 'new-from-template'
   | 'annotate-selection'
   | 'annotate-pdf-selection'
@@ -420,6 +422,18 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Settings',
     description: 'Customize autosave, appearance, and keyboard shortcuts.',
     shortcut: 'Ctrl+Alt+S',
+  },
+  {
+    id: 'check-spelling-grammar',
+    label: 'Spelling and Grammar Check',
+    description: 'Check the current note for spelling and grammar issues.',
+    shortcut: 'F7',
+  },
+  {
+    id: 'open-thesaurus',
+    label: 'Thesaurus',
+    description: 'Look up synonyms for the selected word.',
+    shortcut: 'Shift+F7',
   },
   {
     id: 'new-from-template',

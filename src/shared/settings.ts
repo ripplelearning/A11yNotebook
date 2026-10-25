@@ -18,6 +18,8 @@ export interface NotebookSettings {
   reminderSoundChoice?: 'gentle-chime';
   reminderVolume?: number;
   backgroundReminders?: boolean;
+  /** Words the user added from the spelling dialog; never flagged again. */
+  customDictionary?: string[];
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -35,7 +37,27 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderSoundChoice: 'gentle-chime',
   reminderVolume: 50,
   backgroundReminders: false,
+  customDictionary: [],
 };
+
+/**
+ * Normalize a stored custom dictionary: lowercase single words, deduped,
+ * capped so a pasted list cannot bloat settings.
+ */
+export function normalizeCustomDictionary(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const words: string[] = [];
+  for (const entry of value) {
+    if (typeof entry !== 'string') continue;
+    const word = entry.trim().toLowerCase();
+    if (!/^[a-z]+(?:'[a-z]+)?$/.test(word) || seen.has(word)) continue;
+    seen.add(word);
+    words.push(word);
+    if (words.length >= 5000) break;
+  }
+  return words;
+}
 
 /**
  * Canonical priority values are lowercase single words; display capitalizes
@@ -237,5 +259,6 @@ export function validateSettings(value: unknown): NotebookSettings {
     reminderSoundChoice,
     reminderVolume,
     backgroundReminders,
+    customDictionary: normalizeCustomDictionary(settings.customDictionary),
   };
 }

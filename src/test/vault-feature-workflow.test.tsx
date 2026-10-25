@@ -70,6 +70,7 @@ function setup(
       }),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
+      lookupThesaurus: vi.fn(async () => []),
       toggleBookmark: vi.fn(async () => []),
       addBookmark: vi.fn(async () => []),
       removeBookmark: vi.fn(async () => []),
