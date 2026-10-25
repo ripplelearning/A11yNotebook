@@ -127,6 +127,22 @@ save after a short idle period. A tab marks unsaved content and asks before disc
 App-managed renames, moves, and saves retain provenance. Ordinary external in-place edits retain it too;
 externally replaced files or files renamed outside the app may become unknown and require explicit import again.
 
+### Mathematics
+
+Write math as plain ASCII shorthand and the app turns it into MathML, which browsers render and screen
+readers can read. Supported shorthand includes sqrt(x), frac(a,b), pow(a,b), abs(x), log(x), x^2, x_1,
+pi, greek letters, div for the division sign, rad as a radians unit, and scientific notation such as
+1.5e3 or 3x10^8. The original ASCII is kept in the MathML `alttext` attribute.
+
+Open **Insert → Insert math** or press Alt+= to show the Mathematics toolbar in the rich-text editor.
+Type ASCII math there, use the template buttons for fractions, roots, powers, and more, check the live
+preview, and choose Insert math. While typing directly in a note, a completed function call, power, or
+scientific-notation value at the caret converts to MathML automatically; ordinary words never convert.
+
+Markdown notes store math as a `` `math:` `` code span (for example `` `math:sqrt(16)` ``), which renders
+as MathML when reading and converts back when editing, so math survives the Markdown round trip. HTML
+notes store the MathML element directly. Plain-text notes keep the ASCII as typed.
+
 ### Windows accessibility and application-chooser checks
 
 Automated tests do not verify spoken output or the real Windows application chooser. With a backed-up test
@@ -234,6 +250,19 @@ In read mode, activate a resolved link to open its note in a tab. Missing wiki l
 missing. The right pane lists outgoing links and backlinks for the current note. Choose **Bookmark note** to
 bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
+
+## Citations and bibliographies
+
+Each notebook keeps its own bibliography. From the Insert menu, choose **Citation generator…**
+(Ctrl+Shift+C) to create an entry: pick the source type (book, journal article, website, book chapter,
+conference paper, report, or thesis), then fill in the fields by hand or paste a DOI, ISBN, or web address
+and choose **Fill in from source** to fetch the public record (Crossref for DOIs, Open Library for ISBNs,
+the page's own metadata for URLs). Choose APA, MLA, or Chicago to preview the bibliography entry and the
+in-text citation, then save it to the notebook's bibliography. Choose **Bibliography…** (Ctrl+Shift+J) to
+view, edit, or delete saved entries, insert an in-text citation for one of them (with an optional cited
+page), or insert the full bibliography into the current note. Entries are stored in the library's
+bibliography file, move with the notebook when it is renamed or moved, and stay encrypted when the
+library is encrypted.
 
 ## Annotations
 

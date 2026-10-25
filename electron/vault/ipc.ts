@@ -23,6 +23,7 @@ import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, rea
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
 import { lookupThesaurus } from './thesaurus';
+import { fetchCitationMetadata } from './citation-metadata';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
@@ -639,14 +640,23 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
   const searchProtectionHint = { value: false };
   const nextService = createVaultService(vaultPath, undefined, {
     isProtected: (name) =>
-      service === nextService && (protectedMetadata?.protects(name === 'bookmarks.json' ? 'bookmarks' : 'links') ?? false),
+      service === nextService &&
+      (protectedMetadata?.protects(
+        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+      ) ??
+        false),
     read: (name) => {
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
-      return protectedMetadata!.read(name === 'bookmarks.json' ? 'bookmarks' : 'links');
+      return protectedMetadata!.read(
+        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+      );
     },
     write: (name, value) => {
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
-      return protectedMetadata!.write(name === 'bookmarks.json' ? 'bookmarks' : 'links', value);
+      return protectedMetadata!.write(
+        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+        value,
+      );
     },
     searchIndex: {
       isProtected: () => searchProtectionHint.value || (protectedMetadata?.protects('search-index') ?? false),
@@ -3446,6 +3456,25 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof word !== 'string') throw new Error('Word must be text.');
     return lookupThesaurus(word);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetBibliography, async (event, notebookPath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof notebookPath !== 'string' || !notebookPath) throw new Error('Notebook path must be text.');
+    return requireService().getBibliography(notebookPath);
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultSaveBibliography,
+    async (event, notebookPath: unknown, entries: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof notebookPath !== 'string' || !notebookPath) throw new Error('Notebook path must be text.');
+      if (!Array.isArray(entries)) throw new Error('Bibliography entries must be a list.');
+      return requireService().saveBibliography(notebookPath, entries);
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultFetchCitationMetadata, async (event, identifier: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof identifier !== 'string') throw new Error('Identifier must be text.');
+    return fetchCitationMetadata(identifier);
   });
   ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

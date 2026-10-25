@@ -21,6 +21,8 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Shift+F   | Convert current note to another format… |
 | Ctrl+Shift+G   | Convert current note to outline…        |
 | Ctrl+Shift+M   | Insert image or attachment              |
+| Ctrl+Shift+C   | Citation generator…                     |
+| Ctrl+Shift+J   | Bibliography…                           |
 | Ctrl+Alt+S     | Settings                                |
 | F7             | Spelling and Grammar Check              |
 | Shift+F7       | Thesaurus                               |
@@ -47,6 +49,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Shift+L   | Insert link                             |
 | Ctrl+K         | Insert link                             |
 | Ctrl+Alt+T     | Insert table                            |
+| Alt+=          | Insert math                             |
 | Ctrl+O         | Open library                            |
 | Ctrl+S         | Save note                               |
 | Ctrl+4         | Tasks                                   |

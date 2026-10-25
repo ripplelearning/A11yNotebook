@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { convertNoteContent, formatConversionWarning } from '../renderer/features/vault/format-conversion';
+import {
+  convertNoteContent,
+  expandMathSpans,
+  formatConversionWarning,
+  htmlToMarkdown,
+} from '../renderer/features/vault/format-conversion';
 import { sanitizeNoteHtml } from '../renderer/features/vault/sanitize-html';
 
 describe('note format conversion', () => {
@@ -75,6 +80,19 @@ describe('note format conversion', () => {
     const safe = sanitizeNoteHtml('<form><label>Input <input value="unsafe"></label><button>Run</button></form>');
     expect(safe).not.toMatch(/<(?:form|input|button)\b/i);
     expect(safe).toContain('Input');
+  });
+
+  it('keeps MathML and its alttext through renderer sanitization', () => {
+    const safe = sanitizeNoteHtml('<p><math alttext="sqrt(16)"><msqrt><mn>16</mn></msqrt></math></p>');
+    expect(safe).toContain('<math alttext="sqrt(16)">');
+    expect(safe).toContain('<msqrt>');
+  });
+
+  it('round-trips math through Markdown as a math code span', () => {
+    const markdown = htmlToMarkdown('<p><math alttext="sqrt(16)"><msqrt><mn>16</mn></msqrt></math></p>');
+    expect(markdown).toBe('`math:sqrt(16)`');
+    expect(expandMathSpans('<p><code>math:sqrt(16)</code></p>')).toContain('<math alttext="sqrt(16)">');
+    expect(expandMathSpans('<p><code>math:broken(</code></p>')).toContain('<code>math:broken(</code>');
   });
 
   it('preserves documented task metadata through sanitization', () => {

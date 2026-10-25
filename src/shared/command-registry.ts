@@ -63,7 +63,10 @@ export type CommandId =
   | 'format-code'
   | 'insert-link'
   | 'insert-table'
+  | 'insert-math'
   | 'insert-attachment'
+  | 'open-citation-generator'
+  | 'open-bibliography'
   | 'context-open'
   | 'context-rename'
   | 'context-move'
@@ -418,6 +421,20 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+Shift+M',
   },
   {
+    id: 'open-citation-generator',
+    label: 'Citation generator…',
+    description: 'Create a bibliography entry for a source, by hand or from its DOI, ISBN, or web address.',
+    shortcut: 'Ctrl+Shift+C',
+    contexts: ['general'],
+  },
+  {
+    id: 'open-bibliography',
+    label: 'Bibliography…',
+    description: 'View, edit, and insert citations from this notebook’s bibliography.',
+    shortcut: 'Ctrl+Shift+J',
+    contexts: ['general'],
+  },
+  {
     id: 'show-settings',
     label: 'Settings',
     description: 'Customize autosave, appearance, and keyboard shortcuts.',
@@ -599,6 +616,13 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Insert table',
     description: 'Choose Markdown table rows and columns.',
     shortcut: 'Ctrl+Alt+T',
+    contexts: ['editor-selection'],
+  },
+  {
+    id: 'insert-math',
+    label: 'Insert math',
+    description: 'Show the Mathematics toolbar to type ASCII math and insert it as MathML.',
+    shortcut: 'Alt+=',
     contexts: ['editor-selection'],
   },
   {

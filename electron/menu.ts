@@ -83,7 +83,10 @@ export function buildApplicationMenu(
       submenu: [
         commandItem('insert-link'),
         commandItem('insert-table'),
+        commandItem('insert-math'),
         commandItem('insert-attachment'),
+        commandItem('open-citation-generator'),
+        commandItem('open-bibliography'),
         commandItem('annotate-selection'),
       ],
     },

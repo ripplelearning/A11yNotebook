@@ -32,6 +32,15 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).toContain('<table>');
   });
 
+  it('keeps MathML and its alttext in exported HTML, and drops other attributes', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p><math alttext="frac(1,2)" display="block" onclick="run()"><mfrac><mn>1</mn><mn>2</mn></mfrac></math></p>',
+    );
+    expect(safe).toContain('<math alttext="frac(1,2)" display="block">');
+    expect(safe).toContain('<mfrac>');
+    expect(safe).not.toContain('onclick');
+  });
+
   it('wraps output in a restrictive policy without scripts or network resources', () => {
     const output = standaloneHtml('Research <note>', sanitizeHtmlFragment('<p>Safe</p>'));
     expect(output).toContain("default-src 'none'");

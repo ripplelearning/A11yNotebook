@@ -1,6 +1,18 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { asciiToMathML, findTrailingMathExpression } from '../../../shared/ascii-math';
 import { sanitizeNoteHtml } from './sanitize-html';
 import { detectSmartTrigger } from './smart-formatting';
+
+const MATH_TEMPLATES = [
+  { label: 'Fraction template', snippet: 'frac(a,b)' },
+  { label: 'Square root template', snippet: 'sqrt(x)' },
+  { label: 'Power template', snippet: 'x^2' },
+  { label: 'Subscript template', snippet: 'x_1' },
+  { label: 'Absolute value template', snippet: 'abs(x)' },
+  { label: 'Pi', snippet: 'pi' },
+  { label: 'Logarithm template', snippet: 'log(x)' },
+  { label: 'Scientific notation template', snippet: '1.5e3' },
+];
 
 interface Props {
   content: string;
@@ -22,20 +34,98 @@ const tools = [
   { label: 'Insert table', command: 'table' },
   { label: 'Insert image', command: 'image' },
   { label: 'Insert checklist task', command: 'task' },
+  { label: 'Mathematics', command: 'math' },
 ];
 
 export default function RichTextEditor({ content, notePath, onChange }: Props) {
   const editor = useRef<HTMLDivElement>(null);
   const [activeTool, setActiveTool] = useState(0);
+  const [showMath, setShowMath] = useState(false);
+  const [mathInput, setMathInput] = useState('');
+  const [mathError, setMathError] = useState('');
+  const mathInputRef = useRef<HTMLInputElement>(null);
+  const savedMathRange = useRef<Range | null>(null);
   const safeContent = sanitizeNoteHtml(content, notePath);
 
   useEffect(() => {
     if (editor.current && editor.current.innerHTML !== safeContent) editor.current.innerHTML = safeContent;
   }, [safeContent]);
 
+  const saveMathRange = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editor.current?.contains(selection.anchorNode)) {
+      savedMathRange.current = selection.getRangeAt(0).cloneRange();
+    }
+  };
+
+  const openMathToolbar = () => {
+    saveMathRange();
+    setMathInput('');
+    setMathError('');
+    setShowMath(true);
+  };
+
+  useEffect(() => {
+    if (showMath) mathInputRef.current?.focus();
+  }, [showMath]);
+
+  useEffect(() => {
+    const open = () => openMathToolbar();
+    window.addEventListener('a11y:open-math-toolbar', open);
+    return () => window.removeEventListener('a11y:open-math-toolbar', open);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const insertMath = () => {
+    const mathML = asciiToMathML(mathInput);
+    if (!mathML) {
+      setMathError('Could not read that math yet. Try something like sqrt(16) or frac(1,2).');
+      return;
+    }
+    const target = editor.current;
+    if (!target) return;
+    target.focus();
+    const selection = window.getSelection();
+    if (selection && savedMathRange.current && target.contains(savedMathRange.current.startContainer)) {
+      selection.removeAllRanges();
+      selection.addRange(savedMathRange.current);
+    }
+    document.execCommand('insertHTML', false, mathML);
+    setShowMath(false);
+    setMathError('');
+    emitChange();
+  };
+
+  const convertTrailingMath = () => {
+    const target = editor.current;
+    if (!target) return;
+    const selection = window.getSelection();
+    if (!selection?.isCollapsed || !selection.anchorNode) return;
+    const anchor = selection.anchorNode;
+    if (!(anchor instanceof Text)) return;
+    const container = anchor.parentElement;
+    if (container?.closest('math, code, pre')) return;
+    const beforeCaret = anchor.textContent?.slice(0, selection.anchorOffset) ?? '';
+    const found = findTrailingMathExpression(beforeCaret);
+    if (!found) return;
+    const mathML = asciiToMathML(found.ascii);
+    if (!mathML) return;
+    const range = document.createRange();
+    range.setStart(anchor, found.start);
+    range.setEnd(anchor, selection.anchorOffset);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    document.execCommand('insertHTML', false, mathML);
+    emitChange();
+  };
+
   const activate = (command: string) => {
     const target = editor.current;
     if (!target) return;
+    if (command === 'math') {
+      openMathToolbar();
+      return;
+    }
     target.focus();
     if (command.startsWith('heading')) {
       document.execCommand('formatBlock', false, `h${command.slice('heading'.length)}`);
@@ -84,6 +174,29 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
     if (editor.current.innerHTML !== next) editor.current.innerHTML = next;
     onChange(next);
   };
+
+  useEffect(() => {
+    const insertText = (event: Event) => {
+      const target = editor.current;
+      if (!target) return;
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!text) return;
+      target.focus();
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount || !target.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      document.execCommand('insertText', false, text);
+      emitChange();
+    };
+    window.addEventListener('a11y:insert-citation-text', insertText);
+    return () => window.removeEventListener('a11y:insert-citation-text', insertText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const onEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = editor.current;
@@ -164,6 +277,68 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
           </button>
         ))}
       </div>
+      {showMath ? (
+        <div role="group" aria-label="Mathematics toolbar">
+          <p>
+            Type ASCII math, for example sqrt(16), frac(1,2), x^2, or 1.5e3. It is inserted as
+            MathML that screen readers can read.
+          </p>
+          <label>
+            ASCII math
+            <input
+              ref={mathInputRef}
+              value={mathInput}
+              onChange={(event) => {
+                setMathInput(event.target.value);
+                setMathError('');
+              }}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  insertMath();
+                } else if (event.key === 'Escape') {
+                  setShowMath(false);
+                  editor.current?.focus();
+                }
+              }}
+            />
+          </label>
+          <div role="toolbar" aria-label="Math templates">
+            {MATH_TEMPLATES.map((template) => (
+              <button
+                key={template.label}
+                type="button"
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={() => {
+                  setMathInput((current) => current + template.snippet);
+                  setMathError('');
+                  mathInputRef.current?.focus();
+                }}
+              >
+                {template.label}
+              </button>
+            ))}
+          </div>
+          {mathInput && asciiToMathML(mathInput) ? (
+            <div aria-label="Math preview" dangerouslySetInnerHTML={{ __html: asciiToMathML(mathInput) ?? '' }} />
+          ) : null}
+          {mathError ? (
+            <p role="alert">{mathError}</p>
+          ) : null}
+          <button type="button" onMouseDown={(event) => event.preventDefault()} onClick={insertMath}>
+            Insert math
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setShowMath(false);
+              editor.current?.focus();
+            }}
+          >
+            Close Mathematics toolbar
+          </button>
+        </div>
+      ) : null}
       <div
         ref={editor}
         role="textbox"
@@ -178,6 +353,7 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
         onKeyDown={onEditorKeyDown}
         onInput={() => {
           if (!editor.current) return;
+          convertTrailingMath();
           const next = sanitizeNoteHtml(editor.current.innerHTML, notePath);
           if (editor.current.innerHTML !== next) editor.current.innerHTML = next;
           onChange(next);
