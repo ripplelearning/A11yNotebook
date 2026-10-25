@@ -70,6 +70,9 @@ describe('local vault workflow', () => {
         setHtmlTaskDueDate: vi.fn(async () => []),
         getLinkIndex: vi.fn(async () => ({ links: [] })),
         getBookmarks: vi.fn(async () => []),
+        getBibliography: vi.fn(async () => []),
+        saveBibliography: vi.fn(async () => []),
+        fetchCitationMetadata: vi.fn(async () => ({})),
         toggleBookmark: vi.fn(async () => [
           {
             id: 'Class notes/Week 1.md',

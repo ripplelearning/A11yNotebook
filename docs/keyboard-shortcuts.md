@@ -11,6 +11,8 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+3         | Notes & Files              |
 | Alt+ArrowLeft  | Back                       |
 | Alt+ArrowRight | Forward                    |
+| Ctrl+Shift+C   | Citation generator…        |
+| Ctrl+Alt+B     | Bibliography…              |
 | Ctrl+Alt+S     | Settings                   |
 | Ctrl+Shift+N   | New note from template     |
 | Ctrl+Shift+A   | Annotate selection         |
