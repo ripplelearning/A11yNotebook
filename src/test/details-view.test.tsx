@@ -531,7 +531,7 @@ describe('accessible details view', () => {
         fireEvent.change(screen.getByRole('textbox', { name: 'New Name' }), { target: { value: 'Renamed' } });
       } else {
         fireEvent.keyDown(research, { key: 'F10', shiftKey: true });
-        fireEvent.click(screen.getByRole('menuitem', { name: 'Move' }));
+        fireEvent.click(screen.getByRole('menuitem', { name: 'Move selected item' }));
         fireEvent.change(screen.getByRole('combobox', { name: 'Destination notebook' }), {
           target: { value: 'Archive' },
         });
@@ -570,7 +570,7 @@ describe('accessible details view', () => {
         cancelled ? vault : { ...vault, entries: vault.entries.filter((entry) => entry.path !== 'Research') },
       );
       fireEvent.keyDown(research, { key: 'ContextMenu' });
-      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete' }));
+      fireEvent.click(screen.getByRole('menuitem', { name: 'Delete selected item' }));
       await waitFor(() => expect(bridge.vault.delete).toHaveBeenCalledWith('Research'));
       await waitFor(() => expect(screen.queryByRole('gridcell', { name: 'Research' }) !== null).toBe(cancelled));
       navigate('3');

@@ -45,9 +45,9 @@ describe('global context menu', () => {
     fireEvent.keyDown(items[0], { key: 'r' });
     fireEvent.keyDown(document.activeElement!, { key: 'e' });
     fireEvent.keyDown(document.activeElement!, { key: 'v' });
-    expect(within(menu).getByRole('menuitem', { name: 'Reveal in Explorer' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Reveal this item in Explorer' })).toHaveFocus();
 
-    const disabled = within(menu).getByRole('menuitem', { name: 'Encrypt note' });
+    const disabled = within(menu).getByRole('menuitem', { name: 'Encrypt this note' });
     expect(disabled).toHaveAttribute('aria-disabled', 'true');
     fireEvent.click(disabled);
     expect(onSelect).not.toHaveBeenCalled();
@@ -60,7 +60,7 @@ describe('global context menu', () => {
     const onSelect = vi.fn();
     render(<MenuHarness onSelect={onSelect} />);
     const menu = screen.getByRole('menu', { name: 'Actions for Note.md' });
-    const first = within(menu).getByRole('menuitem', { name: 'Open' });
+    const first = within(menu).getByRole('menuitem', { name: 'Open selected item' });
     fireEvent.keyDown(first, { key });
     expect(onSelect).toHaveBeenCalledWith('context-open');
     expect(screen.getByRole('button', { name: 'Open actions' })).toHaveFocus();

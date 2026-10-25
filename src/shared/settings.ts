@@ -1,4 +1,4 @@
-import { COMMANDS, type CommandId } from './command-registry';
+import { COMMANDS, effectiveShortcutAliases, type CommandId } from './command-registry';
 
 export interface NotebookSettings {
   autosaveDelay: number;
@@ -6,6 +6,8 @@ export interface NotebookSettings {
   fontSize: number;
   showCommandButtons?: boolean;
   shortcuts: Partial<Record<CommandId, string>>;
+  /** Alternate-shortcut overrides by command: a value replaces the registry alias, '' disables it. */
+  shortcutAliases?: Partial<Record<CommandId, string>>;
   vaultLockMinutes?: number;
   noteEditLockMinutes?: number;
   defaultNoteOpenMode?: 'read-only' | 'edit';
@@ -24,6 +26,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   fontSize: 16,
   showCommandButtons: false,
   shortcuts: {},
+  shortcutAliases: {},
   vaultLockMinutes: 15,
   noteEditLockMinutes: 0,
   defaultNoteOpenMode: 'read-only',
@@ -119,20 +122,39 @@ export function normalizeShortcut(shortcut: string): string {
   ].join('+');
 }
 
-export function shortcutConflicts(shortcuts: NotebookSettings['shortcuts']): string[] {
-  const used = new Map(RESERVED_SHORTCUTS.map((shortcut) => [shortcut.toLowerCase(), 'Pane/tab navigation']));
+/**
+ * Detect identical shortcut assignments, compared by command id (not label,
+ * so two commands that ever share a label cannot mask a real collision).
+ * Reserved pane/tab keys, primary shortcuts, and alternate shortcuts all
+ * count. The context-aware new-in-current-view command is a single command
+ * with one binding, so it is never a duplicate of the creation commands it
+ * covers; it is checked like any other command.
+ */
+export function shortcutConflicts(
+  shortcuts: NotebookSettings['shortcuts'],
+  aliasShortcuts: NotebookSettings['shortcutAliases'] = {},
+): string[] {
+  const used = new Map<string, { id: string; label: string }>(
+    RESERVED_SHORTCUTS.map((shortcut) => [shortcut.toLowerCase(), { id: 'reserved', label: 'Pane/tab navigation' }]),
+  );
   const conflicts: string[] = [];
+  const claim = (shortcut: string, command: { id: string; label: string }) => {
+    const previous = used.get(shortcut.toLowerCase());
+    if (previous && previous.id !== command.id) {
+      conflicts.push(`${shortcut}: ${previous.label} (${previous.id}) and ${command.label} (${command.id})`);
+    } else if (!previous) {
+      used.set(shortcut.toLowerCase(), command);
+    }
+  };
   for (const command of COMMANDS) {
-    for (const shortcut of command.shortcutAliases ?? []) {
-      used.set(shortcut.toLowerCase(), command.label);
+    for (const alias of effectiveShortcutAliases(command, aliasShortcuts)) {
+      claim(normalizeShortcut(alias), command);
     }
   }
   for (const command of COMMANDS) {
     const shortcut = normalizeShortcut(shortcuts[command.id] ?? command.shortcut ?? '');
     if (!shortcut) continue;
-    const previous = used.get(shortcut.toLowerCase());
-    if (previous && previous !== command.label) conflicts.push(`${shortcut}: ${previous} and ${command.label}`);
-    else used.set(shortcut.toLowerCase(), command.label);
+    claim(shortcut, command);
   }
   return conflicts;
 }
@@ -189,7 +211,16 @@ export function validateSettings(value: unknown): NotebookSettings {
     }
     shortcuts[id as CommandId] = normalizeShortcut(shortcut);
   }
-  const conflicts = shortcutConflicts(shortcuts);
+  const aliasShortcuts: NotebookSettings['shortcutAliases'] = {};
+  if (settings.shortcutAliases && typeof settings.shortcutAliases === 'object' && !Array.isArray(settings.shortcutAliases)) {
+    for (const [id, shortcut] of Object.entries(settings.shortcutAliases)) {
+      if (!COMMANDS.some((command) => command.id === id) || typeof shortcut !== 'string') {
+        throw new Error('Invalid command shortcut.');
+      }
+      aliasShortcuts[id as CommandId] = normalizeShortcut(shortcut);
+    }
+  }
+  const conflicts = shortcutConflicts(shortcuts, aliasShortcuts);
   if (conflicts.length) throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
   return {
     autosaveDelay: settings.autosaveDelay,
@@ -197,6 +228,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     fontSize: settings.fontSize,
     showCommandButtons,
     shortcuts,
+    shortcutAliases: aliasShortcuts,
     vaultLockMinutes,
     noteEditLockMinutes,
     defaultNoteOpenMode,
