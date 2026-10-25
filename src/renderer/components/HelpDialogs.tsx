@@ -16,8 +16,12 @@ const NAVIGATION_SHORTCUTS = [
 export function KeyboardShortcutsDialog({
   onClose,
   shortcuts = {},
-}: DialogProps & { shortcuts?: NotebookSettings['shortcuts'] }) {
-  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts(shortcuts)];
+  aliasShortcuts = {},
+}: DialogProps & {
+  shortcuts?: NotebookSettings['shortcuts'];
+  aliasShortcuts?: NotebookSettings['shortcutAliases'];
+}) {
+  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts(shortcuts, aliasShortcuts)];
   return (
     <Modal titleId="shortcuts-dialog-title" title="Keyboard Shortcuts" onClose={onClose} className="wide-modal">
       <div className="modal-body table-scroll">

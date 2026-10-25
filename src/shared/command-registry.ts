@@ -162,7 +162,7 @@ export type KeyboardShortcutDefinition = {
 export const COMMANDS: CommandDefinition[] = [
   {
     id: 'new-contextual',
-    label: 'New',
+    label: 'New in current view',
     description: 'Create an item in the current view.',
     shortcut: 'Ctrl+N',
     contexts: ['general'],
@@ -172,6 +172,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'backup-library',
     label: 'Back up library',
     description: 'Copy the whole library, including its metadata, to a new folder you choose.',
+    shortcut: 'Ctrl+Shift+B',
     contexts: ['general'],
   },
   { id: 'new-note', label: 'New note', description: 'Create a note in the selected notebook.', contexts: ['general'] },
@@ -179,12 +180,14 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'open-selected-external',
     label: 'Open in external app',
     description: 'Open the selected library file in its default application.',
+    shortcut: 'Ctrl+Shift+O',
     contexts: ['general'],
   },
   {
     id: 'import-file',
     label: 'Import file',
     description: 'Import an external file into the selected notebook.',
+    shortcut: 'Ctrl+Shift+I',
     contexts: ['general'],
   },
   {
@@ -201,7 +204,7 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'show-contents',
-    label: 'Contents',
+    label: 'Contents view',
     description: 'Show the contents overview.',
     shortcut: 'Ctrl+0',
     contexts: ['general'],
@@ -229,27 +232,27 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'navigate-back',
-    label: 'Back',
+    label: 'Back in history',
     description: 'Go back to the previous view in browsing history.',
     shortcut: 'Alt+ArrowLeft',
     contexts: ['general'],
   },
   {
     id: 'navigate-forward',
-    label: 'Forward',
+    label: 'Forward in history',
     description: 'Go forward to the next view in browsing history.',
     shortcut: 'Alt+ArrowRight',
     contexts: ['general'],
   },
   {
     id: 'context-open',
-    label: 'Open',
+    label: 'Open selected item',
     description: 'Open the focused item.',
     contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
   },
   {
     id: 'context-import-note',
-    label: 'Import into A11y Notebook…',
+    label: 'Import managed copy…',
     description:
       'Import a managed copy. Markdown and HTML notes are editable; documents and images use read-only previews, and cognitive assets use their dedicated editors.',
     contexts: ['tree-note', 'attachment'],
@@ -268,43 +271,43 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'context-rename',
-    label: 'Rename',
+    label: 'Rename selected item',
     description: 'Rename the selected library item.',
     contexts: ['tree-note', 'tree-folder'],
   },
   {
     id: 'context-move',
-    label: 'Move',
+    label: 'Move selected item',
     description: 'Move the selected library item.',
     contexts: ['tree-note', 'tree-folder'],
   },
   {
     id: 'context-delete',
-    label: 'Delete',
+    label: 'Delete selected item',
     description: 'Delete the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder'],
   },
   {
     id: 'context-reveal',
-    label: 'Reveal in Explorer',
+    label: 'Reveal this item in Explorer',
     description: 'Reveal the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment'],
   },
   {
     id: 'context-import-internal',
-    label: 'Import into A11y Notebook',
+    label: 'Import internal copy',
     description: 'Import a separate compatible copy for internal reading or editing.',
     contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'context-bookmark',
-    label: 'Bookmark',
+    label: 'Bookmark selected note',
     description: 'Toggle a bookmark for the selected note.',
     contexts: ['tree-note'],
   },
   {
     id: 'context-new-note',
-    label: 'New note in notebook',
+    label: 'New note in this notebook',
     description: 'Create a note in this notebook.',
     contexts: ['tree-folder'],
   },
@@ -369,13 +372,13 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'context-encrypt-note',
-    label: 'Encrypt note',
+    label: 'Encrypt this note',
     description: 'Protect this note with a separate password.',
     contexts: ['tree-note', 'editor-selection'],
   },
   {
     id: 'context-export-note',
-    label: 'Export note…',
+    label: 'Export this note…',
     description: 'Export this note as standalone HTML or Markdown.',
     contexts: ['tree-note', 'tab'],
   },
@@ -383,29 +386,34 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'export-current-note',
     label: 'Export current note…',
     description: 'Export the current note as standalone HTML or Markdown.',
+    shortcut: 'Ctrl+Shift+X',
     contexts: ['general'],
   },
-  { id: 'capture-webpage', label: 'Capture webpage…', description: 'Save a webpage into the current library.' },
-  { id: 'reveal-selected', label: 'Reveal selected item in Explorer', description: 'Reveal the selected item.' },
+  { id: 'capture-webpage', label: 'Capture webpage…', description: 'Save a webpage into the current library.', shortcut: 'Ctrl+Shift+W' },
+  { id: 'reveal-selected', label: 'Reveal selected item in Explorer', description: 'Reveal the selected item.', shortcut: 'Ctrl+Shift+E' },
   {
     id: 'encrypt-current-note',
     label: 'Encrypt current note…',
     description: 'Protect the active note with a password.',
+    shortcut: 'Ctrl+Shift+Y',
   },
   {
     id: 'convert-current-note',
     label: 'Convert current note to another format…',
     description: 'Create a Markdown or HTML copy of the active note.',
+    shortcut: 'Ctrl+Shift+F',
   },
   {
     id: 'convert-note-to-outline',
     label: 'Convert current note to outline…',
     description: 'Create an outline asset from the active Markdown note, keeping its heading structure.',
+    shortcut: 'Ctrl+Shift+G',
   },
   {
     id: 'insert-attachment',
     label: 'Insert image or attachment',
     description: 'Insert a labelled reference to a library attachment.',
+    shortcut: 'Ctrl+Shift+M',
   },
   {
     id: 'show-settings',
@@ -429,6 +437,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'annotate-pdf-selection',
     label: 'Annotate PDF selection',
     description: 'Add a note to selected PDF text.',
+    shortcut: 'Ctrl+Alt+A',
     contexts: ['pdf-selection', 'pdf-semantic'],
     requiresSelection: true,
   },
@@ -436,6 +445,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'annotate-current-semantic-element',
     label: 'Annotate this paragraph/heading/cell',
     description: 'Add a note to the focused semantic element in PDF accessible text.',
+    shortcut: 'Ctrl+Alt+P',
     contexts: ['pdf-semantic'],
   },
   {
@@ -448,6 +458,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'show-milestones',
     label: 'Open Milestones',
     description: 'Plan milestones with associated notes, tasks, and live progress.',
+    shortcut: 'Ctrl+6',
   },
   {
     id: 'show-assets',
@@ -477,6 +488,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading1',
     label: 'Heading 1',
     description: 'Format selected lines as level-one headings.',
+    shortcut: 'Ctrl+Alt+1',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -484,6 +496,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading2',
     label: 'Heading 2',
     description: 'Format selected lines as level-two headings.',
+    shortcut: 'Ctrl+Alt+2',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -491,6 +504,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading3',
     label: 'Heading 3',
     description: 'Format selected lines as level-three headings.',
+    shortcut: 'Ctrl+Alt+3',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -498,6 +512,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading4',
     label: 'Heading 4',
     description: 'Format selected lines as level-four headings.',
+    shortcut: 'Ctrl+Alt+4',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -505,6 +520,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading5',
     label: 'Heading 5',
     description: 'Format selected lines as level-five headings.',
+    shortcut: 'Ctrl+Alt+5',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -512,6 +528,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-heading6',
     label: 'Heading 6',
     description: 'Format selected lines as level-six headings.',
+    shortcut: 'Ctrl+Alt+6',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -519,6 +536,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-bullet',
     label: 'Bulleted list',
     description: 'Format selected lines as a bullet list.',
+    shortcut: 'Ctrl+Alt+8',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -526,6 +544,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-numbered',
     label: 'Numbered list',
     description: 'Format selected lines as a numbered list.',
+    shortcut: 'Ctrl+Alt+7',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -533,6 +552,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-checkbox',
     label: 'Checkbox list',
     description: 'Format selected lines as checkbox tasks.',
+    shortcut: 'Ctrl+Alt+9',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -540,6 +560,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-quote',
     label: 'Quote',
     description: 'Format selected lines as a quote.',
+    shortcut: 'Ctrl+Alt+Q',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -547,6 +568,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'format-code',
     label: 'Code block',
     description: 'Wrap selected text in a fenced code block.',
+    shortcut: 'Ctrl+Alt+C',
     contexts: ['editor-selection'],
     requiresSelection: true,
   },
@@ -562,6 +584,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'insert-table',
     label: 'Insert table',
     description: 'Choose Markdown table rows and columns.',
+    shortcut: 'Ctrl+Alt+T',
     contexts: ['editor-selection'],
   },
   {
@@ -614,6 +637,7 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Edit note metadata…',
     description:
       'View and edit the active note’s YAML front matter — title, tags, and other fields — with tag suggestions from the library.',
+    shortcut: 'Ctrl+Shift+D',
   },
   { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
   {
@@ -677,11 +701,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'check-for-updates',
     label: 'Check for Updates',
     description: 'Check the A11y Notebook GitHub releases for a newer version and install it.',
+    shortcut: 'Ctrl+Shift+U',
   },
   {
     id: 'show-about',
     label: 'About A11y Notebook',
     description: 'Show the application name, version, and repository link.',
+    shortcut: 'Ctrl+Shift+H',
   },
 ];
 
@@ -700,17 +726,49 @@ export function getContextMenuCommands(context: MenuContext, hasSelection = fals
   );
 }
 
-export function getKeyboardShortcuts(shortcuts: Partial<Record<CommandId, string>> = {}): KeyboardShortcutDefinition[] {
+/**
+ * The alternate bindings in effect for a command: a settings override
+ * replaces the registry alias, and an empty override disables it. Alternate
+ * bindings are editable in Settings exactly like primary shortcuts.
+ */
+export function effectiveShortcutAliases(
+  command: CommandDefinition,
+  aliasShortcuts: Partial<Record<CommandId, string>> = {},
+): string[] {
+  if (Object.prototype.hasOwnProperty.call(aliasShortcuts, command.id)) {
+    const override = aliasShortcuts[command.id];
+    return override ? [override] : [];
+  }
+  return [...(command.shortcutAliases ?? [])];
+}
+
+/** Every binding in effect for a command: its primary shortcut plus its alternates. */
+export function effectiveCommandShortcuts(
+  command: CommandDefinition,
+  shortcuts: Partial<Record<CommandId, string>> = {},
+  aliasShortcuts: Partial<Record<CommandId, string>> = {},
+): string[] {
+  const primary = shortcuts[command.id] ?? command.shortcut;
+  const aliases = effectiveShortcutAliases(command, aliasShortcuts).filter((alias) => alias !== primary);
+  return primary ? [primary, ...aliases] : aliases;
+}
+
+export function getKeyboardShortcuts(
+  shortcuts: Partial<Record<CommandId, string>> = {},
+  aliasShortcuts: Partial<Record<CommandId, string>> = {},
+): KeyboardShortcutDefinition[] {
   return COMMANDS.flatMap((command) => {
     const shortcut = shortcuts[command.id] ?? command.shortcut;
     if (!shortcut) return [];
     return [
       { commandId: command.id, label: command.label, shortcut },
-      ...(command.shortcutAliases ?? []).map((alias) => ({
-        commandId: command.id,
-        label: command.label,
-        shortcut: alias,
-      })),
+      ...effectiveShortcutAliases(command, aliasShortcuts)
+        .filter((alias) => alias !== shortcut)
+        .map((alias) => ({
+          commandId: command.id,
+          label: command.label,
+          shortcut: alias,
+        })),
     ];
   });
 }

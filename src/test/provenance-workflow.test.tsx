@@ -116,7 +116,7 @@ describe('provenance-aware row activation', () => {
     const grid = await showFiles();
     const row = within(grid).getByRole('gridcell', { name: 'Outside.md' });
     fireEvent.contextMenu(row);
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import into A11y Notebook…' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import managed copy…' }));
     await screen.findByRole('heading', { name: 'Outside imported', level: 2 });
     expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/Outside.md');
     expect(bridge.vault.readNote).toHaveBeenCalledWith(copy.path, undefined);
