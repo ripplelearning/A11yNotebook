@@ -168,6 +168,14 @@ export interface VaultBridge {
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
   addBookmark(path: string, anchor?: import('./types').BookmarkAnchor): Promise<VaultBookmark[]>;
   removeBookmark(id: string): Promise<VaultBookmark[]>;
+  getBibliography(notebookPath: string): Promise<import('./citations').BibliographyEntry[]>;
+  saveBibliography(
+    notebookPath: string,
+    entries: import('./citations').BibliographyEntry[],
+  ): Promise<import('./citations').BibliographyEntry[]>;
+  fetchCitationMetadata(
+    identifier: string,
+  ): Promise<Partial<import('./citations').BibliographyEntry>>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }

@@ -175,6 +175,29 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
     onChange(next);
   };
 
+  useEffect(() => {
+    const insertText = (event: Event) => {
+      const target = editor.current;
+      if (!target) return;
+      const text = (event as CustomEvent<{ text?: string }>).detail?.text;
+      if (!text) return;
+      target.focus();
+      const selection = window.getSelection();
+      if (!selection || !selection.rangeCount || !target.contains(selection.anchorNode)) {
+        const range = document.createRange();
+        range.selectNodeContents(target);
+        range.collapse(false);
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      }
+      document.execCommand('insertText', false, text);
+      emitChange();
+    };
+    window.addEventListener('a11y:insert-citation-text', insertText);
+    return () => window.removeEventListener('a11y:insert-citation-text', insertText);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = editor.current;
     if (!target) return;

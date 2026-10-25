@@ -63,6 +63,8 @@ export type CommandId =
   | 'insert-table'
   | 'insert-math'
   | 'insert-attachment'
+  | 'open-citation-generator'
+  | 'open-bibliography'
   | 'context-open'
   | 'context-rename'
   | 'context-move'
@@ -415,6 +417,20 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Insert image or attachment',
     description: 'Insert a labelled reference to a library attachment.',
     shortcut: 'Ctrl+Shift+M',
+  },
+  {
+    id: 'open-citation-generator',
+    label: 'Citation generator…',
+    description: 'Create a bibliography entry for a source, by hand or from its DOI, ISBN, or web address.',
+    shortcut: 'Ctrl+Shift+C',
+    contexts: ['general'],
+  },
+  {
+    id: 'open-bibliography',
+    label: 'Bibliography…',
+    description: 'View, edit, and insert citations from this notebook’s bibliography.',
+    shortcut: 'Ctrl+Shift+J',
+    contexts: ['general'],
   },
   {
     id: 'show-settings',

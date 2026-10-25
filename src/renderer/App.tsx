@@ -92,6 +92,12 @@ import MilestonesView from './features/milestones/MilestonesView';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
+import CitationDialog from './features/vault/CitationDialog';
+import {
+  formatBibliography,
+  type BibliographyEntry,
+  type CitationStyle,
+} from '../shared/citations';
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanChoice } from './features/vault/PasteOrphanDialog';
@@ -200,7 +206,15 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
   },
   {
     label: 'Insert',
-    items: ['insert-link', 'insert-table', 'insert-math', 'insert-attachment', 'annotate-selection'],
+    items: [
+      'insert-link',
+      'insert-table',
+      'insert-math',
+      'insert-attachment',
+      'open-citation-generator',
+      'open-bibliography',
+      'annotate-selection',
+    ],
   },
   {
     label: 'Format',
@@ -449,6 +463,7 @@ export default function App() {
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
   const [taskPriorityFilter, setTaskPriorityFilter] = useState('all');
   const [taskScheduleDialog, setTaskScheduleDialog] = useState<VaultTask | null>(null);
+  const [citationDialog, setCitationDialog] = useState<'generator' | 'bibliography' | null>(null);
   const [taskPriorityDialog, setTaskPriorityDialog] = useState<VaultTask | null>(null);
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
@@ -2580,6 +2595,54 @@ export default function App() {
     }
   };
 
+  // Bibliography entries belong to a notebook: the selected notebook, or the
+  // notebook holding the current note. Root-level notes have no notebook.
+  const citationNotebookPath =
+    selectedNotebookPath ??
+    (currentNote && currentNote.path.includes('/')
+      ? currentNote.path.slice(0, currentNote.path.lastIndexOf('/'))
+      : undefined);
+
+  const insertTextIntoNote = (text: string) => {
+    if (!currentNote) return;
+    if (document.querySelector('.rich-text-editor')) {
+      window.dispatchEvent(new CustomEvent('a11y:insert-citation-text', { detail: { text } }));
+      return;
+    }
+    const textarea = editorRef.current;
+    if (textarea) {
+      const start = textarea.selectionStart ?? currentNote.content.length;
+      const end = textarea.selectionEnd ?? start;
+      updateNoteContent(
+        currentNote.id,
+        `${currentNote.content.slice(0, start)}${text}${currentNote.content.slice(end)}`,
+      );
+      return;
+    }
+    updateNoteContent(currentNote.id, `${currentNote.content}\n\n${text}`);
+  };
+
+  const insertCitationText = (text: string) => {
+    insertTextIntoNote(text);
+    setCitationDialog(null);
+    setStatusMessage('Citation inserted.');
+  };
+
+  const insertBibliography = (entries: BibliographyEntry[], style: CitationStyle) => {
+    if (!currentNote) return;
+    const markup = /\.html?$/i.test(currentNote.path)
+      ? 'html'
+      : /\.md$/i.test(currentNote.path)
+        ? 'markdown'
+        : 'plain';
+    const formatted = entries.map((entry) => formatBibliography(entry, style, markup));
+    const text =
+      markup === 'html' ? formatted.map((entry) => `<p>${entry}</p>`).join('\n') : formatted.join('\n\n');
+    insertTextIntoNote(text);
+    setCitationDialog(null);
+    setStatusMessage('Bibliography inserted.');
+  };
+
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current || securityLockedRef.current) return;
     clearTimeout(navigationAnnouncementTimer.current);
@@ -2587,12 +2650,21 @@ export default function App() {
       (activeDialog && activeDialog !== 'palette') ||
       itemDialog ||
       taskDialogOpen ||
+      citationDialog ||
       externalFile ||
       notePasswordDialog ||
       activeConflict ||
       exportRequest
     )
       return;
+    if (commandId === 'open-citation-generator' || commandId === 'open-bibliography') {
+      if (mode !== 'edit' || !currentNote || !citationNotebookPath) {
+        setStatusMessage('Open a note in a notebook in edit mode first.');
+        return;
+      }
+      setCitationDialog(commandId === 'open-citation-generator' ? 'generator' : 'bibliography');
+      return;
+    }
     if (commandId === 'new-contextual') {
       if (activeDialog === 'palette') setActiveDialog(null);
       createContextual();
@@ -3193,6 +3265,8 @@ export default function App() {
       id === 'insert-attachment'
     )
       return !currentNote || mode !== 'edit' || currentNoteEditLocked;
+    if (id === 'open-citation-generator' || id === 'open-bibliography')
+      return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
     if (id === 'new-asset') return !vault || assetDirty || assetBusy;
@@ -3360,6 +3434,15 @@ export default function App() {
           task={taskScheduleDialog}
           onSave={(schedule) => saveTaskSchedule(taskScheduleDialog, schedule)}
           onClose={() => setTaskScheduleDialog(null)}
+        />
+      ) : null}
+      {citationDialog && citationNotebookPath ? (
+        <CitationDialog
+          notebookPath={citationNotebookPath}
+          initialView={citationDialog}
+          onInsertInText={insertCitationText}
+          onInsertBibliography={insertBibliography}
+          onClose={() => setCitationDialog(null)}
         />
       ) : null}
       {taskPriorityDialog ? (
