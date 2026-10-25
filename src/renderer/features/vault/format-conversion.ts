@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
+import { asciiToMathML } from '../../../shared/ascii-math';
 import { sanitizeNoteHtml } from './sanitize-html';
 
 const MARKDOWN_SPECIAL_CHARACTERS = new Set('\\`*_{}[]()#+.!|>-');
@@ -12,7 +13,28 @@ function markdownCodeSpan(value: string) {
 }
 
 export function markdownToHtml(source: string, render: (source: string) => string) {
-  return DOMPurify.sanitize(render(source));
+  return expandMathSpans(DOMPurify.sanitize(render(source)));
+}
+
+/**
+ * Durable Markdown form for math: a code span `math:<ascii>`. Rendering
+ * replaces it with MathML; editing converts MathML back to the span, so
+ * math survives the Markdown round trip that would otherwise strip <math>.
+ */
+export function expandMathSpans(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  for (const code of Array.from(template.content.querySelectorAll('code'))) {
+    const text = code.textContent ?? '';
+    if (!text.startsWith('math:')) continue;
+    const mathML = asciiToMathML(text.slice('math:'.length));
+    if (!mathML) continue;
+    const mathTemplate = document.createElement('template');
+    mathTemplate.innerHTML = mathML;
+    const math = mathTemplate.content.firstElementChild;
+    if (math) code.replaceWith(math);
+  }
+  return template.innerHTML;
 }
 
 function inlineMarkdown(node: Node): string {
@@ -21,7 +43,9 @@ function inlineMarkdown(node: Node): string {
       MARKDOWN_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
     ).join('');
   }
-  if (!(node instanceof HTMLElement)) return '';
+  // Element, not HTMLElement: MathML elements are MathMLElements, and the
+  // 'math' case below must see them.
+  if (!(node instanceof Element)) return '';
   const content = Array.from(node.childNodes, inlineMarkdown).join('');
   switch (node.tagName.toLowerCase()) {
     case 'strong':
@@ -43,6 +67,10 @@ function inlineMarkdown(node: Node): string {
     }
     case 'img':
       return `![${node.getAttribute('alt') ?? ''}](${node.getAttribute('src') ?? ''})`;
+    case 'math': {
+      const ascii = node.getAttribute('alttext') ?? node.textContent ?? '';
+      return ascii ? markdownCodeSpan(`math:${ascii}`) : '';
+    }
     case 'u':
       return `<u>${content}</u>`;
     default:
@@ -99,7 +127,8 @@ function blockMarkdown(node: Node): string {
 
 export function htmlToMarkdown(source: string) {
   const container = document.createElement('div');
-  container.innerHTML = DOMPurify.sanitize(source);
+  // The note sanitizer, not bare DOMPurify: it keeps MathML and its alttext.
+  container.innerHTML = sanitizeNoteHtml(source);
   return Array.from(container.childNodes, blockMarkdown)
     .map((block) => block.trim())
     .filter(Boolean)

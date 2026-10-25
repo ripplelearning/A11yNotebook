@@ -1,11 +1,13 @@
 import { Fragment } from 'react';
+import { renderMathSegments } from './math-text';
 
 /**
  * Structured rendering for plain text: blank-line-separated blocks become
  * paragraphs and single line breaks are preserved, so the reading view is
  * navigable paragraph by paragraph instead of one unformatted block. All
  * text is rendered as React text nodes, so nothing in the file can become
- * markup.
+ * markup — except math markers and math elements, which render as MathML
+ * exactly as in Markdown and HTML notes.
  */
 export default function PlainTextDocument({ text }: { text: string }) {
   const paragraphs = text
@@ -21,7 +23,7 @@ export default function PlainTextDocument({ text }: { text: string }) {
           {paragraph.split('\n').map((line, lineIndex) => (
             <Fragment key={lineIndex}>
               {lineIndex > 0 ? <br /> : null}
-              {line}
+              {renderMathSegments(line, `${index}-${lineIndex}`)}
             </Fragment>
           ))}
         </p>

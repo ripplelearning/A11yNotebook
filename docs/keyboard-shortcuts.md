@@ -47,6 +47,7 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Shift+L   | Insert link                             |
 | Ctrl+K         | Insert link                             |
 | Ctrl+Alt+T     | Insert table                            |
+| Alt+=          | Insert math                             |
 | Ctrl+O         | Open library                            |
 | Ctrl+S         | Save note                               |
 | Ctrl+4         | Tasks                                   |

@@ -61,6 +61,7 @@ export type CommandId =
   | 'format-code'
   | 'insert-link'
   | 'insert-table'
+  | 'insert-math'
   | 'insert-attachment'
   | 'open-citation-generator'
   | 'open-bibliography'
@@ -601,6 +602,13 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Insert table',
     description: 'Choose Markdown table rows and columns.',
     shortcut: 'Ctrl+Alt+T',
+    contexts: ['editor-selection'],
+  },
+  {
+    id: 'insert-math',
+    label: 'Insert math',
+    description: 'Show the Mathematics toolbar to type ASCII math and insert it as MathML.',
+    shortcut: 'Alt+=',
     contexts: ['editor-selection'],
   },
   {

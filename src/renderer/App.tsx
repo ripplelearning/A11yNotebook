@@ -209,6 +209,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
     items: [
       'insert-link',
       'insert-table',
+      'insert-math',
       'insert-attachment',
       'open-citation-generator',
       'open-bibliography',
@@ -2883,6 +2884,34 @@ export default function App() {
       else editorToolsRef.current?.openTable();
       return;
     }
+    if (commandId === 'insert-math') {
+      if (mode !== 'edit' || !currentNote) {
+        setStatusMessage('Switch to edit mode first.');
+        return;
+      }
+      if (document.querySelector('.rich-text-editor')) {
+        window.dispatchEvent(new CustomEvent('a11y:open-math-toolbar'));
+        return;
+      }
+      // Plain-source editing has no rich-text toolbar: insert a math template
+      // at the cursor (a math code span for Markdown, MathML for HTML).
+      const textarea = editorRef.current;
+      if (!textarea) {
+        setStatusMessage('Switch to rich text editing to use the Mathematics toolbar.');
+        return;
+      }
+      const template = /\.html?$/i.test(currentNote.path)
+        ? '<math alttext="sqrt(x)"><msqrt><mi>x</mi></msqrt></math>'
+        : '`math:sqrt(x)`';
+      const start = textarea.selectionStart ?? currentNote.content.length;
+      const end = textarea.selectionEnd ?? start;
+      updateNoteContent(
+        currentNote.id,
+        `${currentNote.content.slice(0, start)}${template}${currentNote.content.slice(end)}`,
+      );
+      setStatusMessage('Math template inserted. Edit the ASCII math inside it.');
+      return;
+    }
     if (commandId === 'open-vault' || commandId === 'new-library') {
       openLibrary(commandId === 'new-library');
       return;
@@ -3228,7 +3257,13 @@ export default function App() {
         !/\.md$/i.test(currentNote.path) ||
         /\.(?:outline|cards|grid)\.md$/i.test(currentNote.path)
       );
-    if (id.startsWith('format-') || id === 'insert-link' || id === 'insert-table' || id === 'insert-attachment')
+    if (
+      id.startsWith('format-') ||
+      id === 'insert-link' ||
+      id === 'insert-table' ||
+      id === 'insert-math' ||
+      id === 'insert-attachment'
+    )
       return !currentNote || mode !== 'edit' || currentNoteEditLocked;
     if (id === 'open-citation-generator' || id === 'open-bibliography')
       return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;

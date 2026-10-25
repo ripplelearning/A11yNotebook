@@ -12,6 +12,9 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
       'data-a11y-task-due-time',
       'data-a11y-task-priority',
       'data-a11y-task-remind',
+      // MathML: keep the ASCII source so math survives editing and export.
+      'alttext',
+      'display',
     ],
     ADD_URI_SAFE_ATTR: [],
     ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
@@ -33,7 +36,6 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
       'meta',
       'base',
       'svg',
-      'math',
     ],
   });
   const documentFragment = document.createElement('template');

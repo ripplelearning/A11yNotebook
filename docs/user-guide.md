@@ -127,6 +127,22 @@ save after a short idle period. A tab marks unsaved content and asks before disc
 App-managed renames, moves, and saves retain provenance. Ordinary external in-place edits retain it too;
 externally replaced files or files renamed outside the app may become unknown and require explicit import again.
 
+### Mathematics
+
+Write math as plain ASCII shorthand and the app turns it into MathML, which browsers render and screen
+readers can read. Supported shorthand includes sqrt(x), frac(a,b), pow(a,b), abs(x), log(x), x^2, x_1,
+pi, greek letters, div for the division sign, rad as a radians unit, and scientific notation such as
+1.5e3 or 3x10^8. The original ASCII is kept in the MathML `alttext` attribute.
+
+Open **Insert → Insert math** or press Alt+= to show the Mathematics toolbar in the rich-text editor.
+Type ASCII math there, use the template buttons for fractions, roots, powers, and more, check the live
+preview, and choose Insert math. While typing directly in a note, a completed function call, power, or
+scientific-notation value at the caret converts to MathML automatically; ordinary words never convert.
+
+Markdown notes store math as a `` `math:` `` code span (for example `` `math:sqrt(16)` ``), which renders
+as MathML when reading and converts back when editing, so math survives the Markdown round trip. HTML
+notes store the MathML element directly. Plain-text notes keep the ASCII as typed.
+
 ### Windows accessibility and application-chooser checks
 
 Automated tests do not verify spoken output or the real Windows application chooser. With a backed-up test
