@@ -12,6 +12,7 @@ import {
   COMMANDS,
   cycleFocusRegions,
   dispatchCommand,
+  effectiveCommandShortcuts,
   FOCUS_REGION_ORDER,
   getCommandById,
   getContextMenuCommands,
@@ -2985,13 +2986,11 @@ export default function App() {
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
-    const command = COMMANDS.find((item) => {
-      const shortcut = settings.shortcuts[item.id] ?? item.shortcut;
-      return (
-        (shortcut && matchesShortcut(event, shortcut)) ||
-        item.shortcutAliases?.some((alias) => matchesShortcut(event, alias))
-      );
-    });
+    const command = COMMANDS.find((item) =>
+      effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases).some((shortcut) =>
+        matchesShortcut(event, shortcut),
+      ),
+    );
     if (command) {
       const editing =
         event.target instanceof Element &&
@@ -3008,6 +3007,7 @@ export default function App() {
           'show-notes-files',
           'show-tasks',
           'show-assets',
+          'show-milestones',
         ].includes(command.id)
       )
         return;
@@ -4111,7 +4111,11 @@ export default function App() {
         />
       ) : null}
       {activeDialog === 'shortcuts' ? (
-        <KeyboardShortcutsDialog shortcuts={settings.shortcuts} onClose={closeDialog} />
+        <KeyboardShortcutsDialog
+          shortcuts={settings.shortcuts}
+          aliasShortcuts={settings.shortcutAliases}
+          onClose={closeDialog}
+        />
       ) : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
       {vault && !securityLocked && settingsVaultPath === vault.path ? (

@@ -366,32 +366,51 @@ export default function SettingsDialog({
           <p>
             Enter a shortcut manually or use Capture Shortcut. Leave it empty to disable it. Pane and tab navigation
             keys are reserved. Escape or Tab cancels capture. Operating-system shortcuts may not reach this app.
+            Commands with an alternate shortcut show a second field for it; saving rejects any shortcut assigned
+            to more than one command.
           </p>
           <p role="status" aria-live="polite">
             {capture.notice}
           </p>
           {COMMANDS.map((command) => (
-            <div key={command.id} className="settings-shortcut-row">
-              <label htmlFor={`shortcut-${command.id}`}>{command.label}</label>
-              <input
-                id={`shortcut-${command.id}`}
-                value={draft.shortcuts[command.id] ?? command.shortcut ?? ''}
-                onFocus={() => {
-                  if (capture.capturing) capture.stop();
-                }}
-                onChange={(event) =>
-                  setDraft({ ...draft, shortcuts: { ...draft.shortcuts, [command.id]: event.target.value } })
-                }
-              />
-              <button
-                id={`capture-${command.id}`}
-                type="button"
-                aria-label={`Capture Shortcut for ${command.label}`}
-                aria-pressed={capture.capturing === command.id}
-                onClick={() => capture.start(command.id)}
-              >
-                Capture Shortcut
-              </button>
+            <div key={command.id}>
+              <div className="settings-shortcut-row">
+                <label htmlFor={`shortcut-${command.id}`}>{command.label}</label>
+                <input
+                  id={`shortcut-${command.id}`}
+                  value={draft.shortcuts[command.id] ?? command.shortcut ?? ''}
+                  onFocus={() => {
+                    if (capture.capturing) capture.stop();
+                  }}
+                  onChange={(event) =>
+                    setDraft({ ...draft, shortcuts: { ...draft.shortcuts, [command.id]: event.target.value } })
+                  }
+                />
+                <button
+                  id={`capture-${command.id}`}
+                  type="button"
+                  aria-label={`Capture Shortcut for ${command.label}`}
+                  aria-pressed={capture.capturing === command.id}
+                  onClick={() => capture.start(command.id)}
+                >
+                  Capture Shortcut
+                </button>
+              </div>
+              {command.shortcutAliases?.length ? (
+                <div className="settings-shortcut-row">
+                  <label htmlFor={`shortcut-alias-${command.id}`}>{command.label} (alternate shortcut)</label>
+                  <input
+                    id={`shortcut-alias-${command.id}`}
+                    value={draft.shortcutAliases?.[command.id] ?? command.shortcutAliases[0] ?? ''}
+                    onChange={(event) =>
+                      setDraft({
+                        ...draft,
+                        shortcutAliases: { ...draft.shortcutAliases, [command.id]: event.target.value },
+                      })
+                    }
+                  />
+                </div>
+              ) : null}
             </div>
           ))}
           {capture.capturing && (
@@ -403,7 +422,7 @@ export default function SettingsDialog({
             type="button"
             onClick={() => {
               capture.stop();
-              setDraft({ ...draft, shortcuts: {} });
+              setDraft({ ...draft, shortcuts: {}, shortcutAliases: {} });
             }}
           >
             Reset shortcuts to defaults
