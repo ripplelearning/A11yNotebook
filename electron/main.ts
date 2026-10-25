@@ -102,6 +102,16 @@ export function setupShortcutCaptureIpc(
   });
 }
 
+export function setupZoomFactorIpc(isTrusted: (event: IpcMainEvent) => boolean) {
+  ipcMain.on(IPC_CHANNELS.zoomFactor, (event, factor: unknown) => {
+    if (!isTrusted(event)) return;
+    if (typeof factor !== 'number' || factor < 0.5 || factor > 2) return;
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.webContents.isDestroyed()) {
+      mainWindow.webContents.setZoomFactor(factor);
+    }
+  });
+}
+
 export function setupPdfReadingPreferencesIpc(
   isTrusted: (event: IpcMainInvokeEvent) => boolean,
   send: (preferences: PdfReadingPreferences) => void,
@@ -246,6 +256,7 @@ if (!app.requestSingleInstanceLock()) {
     );
 
     setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
+    setupZoomFactorIpc(isTrustedSender);
     if (wakeLaunch) {
       // Task Scheduler wake: show generic due alerts from the
       // persisted snapshot, re-register the next trigger, and exit
