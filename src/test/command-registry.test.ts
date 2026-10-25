@@ -84,7 +84,7 @@ describe('command registry', () => {
       expect(callback).toHaveBeenCalledTimes(1);
     }
     expect(getKeyboardShortcuts().filter(({ shortcut }) => shortcut === 'Ctrl+N')).toEqual([
-      { commandId: 'new-contextual', label: 'New', shortcut: 'Ctrl+N' },
+      { commandId: 'new-contextual', label: 'New in current view', shortcut: 'Ctrl+N' },
     ]);
   });
 

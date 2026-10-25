@@ -697,7 +697,7 @@ describe('contextual shell document workflows', () => {
     });
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: /External\.md/ }));
-    fireEvent.click(screen.getByRole('menuitem', { name: 'Import into A11y Notebook…' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Import managed copy…' }));
     await waitFor(() => expect(bridge.vault.importEntry).toHaveBeenCalledWith('External.md'));
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledWith('Imported.md', undefined));
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
@@ -710,7 +710,7 @@ describe('contextual shell document workflows', () => {
     });
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.contextMenu(screen.getByRole('treeitem', { name: /Program\.exe/ }));
-    expect(screen.queryByRole('menuitem', { name: 'Import into A11y Notebook…' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: 'Import managed copy…' })).not.toBeInTheDocument();
     expect(bridge.vault.importEntry).not.toHaveBeenCalled();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
   });

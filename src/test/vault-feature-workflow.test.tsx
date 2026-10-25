@@ -445,9 +445,9 @@ describe('feature wiring in the application shell', () => {
     item.focus();
     fireEvent.keyDown(item, { key: 'F10', shiftKey: true });
     const menu = screen.getByRole('menu', { name: 'Actions for Note.md' });
-    expect(within(menu).getByRole('menuitem', { name: 'Open' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Open selected item' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
-    expect(within(menu).getByRole('menuitem', { name: 'Export note…' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Export this note…' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(item).toHaveFocus();
     expect(menu).not.toBeInTheDocument();
