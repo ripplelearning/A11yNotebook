@@ -80,6 +80,7 @@ export type CommandId =
   | 'context-copy-link'
   | 'context-toggle-task'
   | 'context-set-due-date'
+  | 'context-set-priority'
   | 'context-open-source'
   | 'context-encrypt-note'
   | 'context-export-note'
@@ -351,7 +352,13 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'context-set-due-date',
     label: 'Set due date',
-    description: 'Set a due date for this task.',
+    description: 'Set a due date, due time, and optional reminder for this task.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-set-priority',
+    label: 'Set priority',
+    description: 'Set this task priority, and manage the priority options.',
     contexts: ['task-row'],
   },
   {

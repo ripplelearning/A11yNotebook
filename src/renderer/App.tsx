@@ -73,7 +73,12 @@ import SettingsDialog from './features/settings/SettingsDialog';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
-import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
+import {
+  DEFAULT_SETTINGS,
+  formatPriorityName,
+  resolvePriorityOptions,
+  type NotebookSettings,
+} from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
 import type { AttachmentPreview } from '../shared/attachments';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
@@ -85,6 +90,8 @@ import RemindersView from './features/reminders/RemindersView';
 import MilestonesView from './features/milestones/MilestonesView';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
+import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
+import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanChoice } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
@@ -439,7 +446,9 @@ export default function App() {
   }, []);
   const [taskStatusFilter, setTaskStatusFilter] = useState<'all' | 'open' | 'done'>('open');
   const [taskDueFilter, setTaskDueFilter] = useState<'any' | 'today' | 'overdue' | 'upcoming'>('any');
-  const [taskPriorityFilter, setTaskPriorityFilter] = useState<'all' | 'low' | 'normal' | 'high' | 'urgent'>('all');
+  const [taskPriorityFilter, setTaskPriorityFilter] = useState('all');
+  const [taskScheduleDialog, setTaskScheduleDialog] = useState<VaultTask | null>(null);
+  const [taskPriorityDialog, setTaskPriorityDialog] = useState<VaultTask | null>(null);
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
   const [priorityAscending, setPriorityAscending] = useState(true);
@@ -1298,6 +1307,104 @@ export default function App() {
     }
   };
 
+  /** Rewrite one Markdown task line's schedule and priority markers, keeping the task text intact. */
+  const updateMarkdownTaskLine = (
+    line: string,
+    update: { schedule?: TaskSchedule; priority?: string },
+  ): string => {
+    let next = line;
+    if (update.schedule) {
+      const { dueDate, dueTime, remindAt } = update.schedule;
+      next = next
+        .replace(/\s+(?:due:\d{4}-\d{2}-\d{2}|📅\s+\d{4}-\d{2}-\d{2})/g, '')
+        .replace(/\s+due-time:\d{2}:\d{2}/g, '')
+        .replace(/\s+remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g, '');
+      if (dueDate) next += ` due:${dueDate}`;
+      if (dueTime) next += ` due-time:${dueTime}`;
+      if (remindAt) next += ` remind:${remindAt}`;
+    }
+    if (update.priority !== undefined) {
+      next = next.replace(/\s+priority:[^\s]+/g, '');
+      if (update.priority) next += ` priority:${update.priority}`;
+    }
+    return next;
+  };
+
+  const saveTaskSchedule = async (task: VaultTask, schedule: TaskSchedule) => {
+    if (!window.a11yNotebook) return;
+    if (task.htmlTask) {
+      if (!window.a11yNotebook.vault.setHtmlTaskSchedule) {
+        throw new Error('This build does not support setting a task schedule.');
+      }
+      const updated = await window.a11yNotebook.vault.setHtmlTaskSchedule(
+        task.path,
+        task.taskId!,
+        schedule,
+        task.revision!,
+      );
+      setTasks(updated);
+      const note = openNotes.find((item) => item.path === task.path);
+      if (note) {
+        const content = await window.a11yNotebook.vault.readNote(task.path);
+        setOpenNotes((items) =>
+          items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+        );
+      }
+      setStatusMessage('Task due date updated.');
+      return;
+    }
+    const source = await window.a11yNotebook.vault.readNote(task.path);
+    if (!task.line) return;
+    const lines = source.split(/\r?\n/);
+    const line = lines[task.line - 1];
+    if (!line) return;
+    lines[task.line - 1] = updateMarkdownTaskLine(line, { schedule });
+    await window.a11yNotebook.vault.saveNote(task.path, lines.join('\n'), source);
+    setTasks(await window.a11yNotebook.vault.getTasks());
+    setStatusMessage('Task due date updated.');
+  };
+
+  const saveTaskPriority = async (task: VaultTask, priority: string) => {
+    if (!window.a11yNotebook) return;
+    if (task.htmlTask) {
+      if (!window.a11yNotebook.vault.setHtmlTaskPriority) {
+        throw new Error('This build does not support setting a task priority.');
+      }
+      const updated = await window.a11yNotebook.vault.setHtmlTaskPriority(
+        task.path,
+        task.taskId!,
+        priority,
+        task.revision!,
+      );
+      setTasks(updated);
+      const note = openNotes.find((item) => item.path === task.path);
+      if (note) {
+        const content = await window.a11yNotebook.vault.readNote(task.path);
+        setOpenNotes((items) =>
+          items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+        );
+      }
+      setStatusMessage('Task priority updated.');
+      return;
+    }
+    const source = await window.a11yNotebook.vault.readNote(task.path);
+    if (!task.line) return;
+    const lines = source.split(/\r?\n/);
+    const line = lines[task.line - 1];
+    if (!line) return;
+    lines[task.line - 1] = updateMarkdownTaskLine(line, { priority });
+    await window.a11yNotebook.vault.saveNote(task.path, lines.join('\n'), source);
+    setTasks(await window.a11yNotebook.vault.getTasks());
+    setStatusMessage('Task priority updated.');
+  };
+
+  const savePriorityOptions = async (options: string[]) => {
+    if (!window.a11yNotebook) return;
+    const next = { ...settings, priorityOptions: options };
+    await window.a11yNotebook.vault.saveSettings(next);
+    setSettings(next);
+  };
+
   const refreshVault = async () => {
     const root = vaultPathRef.current;
     const generation = vaultGenerationRef.current;
@@ -2081,6 +2188,7 @@ export default function App() {
     } else if (
       commandId === 'context-toggle-task' ||
       commandId === 'context-set-due-date' ||
+      commandId === 'context-set-priority' ||
       commandId === 'context-open-source'
     ) {
       const task = tasks.find(
@@ -2095,40 +2203,18 @@ export default function App() {
       else if (commandId === 'context-open-source') {
         const source = findEntry(vault?.entries ?? [], task.path);
         if (source) await openEntry(source);
+      } else if (commandId === 'context-set-due-date') {
+        if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
+          setStatusMessage('Save or resolve note changes before changing this task.');
+          return;
+        }
+        setTaskScheduleDialog(task);
       } else {
         if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
           setStatusMessage('Save or resolve note changes before changing this task.');
           return;
         }
-        const dueDate = window.prompt('Due date (YYYY-MM-DD)', task.dueDate ?? '');
-        if (dueDate === null || (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate))) return;
-        if (task.htmlTask) {
-          const updated = await window.a11yNotebook.vault.setHtmlTaskDueDate(
-            task.path,
-            task.taskId!,
-            dueDate,
-            task.revision!,
-          );
-          setTasks(updated);
-          const note = openNotes.find((item) => item.path === task.path);
-          if (note) {
-            const content = await window.a11yNotebook.vault.readNote(task.path);
-            setOpenNotes((items) =>
-              items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
-            );
-          }
-          setStatusMessage('Task due date updated.');
-          return;
-        }
-        const source = await window.a11yNotebook.vault.readNote(task.path);
-        if (!task.line) return;
-        const lines = source.split(/\r?\n/);
-        const line = lines[task.line - 1];
-        if (!line) return;
-        lines[task.line - 1] =
-          `${line.replace(/\s+(?:due:\d{4}-\d{2}-\d{2}|📅\s+\d{4}-\d{2}-\d{2})/g, '')}${dueDate ? ` due:${dueDate}` : ''}`;
-        await window.a11yNotebook.vault.saveNote(task.path, lines.join('\n'), source);
-        setTasks(await window.a11yNotebook.vault.getTasks());
+        setTaskPriorityDialog(task);
       }
     } else if (commandId === 'context-encrypt-note' && entry?.kind === 'note' && securityEnabled) {
       setNotePasswordDialog({ action: 'encrypt', entry });
@@ -2982,11 +3068,16 @@ export default function App() {
   };
 
   const today = new Date().toISOString().slice(0, 10);
+  const priorityOptions = resolvePriorityOptions(settings);
   const taskNotebooks = [...new Set(tasks.map(notebookForTask))];
   const visibleTasks = tasks
     .filter((task) => taskStatusFilter === 'all' || (taskStatusFilter === 'done') === task.complete)
     .filter((task) => taskNotebookFilter === 'all' || notebookForTask(task) === taskNotebookFilter)
-    .filter((task) => taskPriorityFilter === 'all' || (task.priority ?? 'normal') === taskPriorityFilter)
+    .filter(
+      (task) =>
+        taskPriorityFilter === 'all' ||
+        (task.priority ?? 'medium').toLowerCase() === taskPriorityFilter.toLowerCase(),
+    )
     .filter((task) => {
       if (taskDueFilter === 'any') return true;
       if (taskDueFilter === 'today') return task.dueDate === today;
@@ -2995,11 +3086,13 @@ export default function App() {
     })
     .sort((left, right) => {
       if (taskSort === 'priority') {
-        const order = ['low', 'normal', 'high', 'urgent'];
-        return (
-          (order.indexOf(left.priority ?? 'normal') - order.indexOf(right.priority ?? 'normal')) *
-          (priorityAscending ? 1 : -1)
-        );
+        // Options are stored highest first; sorting uses lowest first, unknown values last.
+        const order = [...priorityOptions].reverse().map((option) => option.toLowerCase());
+        const rank = (priority: string | undefined) => {
+          const index = order.indexOf((priority ?? 'medium').toLowerCase());
+          return index < 0 ? order.length : index;
+        };
+        return (rank(left.priority) - rank(right.priority)) * (priorityAscending ? 1 : -1);
       }
       const leftDate = left.dueDate ?? '9999-12-31';
       const rightDate = right.dueDate ?? '9999-12-31';
@@ -3223,8 +3316,25 @@ export default function App() {
           initialPath={currentNote?.path}
           busy={taskCreating}
           error={taskCreateError}
+          priorityOptions={priorityOptions}
           onCreate={createTask}
           onClose={() => setTaskDialogOpen(false)}
+        />
+      ) : null}
+      {taskScheduleDialog ? (
+        <TaskScheduleDialog
+          task={taskScheduleDialog}
+          onSave={(schedule) => saveTaskSchedule(taskScheduleDialog, schedule)}
+          onClose={() => setTaskScheduleDialog(null)}
+        />
+      ) : null}
+      {taskPriorityDialog ? (
+        <TaskPriorityDialog
+          task={taskPriorityDialog}
+          options={priorityOptions}
+          onSave={(priority) => saveTaskPriority(taskPriorityDialog, priority)}
+          onOptionsChange={savePriorityOptions}
+          onClose={() => setTaskPriorityDialog(null)}
         />
       ) : null}
       {pasteLibraryPrompt ? (
@@ -3626,13 +3736,14 @@ export default function App() {
                     Task priority
                     <select
                       value={taskPriorityFilter}
-                      onChange={(event) => setTaskPriorityFilter(event.target.value as typeof taskPriorityFilter)}
+                      onChange={(event) => setTaskPriorityFilter(event.target.value)}
                     >
                       <option value="all">All priorities</option>
-                      <option value="low">Low</option>
-                      <option value="normal">Normal</option>
-                      <option value="high">High</option>
-                      <option value="urgent">Urgent</option>
+                      {priorityOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {formatPriorityName(option)}
+                        </option>
+                      ))}
                     </select>
                   </label>
                   <label>
@@ -3704,7 +3815,7 @@ export default function App() {
                           </th>
                           <td>{notebookForTask(task)}</td>
                           <td>{task.dueDate ?? 'No due date'}</td>
-                          <td>{task.priority ?? 'Normal'}</td>
+                          <td>{formatPriorityName(task.priority ?? 'medium')}</td>
                         </tr>
                       ))}
                     </tbody>

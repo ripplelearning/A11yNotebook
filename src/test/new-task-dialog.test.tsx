@@ -54,13 +54,13 @@ describe('new task dialogs', () => {
     });
     fireEvent.change(within(dialog).getByLabelText('Due date'), { target: { value: '2026-11-02' } });
     fireEvent.change(within(dialog).getByLabelText('Reminder time'), { target: { value: '2026-11-02T10:30' } });
-    fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'urgent' } });
+    fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     expect(onCreate).toHaveBeenCalledWith(
       'Research/Notes.md',
       'Review plan',
       '2026-11-02',
-      'urgent',
+      'high',
       '2026-11-02T10:30',
     );
   });
