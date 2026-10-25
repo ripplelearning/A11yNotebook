@@ -2563,11 +2563,12 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultCreateAutoBackup, async (event, folder: unknown, keepCount: unknown) => {
     const access = captureVaultAccess(event, isTrustedSender, true);
+    access.assertCurrent();
+    const info = await access.vault.getVault();
     if (typeof folder !== 'string') throw new Error('Backup folder must be text.');
     if (!Number.isInteger(keepCount) || (keepCount as number) < 1 || (keepCount as number) > 50) {
       throw new Error('Keep count must be between 1 and 50.');
     }
-    const info = await access.vault.getVault();
     return serializeVaultOperation(async () => {
       access.assertCurrent();
       return createAutoBackup(info.path, info.name, folder, keepCount as number);
