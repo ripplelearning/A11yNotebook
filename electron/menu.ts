@@ -84,6 +84,8 @@ export function buildApplicationMenu(
         commandItem('insert-link'),
         commandItem('insert-table'),
         commandItem('insert-attachment'),
+        commandItem('open-citation-generator'),
+        commandItem('open-bibliography'),
         commandItem('annotate-selection'),
       ],
     },

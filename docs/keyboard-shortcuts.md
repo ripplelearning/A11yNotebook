@@ -21,6 +21,8 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Shift+F   | Convert current note to another format… |
 | Ctrl+Shift+G   | Convert current note to outline…        |
 | Ctrl+Shift+M   | Insert image or attachment              |
+| Ctrl+Shift+C   | Citation generator…                     |
+| Ctrl+Shift+J   | Bibliography…                           |
 | Ctrl+Alt+S     | Settings                                |
 | Ctrl+Shift+N   | New note from template                  |
 | Ctrl+Shift+A   | Annotate selection                      |

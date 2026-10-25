@@ -59,6 +59,9 @@ const CHANNELS: typeof SharedChannels = {
   vaultToggleBookmark: 'vault:toggle-bookmark',
   vaultAddBookmark: 'vault:add-bookmark',
   vaultRemoveBookmark: 'vault:remove-bookmark',
+  vaultGetBibliography: 'vault:get-bibliography',
+  vaultSaveBibliography: 'vault:save-bibliography',
+  vaultFetchCitationMetadata: 'vault:fetch-citation-metadata',
   vaultGetReadingPosition: 'vault:get-reading-position',
   vaultSetReadingPosition: 'vault:set-reading-position',
   vaultMove: 'vault:move',
@@ -300,6 +303,11 @@ const bridge: NotebookBridge = {
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),
     addBookmark: (relativePath, anchor) => ipcRenderer.invoke(CHANNELS.vaultAddBookmark, relativePath, anchor),
     removeBookmark: (id) => ipcRenderer.invoke(CHANNELS.vaultRemoveBookmark, id),
+    getBibliography: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultGetBibliography, notebookPath),
+    saveBibliography: (notebookPath, entries) =>
+      ipcRenderer.invoke(CHANNELS.vaultSaveBibliography, notebookPath, entries),
+    fetchCitationMetadata: (identifier) =>
+      ipcRenderer.invoke(CHANNELS.vaultFetchCitationMetadata, identifier),
     getReadingPosition: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultGetReadingPosition, relativePath),
     setReadingPosition: (relativePath, position) =>
       ipcRenderer.invoke(CHANNELS.vaultSetReadingPosition, relativePath, position),

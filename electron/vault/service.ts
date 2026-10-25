@@ -5,6 +5,10 @@ import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { BookmarkAnchor, ReadingPosition, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import {
+  CITATION_SOURCE_TYPES,
+  type BibliographyEntry,
+} from '../../src/shared/citations';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
@@ -77,9 +81,9 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json'): Promise<unknown>;
-  write(name: 'bookmarks.json' | 'links.json', value: unknown): Promise<void>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): Promise<unknown>;
+  write(name: 'bookmarks.json' | 'links.json' | 'bibliography.json', value: unknown): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
   searchIndex?: SearchIndexProtectionAdapter;
 }
@@ -884,6 +888,67 @@ export function createVaultService(
     await writeFile(await resolveMetadata('bookmarks.json', true), JSON.stringify(value, null, 2), 'utf8');
   }
 
+  async function readBibliographyRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('bibliography.json')) return protectedMetadata.read('bibliography.json');
+    const bibliographyPath = await resolveMetadata('bibliography.json', true);
+    try {
+      return JSON.parse(await readFile(bibliographyPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeBibliographyRaw(value: Record<string, BibliographyEntry[]>): Promise<void> {
+    if (protectedMetadata?.isProtected('bibliography.json')) {
+      await protectedMetadata.write('bibliography.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('bibliography.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  function cleanBibliographyEntries(value: unknown): BibliographyEntry[] {
+    if (!Array.isArray(value)) return [];
+    const sourceTypes = new Set(CITATION_SOURCE_TYPES.map((type) => type.id));
+    return value.filter((item): item is BibliographyEntry => {
+      if (typeof item !== 'object' || item === null) return false;
+      const entry = item as BibliographyEntry;
+      return (
+        typeof entry.id === 'string' &&
+        typeof entry.title === 'string' &&
+        sourceTypes.has(entry.sourceType) &&
+        Array.isArray(entry.authors)
+      );
+    });
+  }
+
+  async function readBibliographyFile(): Promise<Record<string, BibliographyEntry[]>> {
+    const parsed: unknown = await readBibliographyRaw();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
+    const notebooks = (parsed as { notebooks?: unknown }).notebooks;
+    if (typeof notebooks !== 'object' || notebooks === null || Array.isArray(notebooks)) return {};
+    const result: Record<string, BibliographyEntry[]> = {};
+    for (const [notebookPath, entries] of Object.entries(notebooks as Record<string, unknown>)) {
+      result[notebookPath] = cleanBibliographyEntries(entries);
+    }
+    return result;
+  }
+
+  async function getBibliography(notebookPath: string): Promise<BibliographyEntry[]> {
+    const file = await readBibliographyFile();
+    return file[notebookPath] ?? [];
+  }
+
+  async function saveBibliography(
+    notebookPath: string,
+    entries: BibliographyEntry[],
+  ): Promise<BibliographyEntry[]> {
+    const cleaned = cleanBibliographyEntries(entries).map((entry) => ({ ...entry, notebookPath }));
+    const file = await readBibliographyFile();
+    file[notebookPath] = cleaned;
+    await writeBibliographyRaw(file);
+    return cleaned;
+  }
+
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
   async function migrateManifestPaths(sourceRelative: string, nextRelative: string) {
     if (!libraryManifest) return;
@@ -943,6 +1008,21 @@ export function createVaultService(
     if (updatedPositions.some((position, index) => position !== positions[index])) {
       await writeReadingPositions(updatedPositions);
     }
+    // Bibliography entries are keyed by notebook path, so a notebook move
+    // carries its entries along; entries inside a moved notebook follow too.
+    const bibliography = await readBibliographyFile();
+    let bibliographyChanged = false;
+    const movedBibliography: Record<string, BibliographyEntry[]> = {};
+    for (const [notebookPath, entries] of Object.entries(bibliography)) {
+      if (notebookPath === sourceRelative || notebookPath.startsWith(`${sourceRelative}/`)) {
+        const next = `${nextRelative}${notebookPath.slice(sourceRelative.length)}`;
+        movedBibliography[next] = entries.map((entry) => ({ ...entry, notebookPath: next }));
+        bibliographyChanged = true;
+      } else {
+        movedBibliography[notebookPath] = entries;
+      }
+    }
+    if (bibliographyChanged) await writeBibliographyRaw(movedBibliography);
   }
 
   async function getTasks() {
@@ -1436,6 +1516,8 @@ export function createVaultService(
     toggleBookmark,
     addBookmark,
     removeBookmark,
+    getBibliography,
+    saveBibliography,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,
