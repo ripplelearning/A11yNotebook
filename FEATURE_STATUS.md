@@ -1,12 +1,33 @@
 # A11y Notebook — Implementation Status
 
-**Last Updated:** 2026-10-22  
-**Current Version:** 1.2.0
-**Scope:** releases through v1.1.5 plus the October 22, 2026 feature batch (PRs #62–#67)
+**Last Updated:** 2026-10-24  
+**Current Version:** 1.6.0
+**Scope:** releases through v1.6.0, plus paste (PR #116) and Tasks context-menu dialogs (PR #115), merged to
+main October 24, 2026 for the next release.
 
 Status marks below mean **implemented**, **partial**, **open**, or **externally blocked**. They do not mean
 production-ready or manually verified. Automated DOM/mocked OS tests do not establish Windows toast delivery,
 installer behavior, screen-reader speech, or secure erasure.
+
+## October 24, 2026 — paste and Tasks context-menu dialogs (merged to main, next release)
+
+- **Paste files and folders (PR #116):** copying files or folders in the operating system and pasting them
+  into the app routes by view. In Libraries, a pasted folder opens an accessible dialog asking whether to make
+  an app-specific copy (with a second dialog asking where to save it) or use the original folder as the
+  library; files sitting directly in the pasted folder are organized through a second dialog (one notebook for
+  all files, or one notebook per file), because libraries must not contain files outside a notebook. In
+  Notebooks, a pasted folder becomes a notebook in the current library and pasted files go into the selected
+  notebook. In Notes and Files, only files paste, into the selected notebook. Copies are verified file by
+  file, failed copies are removed, and links are rejected. The clipboard-to-path step still needs a real
+  Windows copy/paste run before it can be called confirmed working.
+- **Tasks context-menu dialogs (PR #115):** the Tasks context menu Set Due Date option, which previously did
+  nothing, now opens an accessible dialog with due date, due time, and an optional reminder. A new Set Priority
+  option opens a dialog with the library's priority options plus add, rename, and delete management (at least
+  one option is always kept). Priority options live in library settings and default to Critical, High, Medium,
+  Low, and Optional as displayed; stored values are lowercase single words, and legacy low/normal/high/urgent
+  values still parse. The first CI run caught a real defect (capitalized stored values broke selects set to
+  lowercase values, creating tasks with an empty priority); it was fixed before merge by making stored values
+  canonical lowercase.
 
 ## Requested six-feature increment
 

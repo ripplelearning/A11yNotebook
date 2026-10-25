@@ -63,6 +63,18 @@ and attachment previews have different actions. Use Up/Down, Home/End, type-ahea
 actions are announced as unavailable, and Escape returns focus to the invoking element. The menu does not replace
 modal-dialog keyboard behavior.
 
+### Paste files and folders
+
+Copy files or folders in File Explorer, then paste them while focus is in the main panel (not inside an
+editor). Where they land depends on the view. In **Libraries**, a pasted folder asks whether to make an
+app-specific copy of the library (you then choose where to save it) or use the original folder as the
+library; files sitting directly in the pasted folder ask how to organize them, one notebook for all files or
+one notebook per file, because a library cannot hold files outside a notebook. In **Notebooks**, a pasted
+folder becomes a notebook in the current library, and pasted files go into the selected notebook. In
+**Notes and Files**, only files paste, into the selected notebook. Pasted copies are verified file by file;
+a failed copy is removed and reported. The clipboard path step has not yet been confirmed with a real
+Windows copy/paste run.
+
 ### Managed documents and older libraries
 
 App creation and explicit import record provenance separately in `.a11ynotebook/provenance.json`; the original
@@ -169,7 +181,14 @@ Choose **View → Tasks** or use the command palette. Markdown checkboxes and se
 in a sortable table; status, due-date, priority, and notebook filters narrow the list. Checking/unchecking a Markdown
 task updates its source checkbox. HTML tasks update only the completion attribute on the matching stable task ID;
 stale note revisions or duplicate/missing IDs fail safely. Markdown optional dates use `due:YYYY-MM-DD` or
-`📅 YYYY-MM-DD`; priorities use `priority:low|normal|high|urgent`.
+`📅 YYYY-MM-DD`; priorities use `priority:<option>`, where the options are the library's configured priority
+list (displayed as Critical, High, Medium, Low, and Optional by default). Legacy `low`, `normal`, `high`, and
+`urgent` values still parse.
+
+Open the context menu on a task row (Shift+F10, the Applications key, or right-click) for **Set due date**,
+which opens a dialog with due date, due time, and an optional reminder, and **Set priority**, which opens a
+dialog with the library's priority options and lets you add, rename, or delete options. At least one priority
+option is always kept, and option names are single words so they survive in task lines.
 
 HTML checklist items are `<li>` elements with a unique stable ID and completion state, for example:
 
