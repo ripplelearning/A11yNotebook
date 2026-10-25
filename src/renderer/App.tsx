@@ -2829,9 +2829,7 @@ export default function App() {
       }
       const template = /\.html?$/i.test(currentNote.path)
         ? '<math alttext="sqrt(x)"><msqrt><mi>x</mi></msqrt></math>'
-        : /\.md$/i.test(currentNote.path)
-          ? '`math:sqrt(x)`'
-          : 'sqrt(x)';
+        : '`math:sqrt(x)`';
       const start = textarea.selectionStart ?? currentNote.content.length;
       const end = textarea.selectionEnd ?? start;
       updateNoteContent(

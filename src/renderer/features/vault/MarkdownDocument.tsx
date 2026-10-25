@@ -122,7 +122,7 @@ export default function MarkdownDocument({
           <RichTextEditor
             content={
               format === 'html'
-                ? sanitizeNoteHtml(content, notePath)
+                ? expandMathSpans(sanitizeNoteHtml(content, notePath))
                 : markdownToHtml(content, (source) => createMarkdown(links, notePath).render(source))
             }
             notePath={notePath ?? ''}
@@ -163,7 +163,7 @@ export default function MarkdownDocument({
 
   const html =
     format === 'html'
-      ? sanitizeNoteHtml(content, notePath)
+      ? expandMathSpans(sanitizeNoteHtml(content, notePath))
       : expandMathSpans(
           DOMPurify.sanitize(createMarkdown(links, notePath).render(content), {
             ADD_URI_SAFE_ATTR: [],
