@@ -647,6 +647,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
           ? 'bookmarks'
           : name === 'bibliography.json'
             ? 'bibliography'
+            : name === 'task-links.json'
+              ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
               : 'links',
@@ -659,6 +661,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
           ? 'bookmarks'
           : name === 'bibliography.json'
             ? 'bibliography'
+            : name === 'task-links.json'
+              ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
               : 'links',
@@ -671,6 +675,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
           ? 'bookmarks'
           : name === 'bibliography.json'
             ? 'bibliography'
+            : name === 'task-links.json'
+              ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
               : 'links',
@@ -3459,6 +3465,15 @@ export function setupVaultIpc(
       return requireService().saveBibliography(notebookPath, entries);
     },
   );
+  ipcMain.handle(IPC_CHANNELS.vaultGetTaskLinks, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getTaskLinks();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveTaskLinks, async (event, links: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!Array.isArray(links)) throw new Error('Task links must be a list.');
+    return requireService().saveTaskLinks(links);
+  });
   ipcMain.handle(IPC_CHANNELS.vaultFetchCitationMetadata, async (event, identifier: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof identifier !== 'string') throw new Error('Identifier must be text.');

@@ -101,6 +101,8 @@ import {
   type CitationStyle,
 } from '../shared/citations';
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
+import TaskLinkDialog from './features/reminders/TaskLinkDialog';
+import type { TaskLink, TaskLinkKind } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanChoice } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
@@ -469,6 +471,8 @@ export default function App() {
   const [taskScheduleDialog, setTaskScheduleDialog] = useState<VaultTask | null>(null);
   const [citationDialog, setCitationDialog] = useState<'generator' | 'bibliography' | null>(null);
   const [taskPriorityDialog, setTaskPriorityDialog] = useState<VaultTask | null>(null);
+  const [taskLinks, setTaskLinks] = useState<TaskLink[]>([]);
+  const [taskLinkDialog, setTaskLinkDialog] = useState<{ task: VaultTask; kind: TaskLinkKind } | null>(null);
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
   const [priorityAscending, setPriorityAscending] = useState(true);
@@ -926,6 +930,12 @@ export default function App() {
         if (!cancelled) setTasks(items);
       })
       .catch(() => setStatusMessage('Could not load tasks.'));
+    void window.a11yNotebook.vault
+      .getTaskLinks?.()
+      .then((items) => {
+        if (!cancelled) setTaskLinks(items);
+      })
+      .catch(() => undefined);
     return () => {
       cancelled = true;
     };
@@ -1452,6 +1462,41 @@ export default function App() {
     await window.a11yNotebook.vault.saveNote(task.path, lines.join('\n'), source);
     setTasks(await window.a11yNotebook.vault.getTasks());
     setStatusMessage('Task priority updated.');
+  };
+
+  const saveTaskLink = async (task: VaultTask, kind: TaskLinkKind, target: string) => {
+    if (!window.a11yNotebook?.vault.saveTaskLinks) {
+      throw new Error('This build does not support task links.');
+    }
+    const link: TaskLink = {
+      id: `link-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      taskId: task.id,
+      taskPath: task.path,
+      kind,
+      target,
+    };
+    const next = [...taskLinks.filter((item) => item.id !== link.id), link];
+    setTaskLinks(await window.a11yNotebook.vault.saveTaskLinks(next));
+    setStatusMessage(`Task linked to ${target}.`);
+  };
+
+  const removeTaskLink = async (id: string, target: string) => {
+    if (!window.a11yNotebook?.vault.saveTaskLinks) return;
+    setTaskLinks(
+      await window.a11yNotebook.vault.saveTaskLinks(taskLinks.filter((item) => item.id !== id)),
+    );
+    setStatusMessage(`Link to ${target} removed.`);
+  };
+
+  const openTaskLink = async (link: TaskLink) => {
+    if (link.kind === 'notebook') {
+      setSelectedNotebookPath(link.target);
+      setSelectedTab('notes-files');
+      return;
+    }
+    const entry = findEntry(vault?.entries ?? [], link.target);
+    if (entry) await openEntry(entry);
+    else setStatusMessage(`The linked ${link.kind} is no longer in the library.`);
   };
 
   const savePriorityOptions = async (options: string[]) => {
@@ -2313,7 +2358,10 @@ export default function App() {
       commandId === 'context-toggle-task' ||
       commandId === 'context-set-due-date' ||
       commandId === 'context-set-priority' ||
-      commandId === 'context-open-source'
+      commandId === 'context-open-source' ||
+      commandId === 'context-link-task-note' ||
+      commandId === 'context-link-task-file' ||
+      commandId === 'context-link-task-notebook'
     ) {
       const task = tasks.find(
         (item) =>
@@ -2323,7 +2371,10 @@ export default function App() {
             : String(item.line) === request.invoker.closest<HTMLElement>('[data-task-line]')?.dataset.taskLine),
       );
       if (!task || !window.a11yNotebook) return;
-      if (commandId === 'context-toggle-task') await toggleTask(task);
+      if (commandId === 'context-link-task-note') setTaskLinkDialog({ task, kind: 'note' });
+      else if (commandId === 'context-link-task-file') setTaskLinkDialog({ task, kind: 'file' });
+      else if (commandId === 'context-link-task-notebook') setTaskLinkDialog({ task, kind: 'notebook' });
+      else if (commandId === 'context-toggle-task') await toggleTask(task);
       else if (commandId === 'context-open-source') {
         const source = findEntry(vault?.entries ?? [], task.path);
         if (source) await openEntry(source);
@@ -3581,6 +3632,17 @@ export default function App() {
           onClose={() => setTaskPriorityDialog(null)}
         />
       ) : null}
+      {taskLinkDialog ? (
+        <TaskLinkDialog
+          task={taskLinkDialog.task}
+          kind={taskLinkDialog.kind}
+          targets={
+            taskLinkDialog.kind === 'notebook' ? notebooks : taskLinkDialog.kind === 'note' ? notePaths : filePaths
+          }
+          onSave={(target) => saveTaskLink(taskLinkDialog.task, taskLinkDialog.kind, target)}
+          onClose={() => setTaskLinkDialog(null)}
+        />
+      ) : null}
       {pasteLibraryPrompt ? (
         <PasteLibraryDialog
           folderName={pasteLibraryPrompt.name}
@@ -4040,6 +4102,7 @@ export default function App() {
                             Priority
                           </button>
                         </th>
+                        <th scope="col">Links</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -4061,6 +4124,20 @@ export default function App() {
                           <td>{notebookForTask(task)}</td>
                           <td>{task.dueDate ?? 'No due date'}</td>
                           <td>{formatPriorityName(task.priority ?? 'medium')}</td>
+                          <td>
+                            {taskLinks
+                              .filter((link) => link.taskId === task.id)
+                              .map((link) => (
+                                <span key={link.id}>
+                                  <button type="button" onClick={() => void openTaskLink(link)}>
+                                    Open {link.kind}: {link.target}
+                                  </button>{' '}
+                                  <button type="button" onClick={() => void removeTaskLink(link.id, link.target)}>
+                                    Remove link to {link.target}
+                                  </button>{' '}
+                                </span>
+                              ))}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

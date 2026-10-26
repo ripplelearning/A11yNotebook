@@ -9,6 +9,7 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
+import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
 import {
   cleanAppointments,
   type CalendarAppointment,
@@ -85,10 +86,10 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json'): Promise<unknown>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): Promise<unknown>;
   write(
-    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json',
+    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json',
     value: unknown,
   ): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
@@ -956,6 +957,18 @@ export function createVaultService(
     return cleaned;
   }
 
+  async function readTaskLinksRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('task-links.json')) {
+      return protectedMetadata.read('task-links.json');
+    }
+    const taskLinksPath = await resolveMetadata('task-links.json', true);
+    try {
+      return JSON.parse(await readFile(taskLinksPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
   async function readCalendarRaw(): Promise<unknown> {
     if (protectedMetadata?.isProtected('calendar.json')) return protectedMetadata.read('calendar.json');
     const calendarPath = await resolveMetadata('calendar.json', true);
@@ -964,6 +977,30 @@ export function createVaultService(
     } catch {
       return null;
     }
+  }
+
+  async function writeTaskLinksRaw(value: { version: 1; links: TaskLink[] }): Promise<void> {
+    if (protectedMetadata?.isProtected('task-links.json')) {
+      await protectedMetadata.write('task-links.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('task-links.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  async function readTaskLinksFile(): Promise<TaskLink[]> {
+    const parsed: unknown = await readTaskLinksRaw();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return [];
+    return cleanTaskLinks((parsed as { links?: unknown }).links);
+  }
+
+  async function getTaskLinks(): Promise<TaskLink[]> {
+    return readTaskLinksFile();
+  }
+
+  async function saveTaskLinks(links: TaskLink[]): Promise<TaskLink[]> {
+    const cleaned = cleanTaskLinks(links);
+    await writeTaskLinksRaw({ version: 1, links: cleaned });
+    return cleaned;
   }
 
   async function writeCalendarRaw(value: { version: 1; appointments: CalendarAppointment[] }): Promise<void> {
@@ -1559,6 +1596,8 @@ export function createVaultService(
     removeBookmark,
     getBibliography,
     saveBibliography,
+    getTaskLinks,
+    saveTaskLinks,
     getCalendar,
     saveCalendar,
     getReadingPosition,
