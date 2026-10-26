@@ -179,6 +179,10 @@ export interface VaultBridge {
   saveCalendar?(
     appointments: import('./calendar').CalendarAppointment[],
   ): Promise<import('./calendar').CalendarAppointment[]>;
+  getSyncState?(): Promise<import('./calendar-sync').SyncStateFile>;
+  saveSyncState?(
+    state: import('./calendar-sync').SyncStateFile,
+  ): Promise<import('./calendar-sync').SyncStateFile>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }

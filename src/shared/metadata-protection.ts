@@ -15,6 +15,7 @@ export const PROTECTED_STORE_NAMES = [
   'bookmarks',
   'bibliography',
   'calendar',
+  'calendar-sync',
   'links',
   'task-links',
   'reminders',

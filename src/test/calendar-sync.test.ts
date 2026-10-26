@@ -1,4 +1,8 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { createVaultService } from '../../electron/vault/service';
 import {
   applySync,
   classifyRemote,
@@ -111,6 +115,31 @@ describe('calendar sync core', () => {
     expect(cleaned.providers.outlook?.lastSyncAt).toBeUndefined();
     expect(cleaned.providers).not.toHaveProperty('bogus');
     expect(cleaned.tombstones).toEqual([{ id: 'gone-1', deletedAt: '2026-10-26T00:00:00.000Z' }]);
+  });
+
+  it('persists sync state and cleans it on save and read', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      expect(await service.getSyncState()).toEqual({ version: 1, providers: {}, tombstones: [] });
+      const saved = await service.saveSyncState({
+        version: 1,
+        providers: {
+          google: { provider: 'google', lastSyncAt: '2026-10-26T00:00:00.000Z', syncToken: 'tok' },
+        },
+        tombstones: [{ id: 'gone-1', deletedAt: '2026-10-26T00:00:00.000Z' }],
+      });
+      expect(saved.providers.google?.syncToken).toBe('tok');
+      expect(await service.getSyncState()).toEqual(saved);
+      expect(await service.saveSyncState({ version: 1, providers: {}, tombstones: [] })).toEqual({
+        version: 1,
+        providers: {},
+        tombstones: [],
+      });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 
   it('prunes tombstones for appointments that exist locally again', () => {

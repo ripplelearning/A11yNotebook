@@ -10,6 +10,7 @@ import {
   type BibliographyEntry,
 } from '../../src/shared/citations';
 import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
+import { cleanSyncState, type SyncStateFile } from '../../src/shared/calendar-sync';
 import {
   cleanAppointments,
   type CalendarAppointment,
@@ -86,10 +87,10 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): Promise<unknown>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json'): Promise<unknown>;
   write(
-    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json',
+    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json',
     value: unknown,
   ): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
@@ -1027,6 +1028,41 @@ export function createVaultService(
     return cleaned;
   }
 
+  async function writeSyncStateRaw(value: SyncStateFile): Promise<void> {
+    if (protectedMetadata?.isProtected('calendar-sync.json')) {
+      await protectedMetadata.write('calendar-sync.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('calendar-sync.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  async function readSyncStateRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('calendar-sync.json')) {
+      return protectedMetadata.read('calendar-sync.json');
+    }
+    const syncStatePath = await resolveMetadata('calendar-sync.json', true);
+    try {
+      return JSON.parse(await readFile(syncStatePath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function readSyncStateFile(): Promise<SyncStateFile> {
+    const parsed: unknown = await readSyncStateRaw();
+    return cleanSyncState(parsed);
+  }
+
+  async function getSyncState(): Promise<SyncStateFile> {
+    return readSyncStateFile();
+  }
+
+  async function saveSyncState(state: SyncStateFile): Promise<SyncStateFile> {
+    const cleaned = cleanSyncState(state);
+    await writeSyncStateRaw(cleaned);
+    return cleaned;
+  }
+
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
   async function migrateManifestPaths(sourceRelative: string, nextRelative: string) {
     if (!libraryManifest) return;
@@ -1600,6 +1636,8 @@ export function createVaultService(
     saveTaskLinks,
     getCalendar,
     saveCalendar,
+    getSyncState,
+    saveSyncState,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,

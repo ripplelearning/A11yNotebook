@@ -37,6 +37,7 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import type { SyncStateFile } from '../../src/shared/calendar-sync';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import {
   createLibraryEncryptionManifest,
@@ -651,6 +652,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
       ) ??
         false),
@@ -665,6 +668,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
       );
     },
@@ -679,6 +684,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
         value,
       );
@@ -3487,6 +3494,17 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (!Array.isArray(appointments)) throw new Error('Appointments must be a list.');
     return requireService().saveCalendar(appointments);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetSyncState, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getSyncState();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveSyncState, async (event, state: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof state !== 'object' || state === null || Array.isArray(state)) {
+      throw new Error('Sync state must be an object.');
+    }
+    return requireService().saveSyncState(state as SyncStateFile);
   });
   ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
