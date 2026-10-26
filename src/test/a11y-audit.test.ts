@@ -26,13 +26,22 @@ import type { VaultTask } from '../shared/types';
 import type { Reminder } from '../shared/reminders';
 
 /**
- * Accessibility audit harness (WCAG 2.1 AA).
+ * Accessibility audit harness (WCAG 2.2 AA).
+ *
+ * The tag set covers every WCAG level-A/AA rule axe-core 4.14 carries:
+ * wcag2a/wcag2aa (2.0), wcag21a/wcag21aa (2.1 additions), wcag22aa (2.2
+ * additions, which in this axe version is only target-size, 2.5.8).
+ * Correction to the October 26 run: that run used only the wcag2a/wcag2aa
+ * tags, so the 2.1-specific rules (autocomplete-valid, avoid-inline-spacing,
+ * css-orientation-lock, label-content-name-mismatch) were not actually in
+ * scope; this run closes that gap.
  *
  * Scope notes, stated so the report is honest about what this run does and
  * does not cover:
  * - jsdom has no layout engine, so axe cannot evaluate color-contrast here;
  *   that rule is disabled in this file and contrast is audited separately
- *   by computing ratios from the app's actual stylesheet colors.
+ *   by computing ratios from the app's actual stylesheet colors and by the
+ *   live Playwright run, which does evaluate contrast.
  * - Renders are component fragments, so the page-level rules document-title
  *   and html-has-lang are disabled here: the real shell (index.html) was
  *   verified to carry <html lang="en"> and <title>A11y Notebook</title>.
@@ -47,7 +56,7 @@ const REPORT_PATH = path.join(tmpdir(), 'a11y-audit.json');
 
 async function audit(label: string): Promise<void> {
   const results = await axe.run(document, {
-    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
+    runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
     rules: {
       'color-contrast': { enabled: false },
       'document-title': { enabled: false },
@@ -87,7 +96,7 @@ async function audit(label: string): Promise<void> {
   expect(results.violations).toEqual([]);
 }
 
-describe('accessibility audit (axe, WCAG 2.1 AA)', () => {
+describe('accessibility audit (axe, WCAG 2.2 AA)', () => {
   it('settings dialog has no WCAG AA violations', async () => {
     render(
       React.createElement(SettingsDialog, {

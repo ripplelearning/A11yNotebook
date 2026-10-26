@@ -821,52 +821,10 @@ a:focus-visible,
     padding: 0.4rem;
   }
 
-  :root[data-theme='light'] {
-    color-scheme: light;
-    color: #172033;
-    background: #fff;
-  }
-
   :root[data-theme='high-contrast'] {
     color-scheme: dark;
     color: #fff;
     background: #000;
-  }
-
-  :root[data-theme='light'] body,
-  :root[data-theme='light'] .app-header,
-  :root[data-theme='light'] .menu-bar,
-  :root[data-theme='light'] .status-bar,
-  :root[data-theme='light'] .panel,
-  :root[data-theme='light'] .side-panel,
-  :root[data-theme='light'] .tab-bar,
-  :root[data-theme='light'] .document,
-  :root[data-theme='light'] .document-body,
-  :root[data-theme='light'] .modal,
-  :root[data-theme='light'] .markdown-body pre {
-    background: #fff;
-    color: #172033;
-  }
-
-  :root[data-theme='light'] .current-item,
-  :root[data-theme='light'] .menu-label,
-  :root[data-theme='light'] .menu-item,
-  :root[data-theme='light'] .side-panel dt,
-  :root[data-theme='light'] .side-panel dd,
-  :root[data-theme='light'] .tab,
-  :root[data-theme='light'] .close-tab,
-  :root[data-theme='light'] input,
-  :root[data-theme='light'] textarea {
-    background: #f1f5f9;
-    color: #172033;
-  }
-
-  :root[data-theme='light'] .markdown-body a {
-    color: #0645ad;
-  }
-
-  :root[data-theme='light'] [role='treeitem'][aria-selected='true'] {
-    background: #dbeafe;
   }
 
   :root[data-theme='high-contrast'] body,
@@ -892,6 +850,262 @@ a:focus-visible,
     [role='grid'] td,
     .tree-context-menu {
       border-color: CanvasText;
+    }
+  }
+}
+
+/* Light theme. These rules live in normal CSS, not inside the
+   forced-colors block above: the Theme setting in Settings must work in
+   ordinary mode, and previously the light rules only applied when Windows
+   forced-colors mode was on, so choosing Light changed nothing. The
+   (forced-colors: none) wrapper keeps this palette from overriding the
+   system colors when forced-colors mode is on; the forced-colors rules
+   above still govern there.
+   Palette checked against WCAG 2.2 AA: body text >= 4.5:1, UI boundaries
+   and focus indicators >= 3:1 (see the light-theme audit report). The dark
+   values cannot carry over: focus #7dd3fc is 1.67:1 on white, placeholder
+   #cbd5e1 is 1.48:1, and input border #94a3b8 is 2.56:1. */
+@media (forced-colors: none) {
+  :root[data-theme='light'] {
+    color-scheme: light;
+    color: #0f172a;
+    background: #fff;
+  }
+
+  :root[data-theme='light'] body {
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 100%);
+  }
+
+  :root[data-theme='light'] ::placeholder {
+    color: #475569;
+  }
+
+  :root[data-theme='light'] button:focus-visible,
+  :root[data-theme='light'] input:focus-visible,
+  :root[data-theme='light'] select:focus-visible,
+  :root[data-theme='light'] textarea:focus-visible,
+  :root[data-theme='light'] a:focus-visible,
+  :root[data-theme='light'] [tabindex]:focus-visible {
+    outline-color: #0369a1;
+  }
+
+  :root[data-theme='light'] .app-header,
+  :root[data-theme='light'] .menu-bar,
+  :root[data-theme='light'] .status-bar {
+    border-bottom-color: #64748b;
+  }
+
+  :root[data-theme='light'] .app-header,
+  :root[data-theme='light'] .menu-bar {
+    background: #fff;
+  }
+
+  :root[data-theme='light'] .status-bar {
+    background: #f8fafc;
+    color: #334155;
+  }
+
+  :root[data-theme='light'] .current-item,
+  :root[data-theme='light'] .command-list small,
+  :root[data-theme='light'] .context-menu-shortcut {
+    color: #475569;
+  }
+
+  :root[data-theme='light'] .global-search input,
+  :root[data-theme='light'] .command-palette input {
+    border-color: #64748b;
+    background: #fff;
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .menu-label {
+    color: #334155;
+  }
+
+  :root[data-theme='light'] .menu-item {
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .menu-item:hover,
+  :root[data-theme='light'] .tab:hover {
+    background: #e2e8f0;
+  }
+
+  :root[data-theme='light'] .panel,
+  :root[data-theme='light'] .side-panel,
+  :root[data-theme='light'] .content-panel {
+    border-right-color: #64748b;
+  }
+
+  :root[data-theme='light'] .panel,
+  :root[data-theme='light'] .side-panel {
+    background: #f8fafc;
+  }
+
+  :root[data-theme='light'] .nav-list li {
+    background: #eff6ff;
+  }
+
+  :root[data-theme='light'] .tab-bar {
+    border-bottom-color: #64748b;
+    background: #f8fafc;
+  }
+
+  :root[data-theme='light'] .tab {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .tab.active-tab {
+    background: #dbeafe;
+    border-color: #0369a1;
+  }
+
+  :root[data-theme='light'] .document {
+    background: #fff;
+  }
+
+  :root[data-theme='light'] .details-view [role='columnheader'] {
+    border-bottom-color: #64748b;
+  }
+
+  :root[data-theme='light'] .details-view [role='row'][aria-selected='true'] {
+    background: #dbeafe;
+    outline-color: #0369a1;
+  }
+
+  :root[data-theme='light'] .document-body {
+    border-color: #64748b;
+    background: #fff;
+  }
+
+  :root[data-theme='light'] .document-body:focus {
+    border-color: #0369a1;
+  }
+
+  :root[data-theme='light'] .side-panel dt {
+    color: #1e40af;
+  }
+
+  :root[data-theme='light'] .side-panel dd {
+    color: #334155;
+  }
+
+  :root[data-theme='light'] .modal {
+    background: #fff;
+    border-color: #64748b;
+    box-shadow: 0 25px 50px rgba(15, 23, 42, 0.25);
+  }
+
+  :root[data-theme='light'] .modal-actions button {
+    background: #f1f5f9;
+    color: #0f172a;
+    border-color: #64748b;
+  }
+
+  :root[data-theme='light'] .modal-actions button:first-child {
+    background: #1d4ed8;
+    border-color: #1e40af;
+    color: #fff;
+  }
+
+  :root[data-theme='light'] .modal a,
+  :root[data-theme='light'] .markdown-body a {
+    color: #0645ad;
+  }
+
+  :root[data-theme='light'] .error-message {
+    color: #b91c1c;
+    border-left-color: #dc2626;
+  }
+
+  :root[data-theme='light'] .progress-track {
+    border-color: #64748b;
+    background: #e2e8f0;
+  }
+
+  :root[data-theme='light'] .progress-fill {
+    background: #2563eb;
+  }
+
+  :root[data-theme='light'] .table-scroll th,
+  :root[data-theme='light'] .table-scroll td {
+    border-bottom-color: #cbd5e1;
+  }
+
+  :root[data-theme='light'] .command-list li {
+    background: #f8fafc;
+    border-color: #64748b;
+  }
+
+  :root[data-theme='light'] .command-list button {
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .active-panel {
+    box-shadow: inset 0 0 0 2px rgba(3, 105, 161, 0.6);
+  }
+
+  :root[data-theme='light'] .close-tab {
+    border-color: #64748b;
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] [role='tree'] [role='treeitem'][aria-selected='true'] {
+    background: #dbeafe;
+    outline-color: #0369a1;
+  }
+
+  :root[data-theme='light'] .markdown-editor {
+    border-color: #64748b;
+    background: #fff;
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .global-context-menu {
+    border-color: #64748b;
+    background: #fff;
+    box-shadow: 0 0.6rem 1.8rem rgb(15 23 42 / 20%);
+  }
+
+  :root[data-theme='light'] .global-context-menu button[aria-disabled='true'] {
+    color: #64748b;
+  }
+
+  :root[data-theme='light'] .global-context-menu button:focus-visible {
+    outline-color: #0369a1;
+    background: #dbeafe;
+  }
+
+  :root[data-theme='light'] .markdown-body a.missing-note {
+    color: #b91c1c;
+  }
+
+  :root[data-theme='light'] .markdown-body pre {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+
+  :root[data-theme='light'] .markdown-body th,
+  :root[data-theme='light'] .markdown-body td {
+    border-color: #64748b;
+  }
+
+  :root[data-theme='light'] input,
+  :root[data-theme='light'] textarea,
+  :root[data-theme='light'] select {
+    background: #fff;
+    color: #0f172a;
+  }
+
+  /* Narrow layout: panels stack with a bottom divider instead of a right
+     one, and that divider needs the same light-theme border color. */
+  @media (max-width: 760px) {
+    :root[data-theme='light'] .panel,
+    :root[data-theme='light'] .side-panel,
+    :root[data-theme='light'] .content-panel {
+      border-bottom-color: #64748b;
     }
   }
 }
