@@ -60,7 +60,7 @@ describe('note format conversion', () => {
     expect(html).toContain('data-a11y-task-remind="2026-10-05 09:30"');
     expect(convertNoteContent(html, 'html', 'markdown', 'Read.md')).toContain(source);
     expect(formatConversionWarning(source, 'markdown', 'html')).toContain(
-      'milestone associations remain with the original note',
+      'task identities are copied',
     );
   });
 

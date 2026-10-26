@@ -18,7 +18,6 @@ import type { AttachmentPreview } from './attachments';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
 import type { ReminderDefaults } from './reminder-defaults';
-import type { Milestone, MilestoneUpdate, NewMilestone } from './milestones';
 import type { VaultAsset } from './asset-bridge';
 import type { AssetDraft, AssetDraftInput, AssetDraftRecovery } from './asset-drafts';
 import type { CardSchedule } from './assets';
@@ -86,10 +85,6 @@ export interface VaultBridge {
   snoozeReminder(id: string, duration: SnoozeDuration): Promise<Reminder[]>;
   getReminderDefaults?(): Promise<ReminderDefaults>;
   setReminderDefaults?(defaults: ReminderDefaults): Promise<ReminderDefaults>;
-  getMilestones?(): Promise<Milestone[]>;
-  createMilestone?(milestone: NewMilestone): Promise<Milestone>;
-  updateMilestone?(id: string, update: MilestoneUpdate): Promise<Milestone>;
-  deleteMilestone?(id: string): Promise<void>;
   onReminder(callback: (event: VaultReminderEvent) => void): () => void;
   reminderAlertsReady?(): Promise<VaultReminderEvent[]>;
   readAsset(path: string): Promise<VaultAsset>;

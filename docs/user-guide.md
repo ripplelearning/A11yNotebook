@@ -23,7 +23,7 @@ or one that contains it.
 | Notes and Files                                                   | Create a note in the selected notebook                                                                                                |
 | Tasks                                                             | Choose an associated note and add a persisted checkbox task, with optional due date and priority                                      |
 | Cognitive Tools                                                   | Choose Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, then name and create the tool at the library root                   |
-| Note tabs, Contents, Reminders, Milestones, previews, and Welcome | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
+| Note tabs, Contents, Reminders, previews, and Welcome | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
 
 The explicit **New notebook** command still creates a notebook; it has not been redefined to mean contextual New.
 Settings can change or disable New's shortcut, with conflict validation. The native File menu and command palette expose
@@ -337,18 +337,7 @@ on the same scheduler remains open; do not rely on reminder delivery until the l
 
 This is not exited-process delivery: **nothing fires after A11y Notebook exits**. Actual Windows background/minimized
 sound and focus, and JAWS/NVDA/Narrator announcements, still need manual verification.
-Tasks also show per-notebook completion counts and native progress elements. Named milestone CRUD and live
-task-progress summaries are available through the typed library bridge, persisted in `.a11ynotebook/milestones.json`.
-Milestone and task identities survive notebook moves; missing tasks remain associated and are counted as missing.
-Use **Tasks → Open Milestones**, **Tools → Open Milestones** in the native menu, or the command palette's
-**Open Milestones** command. The Milestones tab lists plans by due date with a status filter. Activate a title for
-detail/progress and associated note/task links; **Create milestone** and **Edit milestone** offer labelled title,
-date, status, note and task controls. Status is set manually; progress follows saved task completion.
-Associating a Markdown task may add a stable task identity marker to its note. Ambiguous task identities cannot
-be newly associated, and missing notes/tasks remain visibly unavailable rather than silently rebound.
-**Delete milestone** asks for explicit confirmation and deletes only the plan, not its notes/tasks. Cancel/Escape
-returns focus without saving; save/delete errors remain readable for retry. Windows screen-reader verification has
-not been run.
+Tasks also show per-notebook completion counts and native progress elements.
 
 ## Templates and cognitive tools
 
@@ -475,7 +464,7 @@ files, filenames, search indexes, or most metadata.
 
 Scoped annotation/checkpoint protection requires an unlocked **version-3** library (enable recovery first for older
 configs) and explicit consent. It protects only Markdown/HTML/PDF annotations and cognitive checkpoints.
-**Search index/snippets, link index, bookmarks, reminders, settings, flashcard schedules, milestones, image
+**Search index/snippets, link index, bookmarks, reminders, settings, flashcard schedules, image
 descriptions, source files, attachments and exports remain plaintext. This is not whole-library encryption.**
 Migration removes the old annotation store after committing authenticated ciphertext; deleted plaintext may still
 persist on disk or in backups. Tampered/missing protected data fails closed, never silently falls back to plaintext.

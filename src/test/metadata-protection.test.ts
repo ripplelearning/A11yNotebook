@@ -6,7 +6,6 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import {
   createProtectedMetadataStore,
-  PROTECTED_LEGACY_FILENAMES,
   writeProtectedSecurityConfig,
 } from '../../electron/vault/metadata-protection';
 import { validateMetadataProtectionPointer } from '../../electron/vault/security';
@@ -278,31 +277,29 @@ describe('scoped encrypted metadata storage', () => {
   }, 30_000);
 
   it('extends protection to an additional store and removes its plaintext', async () => {
-    PROTECTED_LEGACY_FILENAMES.milestones = 'milestones.json';
     const f = await fixture();
     await f.store.enable();
-    const milestones = [{ id: 'm1', title: 'private milestone words' }];
-    await writeFile(path.join(f.folder, 'milestones.json'), JSON.stringify(milestones));
-    await f.store.extend('milestones', milestones);
-    await expect(f.store.read('milestones')).resolves.toEqual(milestones);
-    await expect(lstat(path.join(f.folder, 'milestones.json'))).rejects.toThrow();
+    const bookmarks = [{ id: 'b1', title: 'private bookmark words' }];
+    await writeFile(path.join(f.folder, 'bookmarks.json'), JSON.stringify(bookmarks));
+    await f.store.extend('bookmarks', bookmarks);
+    await expect(f.store.read('bookmarks')).resolves.toEqual(bookmarks);
+    await expect(lstat(path.join(f.folder, 'bookmarks.json'))).rejects.toThrow();
     const names = await readdir(f.folder);
-    expect(names.some((name) => name.startsWith('protected-milestones-'))).toBe(true);
+    expect(names.some((name) => name.startsWith('protected-bookmarks-'))).toBe(true);
     for (const name of names) {
       const text = await readFile(path.join(f.folder, name), 'utf8');
-      expect(text).not.toContain('private milestone words');
+      expect(text).not.toContain('private bookmark words');
     }
-    const next = [{ id: 'm2', title: 'second milestone' }];
-    await f.store.write('milestones', next);
-    await expect(f.store.read('milestones')).resolves.toEqual(next);
+    const next = [{ id: 'b2', title: 'second bookmark' }];
+    await f.store.write('bookmarks', next);
+    await expect(f.store.read('bookmarks')).resolves.toEqual(next);
     // The base stores still work alongside the extension.
     await expect(f.store.read('annotations')).resolves.toEqual(f.content);
-    delete PROTECTED_LEGACY_FILENAMES.milestones;
   });
 
   it('refuses extension when protection is off, the store is already protected, or no legacy file is registered', async () => {
     const f = await fixture();
-    await expect(f.store.extend('milestones', [])).rejects.toThrow('not enabled');
+    await expect(f.store.extend('bookmarks', [])).rejects.toThrow('not enabled');
     await f.store.enable();
     await expect(f.store.extend('annotations', {})).rejects.toThrow('already under encrypted protection');
     // 'asset-drafts' is deliberately never registered: cognitive
@@ -312,17 +309,15 @@ describe('scoped encrypted metadata storage', () => {
   });
 
   it('fails closed when an extended store container is tampered with', async () => {
-    PROTECTED_LEGACY_FILENAMES.milestones = 'milestones.json';
     const f = await fixture();
     await f.store.enable();
-    await writeFile(path.join(f.folder, 'milestones.json'), JSON.stringify([{ id: 'm1' }]));
-    await f.store.extend('milestones', [{ id: 'm1' }]);
-    const containerName = (await readdir(f.folder)).find((name) => name.startsWith('protected-milestones-'))!;
+    await writeFile(path.join(f.folder, 'bookmarks.json'), JSON.stringify([{ id: 'b1' }]));
+    await f.store.extend('bookmarks', [{ id: 'b1' }]);
+    const containerName = (await readdir(f.folder)).find((name) => name.startsWith('protected-bookmarks-'))!;
     const containerPath = path.join(f.folder, containerName);
     const bytes = await readFile(containerPath, 'utf8');
     await writeFile(containerPath, bytes.replace(/[a-f0-9]{8}/, 'deadbeef'));
-    await expect(f.store.read('milestones')).rejects.toThrow();
-    delete PROTECTED_LEGACY_FILENAMES.milestones;
+    await expect(f.store.read('bookmarks')).rejects.toThrow();
   });
 
   it('rotateKeys stages every store under the new key without committing', async () => {
@@ -369,7 +364,7 @@ describe('scoped encrypted metadata storage', () => {
     const pointer = config.metadataProtection!;
     const entry = { generation: randomUUID(), digest: 'a'.repeat(64), cleanupRequired: false };
     expect(() =>
-      validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, milestones: entry } }),
+      validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, bookmarks: entry } }),
     ).not.toThrow();
     expect(() =>
       validateMetadataProtectionPointer({ ...pointer, stores: { ...pointer.stores, bogus: entry } }),

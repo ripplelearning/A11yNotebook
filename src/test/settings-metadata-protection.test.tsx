@@ -79,7 +79,7 @@ describe('scoped metadata encryption consent', () => {
     });
     const button = await screen.findByRole('button', { name: 'Encrypt Reminder defaults' });
     expect(button).toBeDisabled();
-    expect(screen.getByRole('button', { name: 'Encrypt Milestones' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Encrypt Bookmarks' })).toBeInTheDocument();
     fireEvent.click(screen.getByLabelText(/I consent to encrypting Reminder defaults/));
     expect(button).toBeEnabled();
     fireEvent.click(button);

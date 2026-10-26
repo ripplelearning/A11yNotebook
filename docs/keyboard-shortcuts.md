@@ -31,7 +31,6 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Alt+A     | Annotate PDF selection                  |
 | Ctrl+Alt+P     | Annotate this paragraph/heading/cell    |
 | Ctrl+Shift+R   | Open Reminders                          |
-| Ctrl+6         | Open Milestones                         |
 | Ctrl+5         | Cognitive tools                         |
 | Ctrl+B         | Bold                                    |
 | Ctrl+I         | Italic                                  |
