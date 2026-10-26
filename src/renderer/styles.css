@@ -34,6 +34,19 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
+[data-focus-ring='high-visibility'] :focus-visible {
+  outline-width: 5px;
+  outline-offset: 4px;
+}
+
+[data-reduced-motion='true'] *,
+[data-reduced-motion='true'] *::before,
+[data-reduced-motion='true'] *::after {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;

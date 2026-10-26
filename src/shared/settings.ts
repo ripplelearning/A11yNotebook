@@ -18,6 +18,22 @@ export interface NotebookSettings {
   reminderSoundChoice?: 'gentle-chime';
   reminderVolume?: number;
   backgroundReminders?: boolean;
+  /** Whole-interface scale in percent (100 = normal). Distinct from font size. */
+  zoomPercent?: number;
+  /** Thicker, more offset focus outlines for low vision. */
+  focusRing?: 'standard' | 'high-visibility';
+  /** Turn off interface animations and transitions. */
+  reducedMotion?: boolean;
+  /** Automatic whole-library backups, off unless the user turns them on. */
+  autoBackupEnabled?: boolean;
+  /** Days between automatic backups. */
+  autoBackupIntervalDays?: number;
+  /** How many automatic backups to keep; older ones are deleted. */
+  autoBackupKeepCount?: number;
+  /** Folder that holds automatic backups; blank means a Backups folder next to the library. */
+  autoBackupFolder?: string;
+  /** ISO timestamp of the last completed automatic backup, or ''. */
+  lastAutoBackupAt?: string;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -35,6 +51,14 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderSoundChoice: 'gentle-chime',
   reminderVolume: 50,
   backgroundReminders: false,
+  zoomPercent: 100,
+  focusRing: 'standard',
+  reducedMotion: false,
+  autoBackupEnabled: false,
+  autoBackupIntervalDays: 7,
+  autoBackupKeepCount: 5,
+  autoBackupFolder: '',
+  lastAutoBackupAt: '',
 };
 
 /**
@@ -176,6 +200,15 @@ export function validateSettings(value: unknown): NotebookSettings {
   const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
   const backgroundReminders = settings.backgroundReminders === undefined ? false : settings.backgroundReminders;
   const showCommandButtons = settings.showCommandButtons === undefined ? false : settings.showCommandButtons;
+  const zoomPercent = settings.zoomPercent === undefined ? 100 : settings.zoomPercent;
+  const focusRing = settings.focusRing === undefined ? 'standard' : settings.focusRing;
+  const reducedMotion = settings.reducedMotion === undefined ? false : settings.reducedMotion;
+  const autoBackupEnabled = settings.autoBackupEnabled === undefined ? false : settings.autoBackupEnabled;
+  const autoBackupIntervalDays =
+    settings.autoBackupIntervalDays === undefined ? 7 : settings.autoBackupIntervalDays;
+  const autoBackupKeepCount = settings.autoBackupKeepCount === undefined ? 5 : settings.autoBackupKeepCount;
+  const autoBackupFolder = settings.autoBackupFolder === undefined ? '' : settings.autoBackupFolder;
+  const lastAutoBackupAt = settings.lastAutoBackupAt === undefined ? '' : settings.lastAutoBackupAt;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -199,6 +232,20 @@ export function validateSettings(value: unknown): NotebookSettings {
     !Number.isInteger(reminderVolume) ||
     reminderVolume < 0 ||
     reminderVolume > 100 ||
+    !Number.isInteger(zoomPercent) ||
+    zoomPercent < 50 ||
+    zoomPercent > 200 ||
+    (focusRing !== 'standard' && focusRing !== 'high-visibility') ||
+    typeof reducedMotion !== 'boolean' ||
+    typeof autoBackupEnabled !== 'boolean' ||
+    !Number.isInteger(autoBackupIntervalDays) ||
+    autoBackupIntervalDays < 1 ||
+    autoBackupIntervalDays > 30 ||
+    !Number.isInteger(autoBackupKeepCount) ||
+    autoBackupKeepCount < 1 ||
+    autoBackupKeepCount > 50 ||
+    typeof autoBackupFolder !== 'string' ||
+    typeof lastAutoBackupAt !== 'string' ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -237,5 +284,13 @@ export function validateSettings(value: unknown): NotebookSettings {
     reminderSoundChoice,
     reminderVolume,
     backgroundReminders,
+    zoomPercent,
+    focusRing,
+    reducedMotion,
+    autoBackupEnabled,
+    autoBackupIntervalDays,
+    autoBackupKeepCount,
+    autoBackupFolder,
+    lastAutoBackupAt,
   };
 }

@@ -259,6 +259,78 @@ export default function SettingsDialog({
           />
           Show command/action buttons in the UI
         </label>
+        <label>
+          Zoom in percent (50 to 200; scales the whole interface, unlike font size)
+          <input
+            type="number"
+            min={50}
+            max={200}
+            value={draft.zoomPercent ?? 100}
+            onChange={(event) => setDraft({ ...draft, zoomPercent: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          Focus indicator
+          <select
+            value={draft.focusRing ?? 'standard'}
+            onChange={(event) =>
+              setDraft({ ...draft, focusRing: event.target.value as NotebookSettings['focusRing'] })
+            }
+          >
+            <option value="standard">Standard</option>
+            <option value="high-visibility">High visibility (thicker, more offset)</option>
+          </select>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.reducedMotion ?? false}
+            onChange={(event) => setDraft({ ...draft, reducedMotion: event.target.checked })}
+          />
+          Reduce motion (turn off interface animations and transitions)
+        </label>
+        <h3>Automatic backups</h3>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.autoBackupEnabled ?? false}
+            onChange={(event) => setDraft({ ...draft, autoBackupEnabled: event.target.checked })}
+          />
+          Back up this library automatically
+        </label>
+        <p>
+          A backup is an exact copy of the library folder, including its private metadata, made when the library is
+          opened and at most once per interval while the app runs. Encrypted files stay encrypted in the copy.
+          Backups are kept outside the library so they are never backed up themselves.
+        </p>
+        <label>
+          Back up every how many days (1 to 30)
+          <input
+            type="number"
+            min={1}
+            max={30}
+            value={draft.autoBackupIntervalDays ?? 7}
+            onChange={(event) => setDraft({ ...draft, autoBackupIntervalDays: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          How many automatic backups to keep (1 to 50; older ones are deleted)
+          <input
+            type="number"
+            min={1}
+            max={50}
+            value={draft.autoBackupKeepCount ?? 5}
+            onChange={(event) => setDraft({ ...draft, autoBackupKeepCount: Number(event.target.value) })}
+          />
+        </label>
+        <label>
+          Backup folder (leave blank for a Backups folder next to the library)
+          <input
+            type="text"
+            value={draft.autoBackupFolder ?? ''}
+            onChange={(event) => setDraft({ ...draft, autoBackupFolder: event.target.value })}
+          />
+        </label>
         <p>
           The default is the menu-first interface. The native menu stays available in both modes. Browser development
           keeps command buttons available.

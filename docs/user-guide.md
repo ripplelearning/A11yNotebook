@@ -408,8 +408,18 @@ Settings sections have visible semantic headings for screen-reader heading navig
 **Appearance and interface**, **Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and **Library security**.
 Scoped metadata encryption has its own heading when available, with security subsections under Library security.
 
-In **Appearance and interface**, **Show command/action buttons in the UI** restores the button-rich application
+In **Appearance and interface**, **Zoom in percent** scales the whole interface from 50 to 200 percent; unlike
+font size, which grows text only, Zoom grows buttons, spacing, and everything else with it. **Focus indicator**
+offers a high-visibility option with thicker, more offset outlines, and **Reduce motion** turns off interface
+animations and transitions. **Show command/action buttons in the UI** restores the button-rich application
 layout. It is off by default, including for older settings files, to favor the native-menu-first design.
+
+**Automatic backups**, in the same section, copies the whole library folder on a schedule you choose: every 1 to
+30 days, keeping the newest 1 to 50 copies and deleting older ones. A backup runs when the library is opened and
+at most once per interval while the app runs, and only the saved content is copied, so save first if it matters.
+Backups live outside the library, in the folder you name or, if you leave it blank, a Backups folder next to the
+library. Encrypted files stay encrypted in the copy, and a backup opens as a library in its own right. Automatic
+backups are off until you turn them on.
 The native menu remains available in either mode. Essential navigation, content, dialog, form, and Settings controls
 remain available; browser development without the native bridge retains command buttons. This preference and
 shortcut edits apply only after **Save settings**; **Cancel** discards them, and reset changes the draft.
