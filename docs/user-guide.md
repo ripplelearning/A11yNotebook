@@ -365,8 +365,20 @@ sign-in is ready when it lands. Keep every client ID, secret, and
 app-specific password in your password manager; you will provide them
 through a secure entry card when the app asks, never in chat or email.
 
+Read this part carefully, because it is easy to misunderstand: these steps
+set up sync for YOU, on your accounts. They do not set it up for everybody
+else, and they give nobody access to your accounts. A client ID and secret
+identify the app to the provider; they are not a password to your account.
+Each person who signs in does so with their own account, grants access to
+their own calendar only, and gets their own token that lives on their own
+device. Your calendar can only be reached with a token you granted by
+signing in yourself. For the app to work for everybody without each person
+doing these steps, it needs one shared, Google-verified client owned by the
+app itself instead of by you; that is not set up yet. Until then, each user
+follows the steps below for themselves.
+
 **Google.** In the Google Cloud Console (console.cloud.google.com), create
-a project (for example "A11yNotebook Calendar Sync"), open "APIs &
+your own project (for example "A11yNotebook Calendar Sync"), open "APIs &
 Services", then "Library", and enable the Google Calendar API. Under "OAuth
 consent screen", choose user type External, set the app name to
 A11yNotebook with your email as support and developer contact, add the
@@ -375,9 +387,10 @@ because sync writes local changes to Google), and add your own email under
 "Test users". Under "Credentials", create an "OAuth client ID" of
 application type **Desktop app** (not Web application) and save the Client
 ID and Client Secret it shows. While the consent screen stays in Testing
-mode, Google expires sign-in after 7 days, so you would sign in again about
-weekly; moving to Production removes that limit but requires a Google
-verification review for the Calendar scope.
+mode, only the test users you add (up to 100) can sign in at all, and
+Google expires sign-in after 7 days, so you would sign in again about
+weekly; moving to Production removes the 7-day limit and the test-user cap
+but requires a Google-verification review for the Calendar scope.
 
 **Outlook.** In the Entra portal (entra.microsoft.com), open "App
 registrations" and create a registration named A11yNotebook with supported
