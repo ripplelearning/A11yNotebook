@@ -178,6 +178,7 @@ export interface VaultBridge {
   getCalendar?(): Promise<import('./calendar').CalendarAppointment[]>;
   saveCalendar?(
     appointments: import('./calendar').CalendarAppointment[],
+    options?: { source?: 'local' | 'sync' },
   ): Promise<import('./calendar').CalendarAppointment[]>;
   getSyncState?(): Promise<import('./calendar-sync').SyncStateFile>;
   saveSyncState?(

@@ -10,7 +10,12 @@ import {
   type BibliographyEntry,
 } from '../../src/shared/citations';
 import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
-import { cleanSyncState, type SyncStateFile } from '../../src/shared/calendar-sync';
+import {
+  cleanSyncState,
+  pruneTombstones,
+  sameAppointmentContent,
+  type SyncStateFile,
+} from '../../src/shared/calendar-sync';
 import {
   cleanAppointments,
   type CalendarAppointment,
@@ -1022,10 +1027,47 @@ export function createVaultService(
     return readCalendarFile();
   }
 
-  async function saveCalendar(appointments: CalendarAppointment[]): Promise<CalendarAppointment[]> {
+  async function saveCalendar(
+    appointments: CalendarAppointment[],
+    options?: { source?: 'local' | 'sync' },
+  ): Promise<CalendarAppointment[]> {
     const cleaned = cleanAppointments(appointments);
-    await writeCalendarRaw({ version: 1, appointments: cleaned });
-    return cleaned;
+    // Sync-applied changes carry the provider's timestamps and must not be
+    // re-stamped or tombstoned, or the next sync would echo them back.
+    if (options?.source === 'sync') {
+      await writeCalendarRaw({ version: 1, appointments: cleaned });
+      return cleaned;
+    }
+    const stored = await readCalendarFile();
+    const storedById = new Map(stored.map((item) => [item.id, item]));
+    const now = new Date().toISOString();
+    const stamped = cleaned.map((item) => {
+      const previous = storedById.get(item.id);
+      if (!previous) return { ...item, updatedAt: now };
+      if (sameAppointmentContent(previous, item)) {
+        return previous.updatedAt ? { ...item, updatedAt: previous.updatedAt } : item;
+      }
+      return { ...item, updatedAt: now };
+    });
+    await writeCalendarRaw({ version: 1, appointments: stamped });
+    // Tombstones are reconciled on every local save: deletions add one, and
+    // re-adding an appointment prunes its tombstone so a later sync does not
+    // delete an appointment that exists locally again.
+    const incomingIds = new Set(stamped.map((item) => item.id));
+    const deleted = stored.filter((item) => !incomingIds.has(item.id));
+    const state = await readSyncStateFile();
+    const merged = cleanSyncState({
+      ...state,
+      tombstones: [
+        ...state.tombstones,
+        ...deleted.map((item) => ({ id: item.id, deletedAt: now })),
+      ],
+    });
+    const tombstones = pruneTombstones(merged.tombstones, stamped);
+    if (JSON.stringify(tombstones) !== JSON.stringify(state.tombstones)) {
+      await writeSyncStateRaw({ version: 1, providers: merged.providers, tombstones });
+    }
+    return stamped;
   }
 
   async function writeSyncStateRaw(value: SyncStateFile): Promise<void> {

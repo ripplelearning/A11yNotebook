@@ -142,6 +142,60 @@ describe('calendar sync core', () => {
     }
   });
 
+  it('stamps new and changed appointments but preserves unchanged stamps', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      const old = '2026-01-01T00:00:00.000Z';
+      await service.saveCalendar([appointment({ id: 'a', updatedAt: old })], { source: 'sync' });
+      const [kept] = await service.saveCalendar([appointment({ id: 'a' })]);
+      expect(kept.updatedAt).toBe(old);
+      const [changed] = await service.saveCalendar([appointment({ id: 'a', title: 'Changed' })]);
+      expect(changed.updatedAt).not.toBe(old);
+      expect(changed.title).toBe('Changed');
+      const [created] = await service.saveCalendar([
+        appointment({ id: 'a', title: 'Changed' }),
+        appointment({ id: 'b', title: 'New' }),
+      ]);
+      expect(created.updatedAt).not.toBe(old);
+      const stored = await service.getCalendar();
+      expect(stored.find((item) => item.id === 'b')?.updatedAt).toBeTruthy();
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('records deletions as tombstones and prunes them when re-added', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      await service.saveCalendar([appointment({ id: 'a' }), appointment({ id: 'b' })]);
+      await service.saveCalendar([appointment({ id: 'a' })]);
+      expect((await service.getSyncState()).tombstones.map((tombstone) => tombstone.id)).toEqual(['b']);
+      await service.saveCalendar([appointment({ id: 'a' }), appointment({ id: 'b' })]);
+      expect((await service.getSyncState()).tombstones).toEqual([]);
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('leaves sync-applied saves unstamped and untombstoned', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      const stamp = '2026-01-02T00:00:00.000Z';
+      await service.saveCalendar([appointment({ id: 'a' }), appointment({ id: 'b' })]);
+      await service.saveCalendar([appointment({ id: 'a', updatedAt: stamp })], { source: 'sync' });
+      expect((await service.getCalendar()).find((item) => item.id === 'a')?.updatedAt).toBe(stamp);
+      expect((await service.getSyncState()).tombstones).toEqual([]);
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
   it('prunes tombstones for appointments that exist locally again', () => {
     const pruned = pruneTombstones(
       [

@@ -3490,10 +3490,24 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     return requireService().getCalendar();
   });
-  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown, options: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!Array.isArray(appointments)) throw new Error('Appointments must be a list.');
-    return requireService().saveCalendar(appointments);
+    if (
+      options !== undefined &&
+      (typeof options !== 'object' ||
+        options === null ||
+        Array.isArray(options) ||
+        ((options as { source?: unknown }).source !== undefined &&
+          (options as { source?: unknown }).source !== 'local' &&
+          (options as { source?: unknown }).source !== 'sync'))
+    ) {
+      throw new Error('Calendar save options are invalid.');
+    }
+    return requireService().saveCalendar(
+      appointments,
+      options as { source?: 'local' | 'sync' } | undefined,
+    );
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetSyncState, async (event) => {
     assertTrusted(event, isTrustedSender);

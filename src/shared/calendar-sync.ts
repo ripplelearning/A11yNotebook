@@ -102,6 +102,10 @@ export function localChangesSince(
  * field is added to CalendarAppointment, add it here if it should count
  * toward a conflict.
  */
+export function sameAppointmentContent(a: CalendarAppointment, b: CalendarAppointment): boolean {
+  return contentOf(a) === contentOf(b);
+}
+
 function contentOf(appointment: CalendarAppointment): string {
   return JSON.stringify({
     title: appointment.title,

@@ -316,7 +316,8 @@ const bridge: NotebookBridge = {
     saveBibliography: (notebookPath, entries) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveBibliography, notebookPath, entries),
     getCalendar: () => ipcRenderer.invoke(CHANNELS.vaultGetCalendar),
-    saveCalendar: (appointments) => ipcRenderer.invoke(CHANNELS.vaultSaveCalendar, appointments),
+    saveCalendar: (appointments, options) =>
+      ipcRenderer.invoke(CHANNELS.vaultSaveCalendar, appointments, options),
     getSyncState: () => ipcRenderer.invoke(CHANNELS.vaultGetSyncState),
     saveSyncState: (state) => ipcRenderer.invoke(CHANNELS.vaultSaveSyncState, state),
     fetchCitationMetadata: (identifier) =>
