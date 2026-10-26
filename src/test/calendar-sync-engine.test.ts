@@ -160,6 +160,32 @@ describe('calendar sync engine', () => {
     expect(h.savedLocal![0].title).toBe('Checkup');
   });
 
+  it('does not advance sync state while conflicts are unresolved', async () => {
+    const local = appointment({ provider: 'google', externalId: 'g-1', updatedAt: NEW });
+    const h = harness({
+      local: [local],
+      state: {
+        version: 1,
+        providers: {
+          google: { provider: 'google', lastSyncAt: LAST_SYNC, syncToken: 'tok-old' },
+        },
+        tombstones: [],
+      },
+      pull: async () => ({
+        changes: [{ kind: 'upsert', appointment: remote({ title: 'Remote title' }) }],
+        syncToken: 'tok-2',
+      }),
+    });
+    const result = await runSync(h.deps);
+    expect(result.conflicts).toHaveLength(1);
+    expect(h.savedState!.providers.google).toEqual({
+      provider: 'google',
+      lastSyncAt: LAST_SYNC,
+      syncToken: 'tok-old',
+    });
+    expect(result.syncToken).toBe('tok-old');
+  });
+
   it('does not call identical content a conflict when both sides changed', async () => {
     const local = appointment({ provider: 'google', externalId: 'g-1', updatedAt: NEW });
     const h = harness({

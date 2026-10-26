@@ -359,11 +359,15 @@ yet available. Windows screen-reader verification has not been run.
 ### Calendar sync setup
 
 Live sync is in development and is planned as two-way: local changes go to
-the provider and provider changes come down to the library. The in-app
-sign-in step is not built yet, but you can create the provider side now so
-sign-in is ready when it lands. Keep every client ID, secret, and
-app-specific password in your password manager; you will provide them
-through a secure entry card when the app asks, never in chat or email.
+the provider and provider changes come down to the library. Google sync
+has an in-app sign-in step: open the Calendar, find the Google Calendar
+sync section, enter your client ID and client secret, save, then Sign in
+with Google and Sync now. Outlook and Apple sign-in are not built yet.
+Keep every client ID, secret, and app-specific password in your password
+manager; enter them in the app when it asks, never in chat or email.
+If a sync reports conflicts (an appointment changed both locally and at
+the provider), the local version is kept and the same conflicts are
+reported again on the next sync: conflict resolution is not built yet.
 
 Read this part carefully, because it is easy to misunderstand: these steps
 set up sync for YOU, on your accounts. They do not set it up for everybody

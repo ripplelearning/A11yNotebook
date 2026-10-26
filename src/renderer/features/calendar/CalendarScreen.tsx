@@ -8,6 +8,7 @@ import {
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
 import AppointmentDialog from './AppointmentDialog';
+import GoogleSyncSection from './GoogleSyncSection';
 import type { AppointmentInput } from '../../../shared/calendar';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -365,6 +366,7 @@ export default function CalendarScreen({
             </button>
           </div>
           {view === 'agenda' ? renderAgenda() : renderMonth()}
+          {bridge && <GoogleSyncSection bridge={bridge} onSynced={() => void refresh()} />}
         </>
       )}
       {dialog && (

@@ -34,6 +34,11 @@ import type { AppointmentInput, CalendarAppointment } from './calendar';
  *   content comparison, so they do not restamp.
  * - Tombstones for the run's provider (or legacy tombstones with no
  *   provider) are cleared; other providers' tombstones are kept.
+ * - When a run ends with unresolved conflicts, the sync state (lastSyncAt
+ *   and syncToken) does NOT advance, so the next run re-pulls the same
+ *   changes and re-surfaces the same conflicts instead of silently
+ *   dropping them. Advancing would make both sides look unchanged and
+ *   lose the remote change without the user ever deciding.
  */
 
 export class SyncTokenExpiredError extends Error {
@@ -194,14 +199,21 @@ export async function runSync(deps: SyncEngineDeps): Promise<SyncRunResult> {
   }
 
   await deps.saveLocal(working, { source: 'sync' });
-  const nextSyncToken = pull.syncToken ?? providerState.syncToken;
+  // Unresolved conflicts freeze the sync state: the next run must see the
+  // same changes again. Advancing lastSyncAt past them would silently drop
+  // the conflict (both sides would look unchanged), and advancing the
+  // sync token alone would let the next run push the local side over the
+  // remote one without the user deciding.
+  const hasConflicts = conflicts.length > 0;
+  const nextSyncToken = hasConflicts ? providerState.syncToken : (pull.syncToken ?? providerState.syncToken);
+  const nextLastSyncAt = hasConflicts ? lastSyncAt : nowIso;
   await deps.saveState({
     version: 1,
     providers: {
       ...(state.providers ?? {}),
       [provider]: {
         provider,
-        lastSyncAt: nowIso,
+        ...(nextLastSyncAt ? { lastSyncAt: nextLastSyncAt } : {}),
         ...(nextSyncToken ? { syncToken: nextSyncToken } : {}),
       },
     },
