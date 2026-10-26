@@ -20,6 +20,8 @@ function setup(status: { configured: boolean; signedIn: boolean }, extra: Record
     getSyncState: vi.fn(async () => ({ version: 1, providers: {}, tombstones: [] })),
     saveSyncState: vi.fn(async (state: unknown) => state),
     getGoogleAccessToken: vi.fn(async () => 'token-1'),
+    getSettings: vi.fn(async () => ({ calendarOffline: false })),
+    saveSettings: vi.fn(async () => undefined),
     ...extra,
   };
   const onSynced = vi.fn();
@@ -118,6 +120,45 @@ describe('google sync section', () => {
     await screen.findByText('Signed in with Google.');
     fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Network down');
+  });
+
+  it('shows the offline view when the setting is on', async () => {
+    setup(
+      { configured: true, signedIn: false },
+      { getSettings: vi.fn(async () => ({ calendarOffline: true })) },
+    );
+    expect(await screen.findByText(/never sent to a calendar service/)).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Turn sync setup back on' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Sign in with Google' })).toBeNull();
+  });
+
+  it('going offline signs out and saves the setting', async () => {
+    const { bridge } = setup({ configured: true, signedIn: true });
+    await screen.findByText('Signed in with Google.');
+    fireEvent.click(screen.getByRole('button', { name: 'Keep calendar offline' }));
+    await waitFor(() => expect(bridge.signOutGoogle).toHaveBeenCalled());
+    await waitFor(() =>
+      expect(bridge.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ calendarOffline: true }),
+      ),
+    );
+    expect(await screen.findByText(/never sent to a calendar service/)).toBeTruthy();
+  });
+
+  it('turning setup back on clears the setting and restores setup', async () => {
+    const { bridge } = setup(
+      { configured: true, signedIn: false },
+      { getSettings: vi.fn(async () => ({ calendarOffline: true })) },
+    );
+    await screen.findByText(/never sent to a calendar service/);
+    fireEvent.click(screen.getByRole('button', { name: 'Turn sync setup back on' }));
+    await waitFor(() =>
+      expect(bridge.saveSettings).toHaveBeenCalledWith(
+        expect.objectContaining({ calendarOffline: false }),
+      ),
+    );
+    expect(await screen.findByText('Google client saved. Not signed in.')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Sign in with Google' })).toBeTruthy();
   });
 
   it('signs out and clears the result', async () => {

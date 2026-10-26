@@ -36,6 +36,8 @@ export interface NotebookSettings {
   autoBackupFolder?: string;
   /** ISO timestamp of the last completed automatic backup, or ''. */
   lastAutoBackupAt?: string;
+  /** Keep the calendar offline: hide provider sync setup and never run a sync. */
+  calendarOffline?: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -62,6 +64,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   autoBackupKeepCount: 5,
   autoBackupFolder: '',
   lastAutoBackupAt: '',
+  calendarOffline: false,
 };
 
 /**
@@ -231,6 +234,7 @@ export function validateSettings(value: unknown): NotebookSettings {
   const autoBackupKeepCount = settings.autoBackupKeepCount === undefined ? 5 : settings.autoBackupKeepCount;
   const autoBackupFolder = settings.autoBackupFolder === undefined ? '' : settings.autoBackupFolder;
   const lastAutoBackupAt = settings.lastAutoBackupAt === undefined ? '' : settings.lastAutoBackupAt;
+  const calendarOffline = settings.calendarOffline === undefined ? false : settings.calendarOffline;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -268,6 +272,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     autoBackupKeepCount > 50 ||
     typeof autoBackupFolder !== 'string' ||
     typeof lastAutoBackupAt !== 'string' ||
+    typeof calendarOffline !== 'boolean' ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -315,5 +320,6 @@ export function validateSettings(value: unknown): NotebookSettings {
     autoBackupKeepCount,
     autoBackupFolder,
     lastAutoBackupAt,
+    calendarOffline,
   };
 }

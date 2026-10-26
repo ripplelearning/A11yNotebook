@@ -369,6 +369,18 @@ If a sync reports conflicts (an appointment changed both locally and at
 the provider), the local version is kept and the same conflicts are
 reported again on the next sync: conflict resolution is not built yet.
 
+**Staying offline.** You do not need to set up anything to keep the
+calendar offline: appointments live in your library's calendar file, and
+nothing is sent to a calendar service unless you set up sync and press
+Sync now. If your library folder itself is cloud-synced (Drive, Dropbox,
+OneDrive), that file travels between your computers on its own, and the
+other computer's app picks up the change live. Task reminders travel the
+same way, because they live in your task files, and reminder state lives
+in your library's reminders file. The Calendar screen's sync section has
+a "Keep calendar offline" button that hides provider sync setup and
+blocks sync runs; going offline signs you out first and never unlinks
+your appointments, so turning setup back on resumes cleanly.
+
 Read this part carefully, because it is easy to misunderstand: these steps
 set up sync for YOU, on your accounts. They do not set it up for everybody
 else, and they give nobody access to your accounts. A client ID and secret

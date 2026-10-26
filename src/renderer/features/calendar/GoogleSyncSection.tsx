@@ -10,6 +10,13 @@ import type { VaultBridge } from '../../../shared/bridge';
  * not built yet: a sync reports conflicts and keeps the local version,
  * and the same conflicts are reported again on the next sync until
  * resolution lands.
+ *
+ * The section also offers "Keep calendar offline": a library setting
+ * that hides provider sync setup and blocks sync runs. Going offline
+ * signs out first and never unlinks appointments, so turning setup back
+ * on resumes cleanly. The calendar file itself always lives in the
+ * library, so a library folder that is cloud-synced still carries the
+ * calendar between computers without any calendar service involved.
  */
 export default function GoogleSyncSection({
   bridge,
@@ -19,6 +26,7 @@ export default function GoogleSyncSection({
   onSynced: () => void;
 }) {
   const supported = typeof bridge.googleStatus === 'function';
+  const [offline, setOffline] = useState(false);
   const [status, setStatus] = useState<{ configured: boolean; signedIn: boolean } | null>(null);
   const [clientId, setClientId] = useState('');
   const [clientSecret, setClientSecret] = useState('');
@@ -39,7 +47,13 @@ export default function GoogleSyncSection({
 
   useEffect(() => {
     void refreshStatus();
-  }, [refreshStatus]);
+    if (typeof bridge.getSettings === 'function') {
+      bridge
+        .getSettings()
+        .then((settings) => setOffline(settings.calendarOffline === true))
+        .catch(() => undefined);
+    }
+  }, [bridge, refreshStatus]);
 
   if (!supported) return null;
 
@@ -91,6 +105,34 @@ export default function GoogleSyncSection({
     });
   }
 
+  async function goOffline(): Promise<void> {
+    await runAction('Going offline…', async () => {
+      if (!bridge.getSettings || !bridge.saveSettings) {
+        throw new Error('Offline calendar is unavailable in this version.');
+      }
+      if (status?.signedIn && bridge.signOutGoogle) await bridge.signOutGoogle();
+      const current = await bridge.getSettings();
+      await bridge.saveSettings({ ...current, calendarOffline: true });
+      setResult(null);
+      setOffline(true);
+      await refreshStatus();
+      setMessage('Calendar sync is off.');
+    });
+  }
+
+  async function reEnableSync(): Promise<void> {
+    await runAction('Turning sync setup back on…', async () => {
+      if (!bridge.getSettings || !bridge.saveSettings) {
+        throw new Error('Offline calendar is unavailable in this version.');
+      }
+      const current = await bridge.getSettings();
+      await bridge.saveSettings({ ...current, calendarOffline: false });
+      setOffline(false);
+      await refreshStatus();
+      setMessage('Calendar sync setup is available again.');
+    });
+  }
+
   async function syncNow(): Promise<void> {
     await runAction('Syncing with Google…', async () => {
       if (
@@ -130,8 +172,25 @@ export default function GoogleSyncSection({
       <h2 id="google-sync-heading">Google Calendar sync</h2>
       {error && <p role="alert">{error}</p>}
       {(busy ?? message) && <p role="status">{busy ?? message}</p>}
-      <p>{statusText}</p>
-      {!status?.configured && (
+      {offline ? (
+        <>
+          <p>
+            Calendar sync is off. Your calendar stays in your library file and is never sent to a
+            calendar service.
+          </p>
+          <p>
+            Your appointments are still saved in your library, so they travel with it if your
+            library folder is cloud-synced, along with task reminders and reminder state, which
+            also live in your library.
+          </p>
+          <button type="button" onClick={() => void reEnableSync()} disabled={busy !== null}>
+            Turn sync setup back on
+          </button>
+        </>
+      ) : (
+        <>
+          <p>{statusText}</p>
+          {!status?.configured && (
         <div>
           <p>
             Create a Desktop-app OAuth client in Google Cloud Console (see the user guide), then
@@ -190,6 +249,13 @@ export default function GoogleSyncSection({
             ))}
           </ul>
         </div>
+      )}
+          <div>
+            <button type="button" onClick={() => void goOffline()} disabled={busy !== null}>
+              Keep calendar offline
+            </button>
+          </div>
+        </>
       )}
     </section>
   );

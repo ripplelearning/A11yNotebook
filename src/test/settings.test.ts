@@ -64,6 +64,19 @@ describe('settings and shortcut validation', () => {
   ])('rejects invalid appearance or backup preference %j', (overrides) => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, ...overrides })).toThrow('Invalid settings values.');
   });
+  it('defaults the calendar to online and persists the offline choice', () => {
+    expect(DEFAULT_SETTINGS.calendarOffline).toBe(false);
+    expect(
+      validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} })
+        .calendarOffline,
+    ).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, calendarOffline: true }).calendarOffline).toBe(true);
+  });
+  it.each([null, 0, 1, 'true', {}, []])('rejects non-boolean calendar offline preference %j', (calendarOffline) => {
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, calendarOffline })).toThrow(
+      'Invalid settings values.',
+    );
+  });
   it('defaults legacy note-open preferences to read-only', () => {
     expect(DEFAULT_SETTINGS.defaultNoteOpenMode).toBe('read-only');
     expect(
