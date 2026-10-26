@@ -124,6 +124,13 @@ Toggle **Read-only/edit mode** with Ctrl+E. **Plain source** edits Markdown or H
 **Rich text** exposes an accessible formatting toolbar and multiline textbox. Ctrl+S saves immediately; edits also
 save after a short idle period. A tab marks unsaved content and asks before discarding it when closed.
 
+**Focus Mode** (F11, or **Toggle Focus Mode** in the command palette and the View menu) hides every
+persistent pane except the title header (which holds search), the menu bar, and the document itself, in both
+reading and editing modes, so the open note or file fills the window. Hidden panes also leave the Tab order,
+so only the title, menu, search, and document stay focusable. Press F11 again to restore the full layout;
+Focus Mode also ends on its own when the open note or file is closed, when you switch to another view, and
+when the app is closed and reopened (it is never saved). Dialogs and context menus still open above it.
+
 App-managed renames, moves, and saves retain provenance. Ordinary external in-place edits retain it too;
 externally replaced files or files renamed outside the app may become unknown and require explicit import again.
 

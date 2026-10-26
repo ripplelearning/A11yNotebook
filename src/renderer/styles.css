@@ -1109,3 +1109,24 @@ a:focus-visible,
     }
   }
 }
+
+/* Focus Mode (F11, Toggle Focus Mode command): hide every persistent chrome
+   pane except the title header (which holds the search box), the menu bar,
+   and the document itself. display:none also removes the hidden panes from
+   the Tab order and the accessibility tree, so only the kept regions stay
+   focusable. The workspace collapses to a single column; without that, the
+   content panel would sit in the first 260px grid column once the asides
+   leave the layout. The menu bar itself is governed by the command-buttons
+   setting and is never forced on by Focus Mode; the native OS menu is
+   outside this stylesheet and stays available. Transient overlays (dialogs,
+   context menus) are not chrome and are unaffected. */
+.app-shell.focus-mode .workspace {
+  grid-template-columns: 1fr;
+}
+
+.app-shell.focus-mode .panel,
+.app-shell.focus-mode .side-panel,
+.app-shell.focus-mode .tab-bar,
+.app-shell.focus-mode .status-bar {
+  display: none;
+}

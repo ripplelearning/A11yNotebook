@@ -136,7 +136,9 @@ const RESERVED_SHORTCUTS = [
   'Ctrl+Z',
   'Ctrl+Y',
   'Ctrl+Shift+Z',
-  'F11',
+  // F11 is deliberately NOT reserved: it is the Toggle Focus Mode registry
+  // shortcut. The conflict checker still keeps it exclusive, because a
+  // second command claiming F11 collides with the registry primary.
 ];
 
 const NAMED_SHORTCUT_KEYS: Record<string, string> = {
