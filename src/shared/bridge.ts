@@ -184,6 +184,11 @@ export interface VaultBridge {
   saveSyncState?(
     state: import('./calendar-sync').SyncStateFile,
   ): Promise<import('./calendar-sync').SyncStateFile>;
+  configureGoogle?(client: { clientId: string; clientSecret: string }): Promise<{ configured: boolean }>;
+  signInGoogle?(): Promise<{ signedIn: boolean }>;
+  googleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getGoogleAccessToken?(): Promise<string>;
+  signOutGoogle?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }
