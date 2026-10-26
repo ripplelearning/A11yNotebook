@@ -4,14 +4,13 @@ import {
   combineDateTime,
   parseAppointmentTime,
   parseDateOnly,
+  type AppointmentInput,
   type CalendarAppointment,
   type CalendarLink,
   type CalendarRecurrence,
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
 import Modal from '../../components/Modal';
-
-export type AppointmentInput = Omit<CalendarAppointment, 'id'>;
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

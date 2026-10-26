@@ -7,7 +7,8 @@ import {
   type CalendarOccurrence,
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
-import AppointmentDialog, { type AppointmentInput } from './AppointmentDialog';
+import AppointmentDialog from './AppointmentDialog';
+import type { AppointmentInput } from '../../../shared/calendar';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 

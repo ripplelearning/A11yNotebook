@@ -61,6 +61,9 @@ export interface CalendarAppointment {
   updatedAt?: string;
 }
 
+/** An appointment without its local id, as produced by dialogs and sync. */
+export type AppointmentInput = Omit<CalendarAppointment, 'id'>;
+
 export interface CalendarOccurrence {
   appointmentId: string;
   title: string;
