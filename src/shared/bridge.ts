@@ -194,6 +194,11 @@ export interface VaultBridge {
   outlookStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
   getOutlookAccessToken?(): Promise<string>;
   signOutOutlook?(): Promise<{ signedIn: boolean }>;
+  configureApple?(signIn: { appleId: string; appPassword: string }): Promise<{ configured: boolean }>;
+  appleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getAppleCredentials?(): Promise<{ appleId: string; appPassword: string }>;
+  verifyApple?(): Promise<{ calendarName: string }>;
+  signOutApple?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }

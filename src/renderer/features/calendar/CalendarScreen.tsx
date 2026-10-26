@@ -9,6 +9,7 @@ import {
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
 import AppointmentDialog from './AppointmentDialog';
+import AppleSyncSection from './AppleSyncSection';
 import GoogleSyncSection from './GoogleSyncSection';
 import OutlookSyncSection from './OutlookSyncSection';
 import type { AppointmentInput } from '../../../shared/calendar';
@@ -373,6 +374,7 @@ export default function CalendarScreen({
           {view === 'agenda' ? renderAgenda() : renderMonth()}
           {bridge && <GoogleSyncSection bridge={bridge} onSynced={() => void refresh()} />}
           {bridge && <OutlookSyncSection bridge={bridge} onSynced={() => void refresh()} />}
+          {bridge && <AppleSyncSection bridge={bridge} onSynced={() => void refresh()} />}
         </>
       )}
       {dialog && (

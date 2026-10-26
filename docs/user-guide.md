@@ -363,16 +363,17 @@ choosing a day lists that day's appointments below the grid. **New appointment**
 timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
 end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
 removes the whole series, not just one occurrence; deletion asks for explicit confirmation. Live two-way
-sync with Google Calendar and Outlook Calendar is built in (see Calendar sync setup below); Apple
-Calendar sync is not built yet. Windows screen-reader verification has not been run.
+sync with Google Calendar, Outlook Calendar, and Apple Calendar is built in (see Calendar sync
+setup below). Windows screen-reader verification has not been run.
 
 ### Calendar sync setup
 
 Live sync is two-way: local changes go to the provider and provider
-changes come down to the library. Google and Outlook sync each have an
-in-app sign-in step: open the Calendar, find the provider's sync
-section, enter your client details, save, then Sign in and Sync now.
-Apple sign-in is not built yet. Keep every client ID, secret, and
+changes come down to the library. Google, Outlook, and Apple sync each
+have an in-app sign-in step: open the Calendar, find the provider's
+sync section, enter your sign-in details, save, then Sign in (Google
+and Outlook open a browser sign-in; Apple verifies directly) and Sync
+now. Keep every client ID, secret, and
 app-specific password in your password manager; enter them in the app
 when it asks, never in chat or email. If a sync reports conflicts (an
 appointment changed both locally and at the provider), the local
@@ -447,10 +448,15 @@ uses CalDAV with an app-specific password instead of your main password.
 At appleid.apple.com, under "Sign-In and Security", open "App-Specific
 Passwords" (this requires two-factor authentication on the Apple ID) and
 generate one named A11yNotebook; the password is shown once, so save it
-immediately. When Apple sync lands, the app will ask for your Apple ID
-email and that app-specific password and will connect to
-`caldav.icloud.com`. You can revoke the password at any time from the same
-Apple ID page. Never enter your main Apple ID password into the app.
+immediately. Then, in the app's Apple Calendar sync section, enter your
+Apple ID and that app-specific password and save: the app verifies the
+sign-in by finding your calendar at `caldav.icloud.com` and reports the
+calendar name it found. Sync uses the first event calendar in the
+account; there is no calendar picker yet. As with Outlook, events with a
+relative recurrence (for example "the second Tuesday of each month")
+are skipped when pulling from Apple. You can revoke the password at any
+time from the same Apple ID page. Never enter your main Apple ID password
+into the app.
 
 ## Templates and cognitive tools
 

@@ -1,7 +1,15 @@
 import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import type { GoogleApiFetch } from '../../src/shared/google-auth';
 import type { OutlookApiFetch } from '../../src/shared/outlook-auth';
+import type { AppleTransportFetch } from '../../src/shared/apple-transport';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
+import {
+  clearAppleAppPassword,
+  getAppleAuthStatus,
+  getAppleCredentials,
+  saveAppleSignIn,
+  verifyAppleCalendar,
+} from './apple-auth';
 import {
   getGoogleAccessToken,
   getGoogleAuthStatus,
@@ -135,6 +143,46 @@ export function setupAuthIpc(isTrustedSender: TrustedSender): void {
       userDataPath: userDataPath(),
       encryptor: safeStorageEncryptor,
     });
+    return { signedIn: false };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleConfigure, async (event, signIn: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (
+      typeof signIn !== 'object' ||
+      signIn === null ||
+      typeof (signIn as { appleId?: unknown }).appleId !== 'string' ||
+      typeof (signIn as { appPassword?: unknown }).appPassword !== 'string'
+    ) {
+      throw new Error('An Apple ID and an app-specific password are both required.');
+    }
+    const { appleId, appPassword } = signIn as { appleId: string; appPassword: string };
+    await saveAppleSignIn(userDataPath(), safeStorageEncryptor, { appleId, appPassword });
+    return { configured: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleStatus, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return getAppleAuthStatus({ userDataPath: userDataPath(), encryptor: safeStorageEncryptor });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleCredentials, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return getAppleCredentials({ userDataPath: userDataPath(), encryptor: safeStorageEncryptor });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleVerify, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return verifyAppleCalendar({
+      userDataPath: userDataPath(),
+      encryptor: safeStorageEncryptor,
+      fetchImpl: asFetch() as unknown as AppleTransportFetch,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleSignOut, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    await clearAppleAppPassword(userDataPath());
     return { signedIn: false };
   });
 }
