@@ -56,5 +56,11 @@ export default defineConfig({
     globals: true,
     setupFiles: './src/test/setup.ts',
     include: ['src/**/*.test.{ts,tsx}'],
+    // GitHub's shared runners are slow enough that several heavy tests
+    // (dialog renders, concurrent file writes) exceed the 5-second
+    // default. Per-test timeouts kept missing newly slow tests, so the
+    // suite default is 30 seconds; a genuinely hung test still fails,
+    // just after 30 seconds instead of 5.
+    testTimeout: 30_000,
   },
 });
