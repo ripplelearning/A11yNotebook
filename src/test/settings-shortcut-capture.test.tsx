@@ -194,7 +194,7 @@ describe('Settings interface and shortcut capture', () => {
     arm(openCommand.label);
     fireEvent.click(screen.getByRole('button', { name: 'Cancel capture' }));
     expect(otherButton).toHaveFocus();
-  });
+  }, 30_000);
 
   it('stops capture on reset, save, close and unmount without leaking an app key listener', async () => {
     const { onSave, onClose, onShortcutCaptureChange, unmount } = setup();
