@@ -79,6 +79,54 @@ describe('calendar screen', () => {
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   });
 
+  it('saves a reminder offset chosen in the dialog', async () => {
+    const { saveCalendar } = setup([]);
+    await screen.findByText('No appointments in this period.');
+    fireEvent.click(screen.getByRole('button', { name: 'New appointment' }));
+    const dialog = await screen.findByRole('dialog');
+    const today = new Date();
+    fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Dentist' } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '10:00' } });
+    fireEvent.change(within(dialog).getByLabelText('Remind me'), { target: { value: '15' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
+    await waitFor(() => expect(saveCalendar).toHaveBeenCalled());
+    const saved = saveCalendar.mock.calls[0][0] as CalendarAppointment[];
+    expect(saved[0].reminderMinutesBefore).toBe(15);
+  });
+
+  it('refuses a reminder on an all-day appointment', async () => {
+    setup([]);
+    await screen.findByText('No appointments in this period.');
+    fireEvent.click(screen.getByRole('button', { name: 'New appointment' }));
+    const dialog = await screen.findByRole('dialog');
+    const today = new Date();
+    fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Holiday' } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '10:00' } });
+    fireEvent.change(within(dialog).getByLabelText('Remind me'), { target: { value: '15' } });
+    fireEvent.click(within(dialog).getByLabelText('All-day appointment'));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
+    expect(await within(dialog).findByRole('alert')).toHaveTextContent(
+      'Reminders are available for timed appointments only.',
+    );
+  });
+
+  it('shows the reminder offset in the agenda', async () => {
+    const today = new Date();
+    setup([
+      {
+        id: 'timed-1',
+        title: 'Dentist call',
+        start: combineDateTime(dayKey(today), '14:30')!,
+        allDay: false,
+        reminderMinutesBefore: 15,
+      },
+    ]);
+    const title = await screen.findByText('Dentist call');
+    expect(title.closest('li')?.textContent).toContain('Reminder: 15 minutes before');
+  });
+
   it('deletes the whole series after confirmation', async () => {
     const today = new Date();
     const recurring: CalendarAppointment = {

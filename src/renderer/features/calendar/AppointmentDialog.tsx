@@ -72,6 +72,9 @@ export default function AppointmentDialog({
       ? `${appointment.link.path}\0${appointment.link.taskId}`
       : (appointment?.link?.path ?? ''),
   );
+  const [reminder, setReminder] = useState(
+    appointment?.reminderMinutesBefore === undefined ? '' : String(appointment.reminderMinutesBefore),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -145,6 +148,7 @@ export default function AppointmentDialog({
       if (!path || !taskId) return 'Choose a task to link.';
       link = { kind: 'task', path, taskId };
     }
+    if (allDay && reminder !== '') return 'Reminders are available for timed appointments only.';
     return {
       title: title.trim(),
       start,
@@ -153,6 +157,7 @@ export default function AppointmentDialog({
       ...(location.trim() ? { location: location.trim() } : {}),
       ...(description.trim() ? { description: description.trim() } : {}),
       ...(link ? { link } : {}),
+      ...(reminder !== '' ? { reminderMinutesBefore: Number(reminder) } : {}),
       ...(recurrence ? { recurrence } : {}),
     };
   }
@@ -403,6 +408,25 @@ export default function AppointmentDialog({
               </select>
             </>
           )}
+        </fieldset>
+        <fieldset disabled={busy}>
+          <legend>Reminder (optional)</legend>
+          <label htmlFor={`${id}-reminder`}>Remind me</label>
+          <select
+            id={`${id}-reminder`}
+            value={reminder}
+            disabled={busy || allDay}
+            onChange={(event) => setReminder(event.target.value)}
+          >
+            <option value="">No reminder</option>
+            <option value="0">At start</option>
+            <option value="5">5 minutes before</option>
+            <option value="15">15 minutes before</option>
+            <option value="30">30 minutes before</option>
+            <option value="60">1 hour before</option>
+            <option value="1440">1 day before</option>
+          </select>
+          {allDay && <p>Reminders are available for timed appointments.</p>}
         </fieldset>
         {error && <p role="alert">{error}</p>}
         {busy && <p role="status">Saving appointment. Please wait.</p>}

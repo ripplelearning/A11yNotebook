@@ -254,7 +254,7 @@ async function runReminderWake(): Promise<void> {
 }
 
 const notifications = new Set<Notification>();
-const notificationTargets = new Map<Notification, { path: string }>();
+const notificationTargets = new Map<Notification, { path: string | undefined }>();
 let vaultOperations: Promise<unknown> = Promise.resolve();
 
 function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -944,6 +944,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       await collect((await nextService.getVault()).entries);
       return notes;
     },
+    getAppointments: () => nextService.getCalendar(),
     getFlashcardReviews: async () => {
       const defaults = await createReminderDefaultsStore(routedMetadataFor(nextService)).get();
       if (!defaults.notification.flashcards || !assets || service !== nextService) return [];
@@ -1345,7 +1346,10 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
       ? await currentReminders.withPathMigration(relative, destination, operation)
       : await operation();
     for (const target of notificationTargets.values()) {
-      if (target.path === relative || target.path.startsWith(`${relative}/`))
+      if (
+        target.path !== undefined &&
+        (target.path === relative || target.path.startsWith(`${relative}/`))
+      )
         target.path = destination + target.path.slice(relative.length);
     }
     await store.write('move-journal.json', null).catch(() => undefined);
@@ -2433,6 +2437,12 @@ export function setupVaultIpc(
         assertCurrent();
         return completed;
       }
+      if (reminder.source === 'appointment') {
+        const completed = await scheduler.completeAppointmentReminder(id);
+        assertCurrent();
+        return completed;
+      }
+      if (reminder.path === undefined) throw new Error('Reminder has no note.');
       if (typeof revision !== 'string' || !/^[\da-f]{64}$/i.test(revision)) {
         throw new Error('Refresh this reminder before completing the task.');
       }

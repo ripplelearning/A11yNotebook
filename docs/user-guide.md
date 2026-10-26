@@ -347,6 +347,16 @@ Tasks also show per-notebook completion counts and native progress elements.
 The **Calendar** is one calendar for the whole library, opened with **Ctrl+6**, **Tools → Calendar** in the
 app menu, **View → Calendar** in the native menu, or the command palette's **Calendar** command. Appointments
 are stored in the library's `.a11ynotebook/calendar.json` and may stand alone or link to a note, file, or task.
+Links live in library files and survive local saves, cloud-folder copies, offline mode, and provider sync;
+provider sync never sends a link, so a link does not transfer to a fresh library through Google, but it is
+never deleted from the library file either. If a linked note, file, or task is gone, the calendar shows that
+the linked item is no longer available instead of dropping the link.
+Timed appointments may also carry a reminder: in the appointment dialog, choose No reminder, At start, or a
+preset before the start (5 or 15 or 30 minutes, 1 hour, 1 day). All-day appointments do not offer reminders,
+because their start has no time to count back from. Reminders fire through the same alert pipeline as task
+reminders, with snooze, dismiss, and complete, and they appear in Reminders; clicking a fired appointment
+reminder's system notification opens the Calendar. Reminder choices are local-only like links: they live in
+the calendar file, are never sent to providers, and a reminder-only edit does not count as a sync change.
 The **Agenda** view lists upcoming occurrences grouped under date headings, with previous/next 30-day and
 Today controls. The **Month grid** is a table with a button per day labelled with its appointment count;
 choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or

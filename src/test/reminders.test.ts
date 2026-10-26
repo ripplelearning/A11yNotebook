@@ -122,6 +122,50 @@ describe('vault reminder scheduler', () => {
     f.service.stop();
   });
 
+  it('collects appointment reminders, fires them once, and keeps state across restarts', async () => {
+    const f = fixture();
+    const appointments = [
+      { id: 'appt-1', title: 'Dentist', start: '2026-10-03T11:00:00', allDay: false, reminderMinutesBefore: 30 },
+    ];
+    const options = { ...f.options, getAppointments: async () => appointments };
+    const service = createReminderService(options);
+    const items = await service.initialize();
+    const found = items.find((item) => item.source === 'appointment');
+    expect(found).toMatchObject({ title: 'Dentist', status: 'pending' });
+    expect(found!.scheduledAt).toBe(new Date(2026, 9, 3, 10, 30).toISOString());
+    expect(found!.path).toBeUndefined();
+    // The overdue task reminder from the fixture fires on initialize.
+    expect(f.notify).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(30 * 60_000);
+    expect(f.notify).toHaveBeenCalledTimes(2);
+    expect(f.notify).toHaveBeenLastCalledWith(
+      expect.objectContaining({ source: 'appointment', status: 'fired' }),
+    );
+    const restarted = createReminderService(options);
+    const again = await restarted.initialize();
+    expect(again.find((item) => item.source === 'appointment')).toMatchObject({ status: 'fired' });
+    expect(f.notify).toHaveBeenCalledTimes(2);
+    service.stop();
+    restarted.stop();
+  });
+
+  it('dismisses appointment reminders without firing them later', async () => {
+    const f = fixture();
+    const appointments = [
+      { id: 'appt-1', title: 'Dentist', start: '2026-10-03T11:00:00', allDay: false, reminderMinutesBefore: 30 },
+    ];
+    const service = createReminderService({ ...f.options, getAppointments: async () => appointments });
+    const items = await service.initialize();
+    const found = items.find((item) => item.source === 'appointment')!;
+    await service.dismissReminder(found.id);
+    expect(await service.getReminders()).toContainEqual(
+      expect.objectContaining({ id: found.id, status: 'dismissed' }),
+    );
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(f.notify).toHaveBeenCalledTimes(1);
+    service.stop();
+  });
+
   it('shares one timer and persists delivery before notifying reminders and overdue reviews', async () => {
     const f = fixture();
     const review = {

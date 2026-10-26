@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   dateKeyFromParts,
   expandAppointments,
+  formatReminderMinutes,
   parseAppointmentTime,
   type CalendarAppointment,
   type CalendarOccurrence,
@@ -199,6 +200,9 @@ export default function CalendarScreen({
         <strong>{occurrence.title}</strong>
         {appointment?.location && <span> — {appointment.location}</span>}
         {appointment?.description && <span> — {appointment.description}</span>}
+        {appointment?.reminderMinutesBefore !== undefined && (
+          <span> — Reminder: {formatReminderMinutes(appointment.reminderMinutesBefore)}</span>
+        )}
         {appointment && (
           <button type="button" onClick={() => setDialog({ appointment })}>
             Edit {occurrence.title}

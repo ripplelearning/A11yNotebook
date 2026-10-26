@@ -187,6 +187,36 @@ describe('accessible reminders UI', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('Save failed');
   });
 
+  it('shows appointment reminders under Calendar and opens the calendar from the title', async () => {
+    const onOpenNote = vi.fn();
+    const onOpenCalendar = vi.fn();
+    const appointment: Reminder = {
+      id: 'appointment:appt-1:2026-10-05T12:00:00',
+      title: 'Dentist',
+      source: 'appointment',
+      scheduledAt: new Date(2026, 9, 5, 12).toISOString(),
+      originalScheduledAt: new Date(2026, 9, 5, 12).toISOString(),
+      status: 'pending',
+    };
+    render(
+      <RemindersView
+        reminders={[appointment]}
+        notePaths={['Study.md']}
+        onCreate={vi.fn()}
+        onDismiss={vi.fn()}
+        onSnooze={vi.fn()}
+        onOpenNote={onOpenNote}
+        onOpenCalendar={onOpenCalendar}
+        now={now}
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Dentist' })).toBeInTheDocument();
+    expect(screen.getByText(/Calendar/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Dentist' }));
+    await waitFor(() => expect(onOpenCalendar).toHaveBeenCalled());
+    expect(onOpenNote).not.toHaveBeenCalled();
+  });
+
   it('creates standalone reminders with labelled native fields and restores modal focus', async () => {
     const onCreate = vi.fn();
     render(

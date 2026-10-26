@@ -214,6 +214,31 @@ describe('calendar sync core', () => {
     expect(sameAppointmentContent(plain, linked)).toBe(true);
   });
 
+  it('ignores reminder-only differences when comparing content', () => {
+    const plain = appointment();
+    const reminded = appointment({ reminderMinutesBefore: 15 });
+    expect(sameAppointmentContent(plain, reminded)).toBe(true);
+  });
+
+  it('keeps the local reminder when remote content wins', () => {
+    const local = appointment({
+      id: 'local-9',
+      provider: 'google',
+      externalId: 'g-9',
+      reminderMinutesBefore: 30,
+    });
+    const { merged } = applySync([local], [
+      {
+        remote: appointment({ title: 'Changed', provider: 'google', externalId: 'g-9' }),
+        local,
+        classification: 'remoteWins',
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('Changed');
+    expect(merged[0].reminderMinutesBefore).toBe(30);
+  });
+
   it('keeps the local link when remote content wins', () => {
     const local = appointment({
       id: 'local-9',

@@ -213,6 +213,11 @@ export function applySync(
           provider: entry.local.provider,
           externalId: entry.local.externalId,
           ...(entry.local.link ? { link: entry.local.link } : {}),
+          // Reminders are local-only like links: a remote win must not
+          // silently drop the reminder the user set on this appointment.
+          ...(entry.local.reminderMinutesBefore !== undefined
+            ? { reminderMinutesBefore: entry.local.reminderMinutesBefore }
+            : {}),
         };
       }
     }

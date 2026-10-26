@@ -3,9 +3,10 @@ export type ReminderStatus = 'pending' | 'fired' | 'dismissed' | 'completed';
 
 export interface Reminder {
   id: string;
-  source: 'task' | 'standalone';
+  source: 'task' | 'standalone' | 'appointment';
   title: string;
-  path: string;
+  /** Note path for task and standalone reminders; appointments have none. */
+  path?: string;
   line?: number;
   scheduledAt: string;
   originalScheduledAt: string;
