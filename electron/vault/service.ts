@@ -9,6 +9,7 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
+import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
@@ -81,9 +82,12 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): Promise<unknown>;
-  write(name: 'bookmarks.json' | 'links.json' | 'bibliography.json', value: unknown): Promise<void>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json'): Promise<unknown>;
+  write(
+    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json',
+    value: unknown,
+  ): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
   searchIndex?: SearchIndexProtectionAdapter;
 }
@@ -949,6 +953,42 @@ export function createVaultService(
     return cleaned;
   }
 
+  async function readTaskLinksRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('task-links.json')) {
+      return protectedMetadata.read('task-links.json');
+    }
+    const taskLinksPath = await resolveMetadata('task-links.json', true);
+    try {
+      return JSON.parse(await readFile(taskLinksPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeTaskLinksRaw(value: { version: 1; links: TaskLink[] }): Promise<void> {
+    if (protectedMetadata?.isProtected('task-links.json')) {
+      await protectedMetadata.write('task-links.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('task-links.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  async function readTaskLinksFile(): Promise<TaskLink[]> {
+    const parsed: unknown = await readTaskLinksRaw();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return [];
+    return cleanTaskLinks((parsed as { links?: unknown }).links);
+  }
+
+  async function getTaskLinks(): Promise<TaskLink[]> {
+    return readTaskLinksFile();
+  }
+
+  async function saveTaskLinks(links: TaskLink[]): Promise<TaskLink[]> {
+    const cleaned = cleanTaskLinks(links);
+    await writeTaskLinksRaw({ version: 1, links: cleaned });
+    return cleaned;
+  }
+
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
   async function migrateManifestPaths(sourceRelative: string, nextRelative: string) {
     if (!libraryManifest) return;
@@ -1518,6 +1558,8 @@ export function createVaultService(
     removeBookmark,
     getBibliography,
     saveBibliography,
+    getTaskLinks,
+    saveTaskLinks,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,

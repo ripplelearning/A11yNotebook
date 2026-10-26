@@ -86,6 +86,9 @@ export type CommandId =
   | 'context-set-due-date'
   | 'context-set-priority'
   | 'context-open-source'
+  | 'context-link-task-note'
+  | 'context-link-task-file'
+  | 'context-link-task-notebook'
   | 'context-encrypt-note'
   | 'context-export-note'
   | 'export-current-note'
@@ -372,6 +375,24 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-open-source',
     label: 'Open source note',
     description: 'Open the note containing this task.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-link-task-note',
+    label: 'Link to note',
+    description: 'Link this task to a note.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-link-task-file',
+    label: 'Link to file',
+    description: 'Link this task to a file.',
+    contexts: ['task-row'],
+  },
+  {
+    id: 'context-link-task-notebook',
+    label: 'Link to Notebook',
+    description: 'Link this task to a notebook.',
     contexts: ['task-row'],
   },
   {

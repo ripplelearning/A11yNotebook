@@ -64,6 +64,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultLookupThesaurus: 'vault:lookup-thesaurus',
   vaultGetBibliography: 'vault:get-bibliography',
   vaultSaveBibliography: 'vault:save-bibliography',
+  vaultGetTaskLinks: 'vault:get-task-links',
+  vaultSaveTaskLinks: 'vault:save-task-links',
   vaultFetchCitationMetadata: 'vault:fetch-citation-metadata',
   vaultGetReadingPosition: 'vault:get-reading-position',
   vaultSetReadingPosition: 'vault:set-reading-position',
@@ -305,6 +307,8 @@ const bridge: NotebookBridge = {
     addBookmark: (relativePath, anchor) => ipcRenderer.invoke(CHANNELS.vaultAddBookmark, relativePath, anchor),
     removeBookmark: (id) => ipcRenderer.invoke(CHANNELS.vaultRemoveBookmark, id),
     getBibliography: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultGetBibliography, notebookPath),
+    getTaskLinks: () => ipcRenderer.invoke(CHANNELS.vaultGetTaskLinks),
+    saveTaskLinks: (links) => ipcRenderer.invoke(CHANNELS.vaultSaveTaskLinks, links),
     saveBibliography: (notebookPath, entries) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveBibliography, notebookPath, entries),
     fetchCitationMetadata: (identifier) =>
