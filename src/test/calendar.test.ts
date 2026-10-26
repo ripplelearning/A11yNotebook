@@ -10,10 +10,23 @@ import {
   type CalendarAppointment,
 } from '../shared/calendar';
 
+// Build a datetime string carrying the local offset for that wall-clock time,
+// so the tests assert wall-clock behavior in any timezone (CI runs on UTC).
+function timed(date: string, time: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  const [hour, minute] = time.split(':').map(Number);
+  const probe = new Date(year, month - 1, day, hour, minute);
+  const offset = -probe.getTimezoneOffset();
+  const sign = offset >= 0 ? '+' : '-';
+  const absolute = Math.abs(offset);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date}T${time}:00${sign}${pad(Math.floor(absolute / 60))}:${pad(absolute % 60)}`;
+}
+
 function appointment(partial: Partial<CalendarAppointment> & { id: string }): CalendarAppointment {
   return {
     title: 'Test appointment',
-    start: '2026-10-27T09:00:00-07:00',
+    start: timed('2026-10-27', '09:00'),
     allDay: false,
     ...partial,
   } as CalendarAppointment;
@@ -25,7 +38,7 @@ const rangeEnd = new Date(2027, 2, 1, 0, 0, 0);
 describe('calendar parsing and cleaning', () => {
   it('parses date-only and datetime strings', () => {
     expect(parseAppointmentTime('2026-10-27')).toMatchObject({ year: 2026, month: 10, day: 27 });
-    expect(parseAppointmentTime('2026-10-27T09:30:00-07:00')).toMatchObject({ hour: 9, minute: 30 });
+    expect(parseAppointmentTime(timed('2026-10-27', '09:30'))).toMatchObject({ hour: 9, minute: 30 });
     expect(parseAppointmentTime('2026-02-30')).toBeNull();
     expect(parseAppointmentTime('not a date')).toBeNull();
     expect(parseAppointmentTime('')).toBeNull();
@@ -37,7 +50,7 @@ describe('calendar parsing and cleaning', () => {
       appointment({ id: '' }),
       appointment({ id: 'no-title', title: '   ' }),
       appointment({ id: 'bad-start', start: 'yesterday' }),
-      appointment({ id: 'bad-end', end: '2026-10-27T08:00:00-07:00' }),
+      appointment({ id: 'bad-end', end: timed('2026-10-27', '08:00') }),
     ]);
     expect(cleaned.map((item) => item.id)).toEqual(['ok']);
   });
@@ -69,18 +82,18 @@ describe('calendar parsing and cleaning', () => {
 describe('calendar expansion', () => {
   it('expands a single timed appointment with its duration', () => {
     const occurrences = expandAppointments(
-      [appointment({ id: 'single', start: '2026-10-27T09:00:00-07:00', end: '2026-10-27T10:00:00-07:00' })],
+      [appointment({ id: 'single', start: timed('2026-10-27', '09:00'), end: timed('2026-10-27', '10:00') })],
       rangeStart,
       rangeEnd,
     );
     expect(occurrences).toHaveLength(1);
-    expect(occurrences[0].start).toBe('2026-10-27T09:00:00-07:00');
-    expect(occurrences[0].end).toBe('2026-10-27T10:00:00-07:00');
+    expect(occurrences[0].start).toBe(timed('2026-10-27', '09:00'));
+    expect(occurrences[0].end).toBe(timed('2026-10-27', '10:00'));
   });
 
   it('excludes appointments outside the range', () => {
     const occurrences = expandAppointments(
-      [appointment({ id: 'outside', start: '2027-06-01T09:00:00-07:00' })],
+      [appointment({ id: 'outside', start: timed('2027-06-01', '09:00') })],
       rangeStart,
       rangeEnd,
     );
@@ -92,8 +105,8 @@ describe('calendar expansion', () => {
       [
         appointment({
           id: 'daily',
-          start: '2026-10-27T09:00:00-07:00',
-          end: '2026-10-27T09:30:00-07:00',
+          start: timed('2026-10-27', '09:00'),
+          end: timed('2026-10-27', '09:30'),
           recurrence: { frequency: 'daily', count: 3 },
         }),
       ],
@@ -101,11 +114,11 @@ describe('calendar expansion', () => {
       rangeEnd,
     );
     expect(occurrences.map((item) => item.start)).toEqual([
-      '2026-10-27T09:00:00-07:00',
-      '2026-10-28T09:00:00-07:00',
-      '2026-10-29T09:00:00-07:00',
+      timed('2026-10-27', '09:00'),
+      timed('2026-10-28', '09:00'),
+      timed('2026-10-29', '09:00'),
     ]);
-    expect(occurrences[2].end).toBe('2026-10-29T09:30:00-07:00');
+    expect(occurrences[2].end).toBe(timed('2026-10-29', '09:30'));
   });
 
   it('expands a weekly recurrence on selected weekdays', () => {
@@ -114,7 +127,7 @@ describe('calendar expansion', () => {
         appointment({
           id: 'weekly',
           // Monday 2026-10-26.
-          start: '2026-10-26T09:00:00-07:00',
+          start: timed('2026-10-26', '09:00'),
           recurrence: { frequency: 'weekly', weekdays: [1, 3], until: '2026-11-06' },
         }),
       ],
@@ -172,7 +185,7 @@ describe('calendar expansion', () => {
       [
         appointment({
           id: 'until',
-          start: '2026-10-27T09:00:00-07:00',
+          start: timed('2026-10-27', '09:00'),
           recurrence: { frequency: 'daily', until: '2026-10-29' },
         }),
       ],
@@ -203,8 +216,8 @@ describe('calendar expansion', () => {
   it('sorts occurrences by start across appointments', () => {
     const occurrences = expandAppointments(
       [
-        appointment({ id: 'late', start: '2026-10-28T09:00:00-07:00' }),
-        appointment({ id: 'early', start: '2026-10-27T09:00:00-07:00' }),
+        appointment({ id: 'late', start: timed('2026-10-28', '09:00') }),
+        appointment({ id: 'early', start: timed('2026-10-27', '09:00') }),
       ],
       rangeStart,
       rangeEnd,
