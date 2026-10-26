@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest';
-import { runGoogleSync } from '../shared/google-sync-run';
+import { describe, expect, it, vi } from 'vitest';
+import { resolveGoogleConflict, runGoogleSync } from '../shared/google-sync-run';
 import type { ProviderTransport, PulledChange } from '../shared/calendar-sync-engine';
 import type { CalendarAppointment } from '../shared/calendar';
 import type { SyncStateFile } from '../shared/calendar-sync';
@@ -105,5 +105,93 @@ describe('google sync run', () => {
     expect(result.conflicts).toHaveLength(1);
     expect(result.conflicts[0].local.title).toBe('Local title');
     expect(result.conflicts[0].remote.title).toBe('Remote title');
+  });
+});
+
+describe('google conflict resolution', () => {
+  const local: CalendarAppointment = {
+    id: 'local-1',
+    title: 'Local title',
+    start: '2026-11-02T10:00:00-08:00',
+    allDay: false,
+    provider: 'google',
+    externalId: 'g-1',
+    updatedAt: '2026-10-26T00:00:00.000Z',
+    link: { kind: 'note', path: 'Notes/Visit.md' },
+    reminderMinutesBefore: 15,
+  };
+  const remote: CalendarAppointment = {
+    id: 'remote-1',
+    title: 'Remote title',
+    start: '2026-11-02T11:00:00-08:00',
+    allDay: false,
+    provider: 'google',
+    externalId: 'g-1',
+    updatedAt: '2026-10-27T00:00:00.000Z',
+  };
+  function deps(overrides: Record<string, unknown> = {}) {
+    const pushUpdate = vi.fn(async () => ({}));
+    let saved: CalendarAppointment[] | null = null;
+    let savedOptions: { source?: 'local' | 'sync' } | undefined;
+    return {
+      pushUpdate,
+      saved: () => saved,
+      savedOptions: () => savedOptions,
+      deps: {
+        getCalendar: async () => [local],
+        saveCalendar: async (items: CalendarAppointment[], options?: { source?: 'local' | 'sync' }) => {
+          saved = items;
+          savedOptions = options;
+          return items;
+        },
+        getSyncState: async () => ({ version: 1, providers: {}, tombstones: [] }),
+        saveSyncState: async (state: never) => state,
+        getAccessToken: async () => 'token-1',
+        createTransport: () =>
+          ({
+            pull: async () => ({ changes: [] }),
+            pushCreate: async () => ({ externalId: 'g-new' }),
+            pushUpdate,
+            pushDelete: async () => undefined,
+          }) as ProviderTransport,
+        ...overrides,
+      },
+    };
+  }
+
+  it('keeping local pushes the local version to Google', async () => {
+    const { pushUpdate, deps: d } = deps();
+    await resolveGoogleConflict(d as never, { local, remote }, 'local');
+    expect(pushUpdate).toHaveBeenCalledWith(local);
+  });
+
+  it('refuses to push a local version with no Google link', async () => {
+    const { deps: d } = deps();
+    await expect(
+      resolveGoogleConflict(d as never, { local: { ...local, externalId: undefined }, remote }, 'local'),
+    ).rejects.toThrow('not linked to a Google event');
+  });
+
+  it('taking Google saves the remote version locally without restamping', async () => {
+    const { pushUpdate, saved, savedOptions, deps: d } = deps();
+    await resolveGoogleConflict(d as never, { local, remote }, 'remote');
+    expect(pushUpdate).not.toHaveBeenCalled();
+    expect(savedOptions()).toEqual({ source: 'sync' });
+    expect(saved()).toHaveLength(1);
+    expect(saved()![0]).toMatchObject({
+      id: 'local-1',
+      title: 'Remote title',
+      provider: 'google',
+      externalId: 'g-1',
+      link: { kind: 'note', path: 'Notes/Visit.md' },
+      reminderMinutesBefore: 15,
+    });
+  });
+
+  it('refuses to take Google when the local appointment is gone', async () => {
+    const { deps: d } = deps({ getCalendar: async () => [] });
+    await expect(resolveGoogleConflict(d as never, { local, remote }, 'remote')).rejects.toThrow(
+      'no longer exists locally',
+    );
   });
 });

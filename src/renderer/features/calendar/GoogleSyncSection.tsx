@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { runGoogleSync } from '../../../shared/google-sync-run';
+import { resolveGoogleConflict, runGoogleSync, type ConflictChoice } from '../../../shared/google-sync-run';
+import type { SyncConflict } from '../../../shared/calendar-sync';
 import type { SyncRunResult } from '../../../shared/calendar-sync-engine';
 import type { VaultBridge } from '../../../shared/bridge';
+import ConflictResolutionDialog from './ConflictResolutionDialog';
 
 /**
  * Google Calendar sync controls for the Calendar screen: client setup,
- * sign-in and sign-out, and running a sync through the engine. Rendered
- * only when the bridge offers the auth methods. Conflict resolution is
- * not built yet: a sync reports conflicts and keeps the local version,
- * and the same conflicts are reported again on the next sync until
- * resolution lands.
+ * sign-in and sign-out, running a sync through the engine, and resolving
+ * sync conflicts. Rendered only when the bridge offers the auth methods.
+ * A sync that ends with conflicts keeps the local version and freezes
+ * the sync state, so the same conflicts are reported again on the next
+ * sync until the user resolves them: keeping local pushes the local
+ * version to Google, taking Google saves the Google version locally.
  *
  * The section also offers "Keep calendar offline": a library setting
  * that hides provider sync setup and blocks sync runs. Going offline
@@ -35,6 +38,7 @@ export default function GoogleSyncSection({
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
   const [result, setResult] = useState<SyncRunResult | null>(null);
+  const [resolving, setResolving] = useState(false);
 
   const refreshStatus = useCallback(async () => {
     if (!bridge.googleStatus) return;
@@ -159,6 +163,33 @@ export default function GoogleSyncSection({
     });
   }
 
+  async function resolveConflict(conflict: SyncConflict, choice: ConflictChoice): Promise<void> {
+    await runAction('Resolving conflict…', async () => {
+      const getCalendar = bridge.getCalendar;
+      const saveCalendar = bridge.saveCalendar;
+      const getSyncState = bridge.getSyncState;
+      const saveSyncState = bridge.saveSyncState;
+      const getAccessToken = bridge.getGoogleAccessToken;
+      if (!getCalendar || !saveCalendar || !getSyncState || !saveSyncState || !getAccessToken) {
+        throw new Error('Google sync is unavailable in this version.');
+      }
+      await resolveGoogleConflict(
+        { getCalendar, saveCalendar, getSyncState, saveSyncState, getAccessToken },
+        conflict,
+        choice,
+      );
+      const next = (result?.conflicts ?? []).filter((item) => item.local.id !== conflict.local.id);
+      setResult(result ? { ...result, conflicts: next } : null);
+      onSynced();
+      if (next.length === 0) {
+        setResolving(false);
+        setMessage('All conflicts resolved. Run Sync now again to finish the sync.');
+      } else {
+        setMessage('Conflict resolved.');
+      }
+    });
+  }
+
   const statusText = !status
     ? 'Google sync status is unavailable.'
     : status.signedIn
@@ -240,15 +271,24 @@ export default function GoogleSyncSection({
         <div>
           <p>
             These appointments changed both locally and in Google, so the local version was kept.
-            Conflict resolution is not built yet; the same conflicts will be reported again on the
-            next sync until then.
+            Resolve each one to choose which version wins.
           </p>
           <ul>
             {result.conflicts.map((conflict) => (
               <li key={conflict.local.id}>{conflict.local.title}</li>
             ))}
           </ul>
+          <button type="button" onClick={() => setResolving(true)} disabled={busy !== null}>
+            Resolve conflicts
+          </button>
         </div>
+      )}
+      {resolving && result && result.conflicts.length > 0 && (
+        <ConflictResolutionDialog
+          conflicts={result.conflicts}
+          onResolve={(conflict, choice) => resolveConflict(conflict, choice)}
+          onClose={() => setResolving(false)}
+        />
       )}
           <div>
             <button type="button" onClick={() => void goOffline()} disabled={busy !== null}>

@@ -376,8 +376,13 @@ with Google and Sync now. Outlook and Apple sign-in are not built yet.
 Keep every client ID, secret, and app-specific password in your password
 manager; enter them in the app when it asks, never in chat or email.
 If a sync reports conflicts (an appointment changed both locally and at
-the provider), the local version is kept and the same conflicts are
-reported again on the next sync: conflict resolution is not built yet.
+the provider), the local version is kept and the sync state is frozen,
+so the same conflicts are reported again on the next sync until you
+resolve them. Press **Resolve conflicts** and choose per appointment:
+**Keep local version** pushes your version to the provider, and **Take
+Google version** saves the provider's version locally (your local-only
+link and reminder are kept either way). After the last conflict is
+resolved, run Sync now again to finish the sync.
 
 **Staying offline.** You do not need to set up anything to keep the
 calendar offline: appointments live in your library's calendar file, and

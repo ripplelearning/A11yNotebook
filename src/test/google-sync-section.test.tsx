@@ -1,12 +1,16 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import GoogleSyncSection from '../renderer/features/calendar/GoogleSyncSection';
-import { runGoogleSync } from '../shared/google-sync-run';
+import { resolveGoogleConflict, runGoogleSync } from '../shared/google-sync-run';
 import type { VaultBridge } from '../shared/bridge';
 
-vi.mock('../shared/google-sync-run', () => ({ runGoogleSync: vi.fn() }));
+vi.mock('../shared/google-sync-run', () => ({
+  runGoogleSync: vi.fn(),
+  resolveGoogleConflict: vi.fn(),
+}));
 
 const mockRun = vi.mocked(runGoogleSync);
+const mockResolve = vi.mocked(resolveGoogleConflict);
 
 function setup(status: { configured: boolean; signedIn: boolean }, extra: Record<string, unknown> = {}) {
   let current = status;
@@ -95,7 +99,7 @@ describe('google sync section', () => {
     expect(onSynced).toHaveBeenCalled();
   });
 
-  it('lists conflicts and keeps the local version note', async () => {
+  it('lists conflicts and resolves them through the dialog', async () => {
     mockRun.mockResolvedValueOnce({
       pulled: 1,
       pushed: 0,
@@ -107,11 +111,20 @@ describe('google sync section', () => {
         },
       ],
     });
+    mockResolve.mockResolvedValueOnce(undefined);
     setup({ configured: true, signedIn: true });
     await screen.findByText('Signed in with Google.');
     fireEvent.click(screen.getByRole('button', { name: 'Sync now' }));
     expect(await screen.findByText('Dentist')).toBeTruthy();
-    expect(screen.getByText(/Conflict resolution is not built yet/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Resolve conflicts' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Keep local version' }));
+    await waitFor(() => expect(mockResolve).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(
+      await screen.findByText('All conflicts resolved. Run Sync now again to finish the sync.'),
+    ).toBeTruthy();
   });
 
   it('shows sync failures as an alert', async () => {
