@@ -47,6 +47,7 @@ export type CommandId =
   | 'annotate-current-semantic-element'
   | 'show-reminders'
   | 'show-milestones'
+  | 'show-calendar'
   | 'show-assets'
   | 'format-bold'
   | 'format-italic'
@@ -490,6 +491,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open Milestones',
     description: 'Plan milestones with associated notes, tasks, and live progress.',
     shortcut: 'Ctrl+6',
+  },
+  {
+    id: 'show-calendar',
+    label: 'Calendar',
+    description: 'View and manage appointments in the agenda and month grid.',
+    shortcut: 'Ctrl+7',
   },
   {
     id: 'show-assets',

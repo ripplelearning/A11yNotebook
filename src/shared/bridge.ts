@@ -178,6 +178,10 @@ export interface VaultBridge {
   fetchCitationMetadata(
     identifier: string,
   ): Promise<Partial<import('./citations').BibliographyEntry>>;
+  getCalendar?(): Promise<import('./calendar').CalendarAppointment[]>;
+  saveCalendar?(
+    appointments: import('./calendar').CalendarAppointment[],
+  ): Promise<import('./calendar').CalendarAppointment[]>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }

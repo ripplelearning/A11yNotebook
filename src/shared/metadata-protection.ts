@@ -15,6 +15,7 @@ export const PROTECTED_STORE_NAMES = [
   'image-alts',
   'bookmarks',
   'bibliography',
+  'calendar',
   'links',
   'reminders',
   'settings',

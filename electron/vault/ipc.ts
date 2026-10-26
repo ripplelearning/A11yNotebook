@@ -643,19 +643,37 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     isProtected: (name) =>
       service === nextService &&
       (protectedMetadata?.protects(
-        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+        name === 'bookmarks.json'
+          ? 'bookmarks'
+          : name === 'bibliography.json'
+            ? 'bibliography'
+            : name === 'calendar.json'
+              ? 'calendar'
+              : 'links',
       ) ??
         false),
     read: (name) => {
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
       return protectedMetadata!.read(
-        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+        name === 'bookmarks.json'
+          ? 'bookmarks'
+          : name === 'bibliography.json'
+            ? 'bibliography'
+            : name === 'calendar.json'
+              ? 'calendar'
+              : 'links',
       );
     },
     write: (name, value) => {
       if (service !== nextService) throw new Error('The open library has changed. Retry the operation.');
       return protectedMetadata!.write(
-        name === 'bookmarks.json' ? 'bookmarks' : name === 'bibliography.json' ? 'bibliography' : 'links',
+        name === 'bookmarks.json'
+          ? 'bookmarks'
+          : name === 'bibliography.json'
+            ? 'bibliography'
+            : name === 'calendar.json'
+              ? 'calendar'
+              : 'links',
         value,
       );
     },
@@ -3489,6 +3507,15 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof identifier !== 'string') throw new Error('Identifier must be text.');
     return fetchCitationMetadata(identifier);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetCalendar, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getCalendar();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!Array.isArray(appointments)) throw new Error('Appointments must be a list.');
+    return requireService().saveCalendar(appointments);
   });
   ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

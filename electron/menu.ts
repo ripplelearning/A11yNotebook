@@ -28,6 +28,7 @@ export function buildApplicationMenu(
     commandItem('show-assets'),
     commandItem('show-reminders'),
     commandItem('show-milestones'),
+    commandItem('show-calendar'),
     { type: 'separator' },
     commandItem('toggle-right-pane', 'checkbox'),
     commandItem('toggle-read-only-mode', 'checkbox'),

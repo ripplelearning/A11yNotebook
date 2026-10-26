@@ -73,6 +73,8 @@ describe('local vault workflow', () => {
       lookupThesaurus: vi.fn(async () => []),
         getBibliography: vi.fn(async () => []),
         saveBibliography: vi.fn(async () => []),
+        getCalendar: vi.fn(async () => []),
+        saveCalendar: vi.fn(async (appointments) => appointments),
         fetchCitationMetadata: vi.fn(async () => ({})),
         toggleBookmark: vi.fn(async () => [
           {
