@@ -1,5 +1,6 @@
 import { app, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import type { GoogleApiFetch } from '../../src/shared/google-auth';
+import type { OutlookApiFetch } from '../../src/shared/outlook-auth';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
 import {
   getGoogleAccessToken,
@@ -8,6 +9,13 @@ import {
   signInWithGoogle,
   signOutWithGoogle,
 } from './google-auth';
+import {
+  getOutlookAccessToken,
+  getOutlookAuthStatus,
+  saveOutlookClient,
+  signInWithOutlook,
+  signOutWithOutlook,
+} from './outlook-auth';
 import { safeStorageEncryptor } from './safe-storage';
 
 /**
@@ -79,6 +87,53 @@ export function setupAuthIpc(isTrustedSender: TrustedSender): void {
       userDataPath: userDataPath(),
       encryptor: safeStorageEncryptor,
       fetchImpl: asFetch(),
+    });
+    return { signedIn: false };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authOutlookConfigure, async (event, client: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (
+      typeof client !== 'object' ||
+      client === null ||
+      typeof (client as { clientId?: unknown }).clientId !== 'string'
+    ) {
+      throw new Error('An Outlook client id is required.');
+    }
+    const { clientId } = client as { clientId: string };
+    await saveOutlookClient(userDataPath(), safeStorageEncryptor, { clientId });
+    return { configured: true };
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authOutlookSignIn, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return signInWithOutlook({
+      userDataPath: userDataPath(),
+      encryptor: safeStorageEncryptor,
+      openExternal: (url) => shell.openExternal(url),
+      fetchImpl: asFetch() as unknown as OutlookApiFetch,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authOutlookStatus, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return getOutlookAuthStatus({ userDataPath: userDataPath(), encryptor: safeStorageEncryptor });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authOutlookAccessToken, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return getOutlookAccessToken({
+      userDataPath: userDataPath(),
+      encryptor: safeStorageEncryptor,
+      fetchImpl: asFetch() as unknown as OutlookApiFetch,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authOutlookSignOut, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    await signOutWithOutlook({
+      userDataPath: userDataPath(),
+      encryptor: safeStorageEncryptor,
     });
     return { signedIn: false };
   });

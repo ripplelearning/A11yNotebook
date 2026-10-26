@@ -362,27 +362,27 @@ Today controls. The **Month grid** is a table with a button per day labelled wit
 choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or
 timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
 end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
-removes the whole series, not just one occurrence; deletion asks for explicit confirmation. The calendar is
-local to the library for now: live sync with Google, Outlook, and Apple Calendar is planned next and is not
-yet available. Windows screen-reader verification has not been run.
+removes the whole series, not just one occurrence; deletion asks for explicit confirmation. Live two-way
+sync with Google Calendar and Outlook Calendar is built in (see Calendar sync setup below); Apple
+Calendar sync is not built yet. Windows screen-reader verification has not been run.
 
 ### Calendar sync setup
 
-Live sync is in development and is planned as two-way: local changes go to
-the provider and provider changes come down to the library. Google sync
-has an in-app sign-in step: open the Calendar, find the Google Calendar
-sync section, enter your client ID and client secret, save, then Sign in
-with Google and Sync now. Outlook and Apple sign-in are not built yet.
-Keep every client ID, secret, and app-specific password in your password
-manager; enter them in the app when it asks, never in chat or email.
-If a sync reports conflicts (an appointment changed both locally and at
-the provider), the local version is kept and the sync state is frozen,
-so the same conflicts are reported again on the next sync until you
-resolve them. Press **Resolve conflicts** and choose per appointment:
-**Keep local version** pushes your version to the provider, and **Take
-Google version** saves the provider's version locally (your local-only
-link and reminder are kept either way). After the last conflict is
-resolved, run Sync now again to finish the sync.
+Live sync is two-way: local changes go to the provider and provider
+changes come down to the library. Google and Outlook sync each have an
+in-app sign-in step: open the Calendar, find the provider's sync
+section, enter your client details, save, then Sign in and Sync now.
+Apple sign-in is not built yet. Keep every client ID, secret, and
+app-specific password in your password manager; enter them in the app
+when it asks, never in chat or email. If a sync reports conflicts (an
+appointment changed both locally and at the provider), the local
+version is kept and the sync state is frozen, so the same conflicts are
+reported again on the next sync until you resolve them. Press
+**Resolve conflicts** and choose per appointment: **Keep local version**
+pushes your version to the provider, and **Take Google version** (or
+**Take Outlook version**) saves the provider's version locally (your
+local-only link and reminder are kept either way). After the last
+conflict is resolved, run Sync now again to finish the sync.
 
 **Staying offline.** You do not need to set up anything to keep the
 calendar offline: appointments live in your library's calendar file, and
@@ -391,10 +391,11 @@ Sync now. If your library folder itself is cloud-synced (Drive, Dropbox,
 OneDrive), that file travels between your computers on its own, and the
 other computer's app picks up the change live. Task reminders travel the
 same way, because they live in your task files, and reminder state lives
-in your library's reminders file. The Calendar screen's sync section has
-a "Keep calendar offline" button that hides provider sync setup and
-blocks sync runs; going offline signs you out first and never unlinks
-your appointments, so turning setup back on resumes cleanly.
+in your library's reminders file. The Google Calendar sync section has
+a "Keep calendar offline" button that hides provider sync setup for
+every provider and blocks sync runs; going offline signs you out first
+and never unlinks your appointments, so turning setup back on resumes
+cleanly.
 
 Read this part carefully, because it is easy to misunderstand: these steps
 set up sync for YOU, on your accounts. They do not set it up for everybody
@@ -427,12 +428,19 @@ but requires a Google-verification review for the Calendar scope.
 registrations" and create a registration named A11yNotebook with supported
 account types "Accounts in any organizational directory and personal
 Microsoft accounts", so personal Outlook.com calendars work. Under
-"Authentication", add the "Mobile and desktop applications" platform with
-redirect URI `https://login.microsoftonline.com/common/oauth2/nativeclient`.
-Under "API permissions", add the Microsoft Graph delegated permission
-`Calendars.ReadWrite` and save the Application (client) ID. Personal
-accounts work directly; work or school accounts may need an administrator
-to consent to the calendar permission.
+"Authentication", add the "Mobile and desktop applications" platform
+with redirect URI `http://localhost` (the app signs in through a
+loopback address on your own computer). Under "API permissions", add
+the Microsoft Graph delegated permission `Calendars.ReadWrite` and save
+the Application (client) ID. Then, in the app's Outlook Calendar sync
+section, enter that client ID, save, then Sign in with Outlook and Sync
+now. Outlook uses a public native client, so there is no client secret
+to enter. Personal accounts work directly; work or school accounts may
+need an administrator to consent to the calendar permission. One limit:
+Outlook events with a relative recurrence (for example "the second
+Tuesday of each month") are skipped when pulling from Outlook, because
+the app has no matching pattern; absolute monthly and yearly patterns
+sync.
 
 **Apple.** Apple offers no third-party calendar sign-in API, so Apple sync
 uses CalDAV with an app-specific password instead of your main password.

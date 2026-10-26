@@ -35,10 +35,12 @@ export default function ConflictResolutionDialog({
   conflicts,
   onResolve,
   onClose,
+  providerLabel = 'Google',
 }: {
   conflicts: SyncConflict[];
   onResolve: (conflict: SyncConflict, choice: ConflictChoice) => Promise<void>;
   onClose: () => void;
+  providerLabel?: string;
 }) {
   const id = useId();
   const [resolving, setResolving] = useState<string | null>(null);
@@ -60,8 +62,8 @@ export default function ConflictResolutionDialog({
   return (
     <Modal titleId={`${id}-title`} title="Resolve sync conflicts" onClose={onClose}>
       <p>
-        Each appointment below changed both in this library and in Google. Choose which version to
-        keep; the other side is updated to match, so the next sync no longer reports it.
+        Each appointment below changed both in this library and in {providerLabel}. Choose which
+        version to keep; the other side is updated to match, so the next sync no longer reports it.
       </p>
       {error && <p role="alert">{error}</p>}
       {conflicts.length === 0 && <p>All conflicts resolved.</p>}
@@ -70,7 +72,7 @@ export default function ConflictResolutionDialog({
           <h3 id={`${id}-${conflict.local.id}`}>{conflict.local.title}</h3>
           <h4>Local version</h4>
           <VersionDetails appointment={conflict.local} />
-          <h4>Google version</h4>
+          <h4>{providerLabel} version</h4>
           <VersionDetails appointment={conflict.remote} />
           <button
             type="button"
@@ -84,7 +86,7 @@ export default function ConflictResolutionDialog({
             disabled={resolving !== null}
             onClick={() => void resolve(conflict, 'remote')}
           >
-            Take Google version
+            Take {providerLabel} version
           </button>
         </section>
       ))}

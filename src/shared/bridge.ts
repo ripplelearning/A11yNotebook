@@ -189,6 +189,11 @@ export interface VaultBridge {
   googleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
   getGoogleAccessToken?(): Promise<string>;
   signOutGoogle?(): Promise<{ signedIn: boolean }>;
+  configureOutlook?(client: { clientId: string }): Promise<{ configured: boolean }>;
+  signInOutlook?(): Promise<{ signedIn: boolean }>;
+  outlookStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getOutlookAccessToken?(): Promise<string>;
+  signOutOutlook?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }
