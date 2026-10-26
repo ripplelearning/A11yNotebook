@@ -1,4 +1,6 @@
 import { readFile, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import axe from 'axe-core';
 import { render } from '@testing-library/react';
@@ -37,8 +39,11 @@ import type { Reminder } from '../shared/reminders';
  *   Landmarks and page headings are reviewed separately, not gated here.
  * - Native menus, forced-colors mode, and real screen-reader runs need a
  *   Windows machine and are outside this automated pass.
+ * - The per-surface violation report goes to the platform temp directory
+ *   (os.tmpdir()), because a hardcoded /tmp does not exist on Windows and
+ *   a failed report write must never mask the axe verdict itself.
  */
-const REPORT_PATH = '/tmp/a11y-audit.json';
+const REPORT_PATH = path.join(tmpdir(), 'a11y-audit.json');
 
 async function audit(label: string): Promise<void> {
   const results = await axe.run(document, {
@@ -64,7 +69,12 @@ async function audit(label: string): Promise<void> {
       failureSummary: node.failureSummary,
     })),
   }));
-  await writeFile(REPORT_PATH, JSON.stringify(report, null, 2), 'utf8');
+  try {
+    await writeFile(REPORT_PATH, JSON.stringify(report, null, 2), 'utf8');
+  } catch (error) {
+    // Diagnostic only: a failed report write must not fail the audit.
+    console.warn(`Could not write the axe report to ${REPORT_PATH}:`, error);
+  }
   if (results.violations.length > 0) {
     const detail = results.violations
       .map((violation) => {

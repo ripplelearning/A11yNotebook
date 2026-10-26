@@ -1,6 +1,7 @@
 import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import path from 'node:path';
+import { tmpdir } from 'node:os';
 import { writeFileSync } from 'node:fs';
 
 const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
@@ -95,8 +96,21 @@ test('app shell is accessible end to end', async () => {
         runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] },
       });
     });
-    writeFileSync('/tmp/e2e-axe.json', JSON.stringify(results.violations, null, 2), 'utf8');
-    writeFileSync('/tmp/e2e-console.json', JSON.stringify({ pageErrors, consoleErrors }, null, 2), 'utf8');
+    // Diagnostic reports only: a failed write must not mask the verdicts below.
+    try {
+      writeFileSync(
+        path.join(tmpdir(), 'e2e-axe.json'),
+        JSON.stringify(results.violations, null, 2),
+        'utf8',
+      );
+      writeFileSync(
+        path.join(tmpdir(), 'e2e-console.json'),
+        JSON.stringify({ pageErrors, consoleErrors }, null, 2),
+        'utf8',
+      );
+    } catch (error) {
+      console.warn('Could not write the E2E reports:', error);
+    }
     expect(results.violations).toEqual([]);
     expect(pageErrors).toEqual([]);
   } finally {
