@@ -1,3 +1,4 @@
+// A11yNotebook, created by Tristen Breitenfeldt, October 2026.
 import {
   app,
   BrowserWindow,
