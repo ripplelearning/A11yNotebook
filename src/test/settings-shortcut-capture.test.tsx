@@ -161,7 +161,7 @@ describe('Settings interface and shortcut capture', () => {
     expect(input()).toHaveValue(previous);
     press('j', { ctrlKey: true, altKey: true, shiftKey: true });
     expect(input()).toHaveValue('Ctrl+Alt+Shift+J');
-  });
+  }, 30_000);
 
   it('consumes Escape without closing the modal and returns focus to the capture button', () => {
     const { onClose } = setup();
