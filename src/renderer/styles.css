@@ -24,6 +24,13 @@ textarea {
   font: inherit;
 }
 
+/* Placeholder text must meet the same contrast bar as body text instead of
+   relying on the browser default, which is dim on dark backgrounds. */
+::placeholder {
+  color: #cbd5e1;
+  opacity: 1;
+}
+
 button:focus-visible,
 input:focus-visible,
 select:focus-visible,
@@ -69,6 +76,7 @@ a:focus-visible,
 
 .app-header {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
@@ -92,13 +100,13 @@ a:focus-visible,
 }
 
 .global-search {
-  min-width: 360px;
+  min-width: min(360px, 100%);
 }
 
 .global-search input,
 .command-palette input {
   width: 100%;
-  border: 1px solid #475569;
+  border: 1px solid #94a3b8;
   border-radius: 0.5rem;
   padding: 0.7rem 0.8rem;
   background: rgba(15, 23, 42, 0.7);
@@ -144,6 +152,21 @@ a:focus-visible,
   min-height: 0;
 }
 
+/* Narrow windows and high zoom (200% on a 980px window shows ~490 CSS px):
+   stack the panes instead of forcing horizontal scrolling. */
+@media (max-width: 760px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .panel,
+  .side-panel,
+  .content-panel {
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.35);
+  }
+}
+
 .panel,
 .side-panel,
 .content-panel {
@@ -181,11 +204,13 @@ a:focus-visible,
   display: flex;
   gap: 0.5rem;
   padding: 0.8rem 1rem 0.5rem;
+  overflow-x: auto;
   border-bottom: 1px solid rgba(148, 163, 184, 0.25);
   background: rgba(15, 23, 42, 0.5);
 }
 
 .tab {
+  flex-shrink: 0;
   background: rgba(148, 163, 184, 0.08);
   color: #e2e8f0;
   border: 1px solid transparent;
@@ -241,6 +266,7 @@ a:focus-visible,
 
 .details-view [role='row'][aria-selected='true'] {
   background: rgba(96, 165, 250, 0.18);
+  outline: 1px solid #7dd3fc;
 }
 
 .document h2 {
@@ -473,7 +499,7 @@ a:focus-visible,
 .modal-actions button {
   background: rgba(30, 41, 59, 0.9);
   color: white;
-  border: 1px solid rgba(148, 163, 184, 0.5);
+  border: 1px solid rgba(148, 163, 184, 0.8);
   border-radius: 0.5rem;
   padding: 0.5rem 0.9rem;
   cursor: pointer;
