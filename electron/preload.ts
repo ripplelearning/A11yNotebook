@@ -17,6 +17,7 @@ const CHANNELS: typeof SharedChannels = {
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   shortcutCaptureActive: 'menu:shortcut-capture-active',
+  zoomFactor: 'window:set-zoom-factor',
   menuState: 'menu:state',
   getPdfReadingPreferences: 'get-pdf-reading-preferences',
   setPdfReadingPreferences: 'set-pdf-reading-preferences',
@@ -26,6 +27,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenPath: 'vault:open-path',
   vaultCreateLibrary: 'vault:create-library',
   vaultBackupLibrary: 'vault:backup-library',
+  vaultCreateAutoBackup: 'vault:create-auto-backup',
   vaultPasteInspect: 'vault:paste-inspect',
   vaultPasteChooseFolder: 'vault:paste-choose-folder',
   vaultPasteLibraryCopy: 'vault:paste-library-copy',
@@ -159,6 +161,9 @@ const bridge: NotebookBridge = {
   setShortcutCaptureActive: (active) => {
     if (typeof active === 'boolean') ipcRenderer.send(CHANNELS.shortcutCaptureActive, active);
   },
+  setZoomFactor: (factor) => {
+    if (typeof factor === 'number' && factor > 0) ipcRenderer.send(CHANNELS.zoomFactor, factor);
+  },
   getPdfReadingPreferences: () => ipcRenderer.invoke(CHANNELS.getPdfReadingPreferences),
   setPdfReadingPreferences: (preferences) => ipcRenderer.invoke(CHANNELS.setPdfReadingPreferences, preferences),
   onPdfReadingPreferencesChanged: (callback) =>
@@ -176,6 +181,8 @@ const bridge: NotebookBridge = {
     openLibraryPath: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultOpenPath, libraryPath),
     createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
     backupLibrary: () => ipcRenderer.invoke(CHANNELS.vaultBackupLibrary),
+    createAutoBackup: (folder, keepCount) =>
+      ipcRenderer.invoke(CHANNELS.vaultCreateAutoBackup, folder, keepCount),
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
     pasteInspect: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteInspect, source),
     pasteChooseFolder: (title: string) => ipcRenderer.invoke(CHANNELS.vaultPasteChooseFolder, title),

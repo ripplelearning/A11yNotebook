@@ -16,6 +16,54 @@ describe('settings and shortcut validation', () => {
   it.each([null, 0, 1, 'true', {}, []])('rejects non-boolean command-button preference %j', (showCommandButtons) => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, showCommandButtons })).toThrow('Invalid settings values.');
   });
+  it('defaults appearance and automatic backup preferences', () => {
+    const validated = validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} });
+    expect(validated).toMatchObject({
+      zoomPercent: 100,
+      focusRing: 'standard',
+      reducedMotion: false,
+      autoBackupEnabled: false,
+      autoBackupIntervalDays: 7,
+      autoBackupKeepCount: 5,
+      autoBackupFolder: '',
+      lastAutoBackupAt: '',
+    });
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        zoomPercent: 150,
+        focusRing: 'high-visibility',
+        reducedMotion: true,
+        autoBackupEnabled: true,
+        autoBackupIntervalDays: 1,
+        autoBackupKeepCount: 3,
+        autoBackupFolder: 'D:/Backups',
+        lastAutoBackupAt: '2026-10-25T00:00:00.000Z',
+      }),
+    ).toMatchObject({
+      zoomPercent: 150,
+      focusRing: 'high-visibility',
+      reducedMotion: true,
+      autoBackupEnabled: true,
+      autoBackupIntervalDays: 1,
+      autoBackupKeepCount: 3,
+      autoBackupFolder: 'D:/Backups',
+      lastAutoBackupAt: '2026-10-25T00:00:00.000Z',
+    });
+  });
+  it.each([
+    { zoomPercent: 49 },
+    { zoomPercent: 201 },
+    { focusRing: 'huge' },
+    { reducedMotion: 'yes' },
+    { autoBackupIntervalDays: 0 },
+    { autoBackupIntervalDays: 31 },
+    { autoBackupKeepCount: 0 },
+    { autoBackupKeepCount: 51 },
+    { autoBackupFolder: 42 },
+  ])('rejects invalid appearance or backup preference %j', (overrides) => {
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, ...overrides })).toThrow('Invalid settings values.');
+  });
   it('defaults legacy note-open preferences to read-only', () => {
     expect(DEFAULT_SETTINGS.defaultNoteOpenMode).toBe('read-only');
     expect(

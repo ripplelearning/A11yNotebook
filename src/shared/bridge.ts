@@ -30,6 +30,7 @@ export interface VaultBridge {
   open(): Promise<VaultInfo | null>;
   createLibrary?(): Promise<VaultInfo | null>;
   backupLibrary?(): Promise<{ cancelled: boolean; path?: string; files?: number; bytes?: number }>;
+  createAutoBackup?(folder: string, keepCount: number): Promise<{ path: string; files: number; bytes: number }>;
   /** Resolve an OS-copied File to its filesystem path. Unverified on real Windows clipboard paste. */
   getPathForFile?(file: File): string;
   pasteInspect?(source: string): Promise<{
@@ -199,6 +200,7 @@ export interface UpdaterBridge {
 export interface NotebookBridge {
   /** Suspend native menu shortcuts while a shortcut field captures keyboard input. */
   setShortcutCaptureActive?(active: boolean): void;
+  setZoomFactor?(factor: number): void;
   updater: UpdaterBridge;
   vault: VaultBridge;
   getPdfReadingPreferences?(): Promise<PdfReadingPreferences>;

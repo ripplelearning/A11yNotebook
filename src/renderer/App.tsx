@@ -748,6 +748,41 @@ export default function App() {
   }, [settings.theme, settings.fontSize]);
 
   useEffect(() => {
+    window.a11yNotebook?.setZoomFactor?.((settings.zoomPercent ?? 100) / 100);
+    document.documentElement.dataset.focusRing = settings.focusRing ?? 'standard';
+    document.documentElement.dataset.reducedMotion = settings.reducedMotion ? 'true' : 'false';
+  }, [settings.zoomPercent, settings.focusRing, settings.reducedMotion]);
+
+  const autoBackupRunningRef = useRef(false);
+  useEffect(() => {
+    if (!vault || securityLocked || switchingVault) return;
+    if (!settings.autoBackupEnabled) return;
+    const runIfDue = async () => {
+      if (autoBackupRunningRef.current) return;
+      const last = settings.lastAutoBackupAt ? Date.parse(settings.lastAutoBackupAt) : Number.NaN;
+      const intervalMs = (settings.autoBackupIntervalDays ?? 7) * 24 * 60 * 60 * 1000;
+      if (!Number.isNaN(last) && Date.now() - last < intervalMs) return;
+      const create = window.a11yNotebook?.vault.createAutoBackup;
+      if (!create) return;
+      autoBackupRunningRef.current = true;
+      try {
+        const result = await create(settings.autoBackupFolder ?? '', settings.autoBackupKeepCount ?? 5);
+        const next = { ...settings, lastAutoBackupAt: new Date().toISOString() };
+        await window.a11yNotebook!.vault.saveSettings(next);
+        setSettings(next);
+        setStatusMessage(`Automatic backup created (${result.files} files).`);
+      } catch {
+        setStatusMessage('Automatic backup failed; it will be retried later.');
+      } finally {
+        autoBackupRunningRef.current = false;
+      }
+    };
+    void runIfDue();
+    const timer = window.setInterval(() => void runIfDue(), 60 * 60 * 1000);
+    return () => window.clearInterval(timer);
+  }, [vault, securityLocked, switchingVault, settings]);
+
+  useEffect(() => {
     let cancelled = false;
     setNoteAnnotations([]);
     if (currentNote?.path)
