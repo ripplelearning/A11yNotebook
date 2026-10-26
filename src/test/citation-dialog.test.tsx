@@ -11,7 +11,7 @@ function installBridge() {
       saveBibliography,
       fetchCitationMetadata: vi.fn(async () => ({
         sourceType: 'book',
-        authors: [{ last: 'Breitenfeldt', first: 'Tristen' }],
+        authors: [{ last: 'Rivera', first: 'Alex' }],
         title: 'Accessible Design',
         year: '2024',
         publisher: 'Open Press',
@@ -36,7 +36,7 @@ describe('CitationDialog', () => {
         onClose={vi.fn()}
       />,
     );
-    fireEvent.change(screen.getByLabelText(/Authors/), { target: { value: 'Breitenfeldt, Tristen' } });
+    fireEvent.change(screen.getByLabelText(/Authors/), { target: { value: 'Rivera, Alex' } });
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
     fireEvent.change(screen.getByLabelText(/^Year$/), { target: { value: '2024' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save to bibliography' }));
@@ -44,7 +44,7 @@ describe('CitationDialog', () => {
     const saved = saveBibliography.mock.calls[0][1] as Array<{ title: string }>;
     expect(saved[0].title).toBe('Accessible Design');
     fireEvent.click(screen.getByRole('button', { name: 'Insert in-text citation' }));
-    expect(onInsertInText).toHaveBeenCalledWith('(Breitenfeldt, 2024)');
+    expect(onInsertInText).toHaveBeenCalledWith('(Rivera, 2024)');
   });
 
   it('fills fields from a DOI lookup', async () => {
