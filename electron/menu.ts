@@ -27,7 +27,6 @@ export function buildApplicationMenu(
     commandItem('show-tasks'),
     commandItem('show-assets'),
     commandItem('show-reminders'),
-    commandItem('show-milestones'),
     commandItem('show-calendar'),
     { type: 'separator' },
     commandItem('toggle-right-pane', 'checkbox'),
@@ -147,7 +146,9 @@ export function buildApplicationMenu(
     {
       label: '&Help',
       submenu: [
-        commandItem('check-for-updates'),
+        // Explicit U mnemonic, so Alt+H then U checks for updates. The
+        // registry label stays plain so in-app surfaces are unaffected.
+        { ...commandItem('check-for-updates'), label: 'Check for &Updates' },
         commandItem('show-keyboard-shortcuts'),
         { type: 'separator' },
         commandItem('show-about'),

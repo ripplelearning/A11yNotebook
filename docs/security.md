@@ -162,10 +162,10 @@ is stale despite the merged parser, IPC, reader and hostile-fixture tests.
 Evidence and ownership:
 
 - `metadata.ts:9–37` serializes generic JSON writes through plaintext random staging. `ipc.ts:224–288` opens
-  security/settings and constructs annotations, assets and milestone stores; `metadataFor` checks service identity.
+  security/settings and constructs annotation and asset stores; `metadataFor` checks service identity.
 - `service.ts:36–47,319–329,422–424,459–476` and `search.ts` independently create/rebuild/write link, bookmark and
   search indexes, including before unlocking. Watcher refreshes are not mediated by the generic metadata writer.
-- `ipc.ts` reminder/default/milestone/image-description handlers and `assets.ts:61–65,125–138` own the other
+- `ipc.ts` reminder/default/image-description handlers and `assets.ts:61–65,125–138` own the other
   generic stores. `ipc.ts` settings handlers write both library and userData copies; `store.ts:68` separately writes
   shell/sample data and PDF preferences. `recent-vault.json`, content-free audit history and password/recovery
   bootstrap configuration are deliberate plaintext exclusions, not encrypted-content stores.
@@ -234,7 +234,6 @@ the verified **pre-implementation main baseline**; scoped changes are documented
 | Library `reminders.json`                                 | `reminders.ts` via IPC                           | Standalone titles, note/task associations, scheduling and delivery/dedup state; plaintext                                                     |
 | Library `reminder-defaults.json`                         | `reminder-defaults.ts` via IPC                   | Notification consent/privacy/time/snooze defaults; plaintext                                                                                  |
 | Library `flashcards.json`                                | `assets.ts` via IPC                              | Deck paths, card fingerprints and review schedules; plaintext                                                                                 |
-| Library `milestones.json`                                | `milestones.ts` via IPC                          | Titles, status, dates, note/task associations; plaintext                                                                                      |
 | Library `settings.json` and app userData `settings.json` | `ipc.ts`                                         | Shortcuts, theme, edit/lock timeouts; plaintext, two copies                                                                                   |
 | Library `image-alts.json`                                | `ipc.ts`                                         | Image paths and user descriptions; plaintext                                                                                                  |
 | Library `bookmarks.json`                                 | `service.ts`, move rollback in IPC               | Note paths; plaintext, includes direct service writes                                                                                         |
@@ -264,7 +263,7 @@ Legacy version-1/2 libraries continue unchanged unless the user explicitly migra
 to the main process; password reset and recovery-key rotation rewrap the same data key, not independently
 password-encrypted notes. No passwords or keys may be persisted for scheduled helpers. Each logical store needs a
 distinct HKDF domain (`metadata:annotations`, `metadata:reminders`, `metadata:reminder-defaults`,
-`metadata:flashcards`, `metadata:milestones`, `metadata:settings`, `metadata:image-alts`, `metadata:bookmarks`,
+`metadata:flashcards`, `metadata:settings`, `metadata:image-alts`, `metadata:bookmarks`,
 `metadata:links`, `metadata:search-index`) and bounded authenticated envelopes binding
 schema version, store identity, library identity, generation and record identity. Audit and nonsensitive global
 preferences require explicit documented exclusions; sensitive global copies must be removed or stopped.
@@ -293,7 +292,7 @@ cognitive checkpoints for outlines, mind maps, flashcards and CSV/Markdown grids
 documents live in the same store's per-format collections.
 
 **Broader per-store protection (PRs #83–#89):** beyond the base pair, each of these stores can be individually
-migrated into encrypted protection from Settings, with its own consent: reminder defaults, milestones, bookmarks,
+migrated into encrypted protection from Settings, with its own consent: reminder defaults, bookmarks,
 the link index, image descriptions, flashcard schedules, reminders, library settings, and the persisted
 search-index cache. Migration stages the store under a fresh generation, commits the authenticated pointer, and
 only then removes the plaintext legacy file; an interrupted migration leaves reads fail-closed until cleanup

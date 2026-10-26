@@ -141,7 +141,8 @@ describe('native shortcut capture suppression', () => {
       }
     }
     (menuItem('New library').click as () => void)();
-    (menuItem('Check for Updates').click as () => void)();
+    // The native Help label carries the U mnemonic (&), which Electron strips for display.
+    (menuItem('Check for &Updates').click as () => void)();
     expect(mock.webContents.send).not.toHaveBeenCalled();
 
     capture(false);

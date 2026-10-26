@@ -26,7 +26,6 @@ export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, stri
   annotations: 'annotations.json',
   checkpoints: 'checkpoints.json',
   'reminder-defaults': 'reminder-defaults.json',
-  milestones: 'milestones.json',
   bookmarks: 'bookmarks.json',
   bibliography: 'bibliography.json',
   calendar: 'calendar.json',
