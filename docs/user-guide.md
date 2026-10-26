@@ -534,7 +534,10 @@ Settings sections have visible semantic headings for screen-reader heading navig
 **Appearance and interface**, **Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and **Library security**.
 Scoped metadata encryption has its own heading when available, with security subsections under Library security.
 
-In **Appearance and interface**, **Zoom in percent** scales the whole interface from 50 to 200 percent; unlike
+In **Appearance and interface**, **Theme** offers Dark (the default) or Light. Light is a full light
+palette built to the same WCAG 2.2 AA bars as the dark theme: body text at 4.5:1 or better, and
+focus outlines and control borders at 3:1 or better. A High contrast option is also listed; it
+currently only takes effect in Windows forced-colors mode. **Zoom in percent** scales the whole interface from 50 to 200 percent; unlike
 font size, which grows text only, Zoom grows buttons, spacing, and everything else with it. **Focus indicator**
 offers a high-visibility option with thicker, more offset outlines, and **Reduce motion** turns off interface
 animations and transitions. **Show command/action buttons in the UI** restores the button-rich application
@@ -562,7 +565,8 @@ capture does not close Settings. Tab retains normal dialog navigation. Starting 
 Reset, save, close, and leaving Settings stop capture. Application shortcuts and native menu accelerators are
 suspended while listening, but operating-system-reserved combinations cannot always be intercepted.
 
-**Settings** (Ctrl+Alt+S) changes autosave delay (0 disables it), dark/light/high-contrast theme, font size,
+**Settings** (Ctrl+Alt+S) changes autosave delay (0 disables it), theme (Dark or Light, plus a
+High contrast option for Windows forced-colors mode), font size,
 and command shortcuts. Conflicts with command defaults and reserved navigation/editing keys are rejected.
 Blank shortcuts disable a command binding; reset restores defaults. Settings are saved in the library's
 `.a11ynotebook/settings.json` and app userData defaults. Keyboard Shortcuts and the palette display active bindings;
