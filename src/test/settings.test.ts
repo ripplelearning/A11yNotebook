@@ -176,4 +176,15 @@ describe('settings and shortcut validation', () => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, vaultLockMinutes: 241 })).toThrow();
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, noteEditLockMinutes: -1 })).toThrow();
   });
+  it('keeps F11 exclusive to Toggle Focus Mode without a reserved-key conflict', () => {
+    // Regression: F11 was in RESERVED_SHORTCUTS while also the Toggle Focus
+    // Mode registry primary, so saving any settings failed validation with
+    // a shortcut conflict. The registry primary must validate clean, and a
+    // second command claiming F11 must still be rejected.
+    expect(validateSettings({ ...DEFAULT_SETTINGS, shortcuts: {} })).toMatchObject({ shortcuts: {} });
+    expect(shortcutConflicts({}, {})).toEqual([]);
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'show-calendar': 'F11' } })).toThrow(
+      /Shortcut conflicts: F11/,
+    );
+  });
 });

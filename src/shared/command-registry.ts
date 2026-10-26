@@ -25,6 +25,7 @@ export type CommandId =
   | 'edit-redo'
   | 'show-tasks'
   | 'toggle-bookmark'
+  | 'toggle-focus-mode'
   | 'edit-note-metadata'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
@@ -690,6 +691,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Toggle note bookmark',
     description: 'Add or remove a bookmark for the active note.',
     shortcut: 'Ctrl+D',
+  },
+  {
+    id: 'toggle-focus-mode',
+    label: 'Toggle Focus Mode',
+    description: 'Show only the title, menu, search, and document. Press F11 again to restore the full layout.',
+    shortcut: 'F11',
   },
   {
     id: 'edit-note-metadata',

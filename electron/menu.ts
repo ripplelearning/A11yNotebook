@@ -31,6 +31,7 @@ export function buildApplicationMenu(
     { type: 'separator' },
     commandItem('toggle-right-pane', 'checkbox'),
     commandItem('toggle-read-only-mode', 'checkbox'),
+    commandItem('toggle-focus-mode', 'checkbox'),
     { type: 'separator' },
     { role: 'resetZoom' },
     { role: 'zoomIn' },

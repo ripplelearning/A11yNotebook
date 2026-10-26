@@ -2,9 +2,33 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 
 const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
+
+/**
+ * Fresh Electron user-data dir per launch. Settings (including the theme)
+ * persist to userData defaults, so sharing one dir across tests would leak
+ * one test's saved settings into the next — the light-theme test's save
+ * used to turn every later run's shell light, breaking the dark test's
+ * focus-color assertion. Each test gets its own dir, removed on close.
+ */
+function launchOptions() {
+  const userDataDir = mkdtempSync(path.join(tmpdir(), 'a11y-e2e-'));
+  return {
+    userDataDir,
+    args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`],
+  };
+}
+
+async function closeApp(app: ElectronApplication | null, userDataDir: string) {
+  await app?.close();
+  try {
+    rmSync(userDataDir, { recursive: true, force: true });
+  } catch {
+    // Best effort: a leftover temp dir never fails the test.
+  }
+}
 
 /**
  * End-to-end accessibility pass over the real app shell: launch, landmarks,
@@ -22,10 +46,11 @@ const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'di
  */
 test('app shell is accessible end to end', async () => {
   let app: ElectronApplication | null = null;
+  const { userDataDir, args } = launchOptions();
   try {
     app = await electron.launch({
       executablePath: ELECTRON_PATH,
-      args: ['.', '--no-sandbox', '--disable-gpu'],
+      args,
     });
     const page = await app.firstWindow();
     const pageErrors: string[] = [];
@@ -118,16 +143,17 @@ test('app shell is accessible end to end', async () => {
     expect(results.violations).toEqual([]);
     expect(pageErrors).toEqual([]);
   } finally {
-    await app?.close();
+    await closeApp(app, userDataDir);
   }
 });
 
 test('app shell is accessible in the light theme', async () => {
   let app: ElectronApplication | null = null;
+  const { userDataDir, args } = launchOptions();
   try {
     app = await electron.launch({
       executablePath: ELECTRON_PATH,
-      args: ['.', '--no-sandbox', '--disable-gpu'],
+      args,
     });
     const page = await app.firstWindow();
     const pageErrors: string[] = [];
@@ -143,7 +169,13 @@ test('app shell is accessible in the light theme', async () => {
     // Real user path: Settings dialog, Theme select, Save. The dialog is
     // reachable from the welcome shell; settings save to the app userData
     // defaults when no library is open.
-    await page.keyboard.press('Control+Alt+S');
+    // The shortcut listener attaches after mount; retry the keypress until
+    // the dialog actually opens instead of racing it.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if ((await page.getByRole('dialog', { name: 'Settings' }).count()) > 0) break;
+      await page.keyboard.press('Control+Alt+S');
+      await page.waitForTimeout(500);
+    }
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
     // The wrapping label's text includes the option texts, so locate the
     // Theme select by its Light option instead of by label.
@@ -270,6 +302,71 @@ test('app shell is accessible in the light theme', async () => {
     expect(results.violations).toEqual([]);
     expect(pageErrors).toEqual([]);
   } finally {
-    await app?.close();
+    await closeApp(app, userDataDir);
+  }
+});
+
+test('focus mode hides chrome and leaves only header, search, and document tabbable', async () => {
+  let app: ElectronApplication | null = null;
+  const { userDataDir, args } = launchOptions();
+  try {
+    app = await electron.launch({
+      executablePath: ELECTRON_PATH,
+      args,
+    });
+    const page = await app.firstWindow();
+    await expect(page).toHaveTitle(/A11y Notebook/);
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+
+    // The shell test has no library open, so Focus Mode cannot be entered
+    // through the UI here; the state machine is covered by the jsdom App
+    // tests. This test verifies the exact class the app applies, in the
+    // real renderer: hidden panes, full-width document, and a Tab order
+    // that never lands inside a hidden pane.
+    const displayOf = async (selector: string) =>
+      page.evaluate((sel) => {
+        const element = document.querySelector(sel) as HTMLElement | null;
+        return element ? getComputedStyle(element).display : 'missing';
+      }, selector);
+    const contentWidth = async () =>
+      page.evaluate(() => {
+        const panel = document.querySelector('.content-panel') as HTMLElement | null;
+        return panel ? panel.getBoundingClientRect().width : 0;
+      });
+    const windowWidth = await page.evaluate(() => window.innerWidth);
+
+    expect(await displayOf('.panel')).not.toBe('none');
+    await page.evaluate(() => document.querySelector('.app-shell')?.classList.add('focus-mode'));
+    expect(await displayOf('.panel')).toBe('none');
+    expect(await displayOf('.tab-bar')).toBe('none');
+    expect(await displayOf('.side-panel')).toBe('none');
+    expect(await displayOf('.status-bar')).toBe('none');
+    expect(await displayOf('.app-header')).not.toBe('none');
+    expect(await displayOf('.global-search input')).not.toBe('none');
+    expect(await displayOf('.document')).not.toBe('none');
+    // Single-column workspace: the content panel spans the window.
+    expect(await contentWidth()).toBeGreaterThan(windowWidth - 50);
+
+    // Tab through the shell: no stop may sit inside a hidden pane.
+    const landedHidden: string[] = [];
+    for (let i = 0; i < 12; i++) {
+      await page.keyboard.press('Tab');
+      const hidden = await page.evaluate(() => {
+        const element = document.activeElement as HTMLElement | null;
+        if (!element) return null;
+        const container = element.closest('.panel, .tab-bar, .side-panel, .status-bar');
+        return container ? container.className : null;
+      });
+      if (hidden) landedHidden.push(hidden);
+    }
+    expect(landedHidden).toEqual([]);
+
+    // Removing the class restores the full layout.
+    await page.evaluate(() => document.querySelector('.app-shell')?.classList.remove('focus-mode'));
+    expect(await displayOf('.panel')).not.toBe('none');
+    expect(await displayOf('.tab-bar')).not.toBe('none');
+    expect(await contentWidth()).toBeLessThan(windowWidth - 300);
+  } finally {
+    await closeApp(app, userDataDir);
   }
 });

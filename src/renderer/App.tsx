@@ -285,6 +285,18 @@ export default function App() {
   const [activeRegion, setActiveRegion] = useState<FocusRegion>('navigation');
   const [mode, setMode] = useState<AppMode>('read-only');
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
+  const [focusMode, setFocusMode] = useState(false);
+  const [focusAnnouncement, setFocusAnnouncement] = useState('');
+  const focusModeRef = useRef(focusMode);
+  focusModeRef.current = focusMode;
+  // A Focus Mode announcement is transient: clear it once it has had time
+  // to be announced, so the footer status message is again the only status
+  // region in the normal layout.
+  useEffect(() => {
+    if (!focusAnnouncement) return undefined;
+    const timer = setTimeout(() => setFocusAnnouncement(''), 3000);
+    return () => clearTimeout(timer);
+  }, [focusAnnouncement]);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
@@ -1026,7 +1038,9 @@ export default function App() {
     };
   }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault]);
 
-  const availableRegions = FOCUS_REGION_ORDER.filter((region) => region !== 'right-pane' || rightPaneOpen);
+  const availableRegions = FOCUS_REGION_ORDER.filter(
+    (region) => (region !== 'right-pane' || rightPaneOpen) && (!focusMode || region === 'main'),
+  );
 
   /** The element that receives focus when a region is entered. */
   const getFocusElement = useCallback(
@@ -1051,6 +1065,10 @@ export default function App() {
 
   const focusNow = useCallback(
     (target: FocusTarget) => {
+      // In Focus Mode only the document (and the search box, which is not a
+      // region) stays visible; a request for a hidden region lands in the
+      // document instead of on an element that cannot take focus.
+      if (focusModeRef.current && target !== 'main' && target !== 'search') target = 'main';
       const element = getFocusElement(target);
       if (!element) {
         return false;
@@ -1126,6 +1144,16 @@ export default function App() {
       }
     }
   }, [rightPaneOpen, activeRegion]);
+
+  // Focus Mode ends the moment the focused document stops being the active
+  // tab: switching to another view, closing the active note (which returns
+  // to the Notes and Files grid), or opening a non-document screen. Opening
+  // a different note keeps Focus Mode, because the document view continues.
+  useEffect(() => {
+    if (focusMode && !openNotes.some((note) => note.id === selectedTab)) {
+      setFocusMode(false);
+    }
+  }, [focusMode, selectedTab, openNotes]);
 
   const regionContaining = (element: Element | null): FocusRegion | null => {
     if (!element) {
@@ -2139,6 +2167,38 @@ export default function App() {
       x: pointer?.x ?? bounds.left,
       y: pointer?.y ?? bounds.bottom,
     });
+  };
+
+  /**
+   * Focus Mode (F11): hide every persistent chrome pane except the title
+   * header (which holds the search box), the menu bar, and the document
+   * itself. It is React state only, never saved to settings, so closing
+   * and reopening the app always starts with the full layout. Exiting also
+   * happens automatically when the active document stops being the active
+   * tab (see the selectedTab effect below), which covers closing the note
+   * and switching to another view. Dialogs and context menus are transient
+   * overlays, not chrome, so they still open above Focus Mode.
+   */
+  const toggleFocusMode = () => {
+    if (focusMode) {
+      setFocusMode(false);
+      setFocusAnnouncement('Focus mode off. The full layout is shown again.');
+      return;
+    }
+    if (!currentNote) {
+      setStatusMessage('Open a note or file to use Focus mode.');
+      return;
+    }
+    setContextMenu(null);
+    setFocusMode(true);
+    setFocusAnnouncement(
+      'Focus mode on. Only the title, menu, search, and document are shown. Press F11 to exit Focus mode.',
+    );
+    const active = document.activeElement;
+    if (!(active instanceof HTMLElement) || !active.closest('.app-header, .menu-bar, .document')) {
+      tabPanelRef.current?.focus();
+      setActiveRegion('main');
+    }
   };
 
   const closeContextTab = (tabId: string) => {
@@ -3157,6 +3217,10 @@ export default function App() {
       setStatusMessage('Save this note before editing it again.');
       return;
     }
+    if (commandId === 'toggle-focus-mode') {
+      toggleFocusMode();
+      return;
+    }
     if (commandId === 'edit-undo' || commandId === 'edit-redo') {
       stepEditHistory(commandId === 'edit-undo' ? 'undo' : 'redo');
       return;
@@ -3414,6 +3478,7 @@ export default function App() {
       return !history || !canRedo(history);
     }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
+    if (id === 'toggle-focus-mode') return !currentNote;
     if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);
     if (id === 'save-current-note')
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
@@ -3545,6 +3610,7 @@ export default function App() {
     checked: {
       'toggle-right-pane': rightPaneOpen,
       'toggle-read-only-mode': mode === 'read-only',
+      'toggle-focus-mode': focusMode,
       'toggle-bookmark': Boolean(currentNote && bookmarks.some((bookmark) => bookmark.path === currentNote.path)),
     },
   };
@@ -3589,7 +3655,7 @@ export default function App() {
 
   return (
     <div
-      className={showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}
+      className={`${showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}${focusMode ? ' focus-mode' : ''}`}
       aria-label="A11y Notebook application shell"
     >
       {contextMenu ? (
@@ -3692,6 +3758,17 @@ export default function App() {
           />
         </div>
       </header>
+
+      {/* Focus Mode announcements live here, not in the status bar: the
+          status bar is hidden in Focus Mode, and a display:none live region
+          would never be announced. This region renders only while it
+          carries an announcement, so the footer status message stays the
+          single status region in the normal layout. */}
+      {focusAnnouncement ? (
+        <p className="sr-only" role="status">
+          {focusAnnouncement}
+        </p>
+      ) : null}
 
       {showCommandButtons && (
         <nav className="menu-bar" aria-label="Main menu">
@@ -4272,7 +4349,7 @@ export default function App() {
                 <h2>Welcome to A11y Notebook</h2>
                 <p>Open or create a local library to begin organizing Markdown notes and attachments.</p>
                 <p>
-                  Use F6 and Shift+F6 to move between panes, Ctrl+Shift+P for commands, Ctrl+K to insert a link, and Ctrl+E to switch read/edit mode.
+                  Use F6 and Shift+F6 to move between panes, Ctrl+Shift+P for commands, Ctrl+K to insert a link, Ctrl+E to switch read/edit mode, and F11 for Focus Mode.
                 </p>
               </div>
             )}
