@@ -47,7 +47,6 @@ describe('shortcut aliases and duplicate detection', () => {
 
   it('gives the new general and format commands unique defaults', () => {
     const byId = new Map(COMMANDS.map((command) => [command.id, command.shortcut]));
-    expect(byId.get('show-milestones')).toBe('Ctrl+6');
     expect(byId.get('format-heading1')).toBe('Ctrl+Alt+1');
     expect(byId.get('format-heading6')).toBe('Ctrl+Alt+6');
     expect(byId.get('backup-library')).toBe('Ctrl+Shift+B');

@@ -7,7 +7,6 @@ import { IPC_CHANNELS } from '../shared/ipc';
 import { encryptNoteWithPassword, encryptRecord, unlockVault } from '../../electron/vault/security';
 import { DEFAULT_REMINDER_DEFAULTS } from '../shared/reminder-defaults';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { Milestone } from '../shared/milestones';
 
 const mock = vi.hoisted(() => ({
   handlers: new Map<string, (...args: unknown[]) => Promise<unknown>>(),
@@ -1206,42 +1205,12 @@ describe('extended vault IPC integration', () => {
     expect(await invoke(IPC_CHANNELS.vaultReminderDefaultsGet)).toEqual(defaults);
   });
 
-  it('supports milestone CRUD over IPC and preserves associations on folder moves', async () => {
-    await writeFile(path.join(mock.root, 'Folder/Tasks.md'), '- [ ] Work');
-    const milestone = (await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
-      title: 'Project',
-      dueDate: '2026-10-10',
-      status: 'active',
-      notePaths: ['Folder/Tasks.md'],
-      tasks: [{ path: 'Folder/Tasks.md', taskId: 'Folder/Tasks.md:1' }],
-    })) as Milestone;
-    await invoke(IPC_CHANNELS.vaultMove, 'Folder', 'Archive');
-    const [moved] = (await invoke(IPC_CHANNELS.vaultMilestonesGet)) as Milestone[];
-    expect(moved).toMatchObject({ id: milestone.id, notePaths: ['Archive/Tasks.md'] });
-    expect(moved.tasks).toEqual([{ path: 'Archive/Tasks.md', taskId: milestone.tasks[0].taskId }]);
-    expect(await invoke(IPC_CHANNELS.vaultMilestoneUpdate, moved.id, { title: 'Renamed' })).toMatchObject({
-      id: milestone.id,
-      title: 'Renamed',
-    });
-    await invoke(IPC_CHANNELS.vaultMilestoneDelete, moved.id);
-    expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([]);
-  });
-
-  it('rejects defaults and milestone requests from untrusted senders and locked vaults', async () => {
+  it('rejects defaults requests from untrusted senders and locked vaults', async () => {
     const channels = [
       IPC_CHANNELS.vaultReminderDefaultsGet,
       IPC_CHANNELS.vaultReminderDefaultsSet,
-      IPC_CHANNELS.vaultMilestonesGet,
-      IPC_CHANNELS.vaultMilestoneCreate,
-      IPC_CHANNELS.vaultMilestoneUpdate,
-      IPC_CHANNELS.vaultMilestoneDelete,
     ];
     for (const channel of channels) await expect(mock.handlers.get(channel)!({})).rejects.toThrow();
-    await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
-      title: 'Cached',
-      dueDate: '2026-10-10',
-      status: 'planned',
-    });
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
     await invoke(IPC_CHANNELS.vaultSecurityLock);
     for (const channel of channels) await expect(invoke(channel)).rejects.toThrow('Unlock the library');
@@ -1327,22 +1296,6 @@ describe('extended vault IPC integration', () => {
     }
   });
 
-  it('rejects milestone requests queued behind locking before reading or changing cached data', async () => {
-    await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
-    const input = { title: 'Private project', dueDate: '2026-10-10', status: 'active' };
-    const milestone = (await invoke(IPC_CHANNELS.vaultMilestoneCreate, input)) as Milestone;
-    const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
-    const queued = [
-      invoke(IPC_CHANNELS.vaultMilestonesGet),
-      invoke(IPC_CHANNELS.vaultMilestoneCreate, input),
-      invoke(IPC_CHANNELS.vaultMilestoneUpdate, milestone.id, { title: 'Not permitted' }),
-      invoke(IPC_CHANNELS.vaultMilestoneDelete, milestone.id),
-    ];
-    await Promise.all([locking, ...queued.map((request) => expect(request).rejects.toThrow('Unlock the library'))]);
-    await invoke(IPC_CHANNELS.vaultSecurityUnlock, 'phase-five-test-password');
-    expect(await invoke(IPC_CHANNELS.vaultMilestonesGet)).toEqual([milestone]);
-  });
-
   it('rejects reminder completion queued behind locking without completing it', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'phase-five-test-password');
     const created = (await invoke(IPC_CHANNELS.vaultReminderCreate, {
@@ -1395,26 +1348,6 @@ describe('extended vault IPC integration', () => {
     release.resolve();
     await Promise.all([locking, rejected]);
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(original);
-  });
-
-  it('does not redeliver a fired task reminder when a milestone assigns its stable identity', async () => {
-    mock.disableWatcher = true;
-    try {
-      await invoke(IPC_CHANNELS.vaultOpen);
-      await writeFile(path.join(mock.root, 'Topic.md'), '- [ ] Read remind:2020-01-01 09:00');
-      await invoke(IPC_CHANNELS.vaultReminders);
-      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toHaveLength(1);
-      await invoke(IPC_CHANNELS.vaultMilestoneCreate, {
-        title: 'Reading',
-        dueDate: '2026-10-10',
-        status: 'active',
-        tasks: [{ path: 'Topic.md', taskId: 'Topic.md:1' }],
-      });
-      await invoke(IPC_CHANNELS.vaultReminders);
-      expect(mock.reminderEvents.filter((event) => (event as { type: string }).type === 'fired')).toHaveLength(1);
-    } finally {
-      mock.disableWatcher = false;
-    }
   });
 
   it('preserves the original repaired note if a replacement write fails partially', async () => {

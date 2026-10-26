@@ -213,7 +213,7 @@ export function formatConversionWarning(source: string, from: 'markdown' | 'html
       : [/<[a-z][^>]*>/i.test(source) ? 'raw HTML is not rendered in the converted note' : ''];
   const details = losses.filter(Boolean);
   if (/data-a11y-task-id\s*=|<!--\s*a11y-task-id:/i.test(source)) {
-    details.push('task identities are copied, but milestone associations remain with the original note');
+    details.push('task identities are copied');
   }
   return `Create a ${to.toUpperCase()} sibling copy and keep the original? ${
     details.length

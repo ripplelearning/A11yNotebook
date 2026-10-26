@@ -73,8 +73,6 @@ PDF/ePub accessibility validation are open; see the [document reader and annotat
 
 - [ ] Audit storage-failure warnings clearly distinguish a completed operation from a missing history entry, are
       announced once, and preserve understandable native-dialog focus with JAWS, NVDA and Narrator.
-- [ ] Milestone list/detail/create/edit/association/delete workflows expose dates/status/progress, trap modal focus,
-      return it predictably on cancel/save/delete, announce results once and clear content on lock/switch.
 
 ## Portable-app workflow regression checks (Windows, manual)
 

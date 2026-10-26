@@ -11,7 +11,6 @@ export const PROTECTED_STORE_NAMES = [
   'annotations',
   'checkpoints',
   'reminder-defaults',
-  'milestones',
   'image-alts',
   'bookmarks',
   'bibliography',
@@ -60,7 +59,6 @@ export interface ExtendMetadataProtectionInput {
 /** Stores the settings UI may offer for one-at-a-time extension. */
 export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
   'reminder-defaults',
-  'milestones',
   'bookmarks',
   'links',
   'image-alts',
