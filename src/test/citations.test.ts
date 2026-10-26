@@ -11,7 +11,7 @@ const book: BibliographyEntry = {
   id: '1',
   notebookPath: 'Research',
   sourceType: 'book',
-  authors: [{ last: 'Breitenfeldt', first: 'Tristen' }],
+  authors: [{ last: 'Rivera', first: 'Alex' }],
   title: 'Accessible Design',
   year: '2024',
   publisher: 'Open Press',
@@ -38,13 +38,13 @@ const journal: BibliographyEntry = {
 describe('citation formatting', () => {
   it('formats a book in APA, MLA, and Chicago', () => {
     expect(formatBibliography(book, 'apa')).toBe(
-      'Breitenfeldt, T. (2024). *Accessible Design*. Open Press.',
+      'Rivera, A. (2024). *Accessible Design*. Open Press.',
     );
     expect(formatBibliography(book, 'mla')).toBe(
-      'Breitenfeldt, Tristen. *Accessible Design*. Open Press, 2024.',
+      'Rivera, Alex. *Accessible Design*. Open Press, 2024.',
     );
     expect(formatBibliography(book, 'chicago')).toBe(
-      'Breitenfeldt, Tristen. 2024. *Accessible Design*. Open Press.',
+      'Rivera, Alex. 2024. *Accessible Design*. Open Press.',
     );
   });
 
@@ -55,10 +55,10 @@ describe('citation formatting', () => {
   });
 
   it('formats in-text citations per style', () => {
-    expect(formatInText(book, 'apa')).toBe('(Breitenfeldt, 2024)');
+    expect(formatInText(book, 'apa')).toBe('(Rivera, 2024)');
     expect(formatInText(journal, 'apa')).toBe('(Doe et al., 2023)');
-    expect(formatInText(book, 'mla', '42')).toBe('(Breitenfeldt 42)');
-    expect(formatInText(book, 'chicago', '42')).toBe('(Breitenfeldt 2024, 42)');
+    expect(formatInText(book, 'mla', '42')).toBe('(Rivera 42)');
+    expect(formatInText(book, 'chicago', '42')).toBe('(Rivera 2024, 42)');
   });
 
   it('parses author lists', () => {
@@ -71,6 +71,6 @@ describe('citation formatting', () => {
 
   it('sorts by author last name', () => {
     const sorted = sortBibliography([journal, book]);
-    expect(sorted[0].id).toBe('1');
+    expect(sorted[0].id).toBe('2');
   });
 });
