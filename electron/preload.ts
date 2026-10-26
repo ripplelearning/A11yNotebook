@@ -66,6 +66,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultSaveBibliography: 'vault:save-bibliography',
   vaultGetTaskLinks: 'vault:get-task-links',
   vaultSaveTaskLinks: 'vault:save-task-links',
+  vaultGetCalendar: 'vault:get-calendar',
+  vaultSaveCalendar: 'vault:save-calendar',
   vaultFetchCitationMetadata: 'vault:fetch-citation-metadata',
   vaultGetReadingPosition: 'vault:get-reading-position',
   vaultSetReadingPosition: 'vault:set-reading-position',
@@ -311,6 +313,8 @@ const bridge: NotebookBridge = {
     saveTaskLinks: (links) => ipcRenderer.invoke(CHANNELS.vaultSaveTaskLinks, links),
     saveBibliography: (notebookPath, entries) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveBibliography, notebookPath, entries),
+    getCalendar: () => ipcRenderer.invoke(CHANNELS.vaultGetCalendar),
+    saveCalendar: (appointments) => ipcRenderer.invoke(CHANNELS.vaultSaveCalendar, appointments),
     fetchCitationMetadata: (identifier) =>
       ipcRenderer.invoke(CHANNELS.vaultFetchCitationMetadata, identifier),
     getReadingPosition: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultGetReadingPosition, relativePath),

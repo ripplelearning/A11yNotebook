@@ -649,6 +649,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
             ? 'bibliography'
             : name === 'task-links.json'
               ? 'task-links'
+            : name === 'calendar.json'
+              ? 'calendar'
               : 'links',
       ) ??
         false),
@@ -661,6 +663,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
             ? 'bibliography'
             : name === 'task-links.json'
               ? 'task-links'
+            : name === 'calendar.json'
+              ? 'calendar'
               : 'links',
       );
     },
@@ -673,6 +677,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
             ? 'bibliography'
             : name === 'task-links.json'
               ? 'task-links'
+            : name === 'calendar.json'
+              ? 'calendar'
               : 'links',
         value,
       );
@@ -3472,6 +3478,15 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof identifier !== 'string') throw new Error('Identifier must be text.');
     return fetchCitationMetadata(identifier);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetCalendar, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getCalendar();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!Array.isArray(appointments)) throw new Error('Appointments must be a list.');
+    return requireService().saveCalendar(appointments);
   });
   ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

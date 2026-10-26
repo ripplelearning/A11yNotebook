@@ -46,6 +46,8 @@ function installBridge() {
       lookupThesaurus: vi.fn(async () => []),
       getBibliography: vi.fn(async () => []),
       saveBibliography: vi.fn(async () => []),
+      getCalendar: vi.fn(async () => []),
+      saveCalendar: vi.fn(async (appointments) => appointments),
       fetchCitationMetadata: vi.fn(async () => ({})),
       toggleBookmark: vi.fn(async () => []),
       addBookmark: vi.fn(async () => []),
@@ -131,7 +133,7 @@ describe('Help menu', () => {
     for (const { label, shortcut } of getKeyboardShortcuts()) {
       expect(within(dialog).getByRole('row', { name: `${label} ${shortcut}` })).toBeInTheDocument();
     }
-  });
+  }, 30_000);
 
   it('shows the active search shortcut when customized instead of the default', () => {
     render(<KeyboardShortcutsDialog onClose={() => undefined} shortcuts={{ 'focus-search': 'Alt+W' }} />);

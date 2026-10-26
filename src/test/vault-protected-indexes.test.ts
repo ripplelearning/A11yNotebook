@@ -12,7 +12,7 @@ afterEach(async () => {
 });
 
 function memoryAdapter(
-  protectedNames: Array<'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json'>,
+  protectedNames: Array<'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'>,
 ) {
   const data = new Map<string, unknown>();
   const adapter: VaultProtectedMetadataAdapter = {
