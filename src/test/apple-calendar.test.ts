@@ -18,11 +18,13 @@ const timed: CalendarAppointment = {
 describe('apple calendar mapping', () => {
   it('round-trips a timed appointment', () => {
     const ics = toAppleIcs(timed, 'uid-1@a11ynotebook');
-    const parsed = fromAppleEvent(ics);
+    const parsed = fromAppleEvent(ics) as { start: string; end: string } & Record<string, unknown>;
+    // Times round-trip as instants: the offset string follows the machine's
+    // zone, so assert instants, not the original offset spelling.
+    expect(Date.parse(parsed.start)).toBe(Date.parse('2026-11-02T10:00:00-08:00'));
+    expect(Date.parse(parsed.end)).toBe(Date.parse('2026-11-02T11:00:00-08:00'));
     expect(parsed).toMatchObject({
       title: 'Dentist, check-up; bring notes',
-      start: '2026-11-02T10:00:00-08:00',
-      end: '2026-11-02T11:00:00-08:00',
       allDay: false,
       location: 'Clinic',
       description: 'Line one\nLine two',
