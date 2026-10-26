@@ -1060,7 +1060,12 @@ export function createVaultService(
       ...state,
       tombstones: [
         ...state.tombstones,
-        ...deleted.map((item) => ({ id: item.id, deletedAt: now })),
+        ...deleted.map((item) => ({
+          id: item.id,
+          deletedAt: now,
+          ...(item.provider ? { provider: item.provider } : {}),
+          ...(item.externalId ? { externalId: item.externalId } : {}),
+        })),
       ],
     });
     const tombstones = pruneTombstones(merged.tombstones, stamped);

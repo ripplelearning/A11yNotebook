@@ -14,7 +14,7 @@ import type { AppointmentInput, CalendarAppointment, CalendarRecurrence } from '
  *   28 -> Mar 31) while Google's RRULE skips them (no February occurrence).
  *   The RRULE carries no BYMONTHDAY, so Google uses the start day.
  * - Local appointment links are not a Google concept and are never sent.
- *   The sync engine must preserve them when applying remote changes.
+ *   applySync preserves the local link when remote content wins.
  * - UNTIL is inclusive on both sides (the app's until date may hold an
  *   occurrence; RFC 5545 UNTIL is inclusive), so date-form UNTIL maps
  *   directly. Datetime UNTIL is converted through the calendar's time zone

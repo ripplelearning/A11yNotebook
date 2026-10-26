@@ -26,6 +26,10 @@ export interface SyncTombstone {
   id: string;
   /** UTC ISO timestamp of the local deletion. */
   deletedAt: string;
+  /** Provider the deleted appointment was linked to, if any. */
+  provider?: SyncProvider;
+  /** Provider event id to delete, if the appointment was ever synced. */
+  externalId?: string;
 }
 
 export interface SyncStateFile {
@@ -66,7 +70,14 @@ export function cleanSyncState(value: unknown): SyncStateFile {
       if (!isValidIso(entry.deletedAt)) continue;
       if (seen.has(entry.id)) continue;
       seen.add(entry.id);
-      tombstones.push({ id: entry.id, deletedAt: entry.deletedAt });
+      const tombstone: SyncTombstone = { id: entry.id, deletedAt: entry.deletedAt };
+      if (typeof entry.provider === 'string' && (PROVIDERS as readonly string[]).includes(entry.provider)) {
+        tombstone.provider = entry.provider as SyncProvider;
+      }
+      if (typeof entry.externalId === 'string' && entry.externalId) {
+        tombstone.externalId = entry.externalId;
+      }
+      tombstones.push(tombstone);
     }
   }
   return { version: 1, providers, tombstones };
@@ -100,7 +111,9 @@ export function localChangesSince(
 /**
  * Meaningful appointment content, ignoring ids and sync bookkeeping. When a
  * field is added to CalendarAppointment, add it here if it should count
- * toward a conflict.
+ * toward a conflict. The link is deliberately excluded: links are local-only
+ * metadata that providers never see, so a link edit must neither trigger a
+ * push nor count as a conflicting change.
  */
 export function sameAppointmentContent(a: CalendarAppointment, b: CalendarAppointment): boolean {
   return contentOf(a) === contentOf(b);
@@ -114,7 +127,6 @@ function contentOf(appointment: CalendarAppointment): string {
     allDay: appointment.allDay,
     description: appointment.description,
     location: appointment.location,
-    link: appointment.link,
     recurrence: appointment.recurrence,
   });
 }
@@ -169,9 +181,10 @@ export interface SyncConflict {
 
 /**
  * Apply classified remote changes to the local list. Remote-only items are
- * added and remote-wins items replace their local copy (keeping the local id
- * and the provider link). Conflicts are left untouched locally and returned
- * for the user to resolve; nothing is silently overwritten.
+ * added and remote-wins items replace their local copy (keeping the local id,
+ * the provider link, and the local-only link, which providers never carry).
+ * Conflicts are left untouched locally and returned for the user to resolve;
+ * nothing is silently overwritten.
  */
 export function applySync(
   local: CalendarAppointment[],
@@ -199,6 +212,7 @@ export function applySync(
           id: entry.local.id,
           provider: entry.local.provider,
           externalId: entry.local.externalId,
+          ...(entry.local.link ? { link: entry.local.link } : {}),
         };
       }
     }

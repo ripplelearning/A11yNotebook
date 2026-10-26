@@ -9,6 +9,7 @@ import {
   cleanSyncState,
   localChangesSince,
   pruneTombstones,
+  sameAppointmentContent,
   stampForSync,
   type SyncStateFile,
 } from '../shared/calendar-sync';
@@ -205,5 +206,90 @@ describe('calendar sync core', () => {
       [appointment({ id: 'back-2' })],
     );
     expect(pruned.map((tombstone) => tombstone.id)).toEqual(['gone-1']);
+  });
+
+  it('ignores link-only differences when comparing content', () => {
+    const plain = appointment();
+    const linked = appointment({ link: { kind: 'note', path: 'Notes/Visit.md' } });
+    expect(sameAppointmentContent(plain, linked)).toBe(true);
+  });
+
+  it('keeps the local link when remote content wins', () => {
+    const local = appointment({
+      id: 'local-9',
+      provider: 'google',
+      externalId: 'g-9',
+      link: { kind: 'note', path: 'Notes/Visit.md' },
+    });
+    const { merged } = applySync([local], [
+      {
+        remote: appointment({ title: 'Changed', provider: 'google', externalId: 'g-9' }),
+        local,
+        classification: 'remoteWins',
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].id).toBe('local-9');
+    expect(merged[0].title).toBe('Changed');
+    expect(merged[0].link).toEqual({ kind: 'note', path: 'Notes/Visit.md' });
+  });
+
+  it('keeps provider and external id on tombstones and drops invalid ones', () => {
+    const cleaned = cleanSyncState({
+      version: 1,
+      providers: {},
+      tombstones: [
+        {
+          id: 'gone-1',
+          deletedAt: '2026-10-26T00:00:00.000Z',
+          provider: 'google',
+          externalId: 'g-1',
+        },
+        {
+          id: 'gone-2',
+          deletedAt: '2026-10-26T00:00:00.000Z',
+          provider: 'bogus',
+          externalId: 'g-2',
+        },
+      ],
+    } as unknown as SyncStateFile);
+    expect(cleaned.tombstones).toEqual([
+      { id: 'gone-1', deletedAt: '2026-10-26T00:00:00.000Z', provider: 'google', externalId: 'g-1' },
+      { id: 'gone-2', deletedAt: '2026-10-26T00:00:00.000Z', externalId: 'g-2' },
+    ]);
+  });
+
+  it('does not restamp a link-only edit', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      const stamp = '2026-01-02T00:00:00.000Z';
+      await service.saveCalendar([appointment({ id: 'a', updatedAt: stamp })], { source: 'sync' });
+      const [kept] = await service.saveCalendar([
+        appointment({ id: 'a', link: { kind: 'note', path: 'Notes/Visit.md' } }),
+      ]);
+      expect(kept.updatedAt).toBe(stamp);
+      expect(kept.link).toEqual({ kind: 'note', path: 'Notes/Visit.md' });
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
+  });
+
+  it('records provider and external id on deletion tombstones', async () => {
+    const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
+    try {
+      const service = createVaultService(temporaryDirectory);
+      await service.initialize();
+      await service.saveCalendar([
+        appointment({ id: 'a', provider: 'google', externalId: 'g-1' }),
+      ]);
+      await service.saveCalendar([]);
+      expect((await service.getSyncState()).tombstones).toEqual([
+        expect.objectContaining({ id: 'a', provider: 'google', externalId: 'g-1' }),
+      ]);
+    } finally {
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
   });
 });
