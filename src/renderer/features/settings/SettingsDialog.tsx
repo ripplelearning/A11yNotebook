@@ -229,6 +229,15 @@ export default function SettingsDialog({
             onChange={(event) => setDraft({ ...draft, noteEditLockMinutes: Number(event.target.value) })}
           />
         </label>
+        <label>
+          Custom dictionary, one word per line
+          <textarea
+            rows={4}
+            value={(draft.customDictionary ?? []).join('\n')}
+            onChange={(event) => setDraft({ ...draft, customDictionary: event.target.value.split('\n') })}
+          />
+        </label>
+        <p>Words added from the spelling check appear here. Words listed here are never flagged.</p>
         <h3>Appearance and interface</h3>
         <label>
           Theme

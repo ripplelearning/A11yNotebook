@@ -24,6 +24,8 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+Shift+C   | Citation generator…                     |
 | Ctrl+Shift+J   | Bibliography…                           |
 | Ctrl+Alt+S     | Settings                                |
+| F7             | Spelling and Grammar Check              |
+| Shift+F7       | Thesaurus                               |
 | Ctrl+Shift+N   | New note from template                  |
 | Ctrl+Shift+A   | Annotate selection                      |
 | Ctrl+Alt+A     | Annotate PDF selection                  |

@@ -169,6 +169,7 @@ export interface VaultBridge {
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
   addBookmark(path: string, anchor?: import('./types').BookmarkAnchor): Promise<VaultBookmark[]>;
   removeBookmark(id: string): Promise<VaultBookmark[]>;
+  lookupThesaurus(word: string): Promise<import('./thesaurus').ThesaurusGroup[]>;
   getBibliography(notebookPath: string): Promise<import('./citations').BibliographyEntry[]>;
   saveBibliography(
     notebookPath: string,

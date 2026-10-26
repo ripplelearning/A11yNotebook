@@ -43,6 +43,7 @@ function installBridge() {
       setHtmlTaskDueDate: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
+      lookupThesaurus: vi.fn(async () => []),
       getBibliography: vi.fn(async () => []),
       saveBibliography: vi.fn(async () => []),
       fetchCitationMetadata: vi.fn(async () => ({})),

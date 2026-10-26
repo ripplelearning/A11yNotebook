@@ -22,6 +22,7 @@ import { DEFAULT_REMINDER_DEFAULTS, validateReminderDefaults } from '../../src/s
 import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
+import { lookupThesaurus } from './thesaurus';
 import { fetchCitationMetadata } from './citation-metadata';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
@@ -3464,6 +3465,11 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultGetBookmarks, async (event) => {
     assertTrusted(event, isTrustedSender);
     return requireService().getBookmarks();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultLookupThesaurus, async (event, word: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof word !== 'string') throw new Error('Word must be text.');
+    return lookupThesaurus(word);
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetBibliography, async (event, notebookPath: unknown) => {
     assertTrusted(event, isTrustedSender);

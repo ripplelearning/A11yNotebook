@@ -71,6 +71,8 @@ import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog'
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
+import SpellingDialog from './features/vault/SpellingDialog';
+import ThesaurusDialog from './features/vault/ThesaurusDialog';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
@@ -249,6 +251,8 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'convert-current-note',
       'convert-note-to-outline',
       'refresh-links',
+      'check-spelling-grammar',
+      'open-thesaurus',
       'show-reminders',
       'show-milestones',
       'show-settings',
@@ -1452,6 +1456,76 @@ export default function App() {
   const savePriorityOptions = async (options: string[]) => {
     if (!window.a11yNotebook) return;
     const next = { ...settings, priorityOptions: options };
+    await window.a11yNotebook.vault.saveSettings(next);
+    setSettings(next);
+  };
+
+  const [spellingOpen, setSpellingOpen] = useState(false);
+  type ThesaurusSelection =
+    | { kind: 'plain'; start: number; end: number }
+    | { kind: 'rich'; range: Range; element: HTMLElement };
+  const [thesaurusRequest, setThesaurusRequest] = useState<{
+    word: string;
+    selection: ThesaurusSelection | null;
+  } | null>(null);
+
+  /** Capture the selected word, if any, before the thesaurus dialog takes focus. */
+  const captureThesaurusRequest = () => {
+    const textarea = editorRef.current;
+    if (textarea && textarea.selectionStart !== textarea.selectionEnd) {
+      return {
+        word: textarea.value.slice(textarea.selectionStart ?? 0, textarea.selectionEnd ?? 0),
+        selection: {
+          kind: 'plain' as const,
+          start: textarea.selectionStart ?? 0,
+          end: textarea.selectionEnd ?? 0,
+        },
+      };
+    }
+    const selection = document.getSelection();
+    if (selection && !selection.isCollapsed) {
+      const anchor = selection.anchorNode;
+      const element = (anchor instanceof HTMLElement ? anchor : anchor?.parentElement)?.closest(
+        '[contenteditable="true"]',
+      ) as HTMLElement | null;
+      if (element) {
+        return {
+          word: selection.toString(),
+          selection: { kind: 'rich' as const, range: selection.getRangeAt(0).cloneRange(), element },
+        };
+      }
+    }
+    return { word: '', selection: null };
+  };
+
+  const replaceThesaurusSelection = (replacement: string) => {
+    if (!currentNote || !thesaurusRequest?.selection) return;
+    const selection = thesaurusRequest.selection;
+    if (selection.kind === 'plain') {
+      const content = currentNote.content;
+      updateNoteContent(
+        currentNote.id,
+        content.slice(0, selection.start) + replacement + content.slice(selection.end),
+      );
+    } else {
+      const domSelection = document.getSelection();
+      if (domSelection) {
+        domSelection.removeAllRanges();
+        domSelection.addRange(selection.range);
+        document.execCommand('insertText', false, replacement);
+        selection.element.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText' }));
+      }
+    }
+    setThesaurusRequest(null);
+    setStatusMessage(`Replaced with “${replacement}”.`);
+  };
+
+  const addToCustomDictionary = async (word: string) => {
+    if (!window.a11yNotebook) return;
+    const next = {
+      ...settings,
+      customDictionary: [...(settings.customDictionary ?? []), word],
+    };
     await window.a11yNotebook.vault.saveSettings(next);
     setSettings(next);
   };
@@ -2685,6 +2759,8 @@ export default function App() {
       (activeDialog && activeDialog !== 'palette') ||
       itemDialog ||
       taskDialogOpen ||
+      spellingOpen ||
+      thesaurusRequest ||
       citationDialog ||
       externalFile ||
       notePasswordDialog ||
@@ -2825,6 +2901,22 @@ export default function App() {
     }
     if (commandId === 'show-settings') {
       setActiveDialog('settings');
+      return;
+    }
+    if (commandId === 'check-spelling-grammar') {
+      if (!currentNote || mode !== 'edit' || currentNoteEditLocked) {
+        setStatusMessage('Open a note in edit mode first.');
+        return;
+      }
+      setSpellingOpen(true);
+      return;
+    }
+    if (commandId === 'open-thesaurus') {
+      if (!currentNote) {
+        setStatusMessage('Open a note first.');
+        return;
+      }
+      setThesaurusRequest(captureThesaurusRequest());
       return;
     }
     if (commandId === 'export-current-note') {
@@ -3300,6 +3392,8 @@ export default function App() {
       id === 'insert-attachment'
     )
       return !currentNote || mode !== 'edit' || currentNoteEditLocked;
+    if (id === 'check-spelling-grammar') return !currentNote || mode !== 'edit' || currentNoteEditLocked;
+    if (id === 'open-thesaurus') return !currentNote;
     if (id === 'open-citation-generator' || id === 'open-bibliography')
       return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
@@ -4328,6 +4422,27 @@ export default function App() {
             if (!remove) throw new Error('Credential storage is unavailable.');
             await remove(id);
           }}
+        />
+      ) : null}
+      {spellingOpen && currentNote ? (
+        <SpellingDialog
+          notePath={currentNote.path}
+          content={currentNote.content}
+          customWords={settings.customDictionary ?? []}
+          onApply={(nextContent) => {
+            updateNoteContent(currentNote.id, nextContent);
+            setStatusMessage('Spelling and grammar check applied.');
+          }}
+          onAddToDictionary={(word) => void addToCustomDictionary(word)}
+          onClose={() => setSpellingOpen(false)}
+        />
+      ) : null}
+      {thesaurusRequest && currentNote ? (
+        <ThesaurusDialog
+          initialWord={thesaurusRequest.word}
+          canReplace={mode === 'edit' && !currentNoteEditLocked && thesaurusRequest.selection !== null}
+          onReplace={replaceThesaurusSelection}
+          onClose={() => setThesaurusRequest(null)}
         />
       ) : null}
       {externalFile && !securityLocked ? (

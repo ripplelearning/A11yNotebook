@@ -177,6 +177,24 @@ External edits reload clean notes silently. If you have unsaved text, autosave p
 Removed notes offer Save copy. Escape leaves the conflict unresolved and tells you to choose a resolution; it does
 not discard your edits. Switching libraries is blocked until unsaved work is saved or resolved.
 
+### Spelling, grammar, and thesaurus
+
+**Tools → Spelling and Grammar Check** (F7) opens a dialog like the one in Word. It walks through each
+issue in the current note, in order, showing the word, the sentence around it, and an explanation for grammar
+issues. For each issue you can Ignore Once, Ignore All (or Ignore Rule for grammar), Add to Dictionary, Change,
+or Change All. A free-text Replace with box lets you type your own replacement, and Undo steps back one change.
+Changes are collected and applied to the note only when you close the dialog. Code blocks and inline code are
+not checked, and all-caps acronyms are skipped. The grammar check covers repeated words, a/an choice,
+could/should/would/must of (for have), a lowercase pronoun i, its/it's confusion, alot, and common missing
+apostrophes. It is pattern-based, not a full grammar engine, so it will not catch every error.
+
+**Tools → Thesaurus** (Shift+F7) looks up synonyms for the selected word, grouped by part of speech. Each
+synonym offers Look up (to look that word up instead) and, in edit mode with a selection, Replace with this
+word. If nothing is found, it suggests similarly spelled words. The bundled word list has synonyms only, no
+antonyms. Words added from the spelling check live in the custom dictionary, editable in
+**Settings → Custom dictionary, one word per line**. All spelling, grammar, and thesaurus work runs on your
+device; nothing is sent anywhere.
+
 ## Search
 
 Type in **Global search**; queries wait 250 ms after typing. A main-process index is stored under
