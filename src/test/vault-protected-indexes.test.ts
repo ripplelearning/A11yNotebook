@@ -11,7 +11,7 @@ afterEach(async () => {
   if (temporaryDirectory) await rm(temporaryDirectory, { recursive: true, force: true });
 });
 
-function memoryAdapter(protectedNames: Array<'bookmarks.json' | 'links.json' | 'bibliography.json'>) {
+function memoryAdapter(protectedNames: Array<'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json'>) {
   const data = new Map<string, unknown>();
   const adapter: VaultProtectedMetadataAdapter = {
     isProtected: (name) => protectedNames.includes(name),

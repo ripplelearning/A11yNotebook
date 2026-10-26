@@ -28,6 +28,7 @@ export const PROTECTED_LEGACY_FILENAMES: Partial<Record<ProtectedStoreName, stri
   'reminder-defaults': 'reminder-defaults.json',
   bookmarks: 'bookmarks.json',
   bibliography: 'bibliography.json',
+  calendar: 'calendar.json',
   links: 'links.json',
   'image-alts': 'image-alts.json',
   'flashcard-schedules': 'flashcards.json',

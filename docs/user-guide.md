@@ -339,6 +339,18 @@ This is not exited-process delivery: **nothing fires after A11y Notebook exits**
 sound and focus, and JAWS/NVDA/Narrator announcements, still need manual verification.
 Tasks also show per-notebook completion counts and native progress elements.
 
+The **Calendar** is one calendar for the whole library, opened with **Ctrl+6**, **Tools → Calendar** in the
+app menu, **View → Calendar** in the native menu, or the command palette's **Calendar** command. Appointments
+are stored in the library's `.a11ynotebook/calendar.json` and may stand alone or link to a note, file, or task.
+The **Agenda** view lists upcoming occurrences grouped under date headings, with previous/next 30-day and
+Today controls. The **Month grid** is a table with a button per day labelled with its appointment count;
+choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or
+timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
+end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
+removes the whole series, not just one occurrence; deletion asks for explicit confirmation. The calendar is
+local to the library for now: live sync with Google, Outlook, and Apple Calendar is planned next and is not
+yet available. Windows screen-reader verification has not been run.
+
 ## Templates and cognitive tools
 
 **New note from template** (Ctrl+Shift+N) offers Daily, Meeting, Project, Reading, and Lecture templates with a

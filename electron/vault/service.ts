@@ -9,6 +9,10 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
+import {
+  cleanAppointments,
+  type CalendarAppointment,
+} from '../../src/shared/calendar';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
@@ -81,9 +85,12 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json'): Promise<unknown>;
-  write(name: 'bookmarks.json' | 'links.json' | 'bibliography.json', value: unknown): Promise<void>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json'): Promise<unknown>;
+  write(
+    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'calendar.json',
+    value: unknown,
+  ): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
   searchIndex?: SearchIndexProtectionAdapter;
 }
@@ -949,6 +956,40 @@ export function createVaultService(
     return cleaned;
   }
 
+  async function readCalendarRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('calendar.json')) return protectedMetadata.read('calendar.json');
+    const calendarPath = await resolveMetadata('calendar.json', true);
+    try {
+      return JSON.parse(await readFile(calendarPath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function writeCalendarRaw(value: { version: 1; appointments: CalendarAppointment[] }): Promise<void> {
+    if (protectedMetadata?.isProtected('calendar.json')) {
+      await protectedMetadata.write('calendar.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('calendar.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  async function readCalendarFile(): Promise<CalendarAppointment[]> {
+    const parsed: unknown = await readCalendarRaw();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return [];
+    return cleanAppointments((parsed as { appointments?: unknown }).appointments);
+  }
+
+  async function getCalendar(): Promise<CalendarAppointment[]> {
+    return readCalendarFile();
+  }
+
+  async function saveCalendar(appointments: CalendarAppointment[]): Promise<CalendarAppointment[]> {
+    const cleaned = cleanAppointments(appointments);
+    await writeCalendarRaw({ version: 1, appointments: cleaned });
+    return cleaned;
+  }
+
   /** Idempotent path-prefix migration of bookmarks and reading positions after a move. */
   async function migrateManifestPaths(sourceRelative: string, nextRelative: string) {
     if (!libraryManifest) return;
@@ -1518,6 +1559,8 @@ export function createVaultService(
     removeBookmark,
     getBibliography,
     saveBibliography,
+    getCalendar,
+    saveCalendar,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,

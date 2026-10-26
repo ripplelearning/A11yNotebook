@@ -46,6 +46,7 @@ export type CommandId =
   | 'annotate-pdf-selection'
   | 'annotate-current-semantic-element'
   | 'show-reminders'
+  | 'show-calendar'
   | 'show-assets'
   | 'format-bold'
   | 'format-italic'
@@ -483,6 +484,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open Reminders',
     description: 'Show reminders and the grouped agenda.',
     shortcut: 'Ctrl+Shift+R',
+  },
+  {
+    id: 'show-calendar',
+    label: 'Calendar',
+    description: 'View and manage appointments in the agenda and month grid.',
+    shortcut: 'Ctrl+6',
   },
   {
     id: 'show-assets',

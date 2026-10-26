@@ -90,6 +90,7 @@ import type { NoteTemplate } from '../shared/templates';
 import { useAnnotations } from './features/annotations/useAnnotations';
 import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
+import CalendarScreen from './features/calendar/CalendarScreen';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
@@ -253,6 +254,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'check-spelling-grammar',
       'open-thesaurus',
       'show-reminders',
+      'show-calendar',
       'show-settings',
       'command-search',
     ],
@@ -323,6 +325,7 @@ export default function App() {
   const [, setHistoryVersion] = useState(0);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
+  const [calendarTabOpen, setCalendarTabOpen] = useState(false);
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
   const [assetDirty, setAssetDirty] = useState(false);
@@ -602,6 +605,7 @@ export default function App() {
   const notePaths = allEntries
     .filter((entry) => entry.kind === 'note' && isManagedEntry(entry) && !assetRegistry.resolve(entry.path))
     .map((entry) => entry.path);
+  const filePaths = allEntries.filter((entry) => entry.kind === 'attachment').map((entry) => entry.path);
   const beginExport = async (relativePath: string) => {
     try {
       const protectedNote = (await window.a11yNotebook?.vault.isNoteEncrypted?.(relativePath)) ?? false;
@@ -668,6 +672,7 @@ export default function App() {
     ...NAVIGATION_SCREENS.filter((tab) => tab.id === selectedTab),
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
     ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
+    ...(calendarTabOpen ? [{ id: 'calendar', label: 'Calendar' }] : []),
     ...(assetTabOpen ? [{ id: 'assets', label: 'Cognitive tools' }] : []),
     ...(attachment ? [{ id: 'attachment', label: attachment.path.split('/').at(-1) ?? attachment.path }] : []),
     ...openNotes.map((note) => ({
@@ -687,9 +692,11 @@ export default function App() {
     tasks: `Tasks${libraryContext}`,
     assets: `Cognitive Tools${libraryContext}`,
     reminders: `Reminders${libraryContext}`,
+    calendar: `Calendar${libraryContext}`,
   };
   const activeViewTitle =
     viewTitles[selectedTab] ?? currentNote?.title ?? tabs.find((tab) => tab.id === selectedTab)?.label ?? 'Welcome';
+  const calendarGeneration = vaultGenerationRef.current;
   const reminderState = useReminders(
     securityLocked ? undefined : vault?.path,
     (relative) => {
@@ -2920,6 +2927,18 @@ export default function App() {
       navigateScreen('reminders');
       return;
     }
+    if (commandId === 'show-calendar') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      if (!vault || securityLocked || switchingRef.current) {
+        setStatusMessage('Open and unlock a library before using the calendar.');
+        return;
+      }
+      setCalendarTabOpen(true);
+      setSelectedTab('calendar');
+      if (document.activeElement === tabPanelRef.current) announceNavigation('Calendar');
+      else setPendingFocus('main');
+      return;
+    }
     if (commandId === 'show-assets') {
       setAssetTabOpen(true);
       navigateScreen('assets');
@@ -3185,6 +3204,7 @@ export default function App() {
           'show-notes-files',
           'show-tasks',
           'show-assets',
+          'show-calendar',
         ].includes(command.id)
       )
         return;
@@ -3496,7 +3516,9 @@ export default function App() {
                   ? 'Contents'
                   : selectedTab === 'reminders'
                     ? 'Reminders'
-                      : activeViewTitle;
+                    : selectedTab === 'calendar'
+                        ? 'Calendar'
+                        : activeViewTitle;
   useEffect(() => {
     document.title =
       currentNote && vault && selectedTab === currentNote.id
@@ -3852,6 +3874,29 @@ export default function App() {
                 onDelete={(entry) => void deleteEntry(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
+            ) : selectedTab === 'calendar' ? (
+              vault && !switchingVault ? (
+                <CalendarScreen
+                  title={viewTitles.calendar}
+                  key={`${vault.path}:${vaultGenerationRef.current}`}
+                  vaultPath={vault.path}
+                  notePaths={notePaths}
+                  filePaths={filePaths}
+                  isCurrent={() =>
+                    !switchingRef.current &&
+                    vaultPathRef.current === vault.path &&
+                    vaultGenerationRef.current === calendarGeneration
+                  }
+                  announce={setStatusMessage}
+                  onOpenEntry={async (relative) => {
+                    const entry = findEntry(vault.entries, relative);
+                    if (!entry) throw new Error('The linked item is no longer available.');
+                    await openEntry(entry);
+                  }}
+                />
+              ) : (
+                <p>Open and unlock a library to view the calendar.</p>
+              )
             ) : selectedTab === 'reminders' ? (
               <RemindersView
                 title={viewTitles.reminders}
