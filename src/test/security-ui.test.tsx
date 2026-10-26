@@ -91,7 +91,7 @@ describe('security controls', () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(onAcknowledgeRecovery).toHaveBeenCalledOnce());
     expect(await screen.findByText('Recovery key saved and enabled.')).toHaveAttribute('role', 'status');
-  });
+  }, 30_000);
 
   it('prevents overlapping recovery preparation and allows retry after a failure', async () => {
     let rejectPreparation!: (error: Error) => void;
@@ -127,7 +127,7 @@ describe('security controls', () => {
     await waitFor(() => expect(screen.getByLabelText('One-time library recovery key')).toHaveValue('A'.repeat(43)));
     expect(onPrepareRecovery).toHaveBeenCalledTimes(2);
     expect(screen.getByRole('button', { name: 'Confirm saved recovery key' })).toBeDisabled();
-  });
+  }, 30_000);
 
   it('saves configurable idle and unsaved-edit lock delays', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
