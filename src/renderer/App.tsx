@@ -705,6 +705,10 @@ export default function App() {
     securityLocked ? undefined : vault?.path,
     (relative) => {
       if (switchingRef.current) return;
+      if (relative === undefined) {
+        setSelectedTab('calendar');
+        return;
+      }
       const entry = findEntry(vault?.entries ?? [], relative);
       if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open reminder note.'));
       else setStatusMessage('The reminder note is no longer available in this library.');
@@ -2595,7 +2599,11 @@ export default function App() {
     const nextTasks = await window.a11yNotebook!.vault.getTasks();
     if (vaultPathRef.current !== path || switchingRef.current) return;
     setTasks(nextTasks);
-    if (reminder.source === 'task' && openNotes.some((note) => note.path === reminder.path)) {
+    if (
+      reminder.source === 'task' &&
+      reminder.path !== undefined &&
+      openNotes.some((note) => note.path === reminder.path)
+    ) {
       const content = await window.a11yNotebook!.vault.readNote(reminder.path);
       if (vaultPathRef.current !== path || switchingRef.current) return;
       setOpenNotes((items) =>
@@ -3982,6 +3990,7 @@ export default function App() {
                   const entry = findEntry(vault?.entries ?? [], relative);
                   if (entry) await openEntry(entry);
                 }}
+                onOpenCalendar={() => setSelectedTab('calendar')}
               />
             ) : selectedTab === 'attachment' && attachment ? (
               <AttachmentView

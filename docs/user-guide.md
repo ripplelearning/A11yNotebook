@@ -347,14 +347,116 @@ Tasks also show per-notebook completion counts and native progress elements.
 The **Calendar** is one calendar for the whole library, opened with **Ctrl+6**, **Tools → Calendar** in the
 app menu, **View → Calendar** in the native menu, or the command palette's **Calendar** command. Appointments
 are stored in the library's `.a11ynotebook/calendar.json` and may stand alone or link to a note, file, or task.
+Links live in library files and survive local saves, cloud-folder copies, offline mode, and provider sync;
+provider sync never sends a link, so a link does not transfer to a fresh library through Google, but it is
+never deleted from the library file either. If a linked note, file, or task is gone, the calendar shows that
+the linked item is no longer available instead of dropping the link.
+Timed appointments may also carry a reminder: in the appointment dialog, choose No reminder, At start, or a
+preset before the start (5 or 15 or 30 minutes, 1 hour, 1 day). All-day appointments do not offer reminders,
+because their start has no time to count back from. Reminders fire through the same alert pipeline as task
+reminders, with snooze, dismiss, and complete, and they appear in Reminders; clicking a fired appointment
+reminder's system notification opens the Calendar. Reminder choices are local-only like links: they live in
+the calendar file, are never sent to providers, and a reminder-only edit does not count as a sync change.
 The **Agenda** view lists upcoming occurrences grouped under date headings, with previous/next 30-day and
 Today controls. The **Month grid** is a table with a button per day labelled with its appointment count;
 choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or
 timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
 end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
-removes the whole series, not just one occurrence; deletion asks for explicit confirmation. The calendar is
-local to the library for now: live sync with Google, Outlook, and Apple Calendar is planned next and is not
-yet available. Windows screen-reader verification has not been run.
+removes the whole series, not just one occurrence; deletion asks for explicit confirmation. Live two-way
+sync with Google Calendar, Outlook Calendar, and Apple Calendar is built in (see Calendar sync
+setup below). Windows screen-reader verification has not been run.
+
+### Calendar sync setup
+
+Live sync is two-way: local changes go to the provider and provider
+changes come down to the library. Google, Outlook, and Apple sync each
+have an in-app sign-in step: open the Calendar, find the provider's
+sync section, enter your sign-in details, save, then Sign in (Google
+and Outlook open a browser sign-in; Apple verifies directly) and Sync
+now. Keep every client ID, secret, and
+app-specific password in your password manager; enter them in the app
+when it asks, never in chat or email. If a sync reports conflicts (an
+appointment changed both locally and at the provider), the local
+version is kept and the sync state is frozen, so the same conflicts are
+reported again on the next sync until you resolve them. Press
+**Resolve conflicts** and choose per appointment: **Keep local version**
+pushes your version to the provider, and **Take Google version** (or
+**Take Outlook version**) saves the provider's version locally (your
+local-only link and reminder are kept either way). After the last
+conflict is resolved, run Sync now again to finish the sync.
+
+**Staying offline.** You do not need to set up anything to keep the
+calendar offline: appointments live in your library's calendar file, and
+nothing is sent to a calendar service unless you set up sync and press
+Sync now. If your library folder itself is cloud-synced (Drive, Dropbox,
+OneDrive), that file travels between your computers on its own, and the
+other computer's app picks up the change live. Task reminders travel the
+same way, because they live in your task files, and reminder state lives
+in your library's reminders file. The Google Calendar sync section has
+a "Keep calendar offline" button that hides provider sync setup for
+every provider and blocks sync runs; going offline signs you out first
+and never unlinks your appointments, so turning setup back on resumes
+cleanly.
+
+Read this part carefully, because it is easy to misunderstand: these steps
+set up sync for YOU, on your accounts. They do not set it up for everybody
+else, and they give nobody access to your accounts. A client ID and secret
+identify the app to the provider; they are not a password to your account.
+Each person who signs in does so with their own account, grants access to
+their own calendar only, and gets their own token that lives on their own
+device. Your calendar can only be reached with a token you granted by
+signing in yourself. For the app to work for everybody without each person
+doing these steps, it needs one shared, Google-verified client owned by the
+app itself instead of by you; that is not set up yet. Until then, each user
+follows the steps below for themselves.
+
+**Google.** In the Google Cloud Console (console.cloud.google.com), create
+your own project (for example "A11yNotebook Calendar Sync"), open "APIs &
+Services", then "Library", and enable the Google Calendar API. Under "OAuth
+consent screen", choose user type External, set the app name to
+A11yNotebook with your email as support and developer contact, add the
+scope `https://www.googleapis.com/auth/calendar` (full access, required
+because sync writes local changes to Google), and add your own email under
+"Test users". Under "Credentials", create an "OAuth client ID" of
+application type **Desktop app** (not Web application) and save the Client
+ID and Client Secret it shows. While the consent screen stays in Testing
+mode, only the test users you add (up to 100) can sign in at all, and
+Google expires sign-in after 7 days, so you would sign in again about
+weekly; moving to Production removes the 7-day limit and the test-user cap
+but requires a Google-verification review for the Calendar scope.
+
+**Outlook.** In the Entra portal (entra.microsoft.com), open "App
+registrations" and create a registration named A11yNotebook with supported
+account types "Accounts in any organizational directory and personal
+Microsoft accounts", so personal Outlook.com calendars work. Under
+"Authentication", add the "Mobile and desktop applications" platform
+with redirect URI `http://localhost` (the app signs in through a
+loopback address on your own computer). Under "API permissions", add
+the Microsoft Graph delegated permission `Calendars.ReadWrite` and save
+the Application (client) ID. Then, in the app's Outlook Calendar sync
+section, enter that client ID, save, then Sign in with Outlook and Sync
+now. Outlook uses a public native client, so there is no client secret
+to enter. Personal accounts work directly; work or school accounts may
+need an administrator to consent to the calendar permission. One limit:
+Outlook events with a relative recurrence (for example "the second
+Tuesday of each month") are skipped when pulling from Outlook, because
+the app has no matching pattern; absolute monthly and yearly patterns
+sync.
+
+**Apple.** Apple offers no third-party calendar sign-in API, so Apple sync
+uses CalDAV with an app-specific password instead of your main password.
+At appleid.apple.com, under "Sign-In and Security", open "App-Specific
+Passwords" (this requires two-factor authentication on the Apple ID) and
+generate one named A11yNotebook; the password is shown once, so save it
+immediately. Then, in the app's Apple Calendar sync section, enter your
+Apple ID and that app-specific password and save: the app verifies the
+sign-in by finding your calendar at `caldav.icloud.com` and reports the
+calendar name it found. Sync uses the first event calendar in the
+account; there is no calendar picker yet. As with Outlook, events with a
+relative recurrence (for example "the second Tuesday of each month")
+are skipped when pulling from Apple. You can revoke the password at any
+time from the same Apple ID page. Never enter your main Apple ID password
+into the app.
 
 ## Templates and cognitive tools
 

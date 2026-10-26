@@ -77,6 +77,31 @@ describe('calendar parsing and cleaning', () => {
     expect(cleaned[2].link).toBeUndefined();
     expect(cleaned[3].link).toBeUndefined();
   });
+
+  it('keeps valid reminder offsets and drops invalid ones', () => {
+    const cleaned = cleanAppointments([
+      appointment({ id: 'ok', reminderMinutesBefore: 15 }),
+      appointment({ id: 'zero', reminderMinutesBefore: 0 }),
+      appointment({ id: 'negative', reminderMinutesBefore: -5 }),
+      appointment({ id: 'fraction', reminderMinutesBefore: 2.5 }),
+      appointment({ id: 'huge', reminderMinutesBefore: 10081 }),
+      appointment({ id: 'text', reminderMinutesBefore: '15' as never }),
+    ]);
+    expect(cleaned.map((item) => item.id)).toEqual([
+      'ok',
+      'zero',
+      'negative',
+      'fraction',
+      'huge',
+      'text',
+    ]);
+    expect(cleaned[0].reminderMinutesBefore).toBe(15);
+    expect(cleaned[1].reminderMinutesBefore).toBe(0);
+    expect(cleaned[2].reminderMinutesBefore).toBeUndefined();
+    expect(cleaned[3].reminderMinutesBefore).toBeUndefined();
+    expect(cleaned[4].reminderMinutesBefore).toBeUndefined();
+    expect(cleaned[5].reminderMinutesBefore).toBeUndefined();
+  });
 });
 
 describe('calendar expansion', () => {

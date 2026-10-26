@@ -1,4 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { appointmentReminders } from '../../src/shared/appointment-reminders';
+import type { CalendarAppointment } from '../../src/shared/calendar';
 import {
   isReminderPath,
   parseReminderDate,
@@ -165,7 +167,8 @@ export function validateReminderStore(value: unknown): ReminderStore {
   });
   const states = Object.fromEntries(
     Object.entries(value.states).map(([id, item]) => {
-      if (!id.startsWith('task:') || !state(item)) throw new Error('Invalid task reminder state.');
+      if ((!id.startsWith('task:') && !id.startsWith('appointment:')) || !state(item))
+        throw new Error('Invalid reminder state.');
       return [
         id,
         {
@@ -194,6 +197,8 @@ export interface ReminderServiceOptions {
   /** Must resolve only for an existing, safe Markdown file inside this vault. */
   validateNote: (path: string) => Promise<void>;
   getNotes: () => Promise<ReminderNote[]>;
+  /** Timed appointments with reminders; absent when the vault has no calendar. */
+  getAppointments?: () => Promise<CalendarAppointment[]>;
   notify: (reminder: Reminder) => void | Promise<void>;
   getFlashcardReviews?: () => Promise<DueFlashcardReview[]>;
   notifyFlashcard?: (review: DueFlashcardReview) => void | Promise<void>;
@@ -283,9 +288,16 @@ export function createReminderService(options: ReminderServiceOptions) {
         const saved = store.states[task.id];
         return saved?.originalScheduledAt === task.originalScheduledAt ? { ...task, ...saved } : task;
       });
+    const appointments = appointmentReminders((await options.getAppointments?.()) ?? [], now()).map(
+      (item) => {
+        const saved = store.states[item.id];
+        return saved?.originalScheduledAt === item.originalScheduledAt ? { ...item, ...saved } : item;
+      },
+    );
     const standalone: Reminder[] = [];
     for (const item of store.standalone) {
       try {
+        if (item.path === undefined) continue;
         await options.validateNote(item.path);
         standalone.push(item);
       } catch (error) {
@@ -316,7 +328,9 @@ export function createReminderService(options: ReminderServiceOptions) {
         report(error);
       }
     }
-    reminders = [...tasks, ...standalone].sort((a, b) => a.scheduledAt.localeCompare(b.scheduledAt));
+    reminders = [...tasks, ...appointments, ...standalone].sort((a, b) =>
+      a.scheduledAt.localeCompare(b.scheduledAt),
+    );
   }
   async function save(next: ReminderStore) {
     await options.writeStore(next);
@@ -392,7 +406,10 @@ export function createReminderService(options: ReminderServiceOptions) {
   async function migratePaths(from: string, to: string) {
     if (!initialized) throw new Error('Initialize reminders before migrating paths.');
     const migrate = createPathMigrator(from, to);
-    const standalone = store.standalone.map((item) => ({ ...item, path: migrate(item.path) }));
+    const standalone = store.standalone.map((item) => {
+      if (item.path === undefined) throw new Error('Invalid standalone reminder.');
+      return { ...item, path: migrate(item.path) };
+    });
     const states = Object.fromEntries(
       Object.entries(store.states).map(([id, saved]) => [migrateTaskReminderId(id, migrate), saved]),
     );
@@ -408,7 +425,7 @@ export function createReminderService(options: ReminderServiceOptions) {
     else
       reminders = reminders.map((item) => ({
         ...item,
-        path: migrate(item.path),
+        ...(item.path === undefined ? {} : { path: migrate(item.path) }),
         ...(item.source === 'task' ? { id: migrateTaskReminderId(item.id, migrate) } : {}),
       }));
     return reminders.map((entry) => ({ ...entry }));
@@ -477,6 +494,11 @@ export function createReminderService(options: ReminderServiceOptions) {
         return reminders.map((entry) => ({ ...entry }));
       }),
     dismissReminder: (id: string) => serial(() => mutate(id, { status: 'dismissed' })),
+    completeAppointmentReminder: (id: string) =>
+      serial(async () => {
+        if (!id.startsWith('appointment:')) throw new Error('Invalid appointment reminder.');
+        return mutate(id, { status: 'completed' });
+      }),
     completeStandaloneReminder: (id: string) =>
       serial(() => {
         if (!id.startsWith('standalone:')) throw new Error('Invalid standalone reminder.');

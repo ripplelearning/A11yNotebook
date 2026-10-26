@@ -4,7 +4,7 @@ import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../shared/r
 
 export function useReminders(
   vaultPath: string | undefined,
-  onOpen: (path: string) => void,
+  onOpen: (path: string | undefined) => void,
   announce: (message: string) => void,
 ) {
   const [reminders, setReminders] = useState<Reminder[]>([]);

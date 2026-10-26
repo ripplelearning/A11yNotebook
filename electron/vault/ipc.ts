@@ -37,6 +37,7 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import type { SyncStateFile } from '../../src/shared/calendar-sync';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import {
   createLibraryEncryptionManifest,
@@ -253,7 +254,7 @@ async function runReminderWake(): Promise<void> {
 }
 
 const notifications = new Set<Notification>();
-const notificationTargets = new Map<Notification, { path: string }>();
+const notificationTargets = new Map<Notification, { path: string | undefined }>();
 let vaultOperations: Promise<unknown> = Promise.resolve();
 
 function serializeVaultOperation<T>(operation: () => Promise<T>): Promise<T> {
@@ -651,6 +652,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
       ) ??
         false),
@@ -665,6 +668,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
       );
     },
@@ -679,6 +684,8 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
               ? 'task-links'
             : name === 'calendar.json'
               ? 'calendar'
+            : name === 'calendar-sync.json'
+              ? 'calendar-sync'
               : 'links',
         value,
       );
@@ -937,6 +944,7 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       await collect((await nextService.getVault()).entries);
       return notes;
     },
+    getAppointments: () => nextService.getCalendar(),
     getFlashcardReviews: async () => {
       const defaults = await createReminderDefaultsStore(routedMetadataFor(nextService)).get();
       if (!defaults.notification.flashcards || !assets || service !== nextService) return [];
@@ -1338,7 +1346,10 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
       ? await currentReminders.withPathMigration(relative, destination, operation)
       : await operation();
     for (const target of notificationTargets.values()) {
-      if (target.path === relative || target.path.startsWith(`${relative}/`))
+      if (
+        target.path !== undefined &&
+        (target.path === relative || target.path.startsWith(`${relative}/`))
+      )
         target.path = destination + target.path.slice(relative.length);
     }
     await store.write('move-journal.json', null).catch(() => undefined);
@@ -2426,6 +2437,12 @@ export function setupVaultIpc(
         assertCurrent();
         return completed;
       }
+      if (reminder.source === 'appointment') {
+        const completed = await scheduler.completeAppointmentReminder(id);
+        assertCurrent();
+        return completed;
+      }
+      if (reminder.path === undefined) throw new Error('Reminder has no note.');
       if (typeof revision !== 'string' || !/^[\da-f]{64}$/i.test(revision)) {
         throw new Error('Refresh this reminder before completing the task.');
       }
@@ -3483,10 +3500,35 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     return requireService().getCalendar();
   });
-  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultSaveCalendar, async (event, appointments: unknown, options: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (!Array.isArray(appointments)) throw new Error('Appointments must be a list.');
-    return requireService().saveCalendar(appointments);
+    if (
+      options !== undefined &&
+      (typeof options !== 'object' ||
+        options === null ||
+        Array.isArray(options) ||
+        ((options as { source?: unknown }).source !== undefined &&
+          (options as { source?: unknown }).source !== 'local' &&
+          (options as { source?: unknown }).source !== 'sync'))
+    ) {
+      throw new Error('Calendar save options are invalid.');
+    }
+    return requireService().saveCalendar(
+      appointments,
+      options as { source?: 'local' | 'sync' } | undefined,
+    );
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetSyncState, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getSyncState();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveSyncState, async (event, state: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof state !== 'object' || state === null || Array.isArray(state)) {
+      throw new Error('Sync state must be an object.');
+    }
+    return requireService().saveSyncState(state as SyncStateFile);
   });
   ipcMain.handle(IPC_CHANNELS.vaultToggleBookmark, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);

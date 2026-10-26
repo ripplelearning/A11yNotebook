@@ -16,6 +16,7 @@ export interface RemindersViewProps {
   onDismiss: (id: string) => void | Promise<unknown>;
   onSnooze: (id: string, duration: SnoozeDuration) => void | Promise<unknown>;
   onOpenNote: (path: string, line?: number) => void | Promise<unknown>;
+  onOpenCalendar?: () => void | Promise<unknown>;
   defaults?: ReminderDefaults;
   onSaveDefaults?: (defaults: ReminderDefaults) => void | Promise<unknown>;
   now?: Date;
@@ -29,6 +30,7 @@ export default function RemindersView({
   onDismiss,
   onSnooze,
   onOpenNote,
+  onOpenCalendar,
   defaults = DEFAULT_REMINDER_DEFAULTS,
   onSaveDefaults,
   now = new Date(),
@@ -55,17 +57,34 @@ export default function RemindersView({
       setBusy(false);
     }
   }
-  const title = (item: Reminder) => (
-    <button
-      type="button"
-      disabled={busy}
-      onClick={() => {
-        void run(() => onOpenNote(item.path, item.line));
-      }}
-    >
-      {item.title}
-    </button>
-  );
+  const title = (item: Reminder) => {
+    if (item.source === 'appointment') {
+      if (!onOpenCalendar) return <span>{item.title}</span>;
+      return (
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => {
+            void run(() => onOpenCalendar());
+          }}
+        >
+          {item.title}
+        </button>
+      );
+    }
+    if (item.path === undefined) return <span>{item.title}</span>;
+    return (
+      <button
+        type="button"
+        disabled={busy}
+        onClick={() => {
+          void run(() => onOpenNote(item.path!, item.line));
+        }}
+      >
+        {item.title}
+      </button>
+    );
+  };
   const time = (item: Reminder) => (
     <time dateTime={item.scheduledAt}>{new Date(item.scheduledAt).toLocaleString()}</time>
   );
@@ -131,7 +150,7 @@ export default function RemindersView({
             {visible.map((item) => (
               <tr key={item.id} data-context="reminder" data-path={item.path} data-reminder-id={item.id} tabIndex={-1}>
                 <th scope="row">{title(item)}</th>
-                <td>{item.path}</td>
+                <td>{item.path ?? 'Calendar'}</td>
                 <td>{time(item)}</td>
                 <td>{item.status}</td>
                 <td>{actions(item)}</td>
@@ -160,7 +179,7 @@ export default function RemindersView({
                       data-reminder-id={item.id}
                       tabIndex={-1}
                     >
-                      {title(item)} — {item.path} — {time(item)} {actions(item)}
+                      {title(item)} — {item.path ?? 'Calendar'} — {time(item)} {actions(item)}
                     </li>
                   ))}
                 </ul>

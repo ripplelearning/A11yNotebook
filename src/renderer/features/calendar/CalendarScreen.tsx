@@ -2,12 +2,17 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   dateKeyFromParts,
   expandAppointments,
+  formatReminderMinutes,
   parseAppointmentTime,
   type CalendarAppointment,
   type CalendarOccurrence,
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
-import AppointmentDialog, { type AppointmentInput } from './AppointmentDialog';
+import AppointmentDialog from './AppointmentDialog';
+import AppleSyncSection from './AppleSyncSection';
+import GoogleSyncSection from './GoogleSyncSection';
+import OutlookSyncSection from './OutlookSyncSection';
+import type { AppointmentInput } from '../../../shared/calendar';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -197,6 +202,9 @@ export default function CalendarScreen({
         <strong>{occurrence.title}</strong>
         {appointment?.location && <span> — {appointment.location}</span>}
         {appointment?.description && <span> — {appointment.description}</span>}
+        {appointment?.reminderMinutesBefore !== undefined && (
+          <span> — Reminder: {formatReminderMinutes(appointment.reminderMinutesBefore)}</span>
+        )}
         {appointment && (
           <button type="button" onClick={() => setDialog({ appointment })}>
             Edit {occurrence.title}
@@ -364,6 +372,9 @@ export default function CalendarScreen({
             </button>
           </div>
           {view === 'agenda' ? renderAgenda() : renderMonth()}
+          {bridge && <GoogleSyncSection bridge={bridge} onSynced={() => void refresh()} />}
+          {bridge && <OutlookSyncSection bridge={bridge} onSynced={() => void refresh()} />}
+          {bridge && <AppleSyncSection bridge={bridge} onSynced={() => void refresh()} />}
         </>
       )}
       {dialog && (

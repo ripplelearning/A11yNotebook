@@ -54,12 +54,22 @@ export interface CalendarAppointment {
   location?: string;
   /** Optional link to a note, file, or task. Absent means standalone. */
   link?: CalendarLink;
+  /**
+   * Minutes before a timed appointment's start to fire a reminder.
+   * Absent means no reminder. Local-only: never sent to providers and
+   * excluded from sync change detection, like the link. All-day
+   * appointments do not use it (their start has no time).
+   */
+  reminderMinutesBefore?: number;
   recurrence?: CalendarRecurrence;
   /** Sync bookkeeping, filled in by the sync phases; unused locally. */
   provider?: CalendarSyncProvider;
   externalId?: string;
   updatedAt?: string;
 }
+
+/** An appointment without its local id, as produced by dialogs and sync. */
+export type AppointmentInput = Omit<CalendarAppointment, 'id'>;
 
 export interface CalendarOccurrence {
   appointmentId: string;
@@ -70,6 +80,18 @@ export interface CalendarOccurrence {
   /** Same string shape as the appointment's end; absent for instant events. */
   end?: string;
   link?: CalendarLink;
+}
+
+/** Human wording for a reminder offset, shared by the dialog and the agenda. */
+export function formatReminderMinutes(minutes: number): string {
+  if (minutes === 0) return 'At start';
+  if (minutes === 1440) return '1 day before';
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} before`;
+  if (minutes % 60 === 0) {
+    const hours = minutes / 60;
+    return `${hours} hour${hours === 1 ? '' : 's'} before`;
+  }
+  return `${minutes} minutes before`;
 }
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -278,6 +300,14 @@ export function cleanAppointment(value: unknown): CalendarAppointment | null {
   if (typeof item.location === 'string' && item.location) cleaned.location = item.location;
   const link = cleanLink(item.link);
   if (link) cleaned.link = link;
+  if (
+    typeof item.reminderMinutesBefore === 'number' &&
+    Number.isInteger(item.reminderMinutesBefore) &&
+    item.reminderMinutesBefore >= 0 &&
+    item.reminderMinutesBefore <= 10080
+  ) {
+    cleaned.reminderMinutesBefore = item.reminderMinutesBefore;
+  }
   const recurrence = cleanRecurrence(item.recurrence);
   if (recurrence) cleaned.recurrence = recurrence;
   if (item.provider !== undefined && PROVIDERS.includes(item.provider)) cleaned.provider = item.provider;

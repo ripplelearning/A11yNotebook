@@ -24,6 +24,7 @@ import type { UpdaterStatus } from '../src/shared/updater';
 import type { VaultReminderEvent } from '../src/shared/reminders';
 import { buildApplicationMenu, updateApplicationMenu as applyNativeMenuState } from './menu';
 import { setupUpdater } from './updater';
+import { setupAuthIpc } from './auth/ipc';
 import { setupVaultIpc } from './vault/ipc';
 import { getPdfReadingPreferences, setPdfReadingPreferences } from './store';
 import { validatePdfReadingPreferences, type PdfReadingPreferences } from '../src/shared/pdf-reading-preferences';
@@ -258,6 +259,7 @@ if (!app.requestSingleInstanceLock()) {
 
     setupShortcutCaptureIpc(isTrustedSender, setShortcutCaptureActive);
     setupZoomFactorIpc(isTrustedSender);
+    setupAuthIpc(isTrustedSender);
     if (wakeLaunch) {
       // Task Scheduler wake: show generic due alerts from the
       // persisted snapshot, re-register the next trigger, and exit

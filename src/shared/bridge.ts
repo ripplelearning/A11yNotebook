@@ -178,7 +178,27 @@ export interface VaultBridge {
   getCalendar?(): Promise<import('./calendar').CalendarAppointment[]>;
   saveCalendar?(
     appointments: import('./calendar').CalendarAppointment[],
+    options?: { source?: 'local' | 'sync' },
   ): Promise<import('./calendar').CalendarAppointment[]>;
+  getSyncState?(): Promise<import('./calendar-sync').SyncStateFile>;
+  saveSyncState?(
+    state: import('./calendar-sync').SyncStateFile,
+  ): Promise<import('./calendar-sync').SyncStateFile>;
+  configureGoogle?(client: { clientId: string; clientSecret: string }): Promise<{ configured: boolean }>;
+  signInGoogle?(): Promise<{ signedIn: boolean }>;
+  googleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getGoogleAccessToken?(): Promise<string>;
+  signOutGoogle?(): Promise<{ signedIn: boolean }>;
+  configureOutlook?(client: { clientId: string }): Promise<{ configured: boolean }>;
+  signInOutlook?(): Promise<{ signedIn: boolean }>;
+  outlookStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getOutlookAccessToken?(): Promise<string>;
+  signOutOutlook?(): Promise<{ signedIn: boolean }>;
+  configureApple?(signIn: { appleId: string; appPassword: string }): Promise<{ configured: boolean }>;
+  appleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
+  getAppleCredentials?(): Promise<{ appleId: string; appPassword: string }>;
+  verifyApple?(): Promise<{ calendarName: string }>;
+  signOutApple?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
 }

@@ -31,8 +31,14 @@ export async function createVaultWatcher(
     }
   }
 
+  // The calendar store is private metadata, but the Calendar screen
+  // displays it, so its changes must reach the screen like any visible
+  // file. Every other private file stays invisible to the watcher.
+  const CALENDAR_STORE_PATH = '.a11ynotebook/calendar.json';
+
   function schedule(relative: string) {
-    if (closed || (relative && !isVisibleVaultPath(relative))) return;
+    if (closed || (relative && relative !== CALENDAR_STORE_PATH && !isVisibleVaultPath(relative)))
+      return;
     pending.add(relative);
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
@@ -75,7 +81,11 @@ export async function createVaultWatcher(
         directories.add(relative);
         if (!watchers.has(relative)) attach(relative);
         for (const entry of await readdir(absolute, { withFileTypes: true })) {
-          if (entry.isDirectory() && !entry.isSymbolicLink() && !entry.name.startsWith('.')) {
+          if (
+            entry.isDirectory() &&
+            !entry.isSymbolicLink() &&
+            (!entry.name.startsWith('.') || entry.name === '.a11ynotebook')
+          ) {
             await walk(relative ? `${relative}/${entry.name}` : entry.name);
           }
         }

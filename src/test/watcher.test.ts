@@ -141,6 +141,31 @@ describe('external vault watcher', () => {
     await expect(service.startWatcher(() => undefined)).rejects.toThrow('Open a library');
   });
 
+  it('reports calendar store changes but still ignores other metadata writes', async () => {
+    const root = await folder();
+    await mkdir(path.join(root, '.a11ynotebook'));
+    const events: VaultChangedEvent[] = [];
+    disposables.push(
+      await createVaultWatcher(
+        root,
+        (event) => {
+          events.push(event);
+        },
+        { recursive: false, debounceMs: 20 },
+      ),
+    );
+    await writeFile(path.join(root, '.a11ynotebook', 'calendar.json'), '{}');
+    await vi.waitFor(
+      () => expect(events.some((event) => event.paths.includes('.a11ynotebook/calendar.json'))).toBe(true),
+      { timeout: 3000 },
+    );
+    const count = events.length;
+    await writeFile(path.join(root, '.a11ynotebook', 'task-links.json'), '{}');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    expect(events).toHaveLength(count);
+    expect(events.some((event) => event.paths.includes('.a11ynotebook/task-links.json'))).toBe(false);
+  });
+
   it.skipIf(process.platform === 'win32')(
     'does not attach fallback watchers to symlinked outside folders',
     async () => {

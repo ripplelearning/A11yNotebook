@@ -11,6 +11,12 @@ import {
 } from '../../src/shared/citations';
 import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
 import {
+  cleanSyncState,
+  pruneTombstones,
+  sameAppointmentContent,
+  type SyncStateFile,
+} from '../../src/shared/calendar-sync';
+import {
   cleanAppointments,
   type CalendarAppointment,
 } from '../../src/shared/calendar';
@@ -86,10 +92,10 @@ function assertVisibleCreationPath(relative: string) {
  * closed rather than looking empty) and writes go through it.
  */
 export interface VaultProtectedMetadataAdapter {
-  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): boolean;
-  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json'): Promise<unknown>;
+  isProtected(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json'): boolean;
+  read(name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json'): Promise<unknown>;
   write(
-    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json',
+    name: 'bookmarks.json' | 'links.json' | 'bibliography.json' | 'task-links.json' | 'calendar.json' | 'calendar-sync.json',
     value: unknown,
   ): Promise<void>;
   /** Optional bridge for the persisted search cache (see search.ts). */
@@ -1021,9 +1027,86 @@ export function createVaultService(
     return readCalendarFile();
   }
 
-  async function saveCalendar(appointments: CalendarAppointment[]): Promise<CalendarAppointment[]> {
+  async function saveCalendar(
+    appointments: CalendarAppointment[],
+    options?: { source?: 'local' | 'sync' },
+  ): Promise<CalendarAppointment[]> {
     const cleaned = cleanAppointments(appointments);
-    await writeCalendarRaw({ version: 1, appointments: cleaned });
+    // Sync-applied changes carry the provider's timestamps and must not be
+    // re-stamped or tombstoned, or the next sync would echo them back.
+    if (options?.source === 'sync') {
+      await writeCalendarRaw({ version: 1, appointments: cleaned });
+      return cleaned;
+    }
+    const stored = await readCalendarFile();
+    const storedById = new Map(stored.map((item) => [item.id, item]));
+    const now = new Date().toISOString();
+    const stamped = cleaned.map((item) => {
+      const previous = storedById.get(item.id);
+      if (!previous) return { ...item, updatedAt: now };
+      if (sameAppointmentContent(previous, item)) {
+        return previous.updatedAt ? { ...item, updatedAt: previous.updatedAt } : item;
+      }
+      return { ...item, updatedAt: now };
+    });
+    await writeCalendarRaw({ version: 1, appointments: stamped });
+    // Tombstones are reconciled on every local save: deletions add one, and
+    // re-adding an appointment prunes its tombstone so a later sync does not
+    // delete an appointment that exists locally again.
+    const incomingIds = new Set(stamped.map((item) => item.id));
+    const deleted = stored.filter((item) => !incomingIds.has(item.id));
+    const state = await readSyncStateFile();
+    const merged = cleanSyncState({
+      ...state,
+      tombstones: [
+        ...state.tombstones,
+        ...deleted.map((item) => ({
+          id: item.id,
+          deletedAt: now,
+          ...(item.provider ? { provider: item.provider } : {}),
+          ...(item.externalId ? { externalId: item.externalId } : {}),
+        })),
+      ],
+    });
+    const tombstones = pruneTombstones(merged.tombstones, stamped);
+    if (JSON.stringify(tombstones) !== JSON.stringify(state.tombstones)) {
+      await writeSyncStateRaw({ version: 1, providers: merged.providers, tombstones });
+    }
+    return stamped;
+  }
+
+  async function writeSyncStateRaw(value: SyncStateFile): Promise<void> {
+    if (protectedMetadata?.isProtected('calendar-sync.json')) {
+      await protectedMetadata.write('calendar-sync.json', value);
+      return;
+    }
+    await writeFile(await resolveMetadata('calendar-sync.json', true), JSON.stringify(value, null, 2), 'utf8');
+  }
+
+  async function readSyncStateRaw(): Promise<unknown> {
+    if (protectedMetadata?.isProtected('calendar-sync.json')) {
+      return protectedMetadata.read('calendar-sync.json');
+    }
+    const syncStatePath = await resolveMetadata('calendar-sync.json', true);
+    try {
+      return JSON.parse(await readFile(syncStatePath, 'utf8'));
+    } catch {
+      return null;
+    }
+  }
+
+  async function readSyncStateFile(): Promise<SyncStateFile> {
+    const parsed: unknown = await readSyncStateRaw();
+    return cleanSyncState(parsed);
+  }
+
+  async function getSyncState(): Promise<SyncStateFile> {
+    return readSyncStateFile();
+  }
+
+  async function saveSyncState(state: SyncStateFile): Promise<SyncStateFile> {
+    const cleaned = cleanSyncState(state);
+    await writeSyncStateRaw(cleaned);
     return cleaned;
   }
 
@@ -1600,6 +1683,8 @@ export function createVaultService(
     saveTaskLinks,
     getCalendar,
     saveCalendar,
+    getSyncState,
+    saveSyncState,
     getReadingPosition,
     setReadingPosition,
     resolveEntry,
