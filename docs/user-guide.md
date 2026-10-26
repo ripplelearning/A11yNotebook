@@ -356,6 +356,50 @@ removes the whole series, not just one occurrence; deletion asks for explicit co
 local to the library for now: live sync with Google, Outlook, and Apple Calendar is planned next and is not
 yet available. Windows screen-reader verification has not been run.
 
+### Calendar sync setup
+
+Live sync is in development and is planned as two-way: local changes go to
+the provider and provider changes come down to the library. The in-app
+sign-in step is not built yet, but you can create the provider side now so
+sign-in is ready when it lands. Keep every client ID, secret, and
+app-specific password in your password manager; you will provide them
+through a secure entry card when the app asks, never in chat or email.
+
+**Google.** In the Google Cloud Console (console.cloud.google.com), create
+a project (for example "A11yNotebook Calendar Sync"), open "APIs &
+Services", then "Library", and enable the Google Calendar API. Under "OAuth
+consent screen", choose user type External, set the app name to
+A11yNotebook with your email as support and developer contact, add the
+scope `https://www.googleapis.com/auth/calendar` (full access, required
+because sync writes local changes to Google), and add your own email under
+"Test users". Under "Credentials", create an "OAuth client ID" of
+application type **Desktop app** (not Web application) and save the Client
+ID and Client Secret it shows. While the consent screen stays in Testing
+mode, Google expires sign-in after 7 days, so you would sign in again about
+weekly; moving to Production removes that limit but requires a Google
+verification review for the Calendar scope.
+
+**Outlook.** In the Entra portal (entra.microsoft.com), open "App
+registrations" and create a registration named A11yNotebook with supported
+account types "Accounts in any organizational directory and personal
+Microsoft accounts", so personal Outlook.com calendars work. Under
+"Authentication", add the "Mobile and desktop applications" platform with
+redirect URI `https://login.microsoftonline.com/common/oauth2/nativeclient`.
+Under "API permissions", add the Microsoft Graph delegated permission
+`Calendars.ReadWrite` and save the Application (client) ID. Personal
+accounts work directly; work or school accounts may need an administrator
+to consent to the calendar permission.
+
+**Apple.** Apple offers no third-party calendar sign-in API, so Apple sync
+uses CalDAV with an app-specific password instead of your main password.
+At appleid.apple.com, under "Sign-In and Security", open "App-Specific
+Passwords" (this requires two-factor authentication on the Apple ID) and
+generate one named A11yNotebook; the password is shown once, so save it
+immediately. When Apple sync lands, the app will ask for your Apple ID
+email and that app-specific password and will connect to
+`caldav.icloud.com`. You can revoke the password at any time from the same
+Apple ID page. Never enter your main Apple ID password into the app.
+
 ## Templates and cognitive tools
 
 **New note from template** (Ctrl+Shift+N) offers Daily, Meeting, Project, Reading, and Lecture templates with a
