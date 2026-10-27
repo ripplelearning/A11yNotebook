@@ -85,4 +85,39 @@ describe('rename and move link repair', () => {
       )[0].after,
     ).toBe('[[New/N]] [N](New/N.md#part)');
   });
+
+  it('repairs reference definitions in CRLF notes, preserving the line endings', () => {
+    const plan = planLinkRepair(
+      [
+        { path: 'Target.md', content: '' },
+        {
+          path: 'Ref.md',
+          content: 'See [the guide][g].\r\n\r\n[g]: Target.md "Guide title"\r\n',
+        },
+      ],
+      'Target.md',
+      'Docs/Target.md',
+    );
+    expect(plan).toHaveLength(1);
+    expect(plan[0].after).toBe('See [the guide][g].\r\n\r\n[g]: Docs/Target.md "Guide title"\r\n');
+  });
+
+  it('leaves fenced code untouched in CRLF notes, for inline and reference links alike', () => {
+    const plan = planLinkRepair(
+      [
+        { path: 'Target.md', content: '' },
+        {
+          path: 'Ref.md',
+          content:
+            '```\r\n[x](Target.md)\r\n[g]: Target.md\r\n```\r\n\r\n[g]: Target.md\r\n',
+        },
+      ],
+      'Target.md',
+      'Docs/Target.md',
+    );
+    expect(plan).toHaveLength(1);
+    expect(plan[0].after).toBe(
+      '```\r\n[x](Target.md)\r\n[g]: Target.md\r\n```\r\n\r\n[g]: Docs/Target.md\r\n',
+    );
+  });
 });

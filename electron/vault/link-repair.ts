@@ -28,7 +28,7 @@ function resolveWiki(target: string, notes: NoteSource[]) {
   return matches.length === 1 ? matches[0].path : undefined;
 }
 
-/** Repair only unambiguous local references, leaving code and external URLs untouched. */
+/** Repair only unambiguous local references, leaving code and external URLs untouched. Line endings are preserved: anchors accept an optional carriage return, so CRLF notes repair correctly and fenced CRLF blocks stay untouched. */
 export function planLinkRepair(
   notes: NoteSource[],
   source: string,
@@ -39,7 +39,7 @@ export function planLinkRepair(
   return notes.flatMap((note) => {
     const nextPath = movedPath(note.path, source, destination);
     const after = note.content.replace(
-      /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)|`+[^`\n]*`+|\[\[([^\]\n|]+)(\|[^\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()([^)\s]+)((?:\s+["'][^)]*["'])?\))/g,
+      /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\r?\n|$)|`+[^`\n]*`+|\[\[([^\]\n|]+)(\|[^\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()([^)\s]+)((?:\s+["'][^)]*["'])?\))/g,
       (
         match,
         _line,
@@ -85,7 +85,7 @@ export function planLinkRepair(
     // at once. Same rules as inline links: code and external URLs untouched,
     // only targets that resolve to a known note or attachment.
     const repairedDefinitions = after.replace(
-      /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\n|$)|`+[^`\n]*`+|(^|\n)([ \t]{0,3}\[[^\]\n]+\]:[ \t]*)(<[^>\n]+>|\S+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)(?=\n|$)/g,
+      /(^|\n)[ \t]*(```|~~~)[^\n]*\n[\s\S]*?\n[ \t]*\2[ \t]*(?=\r?\n|$)|`+[^`\n]*`+|(^|\n)([ \t]{0,3}\[[^\]\n]+\]:[ \t]*)(<[^>\n]+>|\S+)((?:[ \t]+(?:"[^"\n]*"|'[^'\n]*'|\([^)\n]*\)))?[ \t]*)(?=\r?\n|$)/g,
       (
         match,
         _fenceLine: string | undefined,
