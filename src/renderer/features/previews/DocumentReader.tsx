@@ -431,7 +431,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         if (cancelled) return;
         if (saved) {
           if (saved.cfi) pendingCfiRef.current = saved.cfi;
-          if (saved.sectionIndex > 0) setSectionIndex(saved.sectionIndex);
+          if (saved.sectionIndex !== undefined && saved.sectionIndex > 0) setSectionIndex(saved.sectionIndex);
         }
         setPositionReady(true);
       })

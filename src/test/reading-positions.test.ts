@@ -45,7 +45,7 @@ describe('ePub reading positions', () => {
     expect((await second.getReadingPosition('Books/Guide.epub'))?.cfi).toBe('epubcfi(/6/2)');
   });
 
-  it('rejects invalid positions and non-ePub files', async () => {
+  it('rejects invalid positions and unsupported files', async () => {
     const service = await vault();
     await expect(service.setReadingPosition('Books/Guide.epub', { cfi: 'not-a-cfi', sectionIndex: 0 })).rejects.toThrow(
       /invalid/,
@@ -55,7 +55,16 @@ describe('ePub reading positions', () => {
     );
     await expect(
       service.setReadingPosition('Books/Notes.md', { cfi: 'epubcfi(/6/2)', sectionIndex: 0 }),
-    ).rejects.toThrow(/ePub/);
+    ).rejects.toThrow(/invalid/);
+    await expect(service.setReadingPosition('Books/Notes.md', { heading: '   ', occurrence: 0 })).rejects.toThrow(
+      /invalid/,
+    );
+    await expect(service.setReadingPosition('Books/Notes.md', { heading: 'Intro', occurrence: -1 })).rejects.toThrow(
+      /invalid/,
+    );
+    await expect(service.setReadingPosition('Books/Guide.epub', { heading: 'Intro', occurrence: 0 })).rejects.toThrow(
+      /invalid/,
+    );
   });
 
   it('follows the book when its entry is moved', async () => {
@@ -64,5 +73,29 @@ describe('ePub reading positions', () => {
     await service.moveEntry('Books/Guide.epub', 'Books/Renamed.epub');
     expect(await service.getReadingPosition('Books/Guide.epub')).toBeNull();
     expect((await service.getReadingPosition('Books/Renamed.epub'))?.sectionIndex).toBe(2);
+  });
+});
+
+describe('note reading positions', () => {
+  it('saves and returns the latest heading position for a note', async () => {
+    const service = await vault();
+    expect(await service.getReadingPosition('Books/Notes.md')).toBeNull();
+    await service.setReadingPosition('Books/Notes.md', { heading: 'Middle', occurrence: 0 });
+    const saved = await service.getReadingPosition('Books/Notes.md');
+    expect(saved?.heading).toBe('Middle');
+    expect(saved?.occurrence).toBe(0);
+    await service.setReadingPosition('Books/Notes.md', { heading: 'Notes', occurrence: 1 });
+    expect((await service.getReadingPosition('Books/Notes.md'))?.heading).toBe('Notes');
+    expect((await service.getReadingPosition('Books/Notes.md'))?.occurrence).toBe(1);
+  });
+
+  it('persists note positions across service instances and follows moves', async () => {
+    const first = await vault();
+    await first.setReadingPosition('Books/Notes.md', { heading: 'Later', occurrence: 0 });
+    const second = await vault();
+    expect((await second.getReadingPosition('Books/Notes.md'))?.heading).toBe('Later');
+    await second.moveEntry('Books/Notes.md', 'Books/Renamed.md');
+    expect(await second.getReadingPosition('Books/Notes.md')).toBeNull();
+    expect((await second.getReadingPosition('Books/Renamed.md'))?.heading).toBe('Later');
   });
 });

@@ -4,7 +4,7 @@ import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writ
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { BookmarkAnchor, ReadingPosition, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import type { BookmarkAnchor, ReadingPosition, ReadingPositionInput, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
@@ -1524,13 +1524,14 @@ export function createVaultService(
       const parsed: unknown = JSON.parse(await readFile(filePath, 'utf8'));
       if (!Array.isArray(parsed)) return [];
       return parsed.filter(
-        (item): item is ReadingPosition =>
-          typeof item === 'object' &&
-          item !== null &&
-          typeof (item as ReadingPosition).path === 'string' &&
-          typeof (item as ReadingPosition).cfi === 'string' &&
-          Number.isInteger((item as ReadingPosition).sectionIndex) &&
-          typeof (item as ReadingPosition).updated === 'string',
+        (item): item is ReadingPosition => {
+          if (typeof item !== 'object' || item === null) return false;
+          const candidate = item as ReadingPosition;
+          if (typeof candidate.path !== 'string' || typeof candidate.updated !== 'string') return false;
+          const epubShape = typeof candidate.cfi === 'string' && Number.isInteger(candidate.sectionIndex);
+          const noteShape = typeof candidate.heading === 'string' && Number.isInteger(candidate.occurrence);
+          return epubShape || noteShape;
+        },
       );
     } catch {
       return [];
@@ -1553,34 +1554,46 @@ export function createVaultService(
 
   async function setReadingPosition(
     relativePath: string,
-    position: { cfi: unknown; sectionIndex: unknown },
+    position: ReadingPositionInput & { cfi?: unknown; sectionIndex?: unknown; heading?: unknown; occurrence?: unknown },
   ): Promise<void> {
     const target = await resolveEntry(relativePath);
-    if (path.extname(target).toLowerCase() !== '.epub') {
-      throw new Error('Reading positions are saved for ePub documents.');
-    }
-    if (
-      typeof position?.cfi !== 'string' ||
-      position.cfi.length > 4096 ||
-      (position.cfi !== '' && !position.cfi.startsWith('epubcfi('))
-    ) {
-      throw new Error('The reading position is invalid.');
-    }
-    if (
-      !Number.isInteger(position.sectionIndex) ||
-      (position.sectionIndex as number) < 0 ||
-      (position.sectionIndex as number) > 100_000
-    ) {
-      throw new Error('The reading position is invalid.');
-    }
+    const extension = path.extname(target).toLowerCase();
     const positions = await readReadingPositions();
     const retained = positions.filter((entry) => entry.path !== relativePath);
-    retained.push({
-      path: relativePath,
-      cfi: position.cfi,
-      sectionIndex: position.sectionIndex as number,
-      updated: new Date().toISOString(),
-    });
+    if (extension === '.epub') {
+      if (
+        typeof position?.cfi !== 'string' ||
+        position.cfi.length > 4096 ||
+        (position.cfi !== '' && !position.cfi.startsWith('epubcfi('))
+      ) {
+        throw new Error('The reading position is invalid.');
+      }
+      if (!Number.isInteger(position.sectionIndex) || (position.sectionIndex as number) < 0 || (position.sectionIndex as number) > 100_000) {
+        throw new Error('The reading position is invalid.');
+      }
+      retained.push({
+        path: relativePath,
+        cfi: position.cfi,
+        sectionIndex: position.sectionIndex as number,
+        updated: new Date().toISOString(),
+      });
+    } else if (['.md', '.html', '.htm', '.txt'].includes(extension)) {
+      const heading = typeof position?.heading === 'string' ? position.heading.trim() : '';
+      if (heading.length === 0 || heading.length > 1000) {
+        throw new Error('The reading position is invalid.');
+      }
+      if (!Number.isInteger(position.occurrence) || (position.occurrence as number) < 0 || (position.occurrence as number) > 100_000) {
+        throw new Error('The reading position is invalid.');
+      }
+      retained.push({
+        path: relativePath,
+        heading,
+        occurrence: position.occurrence as number,
+        updated: new Date().toISOString(),
+      });
+    } else {
+      throw new Error('Reading positions are saved for ePub documents and notes.');
+    }
     retained.sort((a, b) => a.updated.localeCompare(b.updated));
     await writeReadingPositions(retained.slice(-500));
   }

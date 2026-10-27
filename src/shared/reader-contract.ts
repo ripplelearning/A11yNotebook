@@ -59,8 +59,9 @@ const NOTE_ANNOTATIONS: readonly ReaderCapability[] = [
 /**
  * Note readers (Markdown, sanitized HTML, plain text) share one reading
  * and annotation implementation over the rendered DOM, so their contracts
- * are identical — the parity requirement. Reading position is the one
- * documented gap: notes do not yet persist a caret/scroll position.
+ * are identical — the parity requirement. Reading position is persisted
+ * per note as the heading the reader had reached, restored when the note
+ * reopens in reading mode.
  */
 const noteReader = (format: string): ReaderContract =>
   contract(format, 'semantic-text', [
@@ -69,6 +70,7 @@ const noteReader = (format: string): ReaderContract =>
     'semantic-structure',
     'search',
     'bookmarks',
+    'reading-position',
     ...NOTE_ANNOTATIONS,
     'lifecycle-cleanup',
   ]);
