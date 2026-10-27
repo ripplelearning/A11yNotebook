@@ -37,7 +37,9 @@ async function closeApp(app: ElectronApplication | null, userDataDir: string) {
  * The light-theme test drives the real user path (Settings dialog, Theme,
  * Save) and additionally checks the light focus color, computed light
  * styles, and that focused elements are not obscured (2.4.11, which axe
- * does not cover in this version).
+ * does not cover in this version). The high-contrast test mirrors it for
+ * the High contrast theme: black header, white input border, yellow focus
+ * outline, and axe with contrast enabled.
  *
  * Scope: the shell without an open library. Vault flows (notes, tasks,
  * calendar with data) are covered by the component-level axe harness in
@@ -298,6 +300,128 @@ test('app shell is accessible in the light theme', async () => {
       );
     } catch (error) {
       console.warn('Could not write the light-theme E2E reports:', error);
+    }
+    expect(results.violations).toEqual([]);
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, userDataDir);
+  }
+});
+
+test('app shell is accessible in the high contrast theme', async () => {
+  let app: ElectronApplication | null = null;
+  const { userDataDir, args } = launchOptions();
+  try {
+    app = await electron.launch({
+      executablePath: ELECTRON_PATH,
+      args,
+    });
+    const page = await app.firstWindow();
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+    page.on('console', (message) => {
+      if (message.type() === 'error') consoleErrors.push(message.text());
+    });
+
+    await expect(page).toHaveTitle(/A11y Notebook/);
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+
+    // Real user path: Settings dialog, Theme select, Save — the same path
+    // as the light test, which previously proved the theme select itself
+    // was a dead control for High contrast in ordinary mode.
+    for (let attempt = 0; attempt < 6; attempt++) {
+      if ((await page.getByRole('dialog', { name: 'Settings' }).count()) > 0) break;
+      await page.keyboard.press('Control+Alt+S');
+      await page.waitForTimeout(500);
+    }
+    await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
+    const themeSelect = page.locator('select').filter({ has: page.locator('option[value="high-contrast"]') });
+    await expect(themeSelect).toBeVisible();
+    await themeSelect.selectOption('high-contrast');
+    await page.getByRole('button', { name: 'Save settings' }).click();
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.dataset.theme)).toBe('high-contrast');
+
+    // Computed styles prove the high contrast stylesheet applied, not just
+    // the attribute: black header, white input border (the dark theme
+    // would show a near-black header too, but a pale blue input border).
+    const headerBg = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.app-header') as HTMLElement).backgroundColor,
+    );
+    expect(headerBg).toBe('rgb(0, 0, 0)');
+    const searchBorder = await page.evaluate(() => {
+      const input = document.querySelector('.global-search input') as HTMLElement | null;
+      return input ? getComputedStyle(input).borderColor : null;
+    });
+    expect(searchBorder).toBe('rgb(255, 255, 255)');
+
+    // Keyboard focus must show the HIGH CONTRAST focus outline (yellow),
+    // not the dark sky blue.
+    await page.keyboard.press('Tab');
+    const focus = await page.evaluate(() => {
+      const element = document.activeElement as HTMLElement | null;
+      if (!element) return null;
+      const style = getComputedStyle(element);
+      return {
+        tag: element.tagName,
+        outlineWidth: style.outlineWidth,
+        outlineColor: style.outlineColor,
+      };
+    });
+    expect(focus).not.toBeNull();
+    expect(['BUTTON', 'A', 'INPUT', 'TEXTAREA', 'SELECT'].includes(focus!.tag)).toBe(true);
+    expect(focus!.outlineWidth).toBe('3px');
+    expect(focus!.outlineColor).toBe('rgb(255, 255, 0)');
+
+    // 200% zoom reflow in the high contrast theme, same bar as the others.
+    const canZoom = await page.evaluate(
+      () =>
+        typeof (window as unknown as { a11yNotebook?: { setZoomFactor?: unknown } }).a11yNotebook?.setZoomFactor ===
+        'function',
+    );
+    expect(canZoom).toBe(true);
+    await page.evaluate(() =>
+      (window as unknown as { a11yNotebook: { setZoomFactor: (factor: number) => void } }).a11yNotebook.setZoomFactor(
+        2,
+      ),
+    );
+    await page.waitForTimeout(500);
+    const overflowAtZoom = await page.evaluate(
+      () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 1,
+    );
+    expect(overflowAtZoom).toBe(false);
+    await page.evaluate(() =>
+      (window as unknown as { a11yNotebook: { setZoomFactor: (factor: number) => void } }).a11yNotebook.setZoomFactor(
+        1,
+      ),
+    );
+
+    // axe in the real renderer, contrast included, high contrast applied.
+    await page.addScriptTag({ path: path.join(__dirname, '..', 'node_modules', 'axe-core', 'axe.min.js') });
+    const results = await page.evaluate(async () => {
+      const axe = (
+        window as unknown as {
+          axe: { run: (context: unknown, options: unknown) => Promise<{ violations: unknown[] }> };
+        }
+      ).axe;
+      return axe.run(document, {
+        runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'] },
+      });
+    });
+    try {
+      writeFileSync(
+        path.join(tmpdir(), 'e2e-axe-high-contrast.json'),
+        JSON.stringify(results.violations, null, 2),
+        'utf8',
+      );
+      writeFileSync(
+        path.join(tmpdir(), 'e2e-console-high-contrast.json'),
+        JSON.stringify({ pageErrors, consoleErrors }, null, 2),
+        'utf8',
+      );
+    } catch (error) {
+      console.warn('Could not write the high-contrast E2E reports:', error);
     }
     expect(results.violations).toEqual([]);
     expect(pageErrors).toEqual([]);

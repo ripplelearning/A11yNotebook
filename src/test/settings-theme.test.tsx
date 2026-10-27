@@ -21,4 +21,21 @@ describe('Settings theme option', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
     await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'light' })));
   });
+
+  it('saves the High contrast theme when the Theme select changes', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClose = vi.fn();
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={onClose}
+        onShortcutCaptureChange={vi.fn()}
+      />,
+    );
+    const themeSelect = screen.getByLabelText('Theme', { selector: 'select' }) as HTMLSelectElement;
+    fireEvent.change(themeSelect, { target: { value: 'high-contrast' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ theme: 'high-contrast' })));
+  });
 });
