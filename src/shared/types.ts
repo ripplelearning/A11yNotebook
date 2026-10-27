@@ -114,7 +114,16 @@ export interface VaultBookmark {
 export interface ReadingPosition {
   path: string;
   /** EPUB CFI for ePub documents; empty when only the section is known. */
-  cfi: string;
-  sectionIndex: number;
+  cfi?: string;
+  sectionIndex?: number;
+  /** Note reading position: text of the heading the reader had reached. */
+  heading?: string;
+  /** Zero-based occurrence among headings with the same text. */
+  occurrence?: number;
   updated: string;
 }
+
+/** What a caller may save: an ePub CFI address or a note heading anchor. */
+export type ReadingPositionInput =
+  | { cfi: string; sectionIndex: number }
+  | { heading: string; occurrence: number };

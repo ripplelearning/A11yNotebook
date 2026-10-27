@@ -37,7 +37,7 @@ import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotatio
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
-import type { VaultEntry, VaultInfo } from '../../src/shared/types';
+import type { ReadingPositionInput, VaultEntry, VaultInfo } from '../../src/shared/types';
 import type { SyncStateFile } from '../../src/shared/calendar-sync';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import {
@@ -3585,7 +3585,7 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Reading position path must be text.');
     if (typeof position !== 'object' || position === null) throw new Error('The reading position is invalid.');
-    const candidate = position as { cfi: unknown; sectionIndex: unknown };
+    const candidate = position as ReadingPositionInput;
     return requireService().setReadingPosition(relativePath, candidate);
   });
   return { runReminderWake };

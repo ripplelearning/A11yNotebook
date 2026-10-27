@@ -2,6 +2,7 @@ import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
 import type {
   ReadingPosition,
+  ReadingPositionInput,
   RecentLibrary,
   VaultBookmark,
   VaultCaptureResult,
@@ -203,7 +204,7 @@ export interface VaultBridge {
   listAppleCalendars?(): Promise<Array<{ name: string; url: string }>>;
   signOutApple?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
-  setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;
+  setReadingPosition?(path: string, position: ReadingPositionInput): Promise<void>;
 }
 
 /** Narrow updater API exposed to the renderer through the preload script. */

@@ -114,6 +114,8 @@ Opening the same note again reuses its tab; opening another note keeps existing 
 Navigation views do not close note tabs. Ctrl+Tab cycles open tabs, and arrow keys navigate the tab strip.
 Closing an active tab returns to Welcome and focuses the tab strip; cancelling an unsaved-change confirmation
 keeps the note open. Reopening a closed note reloads its saved content and reapplies the default mode.
+When a note reopens in Read mode, it resumes at the heading you had reached while reading; bookmark jumps
+still take precedence over the resumed position.
 In **Settings → Default note open mode**, choose **Read mode** (the default, including older settings)
 or **Edit mode**. This preference applies to managed notes when opened or activated; it does not make read-only
 document previews editable or bypass an encrypted-note or editing lock. Ctrl+E remains the explicit editing toggle.

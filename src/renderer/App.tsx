@@ -75,6 +75,7 @@ import SpellingDialog from './features/vault/SpellingDialog';
 import ThesaurusDialog from './features/vault/ThesaurusDialog';
 import { BrokenLinksDialog } from './features/vault/BrokenLinksDialog';
 import { retargetLinkContent } from '../shared/link-retarget';
+import { notePositionFromHeadings } from '../shared/note-reading-position';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
@@ -2136,6 +2137,73 @@ export default function App() {
     setStatusMessage('Opened at the bookmarked place.');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingBookmarkAnchor, currentNote]);
+
+  // Resume a note in reading mode at the heading the reader had reached.
+  // A bookmark jump takes precedence: when one is pending, this stays out
+  // of its way instead of fighting it for the scroll position.
+  useEffect(() => {
+    if (mode !== 'read-only' || !currentNote || pendingBookmarkAnchor) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getReadingPosition) return;
+    const path = currentNote.path;
+    let cancelled = false;
+    void bridge
+      .getReadingPosition(path)
+      .then((saved) => {
+        if (cancelled || !saved?.heading) return;
+        const container = annotationTools.documentRef.current;
+        const headings = container ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')] : [];
+        const matches = headings.filter((heading) => heading.textContent?.trim() === saved.heading);
+        const target = matches[saved.occurrence ?? 0] ?? matches[0];
+        if (target) {
+          if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+          target.focus();
+          target.scrollIntoView({ block: 'start' });
+          setStatusMessage(`Resumed at ${saved.heading}.`);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, currentNote?.path]);
+
+  // Track the heading reached while reading, and save it (debounced, with
+  // a flush when leaving the note) so reopening resumes there.
+  useEffect(() => {
+    if (mode !== 'read-only' || !currentNote) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.setReadingPosition) return;
+    const path = currentNote.path;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let last: { heading: string; occurrence: number } | null = null;
+    const flush = () => {
+      if (timer) clearTimeout(timer);
+      timer = null;
+      if (last) void bridge.setReadingPosition!(path, last).catch(() => undefined);
+    };
+    const onScroll = () => {
+      const container = annotationTools.documentRef.current;
+      if (!container) return;
+      const headings = [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')].map((heading) => ({
+        text: heading.textContent?.trim() ?? '',
+        top: heading.getBoundingClientRect().top,
+      }));
+      const current = notePositionFromHeadings(headings);
+      if (current && (current.heading !== last?.heading || current.occurrence !== last?.occurrence)) {
+        last = current;
+        if (timer) clearTimeout(timer);
+        timer = setTimeout(flush, 600);
+      }
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      flush();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, currentNote?.path]);
 
   // Drop fallback-undo histories for notes that are no longer open.
   useEffect(() => {

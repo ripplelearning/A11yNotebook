@@ -21,11 +21,11 @@ describe('reader capability contract', () => {
     expect(html.anchorKind).toBe('semantic-text');
   });
 
-  it('satisfies the required note-reader capabilities, with reading position the documented gap', () => {
+  it('satisfies the required note-reader capabilities, including reading position', () => {
     for (const format of ['markdown-notes', 'html-notes', 'text-notes']) {
       const reader = getReaderContract(format)!;
       expect(missingCapabilities(reader, REQUIRED_NOTE_READER_CAPABILITIES)).toEqual([]);
-      expect(reader.capabilities['reading-position']).toBe(false);
+      expect(reader.capabilities['reading-position']).toBe(true);
     }
   });
 
