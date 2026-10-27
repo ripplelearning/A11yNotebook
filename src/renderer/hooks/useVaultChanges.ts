@@ -8,11 +8,20 @@ export function useVaultChanges(
   setNotes: Dispatch<SetStateAction<OpenNote[]>>,
   setVault: Dispatch<SetStateAction<VaultInfo | null>>,
   announce: (message: string) => void,
+  /**
+   * Called for each note whose content the hook replaces with the disk
+   * version. Callers use it to drop state chained to the old content —
+   * the fallback undo history, whose snapshots would otherwise let
+   * undo resurrect pre-reload content over the reloaded content.
+   */
+  onContentReplaced?: (path: string) => void,
 ) {
   const notesRef = useRef(notes);
   const rootRef = useRef(vault?.path);
+  const onContentReplacedRef = useRef(onContentReplaced);
   notesRef.current = notes;
   rootRef.current = vault?.path;
+  onContentReplacedRef.current = onContentReplaced;
   const [conflicts, setConflicts] = useState<NoteConflict[]>([]);
   const [checking, setChecking] = useState(false);
   const vaultPath = vault?.path;
@@ -45,6 +54,7 @@ export function useVaultChanges(
                   : item,
               ),
             );
+            if (disk !== current.content) onContentReplacedRef.current?.(current.path);
             setConflicts((items) => items.filter((item) => item.path !== current.path));
           } else {
             setConflicts((items) => [

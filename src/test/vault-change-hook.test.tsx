@@ -12,12 +12,13 @@ const vault: VaultInfo = { name: 'Vault', path: '/vault', entries: [{ name: 'N.m
 let listener: (event: VaultChangedEvent) => void;
 let disk = 'initial';
 const announce = vi.fn();
+const onContentReplaced = vi.fn();
 function Harness() {
   const [notes, setNotes] = useState<OpenNote[]>([
     { id: 'N.md', path: 'N.md', title: 'N', content: 'initial', saved: 'initial' },
   ]);
   const [currentVault, setVault] = useState<VaultInfo | null>(vault);
-  const { conflicts } = useVaultChanges(currentVault, notes, setNotes, setVault, announce);
+  const { conflicts } = useVaultChanges(currentVault, notes, setNotes, setVault, announce, onContentReplaced);
   return (
     <>
       <input
@@ -86,5 +87,23 @@ describe('external vault change synchronization', () => {
     act(() => listener({ vaultPath: '/vault', paths: ['N.md'] }));
     await waitFor(() => expect(announce).not.toHaveBeenCalled());
     expect(screen.getByText('No conflicts')).toBeInTheDocument();
+    // The refresh rewrites identical content, so no replacement is reported.
+    expect(onContentReplaced).not.toHaveBeenCalled();
+  });
+  it('reports a note whose content was replaced, but not a conflict or an identical refresh', async () => {
+    setup();
+    disk = 'updated';
+    act(() => listener({ vaultPath: '/vault', paths: ['N.md'] }));
+    await waitFor(() => expect(screen.getByLabelText('Note text')).toHaveValue('updated'));
+    expect(onContentReplaced).toHaveBeenCalledWith('N.md');
+    expect(onContentReplaced).toHaveBeenCalledTimes(1);
+  });
+  it('does not report a note kept back by a conflict', async () => {
+    setup();
+    fireEvent.change(screen.getByLabelText('Note text'), { target: { value: 'mine' } });
+    disk = 'external';
+    act(() => listener({ vaultPath: '/vault', paths: ['N.md'] }));
+    await screen.findByText('Conflict pending');
+    expect(onContentReplaced).not.toHaveBeenCalled();
   });
 });

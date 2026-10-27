@@ -331,6 +331,31 @@ export default function App() {
   // even when the textarea's native undo stack is unavailable.
   const editHistoriesRef = useRef(new Map<string, EditHistory>());
   const noteSnapshotsRef = useRef(new Map<string, EditSnapshot>());
+  /**
+   * Drop the fallback history for a note whose content was replaced
+   * from outside the edit flow (an external reload, or a conflict
+   * resolved with the disk version): the recorded snapshots no longer
+   * chain to the current content, so undoing them would resurrect
+   * stale content over newer content.
+   */
+  const invalidateEditHistory = (id: string) => {
+    editHistoriesRef.current.delete(id);
+    noteSnapshotsRef.current.delete(id);
+    setHistoryVersion((version) => version + 1);
+  };
+  /**
+   * Bring the fallback snapshot up to content changed by an app action
+   * that carries its own undo path (a task toggle, a reminder
+   * completion): no history entry is added, but later undos must chain
+   * from the new content instead of the stale snapshot.
+   */
+  const resyncEditSnapshot = (id: string, content: string) => {
+    noteSnapshotsRef.current.set(id, {
+      content,
+      selectionStart: content.length,
+      selectionEnd: content.length,
+    });
+  };
   // Undoable task toggles, newest last. A toggle writes straight to its
   // note file and never enters the note edit history, so without this
   // stack Edit Undo / Ctrl+Z could not reverse an accidental check-off.
@@ -358,7 +383,7 @@ export default function App() {
   const vaultGenerationRef = useRef(0);
   const vaultPathRef = useRef(vault?.path);
   vaultPathRef.current = vault?.path;
-  const updateNoteContent = (id: string, content: string) => {
+  const updateNoteContent = (id: string, content: string, kind?: string) => {
     if (switchingRef.current) return;
     const note = openNotes.find((item) => item.id === id);
     if (note && note.content !== content) {
@@ -375,9 +400,9 @@ export default function App() {
         selectionStart: caret,
         selectionEnd: textarea && document.activeElement === textarea ? (textarea.selectionEnd ?? caret) : caret,
       };
-      const kind = Math.abs(content.length - before.content.length) <= 2 ? 'typing' : 'edit';
+      const editKind = kind ?? (Math.abs(content.length - before.content.length) <= 2 ? 'typing' : 'edit');
       const history = editHistoriesRef.current.get(id) ?? createEditHistory();
-      const next = recordEdit(history, before, after, kind, Date.now());
+      const next = recordEdit(history, before, after, editKind, Date.now());
       if (next !== history) {
         editHistoriesRef.current.set(id, next);
         setHistoryVersion((version) => version + 1);
@@ -393,6 +418,15 @@ export default function App() {
     const history = note ? editHistoriesRef.current.get(note.id) : undefined;
     if (note && history) {
       const textarea = editorRef.current;
+      const snapshot = noteSnapshotsRef.current.get(note.id);
+      // Defense in depth: if the recorded snapshot no longer matches
+      // the displayed content, the chain is broken (a writer bypassed
+      // the history). Refuse the step and drop the history rather than
+      // restore stale content over newer content.
+      if (snapshot && snapshot.content !== note.content) {
+        invalidateEditHistory(note.id);
+        return false;
+      }
       const current: EditSnapshot = noteSnapshotsRef.current.get(note.id) ?? {
         content: note.content,
         selectionStart: textarea?.selectionStart ?? note.content.length,
@@ -578,7 +612,9 @@ export default function App() {
   // cell. Undefined means no grid focus is pending.
   const [pendingGridFocusPath, setPendingGridFocusPath] = useState<string | null | undefined>(undefined);
   const updater = useUpdater();
-  const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage);
+  const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage, (replacedPath) =>
+    invalidateEditHistory(replacedPath),
+  );
   const { checking: checkingDisk, checkDisk, clearAllConflicts } = synchronization;
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
@@ -1425,7 +1461,10 @@ export default function App() {
       if (!isCurrent()) return;
       await bridge.saveNote(path, content, baseline);
       if (!isCurrent()) return;
-      setOpenNotes((items) => items.map((note) => (note.path === path ? { ...note, content, saved: content } : note)));
+      // Record the insertion in the fallback history so adding a task
+      // can be undone like any other edit; then mark it saved.
+      updateNoteContent(path, content, 'edit');
+      setOpenNotes((items) => items.map((note) => (note.path === path ? { ...note, saved: content } : note)));
       setTaskDialogOpen(false);
       setTaskTabOpen(true);
       setSelectedTab('tasks');
@@ -1483,8 +1522,11 @@ export default function App() {
       const note = openNotes.find((item) => item.path === task.path);
       if (note) {
         const content = await window.a11yNotebook.vault.readNote(task.path);
+        // Record the schedule change in the fallback history so it can
+        // be undone; then mark it saved.
+        updateNoteContent(note.id, content, 'edit');
         setOpenNotes((items) =>
-          items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+          items.map((item) => (item.id === note.id ? { ...item, saved: content } : item)),
         );
       }
       setStatusMessage('Task due date updated.');
@@ -1517,8 +1559,11 @@ export default function App() {
       const note = openNotes.find((item) => item.path === task.path);
       if (note) {
         const content = await window.a11yNotebook.vault.readNote(task.path);
+        // Record the priority change in the fallback history so it can
+        // be undone; then mark it saved.
+        updateNoteContent(note.id, content, 'edit');
         setOpenNotes((items) =>
-          items.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
+          items.map((item) => (item.id === note.id ? { ...item, saved: content } : item)),
         );
       }
       setStatusMessage('Task priority updated.');
@@ -2576,6 +2621,11 @@ export default function App() {
         await bridge.saveNote(note.path, content, disk);
         clearEditLock(note.path);
       }
+      // Resolving with the disk version replaces the content the
+      // history was recorded against; drop it rather than let undo
+      // resurrect the conflicted content. ('Mine' keeps the content,
+      // so its history stays valid.)
+      if (content !== note.content) invalidateEditHistory(note.id);
       setOpenNotes((items) =>
         items.map((item) => (item.path === note.path ? { ...item, content, saved: content } : item)),
       );
@@ -2633,6 +2683,9 @@ export default function App() {
         setOpenNotes((current) =>
           current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
         );
+        // The toggle carries its own undo entry; keep the fallback
+        // snapshot chained to the toggled content.
+        resyncEditSnapshot(note.id, content);
       } else if (note) {
         if (!task.line) return;
         const lines = note.content.split(/\r?\n/);
@@ -2643,6 +2696,7 @@ export default function App() {
           setOpenNotes((current) =>
             current.map((item) => (item.id === note.id ? { ...item, content, saved: content } : item)),
           );
+          resyncEditSnapshot(note.id, content);
         }
       }
       setStatusMessage(nextComplete ? 'Task marked complete.' : 'Task marked open.');
@@ -2713,6 +2767,9 @@ export default function App() {
       setOpenNotes((items) =>
         items.map((note) => (note.path === reminder.path ? { ...note, content, saved: content } : note)),
       );
+      // Completing a reminder may rewrite its task line; keep the
+      // fallback snapshot chained to the new content.
+      resyncEditSnapshot(reminder.path, content);
     }
   };
 
