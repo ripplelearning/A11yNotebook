@@ -197,7 +197,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           $rc = $env:RELEASE_TAG -match '-rc\.'
-          $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings' }
+          $trust = if ($env:FORCE_SIGNING -eq 'true') { 'Signed (Authenticode verified)' } elseif ($rc) { 'UNSIGNED prerelease; Windows may display SmartScreen warnings, macOS may display Gatekeeper warnings (right-click → Open)' } else { 'UNSIGNED stable release; Windows may display SmartScreen warnings, macOS may display Gatekeeper warnings (right-click → Open)' }
           $desktopValidation = Get-Content release/desktop-validation.json -Raw | ConvertFrom-Json
           $desktopOutcomes = "Windows desktop UI Automation: $($desktopValidation.uiAutomation). Installer-over-install smoke: $($desktopValidation.installerOverInstall)."
           $desktopPolicy = if ($desktopValidation.failedChecks.Count -gt 0 -and $rc) {
@@ -246,3 +246,106 @@ jobs:
             if (!$asset -or $asset.size -ne $file.Length) { throw "Published asset missing or wrong size: $($file.Name)" }
           }
           "Download: $($release.url)" >> $env:GITHUB_STEP_SUMMARY
+
+  release-mac:
+    runs-on: macos-latest
+    env:
+      RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+    steps:
+      - name: Validate tag input
+        run: |
+          if [[ ! "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-rc\.[0-9]+)?$ ]]; then
+            echo 'Use an exact vX.Y.Z or vX.Y.Z-rc.N tag.' >&2
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG }}
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Verify exact merged tag
+        run: |
+          node scripts/verify-release.mjs tag "$RELEASE_TAG"
+          git merge-base --is-ancestor HEAD origin/main
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Test
+        run: npm test
+
+      - name: Verify release-tool formatting and generated shortcuts
+        run: |
+          npx prettier --check .github/workflows/ci.yml .github/workflows/release.yml scripts/verify-release.mjs src/test/release-validation.test.ts docs/updater.md package.json package-lock.json
+          npm run docs:shortcuts
+          git diff --exit-code -- docs/keyboard-shortcuts.md
+
+      - name: Build and package without publishing (unsigned)
+        run: npm run package:mac -- --config.forceCodeSigning=false --config.generateUpdatesFilesForAllChannels=false
+
+      - name: Verify installers mount and contain the app
+        run: |
+          version=$(node -p "require('./package.json').version")
+          for arch in arm64 x64; do
+            dmg="release/A11y-Notebook-$version-$arch.dmg"
+            zip="release/A11y-Notebook-$version-$arch-mac.zip"
+            test -s "$dmg" || { echo "Missing or empty: $dmg" >&2; exit 1; }
+            test -s "$zip" || { echo "Missing or empty: $zip" >&2; exit 1; }
+            mount=$(hdiutil attach -nobrowse -readonly "$dmg" | tail -1 | awk '{$1=""; $2=""; print substr($0, 3)}' | xargs)
+            test -d "$mount/A11y Notebook.app" || { echo "No app bundle in $dmg" >&2; hdiutil detach "$mount" >/dev/null 2>&1 || true; exit 1; }
+            test -n "$(find "$mount/A11y Notebook.app/Contents/Resources" -maxdepth 1 -name '*.icns' -print -quit)" || { echo "No .icns in $dmg" >&2; hdiutil detach "$mount" >/dev/null 2>&1 || true; exit 1; }
+            hdiutil detach "$mount" >/dev/null
+          done
+
+      - name: Drop update metadata and record Mac checksums
+        run: |
+          # Unsigned Mac builds cannot auto-update, so no latest-mac.yml
+          # may reach the release. Checksums use a Mac-only filename so
+          # they never collide with the Windows SHA256SUMS.txt asset.
+          rm -f release/latest-mac.yml release/*.blockmap
+          (cd release && shasum -a 256 A11y-Notebook-*.dmg A11y-Notebook-*-mac.zip > SHA256SUMS-mac.txt)
+
+      - name: Retain verified build even if publication fails
+        uses: actions/upload-artifact@v7
+        with:
+          name: mac-${{ env.RELEASE_TAG }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS-mac.txt
+          if-no-files-found: error
+
+      - name: Upload Mac assets to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The Windows job creates the release; wait for it rather than
+          # creating a second one, so a release never ships one platform.
+          for _ in $(seq 1 60); do
+            if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url >/dev/null 2>&1; then
+              break
+            fi
+            sleep 30
+          done
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json url >/dev/null
+          gh release upload "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" release/*.dmg release/*.zip release/SHA256SUMS-mac.txt --clobber=false
+          release_json=$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '.assets')
+          for path in release/*.dmg release/*.zip release/SHA256SUMS-mac.txt; do
+            file=$(basename "$path")
+            size=$(stat -f%z "$path")
+            found=$(echo "$release_json" | jq -r --arg name "$file" --argjson size "$size" '.[] | select(.name == $name and .size == $size) | .name' | head -1)
+            if [ -z "$found" ]; then echo "Published asset missing or wrong size: $file" >&2; exit 1; fi
+          done
+          echo "Mac assets published to the $RELEASE_TAG release."

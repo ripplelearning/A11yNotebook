@@ -6,6 +6,7 @@ export function useShortcutCapture(
   shortcuts: NotebookSettings['shortcuts'],
   onCapture: (id: CommandId, shortcut: string) => void,
   onCaptureChange?: (active: boolean) => void,
+  isMac = false,
 ) {
   const [capturing, setCapturing] = useState<CommandId | null>(null);
   const active = useRef<CommandId | null>(null);
@@ -50,14 +51,24 @@ export function useShortcutCapture(
         return;
       }
       if (['Control', 'Alt', 'Shift', 'Meta'].includes(event.key)) return;
-      if (event.isComposing || event.keyCode === 229 || event.getModifierState('AltGraph') || event.metaKey) {
+      // On macOS, Command is the Ctrl slot and a physical Ctrl press is
+      // not capturable, matching the command matcher (VoiceOver safety).
+      if (isMac ? event.ctrlKey : event.metaKey) {
+        setNotice(
+          isMac
+            ? 'That input cannot be captured. Use Command/Option plus a letter, number, or navigation key, or F1–F12. Escape cancels.'
+            : 'That input cannot be captured. Use Ctrl/Alt plus a letter, number, or navigation key, or F1–F12. Escape cancels.',
+        );
+        return;
+      }
+      if (event.isComposing || event.keyCode === 229 || event.getModifierState('AltGraph')) {
         setNotice('That input cannot be captured. Use Ctrl/Alt plus a letter, number, or navigation key, or F1–F12. Escape cancels.');
         return;
       }
       try {
         const shortcut = normalizeShortcut(
           [
-            ...(event.ctrlKey ? ['Ctrl'] : []),
+            ...((isMac ? event.metaKey : event.ctrlKey) ? ['Ctrl'] : []),
             ...(event.altKey ? ['Alt'] : []),
             ...(event.shiftKey ? ['Shift'] : []),
             event.key,
@@ -78,7 +89,7 @@ export function useShortcutCapture(
     };
     window.addEventListener('keydown', handleKey, true);
     return () => window.removeEventListener('keydown', handleKey, true);
-  }, [capturing, shortcuts, onCapture, stop]);
+  }, [capturing, shortcuts, onCapture, stop, isMac]);
 
   useEffect(
     () => () => {

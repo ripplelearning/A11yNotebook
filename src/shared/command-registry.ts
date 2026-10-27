@@ -885,24 +885,39 @@ export function cycleFocusRegions(
 type ShortcutKeyEvent = { key: string; ctrlKey: boolean; altKey: boolean; shiftKey: boolean; metaKey: boolean };
 
 /** Check whether a keyboard event matches a shortcut string such as "Ctrl+K" or "F9". */
-export function matchesShortcut(event: ShortcutKeyEvent, shortcut: string): boolean {
+export function matchesShortcut(event: ShortcutKeyEvent, shortcut: string, isMac = false): boolean {
   const parts = shortcut.split('+').map((part) => part.trim().toLowerCase());
   const key = parts.pop();
   if (!key) {
     return false;
   }
+  // On macOS, Command is the Ctrl equivalent: a physical Ctrl press never
+  // triggers a command, so VoiceOver's Ctrl+Option modifier can never
+  // fire one by accident. Option maps to Alt as usual.
+  const ctrlKey = isMac ? event.metaKey : event.ctrlKey;
+  const otherModifierClear = isMac ? !event.ctrlKey : !event.metaKey;
   return (
     event.key.toLowerCase() === key &&
-    event.ctrlKey === parts.includes('ctrl') &&
+    ctrlKey === parts.includes('ctrl') &&
     event.altKey === parts.includes('alt') &&
     event.shiftKey === parts.includes('shift') &&
-    !event.metaKey
+    otherModifierClear
   );
 }
 
 /** Convert "Ctrl+K" into the aria-keyshortcuts format "Control+K". */
 export function toAriaKeyShortcut(shortcut: string): string {
   return shortcut.replace(/\bCtrl\b/g, 'Control');
+}
+
+/** Render a stored Ctrl/Alt shortcut for macOS display: Ctrl → Command, Alt → Option. */
+export function toMacShortcut(shortcut: string): string {
+  return shortcut.replace(/\bCtrl\b/g, 'Command').replace(/\bAlt\b/g, 'Option');
+}
+
+/** Convert "Ctrl+K" into the macOS aria-keyshortcuts format "Meta+K". */
+export function toMacAriaKeyShortcut(shortcut: string): string {
+  return shortcut.replace(/\bCtrl\b/g, 'Meta');
 }
 
 /**

@@ -1,5 +1,6 @@
-// Native Windows application menu. Renderer commands remain registry-backed and
-// are forwarded through the fixed menu-command IPC channel.
+// Native application menu. Renderer commands remain registry-backed and
+// are forwarded through the fixed menu-command IPC channel. On macOS the
+// standard application menu is prepended and Explorer is named Finder.
 import { Menu, type MenuItemConstructorOptions } from 'electron';
 import type { MenuCommand, NativeMenuState } from '../src/shared/ipc';
 import { getCommandById, type CommandId } from '../src/shared/command-registry';
@@ -159,6 +160,24 @@ export function buildApplicationMenu(
       ],
     },
   ];
+
+  if (process.platform === 'darwin') {
+    // macOS provides the standard application menu (About, Services,
+    // Hide, Quit) via the appMenu role; the File menu's Quit would
+    // duplicate it. Labels name Finder instead of Explorer.
+    template.unshift({ role: 'appMenu' });
+    for (const group of template) {
+      const submenu = group.submenu as MenuItemConstructorOptions[] | undefined;
+      if (!submenu) continue;
+      const kept = submenu.filter((item) => item.role !== 'quit');
+      if (kept.length !== submenu.length) group.submenu = kept;
+      for (const item of kept) {
+        if (item.id === 'reveal-selected' && typeof item.label === 'string') {
+          item.label = item.label.replace('Explorer', 'Finder');
+        }
+      }
+    }
+  }
 
   if (isShortcutCaptureActive()) {
     for (const group of template) {

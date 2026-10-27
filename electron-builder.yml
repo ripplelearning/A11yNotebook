@@ -45,6 +45,32 @@ nsis:
 portable:
   artifactName: A11y-Notebook-Portable-${version}.${ext}
 
+# macOS (unsigned first, per the Oct 27, 2026 decision): no Apple Developer
+# signing/notarization yet, so Gatekeeper warns on first launch and users
+# install via right-click → Open, and in-app updates do not run on Mac.
+# When signing is set up, remove hardenedRuntime: false and
+# gatekeeperAssess: false and let electron-builder sign + notarize.
+# build/icon.icns is generated from build/icon.ico's 256px PNG (the
+# largest source in the repo); the 512/1024 elements are upscales, so
+# large icons render soft until a higher-resolution source exists.
+mac:
+  icon: build/icon.icns
+  category: public.app-category.productivity
+  hardenedRuntime: false
+  gatekeeperAssess: false
+  target:
+    - target: dmg
+      arch:
+        - arm64
+        - x64
+    - target: zip
+      arch:
+        - arm64
+        - x64
+
+dmg:
+  artifactName: A11y-Notebook-${version}-${arch}.${ext}
+
 publish:
   provider: github
   owner: ripplelearning

@@ -8,6 +8,8 @@ import {
   getKeyboardShortcuts,
   matchesShortcut,
   toAriaKeyShortcut,
+  toMacAriaKeyShortcut,
+  toMacShortcut,
   type CommandActionContext,
 } from '../shared/command-registry';
 import type { AppMode } from '../shared/types';
@@ -205,6 +207,20 @@ describe('keyboard shortcut matching', () => {
     expect(matchesShortcut(key('k'), 'Ctrl+K')).toBe(false);
     expect(matchesShortcut(key('F9'), 'F9')).toBe(true);
     expect(matchesShortcut(key('1', { altKey: true }), 'Alt+1')).toBe(true);
+  });
+
+  it('maps Command to Ctrl on macOS and never fires on physical Ctrl', () => {
+    expect(matchesShortcut(key('k', { metaKey: true }), 'Ctrl+K', true)).toBe(true);
+    expect(matchesShortcut(key('k', { ctrlKey: true }), 'Ctrl+K', true)).toBe(false);
+    // VoiceOver's Ctrl+Option modifier must not fire a Ctrl+Alt command.
+    expect(matchesShortcut(key('h', { ctrlKey: true, altKey: true }), 'Ctrl+Alt+H', true)).toBe(false);
+    expect(matchesShortcut(key('h', { metaKey: true, altKey: true }), 'Ctrl+Alt+H', true)).toBe(true);
+    expect(matchesShortcut(key('k', { metaKey: true, ctrlKey: true }), 'Ctrl+K', true)).toBe(false);
+  });
+
+  it('converts shortcuts to macOS display and aria formats', () => {
+    expect(toMacShortcut('Ctrl+Alt+H')).toBe('Command+Option+H');
+    expect(toMacAriaKeyShortcut('Ctrl+Shift+K')).toBe('Meta+Shift+K');
   });
 
   it('converts shortcuts to aria-keyshortcuts format', () => {

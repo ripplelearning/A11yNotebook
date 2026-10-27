@@ -54,6 +54,18 @@ a:focus-visible,
   transition-duration: 0.01ms !important;
 }
 
+/* The operating system's Reduce Motion setting is honored even when the
+   app's own reduced-motion setting is off. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
 .app-shell {
   min-height: 100vh;
   display: grid;
