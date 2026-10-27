@@ -129,6 +129,7 @@ export function buildApplicationMenu(
         commandItem('convert-note-to-outline'),
         { type: 'separator' },
         commandItem('refresh-links'),
+        commandItem('repair-broken-links'),
         { type: 'separator' },
         commandItem('check-spelling-grammar'),
         commandItem('open-thesaurus'),

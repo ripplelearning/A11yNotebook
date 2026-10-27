@@ -99,12 +99,42 @@ export function buildVaultLinkIndex(
               ? wikiCandidates[0]
               : undefined
           : byPath.get(candidatePath.toLocaleLowerCase());
+        // Unresolved links carry what repair needs: the target as
+        // written (for retargeting) and the path creating the note
+        // would repair (for creation). Wiki titles without a folder
+        // resolve by title anywhere, so their creation default is the
+        // source note's own notebook.
+        let missingCandidate: string | undefined;
+        if (!resolved) {
+          if (!isWiki) {
+            missingCandidate = candidatePath;
+          } else {
+            const rawWiki = target.split('#')[0].trim().replace(/\.md$/i, '');
+            missingCandidate = rawWiki
+              ? rawWiki.includes('/')
+                ? `${rawWiki}.md`
+                : path.posix.join(path.posix.dirname(sourcePath), `${path.posix.basename(rawWiki)}.md`)
+              : undefined;
+          }
+          // A candidate that escapes the library (or is empty) has no
+          // note creation can repair; retargeting is still possible.
+          if (
+            !missingCandidate ||
+            missingCandidate.startsWith('/') ||
+            missingCandidate === '..' ||
+            missingCandidate.startsWith('../')
+          )
+            missingCandidate = undefined;
+        }
         return {
           sourcePath,
           ...(resolved ? { targetPath: resolved.path } : {}),
           targetTitle: isWiki ? target : path.posix.basename(candidatePath),
           resolved: Boolean(resolved),
           attachment: resolved?.kind === 'attachment',
+          ...(resolved
+            ? {}
+            : { writtenTarget: target, candidatePath: missingCandidate }),
         } satisfies VaultLink;
       })
       .filter((link): link is VaultLink => link !== undefined),

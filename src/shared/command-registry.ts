@@ -38,6 +38,7 @@ export type CommandId =
   | 'focus-right-pane'
   | 'command-search'
   | 'refresh-links'
+  | 'repair-broken-links'
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
   | 'show-about'
@@ -772,6 +773,11 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Refresh links',
     description: 'Rescan the library and rebuild local links and backlinks.',
     shortcut: 'F5',
+  },
+  {
+    id: 'repair-broken-links',
+    label: 'Repair broken links',
+    description: 'List links that point at missing notes, and create the missing note or retarget each link.',
   },
   {
     id: 'show-keyboard-shortcuts',

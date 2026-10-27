@@ -68,6 +68,8 @@ describe('Markdown links', () => {
         targetTitle: 'No.md',
         resolved: false,
         attachment: false,
+        writtenTarget: './No.md',
+        candidatePath: 'Folder/No.md',
       },
     ]);
   });
