@@ -25,6 +25,8 @@ export type CommandId =
   | 'edit-redo'
   | 'show-tasks'
   | 'toggle-bookmark'
+  | 'bookmark-heading-at-cursor'
+  | 'bookmark-position-at-cursor'
   | 'toggle-focus-mode'
   | 'edit-note-metadata'
   | 'close-current-tab'
@@ -128,6 +130,8 @@ export type CommandActionContext = {
   saveNote: () => void;
   showTasks: () => void;
   toggleBookmark: () => void;
+  bookmarkHeadingAtCursor: () => void;
+  bookmarkPositionAtCursor: () => void;
   /** Move keyboard focus to a region or control of the shell. */
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
@@ -693,6 +697,18 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+D',
   },
   {
+    id: 'bookmark-heading-at-cursor',
+    label: 'Bookmark heading at cursor',
+    description: 'Bookmark the heading at or before the cursor in the active note.',
+    shortcut: 'Ctrl+Alt+H',
+  },
+  {
+    id: 'bookmark-position-at-cursor',
+    label: 'Bookmark position at cursor',
+    description: 'Bookmark the cursor position in the active note.',
+    shortcut: 'Ctrl+Alt+J',
+  },
+  {
     id: 'toggle-focus-mode',
     label: 'Toggle Focus Mode',
     description: 'Show only the title, menu, search, and document. Press F11 again to restore the full layout.',
@@ -974,6 +990,12 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return 'Export current note dialog ready.';
     case 'toggle-bookmark':
       context.toggleBookmark();
+      return undefined;
+    case 'bookmark-heading-at-cursor':
+      context.bookmarkHeadingAtCursor();
+      return undefined;
+    case 'bookmark-position-at-cursor':
+      context.bookmarkPositionAtCursor();
       return undefined;
     case 'close-current-tab':
       context.setSelectedTab('welcome');

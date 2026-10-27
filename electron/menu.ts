@@ -122,6 +122,8 @@ export function buildApplicationMenu(
         commandItem('open-selected-external'),
         { type: 'separator' },
         commandItem('toggle-bookmark', 'checkbox'),
+        commandItem('bookmark-heading-at-cursor'),
+        commandItem('bookmark-position-at-cursor'),
         commandItem('encrypt-current-note'),
         commandItem('convert-current-note'),
         commandItem('convert-note-to-outline'),

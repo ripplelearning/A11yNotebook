@@ -53,7 +53,7 @@ export function listHeadings(content: string, isHtml: boolean): HeadingHit[] {
  * this heading" means when the caret sits inside a section. Returns null
  * when the caret is before the first heading.
  */
-export function headingAnchorAt(content: string, isHtml: boolean, offset: number): BookmarkAnchor | null {
+export function headingAnchorAt(content: string, isHtml: boolean, offset: number): Extract<BookmarkAnchor, { kind: 'heading' }> | null {
   const headings = listHeadings(content, isHtml);
   let current: HeadingHit | null = null;
   for (const hit of headings) {
@@ -71,6 +71,23 @@ export function resolveBookmarkAnchor(content: string, isHtml: boolean, anchor: 
   const matches = listHeadings(content, isHtml).filter((hit) => hit.text === anchor.text);
   const hit = matches[anchor.occurrence] ?? matches[0];
   return hit ? hit.start : null;
+}
+
+/**
+ * The heading to focus when opening an anchor in the reading view: the
+ * anchor's own heading, or for a position anchor the heading at or
+ * before that position (the section containing it). Null when the note
+ * has no heading at or before the place.
+ */
+export function readingJumpHeading(
+  content: string,
+  isHtml: boolean,
+  anchor: BookmarkAnchor,
+): Extract<BookmarkAnchor, { kind: 'heading' }> | null {
+  if (anchor.kind === 'heading') {
+    return resolveBookmarkAnchor(content, isHtml, anchor) === null ? null : anchor;
+  }
+  return headingAnchorAt(content, isHtml, anchor.offset);
 }
 
 /** Validate an untrusted anchor value (bookmark files are user-editable JSON). */
