@@ -31,13 +31,14 @@ export async function createVaultWatcher(
     }
   }
 
-  // The calendar store is private metadata, but the Calendar screen
-  // displays it, so its changes must reach the screen like any visible
-  // file. Every other private file stays invisible to the watcher.
-  const CALENDAR_STORE_PATH = '.a11ynotebook/calendar.json';
+  // The calendar and task-link stores are private metadata, but the
+  // Calendar and Tasks screens display them, so their changes must reach
+  // the screens like any visible file. Every other private file stays
+  // invisible to the watcher.
+  const REPORTED_STORE_PATHS = new Set(['.a11ynotebook/calendar.json', '.a11ynotebook/task-links.json']);
 
   function schedule(relative: string) {
-    if (closed || (relative && relative !== CALENDAR_STORE_PATH && !isVisibleVaultPath(relative)))
+    if (closed || (relative && !REPORTED_STORE_PATHS.has(relative) && !isVisibleVaultPath(relative)))
       return;
     pending.add(relative);
     if (timer) clearTimeout(timer);

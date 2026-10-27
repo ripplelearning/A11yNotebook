@@ -956,6 +956,27 @@ export default function App() {
       cancelled = true;
     };
   }, [vault]);
+  // Task links are private metadata, but the Tasks screen displays them,
+  // so a cloud-folder change to the task-links store must refresh the
+  // Links column the same way calendar changes refresh the Calendar
+  // screen. The watcher reports the store path (see watcher.ts); this
+  // subscription scopes the refetch to that path so unrelated library
+  // changes do not reload the links.
+  useEffect(() => {
+    if (!vault) return;
+    const bridge = window.a11yNotebook?.vault;
+    const unsubscribe = bridge?.onChanged?.((event) => {
+      if (event.vaultPath !== vault.path) return;
+      if (!event.paths.includes('.a11ynotebook/task-links.json')) return;
+      void bridge
+        .getTaskLinks?.()
+        .then((items) => setTaskLinks(items))
+        .catch(() => undefined);
+    });
+    return () => {
+      unsubscribe?.();
+    };
+  }, [vault]);
   useEffect(() => {
     let cancelled = false;
     if (!vault) {

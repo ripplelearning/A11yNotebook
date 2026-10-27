@@ -141,7 +141,7 @@ describe('external vault watcher', () => {
     await expect(service.startWatcher(() => undefined)).rejects.toThrow('Open a library');
   });
 
-  it('reports calendar store changes but still ignores other metadata writes', async () => {
+  it('reports calendar and task-link store changes but still ignores other metadata writes', async () => {
     const root = await folder();
     await mkdir(path.join(root, '.a11ynotebook'));
     const events: VaultChangedEvent[] = [];
@@ -159,11 +159,16 @@ describe('external vault watcher', () => {
       () => expect(events.some((event) => event.paths.includes('.a11ynotebook/calendar.json'))).toBe(true),
       { timeout: 3000 },
     );
-    const count = events.length;
     await writeFile(path.join(root, '.a11ynotebook', 'task-links.json'), '{}');
+    await vi.waitFor(
+      () => expect(events.some((event) => event.paths.includes('.a11ynotebook/task-links.json'))).toBe(true),
+      { timeout: 3000 },
+    );
+    const count = events.length;
+    await writeFile(path.join(root, '.a11ynotebook', 'bookmarks.json'), '{}');
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(events).toHaveLength(count);
-    expect(events.some((event) => event.paths.includes('.a11ynotebook/task-links.json'))).toBe(false);
+    expect(events.some((event) => event.paths.includes('.a11ynotebook/bookmarks.json'))).toBe(false);
   });
 
   it.skipIf(process.platform === 'win32')(
