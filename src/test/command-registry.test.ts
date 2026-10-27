@@ -23,6 +23,8 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     saveNote: vi.fn(),
     showTasks: vi.fn(),
     toggleBookmark: vi.fn(),
+    bookmarkHeadingAtCursor: vi.fn(),
+    bookmarkPositionAtCursor: vi.fn(),
     focusTarget: vi.fn(),
     checkForUpdates: vi.fn(),
     showKeyboardShortcuts: vi.fn(),

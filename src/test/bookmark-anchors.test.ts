@@ -7,6 +7,7 @@ import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
   listHeadings,
+  readingJumpHeading,
   resolveBookmarkAnchor,
   sanitizeBookmarkAnchor,
 } from '../shared/bookmark-anchors';
@@ -87,5 +88,31 @@ describe('bookmark anchors', () => {
     await service.moveEntry('Guide.md', 'Moved.md');
     const migrated = await service.getBookmarks();
     expect(migrated.every((bookmark) => bookmark.path === 'Moved.md')).toBe(true);
+  });
+});
+
+describe('readingJumpHeading', () => {
+  it('returns a heading anchor itself when its heading exists', () => {
+    expect(readingJumpHeading(markdown, false, { kind: 'heading', text: 'Setup', occurrence: 1 })).toEqual({
+      kind: 'heading',
+      text: 'Setup',
+      occurrence: 1,
+    });
+    expect(readingJumpHeading(markdown, false, { kind: 'heading', text: 'Missing', occurrence: 0 })).toBeNull();
+  });
+
+  it('maps a position anchor to the heading at or before it', () => {
+    const secondSetup = markdown.indexOf('Again.');
+    expect(readingJumpHeading(markdown, false, { kind: 'offset', offset: secondSetup })).toEqual({
+      kind: 'heading',
+      text: 'Setup',
+      occurrence: 1,
+    });
+    expect(readingJumpHeading(markdown, false, { kind: 'offset', offset: markdown.indexOf('Intro.') })).toEqual({
+      kind: 'heading',
+      text: 'Title',
+      occurrence: 0,
+    });
+    expect(readingJumpHeading('Intro first.\n\n# Title\n', false, { kind: 'offset', offset: 0 })).toBeNull();
   });
 });

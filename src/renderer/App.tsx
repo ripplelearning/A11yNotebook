@@ -50,7 +50,7 @@ import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
-import { headingAnchorAt, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
+import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import {
   canRedo,
   canUndo,
@@ -248,6 +248,8 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'reveal-selected',
       'open-selected-external',
       'toggle-bookmark',
+      'bookmark-heading-at-cursor',
+      'bookmark-position-at-cursor',
       'edit-note-metadata',
       'encrypt-current-note',
       'convert-current-note',
@@ -1992,13 +1994,18 @@ export default function App() {
       setStatusMessage('Opened at the bookmarked place.');
       return;
     }
-    if (anchor.kind === 'heading') {
+    const jumpHeading = readingJumpHeading(
+      currentNote.content,
+      /\.html?$/i.test(currentNote.path),
+      anchor,
+    );
+    if (jumpHeading) {
       const container = annotationTools.documentRef.current;
       const headings = container
         ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
         : [];
-      const matches = headings.filter((heading) => heading.textContent?.trim() === anchor.text);
-      const target = matches[anchor.occurrence] ?? matches[0];
+      const matches = headings.filter((heading) => heading.textContent?.trim() === jumpHeading.text);
+      const target = matches[jumpHeading.occurrence] ?? matches[0];
       if (target) {
         if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
         target.focus();
@@ -3272,6 +3279,8 @@ export default function App() {
         navigateScreen('tasks');
       },
       toggleBookmark: () => void toggleActiveBookmark(),
+      bookmarkHeadingAtCursor: () => void addAnchoredBookmark('heading'),
+      bookmarkPositionAtCursor: () => void addAnchoredBookmark('position'),
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
@@ -3499,6 +3508,8 @@ export default function App() {
       return !history || !canRedo(history);
     }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
+    if (id === 'bookmark-heading-at-cursor' || id === 'bookmark-position-at-cursor')
+      return !currentNote || mode !== 'edit';
     if (id === 'toggle-focus-mode') return !currentNote;
     if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);
     if (id === 'save-current-note')

@@ -54,6 +54,8 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 | Ctrl+S         | Save note                               |
 | Ctrl+4         | Tasks                                   |
 | Ctrl+D         | Toggle note bookmark                    |
+| Ctrl+Alt+H     | Bookmark heading at cursor              |
+| Ctrl+Alt+J     | Bookmark position at cursor             |
 | F11            | Toggle Focus Mode                       |
 | Ctrl+Shift+D   | Edit note metadata…                     |
 | Ctrl+W         | Close current tab                       |

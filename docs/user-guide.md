@@ -262,7 +262,11 @@ envelopes are not parsed or exposed as tasks.
 Use `[[Note title]]` to link to a note by title, or a relative Markdown link such as `[Related](./Related.md)`.
 In read mode, activate a resolved link to open its note in a tab. Missing wiki links are marked and announced as
 missing. The right pane lists outgoing links and backlinks for the current note. Choose **Bookmark note** to
-bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. Bookmarks and
+bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. From
+edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at or before the cursor, and
+**Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
+menu and the command palette. Opening an anchored bookmark lands on its heading in the reading view, or
+at its position in edit mode. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
 
 ## Citations and bibliographies
@@ -657,6 +661,6 @@ a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
-Recent-library selection, heading and position bookmarks, general YAML
+Recent-library selection, general YAML
 metadata editing, and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.
