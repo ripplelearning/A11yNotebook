@@ -2816,6 +2816,10 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     return requireService().getTags();
   });
+  ipcMain.handle(IPC_CHANNELS.vaultFrontMatterIndex, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getFrontMatterIndex();
+  });
   ipcMain.handle(IPC_CHANNELS.vaultAnnotations, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !annotations) throw new Error('Invalid annotation request.');

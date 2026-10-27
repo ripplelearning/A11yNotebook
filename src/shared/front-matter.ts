@@ -6,6 +6,16 @@
 // anchors, multi-line strings, explicit tags) is reported as unsupported
 // so callers can refuse structured editing instead of mangling the file.
 // The note body is never touched: edits rewrite only the --- block.
+//
+// Scalars keep their YAML type: a parsed scalar remembers its exact
+// source text (`raw`) and its inferred type (`scalarType`), so opening
+// the editor and applying without touching a field never rewrites
+// `count: 5` as `count: "5"` or `draft: true` as `draft: "true"`. A
+// changed value keeps its type only when the new text parses as that
+// same type; otherwise it is written as a quoted string, which is the
+// safe default for free text. List items are always treated as text.
+
+export type ScalarType = 'string' | 'number' | 'boolean' | 'null';
 
 export interface FrontMatterEntry {
   key: string;
@@ -14,6 +24,10 @@ export interface FrontMatterEntry {
   value: string;
   /** Items when kind is 'list'. */
   items: string[];
+  /** Exact source text of a parsed scalar (after the colon), when known. */
+  raw?: string;
+  /** YAML type inferred from `raw` for a parsed scalar, when known. */
+  scalarType?: ScalarType;
 }
 
 export interface FrontMatterDocument {
@@ -55,12 +69,29 @@ function splitFlowList(text: string): string[] {
     .filter((item) => item.length > 0);
 }
 
-function parseScalarOrList(raw: string): { kind: 'scalar' | 'list'; value: string; items: string[] } {
+function parseScalarOrList(raw: string): {
+  kind: 'scalar' | 'list';
+  value: string;
+  items: string[];
+  raw?: string;
+  scalarType?: ScalarType;
+} {
   const trimmed = raw.trim();
   if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
     return { kind: 'list', value: '', items: splitFlowList(trimmed.slice(1, -1)) };
   }
-  return { kind: 'scalar', value: unquote(trimmed), items: [] };
+  return { kind: 'scalar', value: unquote(trimmed), items: [], raw: trimmed, scalarType: inferScalarType(trimmed) };
+}
+
+/** Infer a scalar's YAML type from its source text. Quoted text is always a string. */
+export function inferScalarType(raw: string): ScalarType {
+  const trimmed = raw.trim();
+  if (trimmed.length >= 2 && trimmed.startsWith('"') && trimmed.endsWith('"')) return 'string';
+  if (trimmed.length >= 2 && trimmed.startsWith("'") && trimmed.endsWith("'")) return 'string';
+  if (/^(true|false)$/i.test(trimmed)) return 'boolean';
+  if (/^(null|~)$/i.test(trimmed)) return 'null';
+  if (/^-?(\d+(\.\d+)?|\.\d+)([eE][-+]?\d+)?$/.test(trimmed)) return 'number';
+  return 'string';
 }
 
 /** Parse a note's front matter. Editing operations require `supported`. */
@@ -129,7 +160,8 @@ export function parseFrontMatter(content: string): FrontMatterDocument {
         index = next - 1;
         continue;
       }
-      entries.push({ key, kind: 'scalar', value: '', items: [] });
+      // A bare `key:` line is a null in YAML, preserved verbatim.
+      entries.push({ key, kind: 'scalar', value: '', items: [], raw: '', scalarType: 'null' });
       continue;
     }
     const parsed = parseScalarOrList(rawValue);
@@ -154,6 +186,20 @@ function quote(value: string): string {
   return needsQuoting(value) ? JSON.stringify(value) : value;
 }
 
+/** Serialize one scalar entry, preserving its YAML type when possible. */
+function serializeScalar(entry: FrontMatterEntry): string {
+  if (entry.raw !== undefined && entry.value === unquote(entry.raw)) {
+    return entry.raw === '' ? `${entry.key}:` : `${entry.key}: ${entry.raw}`;
+  }
+  if (
+    (entry.scalarType === 'number' || entry.scalarType === 'boolean' || entry.scalarType === 'null') &&
+    inferScalarType(entry.value) === entry.scalarType
+  ) {
+    return `${entry.key}: ${entry.value}`;
+  }
+  return `${entry.key}: ${quote(entry.value)}`;
+}
+
 /** Serialize entries back into a full note: --- block + the given body. */
 export function serializeFrontMatter(entries: FrontMatterEntry[], body: string): string {
   if (!entries.length) return body;
@@ -169,7 +215,7 @@ export function serializeFrontMatter(entries: FrontMatterEntry[], body: string):
         for (const item of entry.items) lines.push(`  - ${quote(item)}`);
       }
     } else {
-      lines.push(`${entry.key}: ${quote(entry.value)}`);
+      lines.push(serializeScalar(entry));
     }
   }
   lines.push('---', '');
@@ -180,7 +226,17 @@ export function serializeFrontMatter(entries: FrontMatterEntry[], body: string):
 export function setScalar(entries: FrontMatterEntry[], key: string, value: string): FrontMatterEntry[] {
   const next = entries.filter((entry) => entry.key !== key);
   const index = entries.findIndex((entry) => entry.key === key);
-  const entry: FrontMatterEntry = { key, kind: 'scalar', value, items: [] };
+  // A freshly set value carries the raw form it will serialize to, so a
+  // parse of the serialized note yields the same entry.
+  const raw = quote(value);
+  const entry: FrontMatterEntry = {
+    key,
+    kind: 'scalar',
+    value,
+    items: [],
+    raw,
+    scalarType: inferScalarType(raw),
+  };
   if (index === -1) return [...next, entry];
   next.splice(index, 0, entry);
   return next;
@@ -213,4 +269,36 @@ export function tagsOf(document: FrontMatterDocument): string[] {
 export function suggestTags(libraryTags: string[], current: string[]): string[] {
   const present = new Set(current.map((tag) => tag.toLowerCase()));
   return libraryTags.filter((tag) => !present.has(tag.toLowerCase()));
+}
+
+/** Field-name suggestions: library field names not already on the note, sorted. */
+export function suggestKeys(
+  libraryFields: Record<string, string[]>,
+  currentKeys: string[],
+): string[] {
+  const present = new Set(currentKeys.map((key) => key.toLowerCase()));
+  return Object.keys(libraryFields)
+    .filter((key) => !present.has(key.toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+}
+
+/** Value suggestions: values the library uses for this field, excluding ones already on it. */
+export function suggestValues(
+  libraryFields: Record<string, string[]>,
+  key: string,
+  currentValues: string[],
+): string[] {
+  const present = new Set(currentValues.map((value) => value.toLowerCase()));
+  const seen = new Set<string>();
+  const values: string[] = [];
+  for (const [field, items] of Object.entries(libraryFields)) {
+    if (field.toLowerCase() !== key.toLowerCase()) continue;
+    for (const item of items) {
+      const lowered = item.toLowerCase();
+      if (present.has(lowered) || seen.has(lowered)) continue;
+      seen.add(lowered);
+      values.push(item);
+    }
+  }
+  return values;
 }

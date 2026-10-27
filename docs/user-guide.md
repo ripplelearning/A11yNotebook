@@ -661,6 +661,5 @@ a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
-Recent-library selection, general YAML
-metadata editing, and calendar organization remain open.
+Recent-library selection and calendar organization remain open.
 Manual Windows screen-reader and UI Automation smoke tests have not been run.

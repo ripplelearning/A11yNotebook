@@ -496,6 +496,7 @@ export default function App() {
   const [relocatingPath, setRelocatingPath] = useState<string>();
   const [searchResults, setSearchResults] = useState<VaultSearchResult[]>([]);
   const [tags, setTags] = useState<string[]>([]);
+  const [metadataIndex, setMetadataIndex] = useState<Record<string, string[]>>({});
   const [searchFilters, setSearchFilters] = useState<Omit<VaultSearchQuery, 'text'>>({});
   const [searchScope, setSearchScope] = useState<SearchScope>(() => {
     try {
@@ -995,6 +996,21 @@ export default function App() {
       cancelled = true;
     };
   }, [vault]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (activeDialog !== 'note-metadata') return;
+    // Suggestions are an enhancement: without the index the dialog still edits.
+    void window.a11yNotebook?.vault
+      .getFrontMatterIndex?.()
+      .then((index) => {
+        if (!cancelled) setMetadataIndex(index);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [activeDialog]);
 
   useEffect(() => {
     let cancelled = false;
@@ -4704,6 +4720,7 @@ export default function App() {
           noteTitle={currentNote.title}
           content={currentNote.content}
           libraryTags={tags}
+          libraryFields={metadataIndex}
           onClose={() => setActiveDialog(null)}
           onApply={(nextContent) => {
             updateNoteContent(currentNote.id, nextContent);

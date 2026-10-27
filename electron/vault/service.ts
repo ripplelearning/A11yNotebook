@@ -21,6 +21,7 @@ import {
   type CalendarAppointment,
 } from '../../src/shared/calendar';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
+import { parseFrontMatter } from '../../src/shared/front-matter';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
 import { buildVaultLinkIndex } from './links';
@@ -241,6 +242,60 @@ export function createVaultService(
   async function getTags(): Promise<string[]> {
     if (!searchIndex || disposed) throw new Error('Open a library first.');
     return searchIndex.getTags();
+  }
+
+  /**
+   * Library front-matter index for metadata suggestions: every field name
+   * used by Markdown/text notes, with the values used for it. Grouped
+   * case-insensitively with deterministic display casing, values sorted,
+   * capped so the payload stays small. Unreadable or unsupported notes
+   * are skipped; HTML notes have no front matter and are excluded.
+   */
+  async function getFrontMatterIndex(): Promise<Record<string, string[]>> {
+    const notes: string[] = [];
+    const collect = (entries: VaultEntry[]) =>
+      entries.forEach((entry) => {
+        if (entry.kind === 'note' && /\.(?:md|txt)$/i.test(entry.path)) notes.push(entry.path);
+        if (entry.children) collect(entry.children);
+      });
+    collect((await getVault()).entries);
+    const grouped = new Map<string, { displays: Set<string>; values: Map<string, string> }>();
+    await Promise.all(
+      notes.map(async (notePath) => {
+        let content: string;
+        try {
+          content = await readNote(notePath);
+        } catch {
+          return;
+        }
+        const document = parseFrontMatter(content);
+        if (!document.supported) return;
+        for (const field of document.entries) {
+          const lowered = field.key.toLowerCase();
+          let group = grouped.get(lowered);
+          if (!group) {
+            group = { displays: new Set<string>(), values: new Map<string, string>() };
+            grouped.set(lowered, group);
+          }
+          group.displays.add(field.key);
+          const values = field.kind === 'list' ? field.items : [field.value];
+          for (const value of values) {
+            if (!value) continue;
+            const valueLowered = value.toLowerCase();
+            if (!group.values.has(valueLowered)) group.values.set(valueLowered, value);
+          }
+        }
+      }),
+    );
+    const index: Record<string, string[]> = {};
+    for (const key of [...grouped.keys()].sort().slice(0, 500)) {
+      const group = grouped.get(key);
+      if (!group) continue;
+      // Deterministic display casing regardless of scan completion order.
+      const display = [...group.displays].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0))[0];
+      index[display] = [...group.values.values()].sort((a, b) => a.localeCompare(b)).slice(0, 50);
+    }
+    return index;
   }
 
   function startWatcher(
@@ -1710,6 +1765,7 @@ export function createVaultService(
     resolveMetadata,
     search,
     getTags,
+    getFrontMatterIndex,
     refreshSearchIndex,
     startWatcher,
     dispose,

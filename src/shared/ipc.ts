@@ -85,6 +85,7 @@ export const IPC_CHANNELS = {
   vaultMove: 'vault:move',
   vaultSearch: 'vault:search',
   vaultTags: 'vault:tags',
+  vaultFrontMatterIndex: 'vault:front-matter-index',
   vaultChanged: 'vault:changed',
   vaultAnnotations: 'vault:annotations',
   vaultAnnotationAdd: 'vault:annotation-add',

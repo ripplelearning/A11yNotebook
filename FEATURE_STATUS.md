@@ -101,7 +101,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Markdown, HTML, plain-text, CSV, PDF, and ePub text search with bounded extraction
 - ✅ PDF.js rendering with accessible text, page navigation, and in-document search
 - ✅ epub.js rendering with paginated content, nested navigation TOC, section text, and in-document search
-- 🚧 **Inline/front-matter tag extraction and filtering** — extracted; general YAML editing remains open
+- 🚧 **Inline/front-matter tag extraction and filtering** — extracted; general YAML editing implemented (typed scalars, field-name and value suggestions)
 
 ### Phase 5 — Tasks, Reminders, and Project Planning
 
@@ -206,7 +206,7 @@ implementation, and mocks are not actual Windows verification.
 
 ### Remaining Phase 4 Work
 
-- General YAML metadata editing and suggestions
+- ✅ **General YAML metadata editing and suggestions** — the metadata dialog edits any field, suggests field names and values from the library, and preserves scalar types (numbers, booleans, null) instead of quoting them into strings
 
 ### Remaining Phase 5 Work
 
