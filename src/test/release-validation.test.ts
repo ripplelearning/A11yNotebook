@@ -14,7 +14,14 @@ const hasPowerShell = spawnSync('pwsh', ['-NoProfile', '-Command', 'exit 0']).st
 describe('release workflow publication', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   const publish = workflow.split('      - name: Publish or update release only after validation\n')[1];
-  const script = publish?.split('        run: |\n')[1]?.replace(/^ {10}/gm, '');
+  // The workflow now has a second (macOS) job after the Windows publish
+  // step; the extracted script must stop at that job boundary, or the
+  // macOS job's YAML (including ${{ }} expressions) would be parsed
+  // as PowerShell.
+  const script = publish
+    ?.split('        run: |\n')[1]
+    ?.replace(/^ {10}/gm, '')
+    ?.split(/^\n  [A-Za-z0-9_-]+:\s*$/m)[0];
 
   it('keeps exact-tag and main ancestry validation without rejecting existing release metadata', () => {
     const verify = workflow.split('      - name: Verify exact merged tag\n')[1]?.split('      - name:')[0];
