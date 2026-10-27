@@ -1,7 +1,7 @@
 # A11y Notebook — Implementation Status
 
 **Last Updated:** 2026-10-24  
-**Current Version:** 1.7.0
+**Current Version:** 1.8.0
 **Scope:** releases through v1.6.0, plus paste (PR #116) and Tasks context-menu dialogs (PR #115), merged to
 main October 24, 2026 for the next release.
 

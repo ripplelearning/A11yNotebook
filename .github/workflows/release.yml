@@ -218,6 +218,11 @@ jobs:
           Installer-over-install is NOT full updater E2E. Signed builds must pass Authenticode verification; unsigned builds are published only when signing credentials are absent.
           Manual JAWS/NVDA/Narrator, forced-colors and Windows desktop checks remain for production promotion.
           "@
+          $releaseNotesFile = "docs/releases/$env:RELEASE_TAG.md"
+          if (Test-Path $releaseNotesFile) {
+            $detailed = Get-Content $releaseNotesFile -Raw
+            $notes = "$detailed`n`n---`n`n$notes"
+          }
           $notes | Set-Content "$env:RUNNER_TEMP/release-notes.txt"
           $assets = @(Get-ChildItem release -File | Where-Object {
             ($_.Name -match '\.(exe|blockmap|yml)$' -and $_.Name -ne 'builder-debug.yml') -or $_.Name -in @('SHA256SUMS.txt', 'provenance.json', 'signatures.json', 'desktop-validation.json')
