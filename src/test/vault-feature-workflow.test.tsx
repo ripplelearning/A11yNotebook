@@ -25,7 +25,7 @@ function setup(
 ) {
   let content = note?.content ?? '# Note\n\ntext';
   let unlocked = !options.protectedVault;
-  let listener: (event: VaultChangedEvent) => void = () => undefined;
+  const changedListeners = new Set<(event: VaultChangedEvent) => void>();
   let menuListener: (command: MenuCommand) => void = () => undefined;
   let lock: () => void = () => undefined;
   const reminderListeners = new Set<(event: VaultReminderEvent) => void>();
@@ -111,8 +111,10 @@ function setup(
         };
       },
       onChanged: (callback) => {
-        listener = callback;
-        return () => undefined;
+        changedListeners.add(callback);
+        return () => {
+          changedListeners.delete(callback);
+        };
       },
       search: vi.fn(async () => [
         {
@@ -152,7 +154,7 @@ function setup(
     reminder: (event: VaultReminderEvent) => reminderListeners.forEach((callback) => callback(event)),
     external: (disk: string) => {
       content = disk;
-      listener({ vaultPath: vault.path, paths: ['Note.md'] });
+      changedListeners.forEach((callback) => callback({ vaultPath: vault.path, paths: ['Note.md'] }));
     },
     readContent: () => content,
   };
