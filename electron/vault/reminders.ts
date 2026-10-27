@@ -116,6 +116,31 @@ function migrateTaskReminderId(id: string, migrate: (path: string) => string) {
   return markdown ? `task:${migrate(markdown[1])}:${markdown[2]}:${markdown[3]}` : id;
 }
 
+/**
+ * Pure path migration for a persisted reminder store: standalone
+ * reminder paths, task-reminder state ids, and flashcard review ids.
+ * The live service uses it after a move completes; interrupted-move
+ * recovery uses it directly, because recovery runs before the
+ * scheduler starts and the service refuses to migrate uninitialized.
+ */
+export function migrateReminderStorePaths(store: ReminderStore, from: string, to: string): ReminderStore {
+  const migrate = createPathMigrator(from, to);
+  const standalone = store.standalone.map((item) => {
+    if (item.path === undefined) throw new Error('Invalid standalone reminder.');
+    return { ...item, path: migrate(item.path) };
+  });
+  const states = Object.fromEntries(
+    Object.entries(store.states).map(([id, saved]) => [migrateTaskReminderId(id, migrate), saved]),
+  );
+  const reviewStates = Object.fromEntries(
+    Object.entries(store.reviewStates ?? {}).map(([id, due]) => {
+      const match = /^flashcard:(.*)#([\da-f]{64})$/i.exec(id);
+      return [match ? `flashcard:${migrate(match[1])}#${match[2]}` : id, due];
+    }),
+  );
+  return validateReminderStore({ ...store, standalone, states, reviewStates });
+}
+
 function state(value: unknown): value is ReminderState {
   return (
     object(value) &&
@@ -405,22 +430,10 @@ export function createReminderService(options: ReminderServiceOptions) {
   }
   async function migratePaths(from: string, to: string) {
     if (!initialized) throw new Error('Initialize reminders before migrating paths.');
-    const migrate = createPathMigrator(from, to);
-    const standalone = store.standalone.map((item) => {
-      if (item.path === undefined) throw new Error('Invalid standalone reminder.');
-      return { ...item, path: migrate(item.path) };
-    });
-    const states = Object.fromEntries(
-      Object.entries(store.states).map(([id, saved]) => [migrateTaskReminderId(id, migrate), saved]),
-    );
-    const reviewStates = Object.fromEntries(
-      Object.entries(store.reviewStates ?? {}).map(([id, due]) => {
-        const match = /^flashcard:(.*)#([\da-f]{64})$/i.exec(id);
-        return [match ? `flashcard:${migrate(match[1])}#${match[2]}` : id, due];
-      }),
-    );
-    await save(validateReminderStore({ ...store, standalone, states, reviewStates }));
+    await save(migrateReminderStorePaths(store, from, to));
     // Migration is permitted after stop() so a filesystem move cannot race notifications.
+    // The in-memory list still needs the same rewrite when tick() will not run.
+    const migrate = createPathMigrator(from, to);
     if (!stopped) await tick();
     else
       reminders = reminders.map((item) => ({
