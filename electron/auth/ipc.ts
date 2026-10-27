@@ -7,6 +7,7 @@ import {
   clearAppleAppPassword,
   getAppleAuthStatus,
   getAppleCredentials,
+  listAppleCalendarChoices,
   saveAppleSignIn,
   verifyAppleCalendar,
 } from './apple-auth';
@@ -174,6 +175,15 @@ export function setupAuthIpc(isTrustedSender: TrustedSender): void {
   ipcMain.handle(IPC_CHANNELS.authAppleVerify, async (event) => {
     assertTrusted(event, isTrustedSender);
     return verifyAppleCalendar({
+      userDataPath: userDataPath(),
+      encryptor: safeStorageEncryptor,
+      fetchImpl: asFetch() as unknown as AppleTransportFetch,
+    });
+  });
+
+  ipcMain.handle(IPC_CHANNELS.authAppleCalendars, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return listAppleCalendarChoices({
       userDataPath: userDataPath(),
       encryptor: safeStorageEncryptor,
       fetchImpl: asFetch() as unknown as AppleTransportFetch,

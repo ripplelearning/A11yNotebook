@@ -7,6 +7,7 @@ import {
   clearAppleAppPassword,
   getAppleAuthStatus,
   getAppleCredentials,
+  listAppleCalendarChoices,
   loadAppleAuth,
   saveAppleSignIn,
   verifyAppleCalendar,
@@ -115,5 +116,50 @@ describe('apple auth storage and verify', () => {
     expect(
       await getAppleCredentials({ userDataPath: temporaryDirectory, encryptor: strictEncryptor }),
     ).toEqual({ appleId: 'test@icloud.com', appPassword: 'abcd-efgh' });
+  });
+
+  it('lists calendar names and URLs for the picker', async () => {
+    await saveAppleSignIn(temporaryDirectory, strictEncryptor, {
+      appleId: 'test@icloud.com',
+      appPassword: 'abcd-efgh',
+    });
+    const fetchImpl: AppleTransportFetch = async (url) => {
+      let body = '';
+      if (url === 'https://caldav.icloud.com/') {
+        body =
+          '<D:multistatus xmlns:D="DAV:"><D:response><D:propstat><D:prop>' +
+          '<D:current-user-principal><D:href>/1/principals/users/test/</D:href></D:current-user-principal>' +
+          '</D:prop></D:propstat></D:response></D:multistatus>';
+      } else if (url === 'https://caldav.icloud.com/1/principals/users/test/') {
+        body =
+          '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response><D:propstat><D:prop>' +
+          '<C:calendar-home-set><D:href>/1/calendars/</D:href></C:calendar-home-set>' +
+          '</D:prop></D:propstat></D:response></D:multistatus>';
+      } else {
+        body =
+          '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">' +
+          '<D:response><D:href>/1/calendars/main/</D:href><D:propstat><D:prop>' +
+          '<D:resourcetype><D:collection /><C:calendar /></D:resourcetype>' +
+          '<D:displayname>Calendar</D:displayname>' +
+          '<C:supported-calendar-component-set><C:comp name="VEVENT" /></C:supported-calendar-component-set>' +
+          '</D:prop></D:propstat></D:response>' +
+          '<D:response><D:href>/1/calendars/family/</D:href><D:propstat><D:prop>' +
+          '<D:resourcetype><D:collection /><C:calendar /></D:resourcetype>' +
+          '<D:displayname>Family</D:displayname>' +
+          '<C:supported-calendar-component-set><C:comp name="VEVENT" /></C:supported-calendar-component-set>' +
+          '</D:prop></D:propstat></D:response></D:multistatus>';
+      }
+      return { ok: true, status: 207, text: async () => body };
+    };
+    await expect(
+      listAppleCalendarChoices({
+        userDataPath: temporaryDirectory,
+        encryptor: strictEncryptor,
+        fetchImpl,
+      }),
+    ).resolves.toEqual([
+      { name: 'Calendar', url: 'https://caldav.icloud.com/1/calendars/main/' },
+      { name: 'Family', url: 'https://caldav.icloud.com/1/calendars/family/' },
+    ]);
   });
 });

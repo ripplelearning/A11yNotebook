@@ -118,6 +118,28 @@ describe('calendar sync core', () => {
     expect(cleaned.tombstones).toEqual([{ id: 'gone-1', deletedAt: '2026-10-26T00:00:00.000Z' }]);
   });
 
+  it('keeps a picked Apple calendar in sync state and drops malformed picks', () => {
+    const cleaned = cleanSyncState({
+      version: 1,
+      providers: {
+        apple: {
+          provider: 'apple',
+          calendarUrl: 'https://caldav.icloud.com/123/calendars/family/',
+          calendarName: 'Family',
+        },
+        google: { provider: 'google', calendarUrl: '', calendarName: 42 },
+      },
+      tombstones: [],
+    } as unknown as SyncStateFile);
+    expect(cleaned.providers.apple).toEqual({
+      provider: 'apple',
+      calendarUrl: 'https://caldav.icloud.com/123/calendars/family/',
+      calendarName: 'Family',
+    });
+    expect(cleaned.providers.google?.calendarUrl).toBeUndefined();
+    expect(cleaned.providers.google?.calendarName).toBeUndefined();
+  });
+
   it('persists sync state and cleans it on save and read', async () => {
     const temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-calendar-sync-'));
     try {

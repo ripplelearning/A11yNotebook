@@ -2,6 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   discoverAppleCalendar,
+  listAppleCalendars,
   type AppleTransportFetch,
 } from '../../src/shared/apple-transport';
 
@@ -159,8 +160,9 @@ export async function getAppleCredentials(deps: {
  * Verify a saved Apple sign-in by running CalDAV discovery in main and
  * returning the calendar it finds. The renderer calls this after saving
  * so a typo'd password fails fast with Apple's own error, before any
- * sync run. The discovered URL stays in main; the renderer re-discovers
- * during its sync run.
+ * sync run. The discovered URL stays in main; a sync run uses the
+ * calendar picked in sync state, or re-discovers the first calendar
+ * when none is picked.
  */
 export async function verifyAppleCalendar(deps: {
   userDataPath: string;
@@ -174,4 +176,24 @@ export async function verifyAppleCalendar(deps: {
     fetchImpl: deps.fetchImpl,
   });
   return { calendarName: discovered.displayName };
+}
+
+/**
+ * List the account's event calendars for the picker. Names and URLs
+ * travel to the renderer so it can offer the choice; the URL is a
+ * resource locator, not a credential, and the chosen one is saved in
+ * the library's sync state, not in the auth file.
+ */
+export async function listAppleCalendarChoices(deps: {
+  userDataPath: string;
+  encryptor: AppleAuthEncryptor;
+  fetchImpl: AppleTransportFetch;
+}): Promise<Array<{ name: string; url: string }>> {
+  const credentials = await getAppleCredentials(deps);
+  const calendars = await listAppleCalendars({
+    appleId: credentials.appleId,
+    appPassword: credentials.appPassword,
+    fetchImpl: deps.fetchImpl,
+  });
+  return calendars.map((calendar) => ({ name: calendar.displayName, url: calendar.url }));
 }

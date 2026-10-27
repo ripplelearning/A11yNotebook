@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AppleTransport,
   discoverAppleCalendar,
+  listAppleCalendars,
   type AppleTransportFetch,
 } from '../shared/apple-transport';
 
@@ -24,6 +25,11 @@ const LISTING_XML =
   '<D:response><D:href>/123/calendars/main/</D:href><D:propstat><D:prop>' +
   '<D:resourcetype><D:collection /><C:calendar /></D:resourcetype>' +
   '<D:displayname>Calendar</D:displayname>' +
+  '<C:supported-calendar-component-set><C:comp name="VEVENT" /></C:supported-calendar-component-set>' +
+  '</D:prop></D:propstat></D:response>' +
+  '<D:response><D:href>/123/calendars/family/</D:href><D:propstat><D:prop>' +
+  '<D:resourcetype><D:collection /><C:calendar /></D:resourcetype>' +
+  '<D:displayname>Family</D:displayname>' +
   '<C:supported-calendar-component-set><C:comp name="VEVENT" /></C:supported-calendar-component-set>' +
   '</D:prop></D:propstat></D:response></D:multistatus>';
 
@@ -94,6 +100,23 @@ describe('apple caldav discovery', () => {
     await expect(
       discoverAppleCalendar({ appleId: 'a@icloud.com', appPassword: 'pw', fetchImpl }),
     ).rejects.toThrow('user principal');
+  });
+
+  it('lists every VEVENT calendar, skipping task-only calendars', async () => {
+    const fetchImpl: AppleTransportFetch = async (url) => {
+      let body = '';
+      if (url === 'https://caldav.icloud.com/') body = PRINCIPAL_XML;
+      else if (url === 'https://caldav.icloud.com/123/principals/users/test/') body = HOME_XML;
+      else if (url === 'https://caldav.icloud.com/123/calendars/') body = LISTING_XML;
+      else throw new Error(`Unexpected discovery URL: ${url}`);
+      return { ok: true, status: 207, text: async () => body };
+    };
+    expect(
+      await listAppleCalendars({ appleId: 'test@icloud.com', appPassword: 'abcd-efgh', fetchImpl }),
+    ).toEqual([
+      { url: 'https://caldav.icloud.com/123/calendars/main/', displayName: 'Calendar' },
+      { url: 'https://caldav.icloud.com/123/calendars/family/', displayName: 'Family' },
+    ]);
   });
 });
 
