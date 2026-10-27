@@ -136,7 +136,9 @@ certificate secrets are absent; that capability is not evidence of production re
 - The version in `package.json` must be higher than the installed version, and the tag must match it (the
   release workflow enforces this). `package.json` and `package-lock.json` use plain semver such as `1.1.3`; only
   the git tag carries the `v` prefix (`v1.1.3`).
-- Only the Windows NSIS installer supports in-app updates. macOS and Linux targets are not set up yet.
+- Only the Windows NSIS installer supports in-app updates. macOS targets (dmg, zip) ship unsigned, so macOS
+  in-app updates do not run; Mac users download new releases from the release page and install via right-click
+  → Open until signing is set up.
 
 ## Preparing a downloadable Windows release candidate
 

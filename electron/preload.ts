@@ -362,6 +362,7 @@ const bridge: NotebookBridge = {
   },
   onMenuCommand: (callback) => subscribe<MenuCommand>(CHANNELS.menuCommand, callback),
   setMenuState: (state: NativeMenuState) => ipcRenderer.send(CHANNELS.menuState, state),
+  platform: process.platform,
 };
 
 contextBridge.exposeInMainWorld('a11yNotebook', bridge);

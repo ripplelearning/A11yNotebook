@@ -2,6 +2,8 @@
 
 Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 
+On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
+
 | Shortcut       | Command                                 |
 | -------------- | --------------------------------------- |
 | Ctrl+N         | New in current view                     |

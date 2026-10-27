@@ -34,6 +34,7 @@
     "test:e2e": "npm run build:electron && playwright test",
     "test:watch": "vitest",
     "package:win": "npm run build && electron-builder --win --publish never",
+    "package:mac": "npm run build && electron-builder --mac --publish never",
     "release:win": "npm run build && electron-builder --win --publish always",
     "test:ui-smoke": "powershell -ExecutionPolicy Bypass -File scripts/windows-ui-automation-smoke.ps1"
   },

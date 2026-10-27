@@ -39,6 +39,8 @@ interface Props {
   onLockVault?: () => Promise<void>;
   onSaveCredential?: (id: string, username: string, password: string) => Promise<void>;
   onDeleteCredential?: (id: string) => Promise<void>;
+  /** macOS: Command acts as Ctrl and Option acts as Alt for bindings. */
+  isMac?: boolean;
 }
 
 export default function SettingsDialog({
@@ -56,6 +58,7 @@ export default function SettingsDialog({
   onLockVault,
   onSaveCredential,
   onDeleteCredential,
+  isMac = false,
 }: Props) {
   const [draft, setDraft] = useState(settings);
   const capture = useShortcutCapture(
@@ -66,6 +69,7 @@ export default function SettingsDialog({
         shortcuts: { ...current.shortcuts, [id]: shortcut },
       })),
     onShortcutCaptureChange,
+    isMac,
   );
   const [error, setError] = useState('');
   const [securityNotice, setSecurityNotice] = useState('');
@@ -462,6 +466,9 @@ export default function SettingsDialog({
             keys are reserved. Escape or Tab cancels capture. Operating-system shortcuts may not reach this app.
             Commands with an alternate shortcut show a second field for it; saving rejects any shortcut assigned
             to more than one command.
+            {isMac
+              ? ' On macOS, Command acts as Ctrl and Option acts as Alt: press Command for a Ctrl binding. Bindings are stored and shown with Ctrl/Alt names.'
+              : ''}
           </p>
           <p role="status" aria-live="polite">
             {capture.notice}

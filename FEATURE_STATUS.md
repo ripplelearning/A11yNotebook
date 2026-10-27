@@ -182,6 +182,9 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Automated DOM and keyboard interaction tests
 - ✅ Windows UI Automation smoke-test script (`npm run test:ui-smoke` after `npm run package:win`)
 - ✅ Packaging, installer, and release process
+- ✅ macOS packaging and release parity (dmg + zip for Apple Silicon and Intel, macOS release job, unsigned first with Gatekeeper right-click → Open; Command acts as Ctrl for commands, physical Ctrl never triggers one so VoiceOver's modifier cannot fire commands, standard macOS app menu, Finder naming, OS Reduce Motion and Increase Contrast honored)
+- ⛔ **Manual VoiceOver, Zoom, and macOS accessibility-settings validation** — blocked; requires a real Mac
+- ⛔ **macOS code signing and notarization** — blocked; requires an Apple Developer account (unsigned-first decision, Oct 27, 2026)
 - ✅ Persisted autosave, theme/font-size, and conflict-checked keyboard-shortcut settings
 - ✅ Customizable shortcut conflict detection and reset
 - ✅ Active-binding help in modal

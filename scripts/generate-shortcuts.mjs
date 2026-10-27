@@ -22,7 +22,7 @@ const rows = [...commandList.matchAll(/\{([^{}]*)\}/g)]
   .filter((item) => item.label)
   .flatMap((item) => item.shortcuts.map((shortcut) => `| ${shortcut} | ${item.label} |`));
 
-const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the library tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the library tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |\n`;
+const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\nOn macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the library tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the library tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |\n`;
 const featureNavigation = `
 ## Feature navigation
 

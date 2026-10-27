@@ -18,6 +18,7 @@ import {
   getContextMenuCommands,
   matchesShortcut,
   toAriaKeyShortcut,
+  toMacAriaKeyShortcut,
   type CommandId,
   type MenuContext,
 } from '../shared/command-registry';
@@ -844,9 +845,35 @@ export default function App() {
   }, [vault, relocatingPath, selectedNotebookPath]);
 
   useEffect(() => {
-    document.documentElement.dataset.theme = settings.theme;
+    // The OS Increase Contrast setting wins over the stored theme: when
+    // it asks for more contrast, the high-contrast theme renders even
+    // though Settings still shows the stored choice. The listener keeps
+    // this live when the OS setting changes mid-session. Test and
+    // non-browser environments may lack matchMedia entirely.
+    const media =
+      typeof window.matchMedia === 'function' ? window.matchMedia('(prefers-contrast: more)') : undefined;
+    if (!media) {
+      document.documentElement.dataset.theme = settings.theme;
+      return;
+    }
+    const applyTheme = () => {
+      document.documentElement.dataset.theme = media.matches ? 'high-contrast' : settings.theme;
+    };
+    applyTheme();
+    if (typeof media.addEventListener === 'function') {
+      media.addEventListener('change', applyTheme);
+      return () => media.removeEventListener('change', applyTheme);
+    }
+    if (typeof media.addListener === 'function') {
+      media.addListener(applyTheme);
+      return () => media.removeListener(applyTheme);
+    }
+    return;
+  }, [settings.theme]);
+
+  useEffect(() => {
     document.documentElement.style.fontSize = `${settings.fontSize}px`;
-  }, [settings.theme, settings.fontSize]);
+  }, [settings.fontSize]);
 
   useEffect(() => {
     window.a11yNotebook?.setZoomFactor?.((settings.zoomPercent ?? 100) / 100);
@@ -3576,6 +3603,9 @@ export default function App() {
     }
   };
 
+  // On macOS, Command is the Ctrl equivalent for every command shortcut,
+  // and a physical Ctrl press never triggers one (VoiceOver's modifier).
+  const isMac = window.a11yNotebook?.platform === 'darwin';
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing || securityLockedRef.current || event.keyCode === 229) return;
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
@@ -3623,7 +3653,7 @@ export default function App() {
     if (event.defaultPrevented || event.isComposing) return;
     const command = COMMANDS.find((item) =>
       effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases).some((shortcut) =>
-        matchesShortcut(event, shortcut),
+        matchesShortcut(event, shortcut, isMac),
       ),
     );
     if (command) {
@@ -4108,11 +4138,11 @@ export default function App() {
                       aria-keyshortcuts={
                         [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
                           .filter((shortcut): shortcut is string => Boolean(shortcut))
-                          .map(toAriaKeyShortcut)
+                          .map((shortcut) => (isMac ? toMacAriaKeyShortcut(shortcut) : toAriaKeyShortcut(shortcut)))
                           .join(' ') || undefined
                       }
                     >
-                      {command.label}
+                      {isMac ? command.label.replace('Explorer', 'Finder') : command.label}
                     </button>
                   );
                 })}
@@ -4848,6 +4878,7 @@ export default function App() {
       {activeDialog === 'settings' ? (
         <SettingsDialog
           settings={settings}
+          isMac={isMac}
           onShortcutCaptureChange={(active) => window.a11yNotebook?.setShortcutCaptureActive?.(active)}
           securityEnabled={securityEnabled}
           recoveryAvailable={recoveryAvailable}

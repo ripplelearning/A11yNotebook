@@ -234,4 +234,6 @@ export interface NotebookBridge {
   /** Subscribe to commands chosen from the native application menu. Returns an unsubscribe function. */
   onMenuCommand: (callback: (command: MenuCommand) => void) => () => void;
   setMenuState?: (state: NativeMenuState) => void;
+  /** Host platform (process.platform) for platform-specific key and label handling. */
+  platform?: string;
 }
