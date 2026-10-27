@@ -71,4 +71,42 @@ describe('mind map layouts', () => {
       expect(Number.isFinite(layout.nodes[0].y)).toBe(true);
     }
   });
+
+  it('radial: wide trees never overlap boxes', () => {
+    const wide: OutlineNode = {
+      id: 'root',
+      text: 'Main idea',
+      children: Array.from({ length: 12 }, (_, index) => ({
+        id: `c${index}`,
+        text: `Branch number ${index} with a long label`,
+        children: [],
+      })),
+    };
+    const layout = layoutMindMap(wide, 'radial');
+    const nodes = layout.nodes;
+    for (let first = 0; first < nodes.length; first += 1) {
+      for (let second = first + 1; second < nodes.length; second += 1) {
+        const a = nodes[first];
+        const b = nodes[second];
+        const overlapX = Math.abs(a.x - b.x) < (a.width + b.width) / 2 + 4;
+        const overlapY = Math.abs(a.y - b.y) < (a.height + b.height) / 2 + 4;
+        expect(overlapX && overlapY).toBe(false);
+      }
+    }
+  });
+
+  it('radial: connectors start and end on box edges, not through box centers', () => {
+    const layout = layoutMindMap(tree, 'radial');
+    const byId = new Map(layout.nodes.map((node) => [node.id, node]));
+    const strictlyInside = (x: number, y: number, box: { x: number; y: number; width: number; height: number }) =>
+      Math.abs(x - box.x) < box.width / 2 - 0.5 && Math.abs(y - box.y) < box.height / 2 - 0.5;
+    for (const node of layout.nodes) {
+      if (!node.parentId) continue;
+      const path = layout.connectors.get(node.id)!;
+      const numbers = path.match(/-?\d+(?:\.\d+)?/g)!.map(Number);
+      const [startX, startY, , , , , endX, endY] = numbers;
+      expect(strictlyInside(startX, startY, byId.get(node.parentId)!)).toBe(false);
+      expect(strictlyInside(endX, endY, node)).toBe(false);
+    }
+  });
 });

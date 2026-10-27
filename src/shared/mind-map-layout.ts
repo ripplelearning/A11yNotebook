@@ -108,61 +108,107 @@ function countLeaves(tree: LayoutTree): number {
   return tree.children.length ? tree.children.reduce((sum, child) => sum + countLeaves(child), 0) : 1;
 }
 
-function radial(root: OutlineNode): MindMapLayout {
-  const tree = toLayoutTree(root);
+/** Where a ray from a box center in unit direction (ux, uy) exits the box. */
+function edgePoint(
+  centerX: number,
+  centerY: number,
+  halfWidth: number,
+  halfHeight: number,
+  ux: number,
+  uy: number,
+): { x: number; y: number } {
+  const tx = ux === 0 ? Infinity : halfWidth / Math.abs(ux);
+  const ty = uy === 0 ? Infinity : halfHeight / Math.abs(uy);
+  const distance = Math.min(tx, ty);
+  if (!Number.isFinite(distance)) return { x: centerX, y: centerY };
+  return { x: centerX + ux * distance, y: centerY + uy * distance };
+}
+
+function radialBoxesOverlap(nodes: PlacedNode[], padding: number): boolean {
+  for (let first = 0; first < nodes.length; first += 1) {
+    for (let second = first + 1; second < nodes.length; second += 1) {
+      const a = nodes[first];
+      const b = nodes[second];
+      if (
+        Math.abs(a.x - b.x) < (a.width + b.width) / 2 + padding &&
+        Math.abs(a.y - b.y) < (a.height + b.height) / 2 + padding
+      )
+        return true;
+    }
+  }
+  return false;
+}
+
+function radial(tree: LayoutTree, maxDepth: number): MindMapLayout {
   const RING_GAP = 150;
+  const placeOnce = (scale: number): MindMapLayout => {
+    const radius = (PADDING + MAX_NODE_WIDTH / 2 + (maxDepth + 1) * RING_GAP) * scale;
+    const center = radius;
+    const nodes: PlacedNode[] = [];
+    const connectors = new Map<string, string>();
+    const place = (current: LayoutTree, depth: number, startAngle: number, endAngle: number, parent?: PlacedNode): void => {
+      const angle = (startAngle + endAngle) / 2;
+      const ring = depth === 0 ? 0 : (depth * RING_GAP + MAX_NODE_WIDTH / 2) * scale;
+      const placed: PlacedNode = {
+        id: current.node.id,
+        text: current.node.text,
+        depth,
+        parentId: parent?.id,
+        x: depth === 0 ? center : center + ring * Math.cos(angle),
+        y: depth === 0 ? center : center + ring * Math.sin(angle),
+        width: current.width,
+        height: NODE_HEIGHT,
+      };
+      nodes.push(placed);
+      if (parent) {
+        const dx = placed.x - parent.x;
+        const dy = placed.y - parent.y;
+        const length = Math.hypot(dx, dy);
+        const ux = length === 0 ? 0 : dx / length;
+        const uy = length === 0 ? 0 : dy / length;
+        const start = edgePoint(parent.x, parent.y, parent.width / 2, parent.height / 2, ux, uy);
+        const end = edgePoint(placed.x, placed.y, placed.width / 2, placed.height / 2, -ux, -uy);
+        const control1 = { x: start.x + (end.x - start.x) / 3, y: start.y + (end.y - start.y) / 3 };
+        const control2 = { x: start.x + ((end.x - start.x) * 2) / 3, y: start.y + ((end.y - start.y) * 2) / 3 };
+        connectors.set(
+          placed.id,
+          `M ${start.x} ${start.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${end.x} ${end.y}`,
+        );
+      }
+      const totalLeaves = countLeaves(current);
+      let childStart = startAngle;
+      current.children.forEach((child) => {
+        const share = (countLeaves(child) / totalLeaves) * (endAngle - startAngle);
+        place(child, depth + 1, childStart, childStart + share, placed);
+        childStart += share;
+      });
+    };
+    place(tree, 0, -Math.PI / 2, Math.PI * 1.5);
+    return { width: radius * 2, height: radius * 2, nodes, connectors };
+  };
+  // Wedge shares are proportional to leaf counts, so a wide ring packs
+  // boxes closer than their widths allow. Growing the radius keeps the
+  // angles and proportions but spreads centers apart until no boxes
+  // overlap (bounded: each step multiplies distances by 1.25).
+  let scale = 1;
+  let layout = placeOnce(scale);
+  for (let attempt = 0; attempt < 40 && radialBoxesOverlap(layout.nodes, 4); attempt += 1) {
+    scale *= 1.25;
+    layout = placeOnce(scale);
+  }
+  return layout;
+}
+
+export function layoutMindMap(root: OutlineNode, kind: MindMapLayoutKind): MindMapLayout {
+  if (kind !== 'radial') return hierarchical(root);
+  const tree = toLayoutTree(root);
   let maxDepth = 0;
   const measure = (current: LayoutTree, depth: number) => {
     maxDepth = Math.max(maxDepth, depth);
     current.children.forEach((child) => measure(child, depth + 1));
   };
   measure(tree, 0);
-  const radius = PADDING + MAX_NODE_WIDTH / 2 + (maxDepth + 1) * RING_GAP;
-  const center = radius;
-  const nodes: PlacedNode[] = [];
-  const connectors = new Map<string, string>();
-  const place = (current: LayoutTree, depth: number, startAngle: number, endAngle: number, parent?: PlacedNode): void => {
-    const angle = (startAngle + endAngle) / 2;
-    const ring = depth === 0 ? 0 : depth * RING_GAP + MAX_NODE_WIDTH / 2;
-    const placed: PlacedNode = {
-      id: current.node.id,
-      text: current.node.text,
-      depth,
-      parentId: parent?.id,
-      x: depth === 0 ? center : center + ring * Math.cos(angle),
-      y: depth === 0 ? center : center + ring * Math.sin(angle),
-      width: current.width,
-      height: NODE_HEIGHT,
-    };
-    nodes.push(placed);
-    if (parent) {
-      const control1 = {
-        x: parent.x + (placed.x - parent.x) / 3,
-        y: parent.y + (placed.y - parent.y) / 3,
-      };
-      const control2 = {
-        x: parent.x + ((placed.x - parent.x) * 2) / 3,
-        y: parent.y + ((placed.y - parent.y) * 2) / 3,
-      };
-      connectors.set(
-        placed.id,
-        `M ${parent.x} ${parent.y} C ${control1.x} ${control1.y}, ${control2.x} ${control2.y}, ${placed.x} ${placed.y}`,
-      );
-    }
-    const totalLeaves = countLeaves(current);
-    let childStart = startAngle;
-    current.children.forEach((child) => {
-      const share = (countLeaves(child) / totalLeaves) * (endAngle - startAngle);
-      place(child, depth + 1, childStart, childStart + share, placed);
-      childStart += share;
-    });
-  };
-  place(tree, 0, -Math.PI / 2, Math.PI * 1.5);
-  return { width: radius * 2, height: radius * 2, nodes, connectors };
-}
-
-export function layoutMindMap(root: OutlineNode, kind: MindMapLayoutKind): MindMapLayout {
-  return kind === 'radial' ? radial(root) : hierarchical(root);
+  return radial(tree, maxDepth);
 }
 
 export { FONT_SIZE as MIND_MAP_FONT_SIZE };
