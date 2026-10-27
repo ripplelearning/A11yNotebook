@@ -105,7 +105,7 @@ Executable programs, scripts, and shortcuts are not document imports or supporte
 **Move** chooses a destination notebook. Save all open edits before a rename/move; the native confirmation
 lists notes whose links will change. Cancelling leaves the files untouched. Bookmarks, annotations, image
 descriptions, flashcard schedules, and reminders follow app-managed moves. Ambiguous title links are not repaired;
-use qualified wiki paths such as `[[Notebook/Title]]`. Reference-style Markdown links are not repaired.
+use qualified wiki paths such as `[[Notebook/Title]]`. Reference-style Markdown links are repaired through their definitions.
 
 ## Read and edit notes
 

@@ -35,7 +35,7 @@ Implemented does not mean production-ready; automated tests do not replace the m
 - ✅ Confirmed moves/renames with unambiguous wiki/inline-relative link repair and metadata path migration.
 - ✅ Registry-backed global context menu: Shift+F10, Applications key, and right-click; tree/tab/editor/link/task/search/annotation/reminder/attachment contexts.
 - ✅ Context-menu note encryption action when library protection is enabled.
-- ⏳ Recent-library picker (only automatic last-library restoration currently exists), reference-style link repair, and crash-atomic multi-file moves.
+- ⏳ Crash-atomic multi-file moves.
 
 ## Phase 3 — Reader and editor experience
 
@@ -145,10 +145,10 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 
 ## Other requested roadmap items
 
-- ⏳ Tag and metadata suggestions, general YAML editing, and calendar-like organization are not implemented.
+- ⏳ Calendar-like organization of tag and metadata suggestions is not implemented.
 - ✅ Notebook task-completion summaries, milestone service/progress and planning UI; manual Windows AT validation remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
-- ⏳ Heading/position bookmarks, missing-link repair prompts, and reference-style link repair are not implemented.
+- ⏳ Missing-link repair prompts are not implemented.
 - ✅ Recent-library picker lists the ten most recent libraries on the Libraries screen; the app still restores the last opened library automatically (PR #64).
 - ⛔ Windows signing, UI Automation execution, native notification delivery verification, and real JAWS/NVDA/Narrator speech checks need owner-provisioned credentials or Windows/manual test infrastructure.
 

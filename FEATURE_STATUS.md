@@ -196,7 +196,7 @@ implementation, and mocks are not actual Windows verification.
 
 ### Remaining Phase 2 Work
 
-- Reference-style Markdown link repair
+- ✅ **Reference-style Markdown link repair** — definitions are rewritten on move/rename with the same rules as inline links (code and external URLs untouched, only resolvable targets, relative paths recomputed), and definitions are indexed as links; CRLF notes repair correctly with line endings preserved
 - Crash-atomic multi-file moves
 
 ### Remaining Phase 3 Work

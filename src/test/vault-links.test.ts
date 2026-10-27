@@ -33,6 +33,14 @@ describe('Markdown links', () => {
     ).toEqual([{ target: './Target.md', isWiki: false }]);
   });
 
+  it('ignores fenced code and still parses definitions in CRLF notes', () => {
+    expect(
+      parseMarkdownLinks(
+        '```\r\n[[Fenced]]\r\n[f]: ./Fenced.md\r\n```\r\n\r\n[g]: ./Target.md\r\n',
+      ),
+    ).toEqual([{ target: './Target.md', isWiki: false }]);
+  });
+
   it('builds resolved backlinks and marks missing notes', () => {
     const entries: VaultEntry[] = [
       {
