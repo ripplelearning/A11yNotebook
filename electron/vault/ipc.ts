@@ -165,9 +165,12 @@ function armLockedDueAlerts() {
 }
 
 // Exited-process alerts (Windows Task Scheduler). Consent comes from
-// the backgroundReminders setting; the manager and snapshot sync are
+// the backgroundReminders setting; named wake alerts additionally need
+// the backgroundReminderTitles opt-in, which is the only path that
+// persists titles into the snapshot. The manager and snapshot sync are
 // best-effort and never block reminder operation.
 let backgroundRemindersEnabled = false;
+let backgroundReminderTitlesEnabled = false;
 const scheduledReminders: ScheduledReminderManager = createScheduledReminderManager({});
 
 function reminderLaunchCommand(): { execute: string; args: string[] } {
@@ -179,7 +182,7 @@ function reminderLaunchCommand(): { execute: string; args: string[] } {
 function persistDueSnapshot() {
   if (!service || !dueSnapshotVaultPath) return;
   const vault = service;
-  const snapshot = serializeDueSnapshot(dueSnapshotCache);
+  const snapshot = serializeDueSnapshot(dueSnapshotCache, backgroundReminderTitlesEnabled);
   void metadataFor(vault)
     .write(LOCKED_DUE_SNAPSHOT_FILE, snapshot)
     .catch(() => undefined);
@@ -226,7 +229,13 @@ async function runReminderWake(): Promise<void> {
   if (due.length && Notification.isSupported()) {
     const kinds: LockedDueKind[] = [];
     for (const entry of due) if (!kinds.includes(entry.kind)) kinds.push(entry.kind);
-    const { headline, detail } = lockedDueText(kinds, due.length);
+    // Named wake alerts read titles only from the persisted snapshot,
+    // which carries them solely under the user's opt-in; locked-library
+    // alerts above stay generic either way.
+    const titles = due
+      .filter((entry) => entry.kind === 'reminder' && entry.title)
+      .map((entry) => entry.title as string);
+    const { headline, detail } = lockedDueText(kinds, due.length, titles);
     const notification = new Notification({
       title: 'A11y Notebook',
       body: `${headline} ${detail}`,
@@ -238,7 +247,10 @@ async function runReminderWake(): Promise<void> {
   if (due.length) {
     const temporary = `${file}.wake-${randomUUID()}.tmp`;
     try {
-      await writeFile(temporary, JSON.stringify(serializeDueSnapshot(remaining), null, 2), { mode: 0o600 });
+      // Preserve titles already in the file: a wake launch cannot read
+      // settings, so revoking the opt-in takes effect on the next
+      // app-run persist, which rewrites the snapshot title-free.
+      await writeFile(temporary, JSON.stringify(serializeDueSnapshot(remaining, true), null, 2), { mode: 0o600 });
       await rename(temporary, file);
     } catch {
       await unlink(temporary).catch(() => undefined);
@@ -790,6 +802,7 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
         const validatedOpenSettings = validateSettings(savedSettings);
         nextIdleLockMinutes = validatedOpenSettings.vaultLockMinutes ?? 15;
         backgroundRemindersEnabled = validatedOpenSettings.backgroundReminders === true;
+        backgroundReminderTitlesEnabled = validatedOpenSettings.backgroundReminderTitles === true;
       } catch {
         nextIdleLockMinutes = 15;
       }
@@ -3135,6 +3148,10 @@ export function setupVaultIpc(
     const settings = validateSettings(value);
     idleLockMinutes = settings.vaultLockMinutes ?? 15;
     backgroundRemindersEnabled = settings.backgroundReminders === true;
+    backgroundReminderTitlesEnabled = settings.backgroundReminderTitles === true;
+    // Rewriting the snapshot here honors turning the titles opt-in off
+    // immediately instead of waiting for the next reminder change.
+    persistDueSnapshot();
     syncScheduledReminderTask();
     if (service) await routedMetadataFor(service).write('settings.json', settings);
     // The global fallback copy mirrors whatever was saved last. While

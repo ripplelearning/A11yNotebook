@@ -117,7 +117,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Library switch and lock cancellation for scheduled tasks
 - ✅ Settings-controlled in-app reminder alert queue and bundled sound; independent native notification preference
 - ✅ Generic due alerts while the library is locked: privacy-safe due-time snapshot, configured sound, and a content-free alert (PR #66)
-- ⏳ **Exited-process notification delivery** — open; design needed for opt-in Windows integration
+- ⏳ **Exited-process notification delivery** — shipped as opt-in (PR #93: Windows Task Scheduler task, generic alerts from the ids-and-times snapshot); WakeToRun decided Oct 27, 2026: never wake a sleeping machine, fire when awake, otherwise fire late on next wake via StartWhenAvailable; named wake alerts decided Oct 27, 2026: opt-in titles setting, hide-title reminders and flashcards stay generic, locked-library alerts stay generic. Still open: failure-status UI in Settings, and the real-Windows delivery check.
 
 ### Phase 6 — Cognitive Assets and Templates
 

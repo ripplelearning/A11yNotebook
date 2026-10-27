@@ -302,8 +302,8 @@ migration and cleanup paths. While a library's settings are encrypted, saves are
 plaintext app-global settings file, and enabling settings encryption deletes the stale mirror.
 
 **Still unprotected:** audit history, recent-library/global preferences, filenames, ordinary notes/asset sources,
-attachments, exports and backups remain plaintext, as does the times-only due snapshot (`locked-due.json`: ids,
-due times and kinds, never titles) that background reminder alerts read after the app exits. Independently
+attachments, exports and backups remain plaintext, as does the due snapshot (`locked-due.json`: ids,
+due times and kinds, plus reminder titles only when the user opts into named wake alerts) that background reminder alerts read after the app exits. Independently
 password-encrypted notes keep their independent passwords. Do not infer confidentiality for excluded data from
 these toggles.
 
