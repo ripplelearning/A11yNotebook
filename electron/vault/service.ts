@@ -9,7 +9,7 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
-import { cleanTaskLinks, dropMissingStableTaskLinks, type TaskLink } from '../../src/shared/task-links';
+import { cleanTaskLinks, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../../src/shared/task-links';
 import {
   cleanSyncState,
   pruneTombstones,
@@ -18,6 +18,7 @@ import {
 } from '../../src/shared/calendar-sync';
 import {
   cleanAppointments,
+  migrateCalendarAppointments,
   type CalendarAppointment,
 } from '../../src/shared/calendar';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
@@ -1254,6 +1255,23 @@ export function createVaultService(
       }
     }
     if (bibliographyChanged) await writeBibliographyRaw(movedBibliography);
+    // Task links follow moves on both ends: the task's own note
+    // (taskPath and the path prefix of taskId) and the link target.
+    // Because this runs inside migrateMoveMetadata, crash recovery
+    // rolls it forward the same way the live move does.
+    const taskLinks = await readTaskLinksFile();
+    const migratedLinks = migrateTaskLinks(taskLinks, sourceRelative, nextRelative);
+    if (migratedLinks !== taskLinks) {
+      await writeTaskLinksRaw({ version: 1, links: migratedLinks });
+    }
+    // Calendar appointment links follow moves the same way. Links are
+    // local-only and excluded from sync change detection, and the
+    // appointment ids are untouched, so this cannot echo to a provider.
+    const appointments = await readCalendarFile();
+    const migratedAppointments = migrateCalendarAppointments(appointments, sourceRelative, nextRelative);
+    if (migratedAppointments !== appointments) {
+      await writeCalendarRaw({ version: 1, appointments: migratedAppointments });
+    }
   }
 
   async function getTasks() {

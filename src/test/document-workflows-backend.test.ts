@@ -285,6 +285,44 @@ describe('document provenance and original imports', () => {
     expect(Object.keys(records)).toHaveLength(1);
   });
 
+  it('moves task links and calendar links with their notes and targets', async () => {
+    const service = await vault();
+    await service.createFolder('Notes');
+    await service.createFolder('Work');
+    await service.createFolder('Archive');
+    await service.createNote('Tasks.md', '- [ ] Do it <!-- a11y-task-id:stable123 -->\n');
+    await service.createNote('Notes/Guide.md', '# Guide\n');
+    await service.saveTaskLinks([
+      { id: 'l1', taskId: 'Tasks.md#stable123', taskPath: 'Tasks.md', kind: 'note', target: 'Notes/Guide.md' },
+      { id: 'l2', taskId: 'Tasks.md#stable123', taskPath: 'Tasks.md', kind: 'notebook', target: 'Notes' },
+    ]);
+    await service.saveCalendar([
+      { id: 'a1', title: 'Review', start: '2026-10-27', allDay: true, link: { kind: 'task', path: 'Tasks.md', taskId: 'Tasks.md#stable123' } },
+      { id: 'a2', title: 'Read', start: '2026-10-28', allDay: true, link: { kind: 'note', path: 'Notes/Guide.md' } },
+    ]);
+    await service.moveEntry('Tasks.md', 'Work/Tasks.md');
+    expect(await service.getTaskLinks()).toEqual([
+      { id: 'l1', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', kind: 'note', target: 'Notes/Guide.md' },
+      { id: 'l2', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', kind: 'notebook', target: 'Notes' },
+    ]);
+    const afterTaskMove = await service.getCalendar();
+    expect(afterTaskMove.find((item) => item.id === 'a1')?.link).toEqual({
+      kind: 'task',
+      path: 'Work/Tasks.md',
+      taskId: 'Work/Tasks.md#stable123',
+    });
+    await service.moveEntry('Notes', 'Archive/Notes');
+    expect(await service.getTaskLinks()).toEqual([
+      { id: 'l1', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', kind: 'note', target: 'Archive/Notes/Guide.md' },
+      { id: 'l2', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', kind: 'notebook', target: 'Archive/Notes' },
+    ]);
+    const afterTargetMove = await service.getCalendar();
+    expect(afterTargetMove.find((item) => item.id === 'a2')?.link).toEqual({
+      kind: 'note',
+      path: 'Archive/Notes/Guide.md',
+    });
+  });
+
   it('survives folder move/rename and rollback, while replacement/deletion never inherits origin', async () => {
     const service = await vault();
     await service.createFolder('Folder');
