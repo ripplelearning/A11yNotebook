@@ -300,7 +300,7 @@ jobs:
           version=$(node -p "require('./package.json').version")
           for arch in arm64 x64; do
             dmg="release/A11y-Notebook-$version-$arch.dmg"
-            zip="release/A11y-Notebook-$version-$arch-mac.zip"
+            zip="release/A11y Notebook-$version-$arch-mac.zip"
             test -s "$dmg" || { echo "Missing or empty: $dmg" >&2; exit 1; }
             test -s "$zip" || { echo "Missing or empty: $zip" >&2; exit 1; }
             mount=$(hdiutil attach -nobrowse -readonly "$dmg" | tail -1 | awk '{$1=""; $2=""; print substr($0, 3)}' | xargs)
@@ -315,7 +315,7 @@ jobs:
           # may reach the release. Checksums use a Mac-only filename so
           # they never collide with the Windows SHA256SUMS.txt asset.
           rm -f release/latest-mac.yml release/*.blockmap
-          (cd release && shasum -a 256 A11y-Notebook-*.dmg A11y-Notebook-*-mac.zip > SHA256SUMS-mac.txt)
+          (cd release && shasum -a 256 A11y-Notebook-*.dmg "A11y Notebook-*-mac.zip" > SHA256SUMS-mac.txt)
 
       - name: Retain verified build even if publication fails
         uses: actions/upload-artifact@v7
