@@ -132,7 +132,7 @@ implementation, and mocks are not actual Windows verification.
 - ✅ Editable `Templates/` folder for user custom Markdown/HTML templates
 - ✅ Extensible shared asset-type registry (no executable plugin loading)
 - ✅ **Rich mind-map visual layouts** — hierarchical and radial SVG views (PR #82); the radial layout now grows its rings until no boxes overlap and routes connectors to box edges instead of through centers, while the semantic tree stays authoritative
-- ⏳ **Background flashcard review notifications** — open
+- ✅ **Background flashcard review notifications** — flashcard due entries ride the same scheduler, due-snapshot, and locked/exited-process wake path as reminders (PRs #93, #111); the renderer announces flashcard-due events
 - ✅ **General Markdown-to-outline conversion** — headings/lists nest into a valid outline with every transformation reported as a warning before confirming (PR #65)
 - ✅ **Encrypted cognitive checkpoints** — opted-in bounded drafts and explicit unsaved restore/discard/compare; manual Windows AT validation remains
 
