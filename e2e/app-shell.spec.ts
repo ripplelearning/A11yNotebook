@@ -43,7 +43,8 @@ async function closeApp(app: ElectronApplication | null, userDataDir: string) {
  *
  * Scope: the shell without an open library. Vault flows (notes, tasks,
  * calendar with data) are covered by the component-level axe harness in
- * src/test/a11y-audit.test.ts. Console errors are collected and reported,
+ * src/test/a11y-audit.test.ts and by the seeded-library spec in
+ * e2e/seeded-library.spec.ts. Console errors are collected and reported,
  * not failed on, because dev-mode output includes Vite/React noise.
  */
 test('app shell is accessible end to end', async () => {
