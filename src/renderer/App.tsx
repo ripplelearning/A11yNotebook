@@ -52,8 +52,6 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import {
-  canRedo,
-  canUndo,
   createEditHistory,
   recordEdit,
   redoEdit,
@@ -61,6 +59,17 @@ import {
   type EditHistory,
   type EditSnapshot,
 } from '../shared/edit-history';
+import {
+  completeTimelineRedo,
+  completeTimelineUndo,
+  createUndoTimeline,
+  purgeTimelineNote,
+  recordTimelineAction,
+  restoreTimelineRedo,
+  restoreTimelineUndo,
+  takeTimelineRedo,
+  takeTimelineUndo,
+} from '../shared/undo-timeline';
 import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
 import VaultTree from './features/vault/VaultTree';
 import { useUpdater } from './hooks/useUpdater';
@@ -347,6 +356,7 @@ export default function App() {
   const invalidateEditHistory = (id: string) => {
     editHistoriesRef.current.delete(id);
     noteSnapshotsRef.current.delete(id);
+    purgeTimelineNote(undoTimelineRef.current, id);
     setHistoryVersion((version) => version + 1);
   };
   /**
@@ -368,7 +378,12 @@ export default function App() {
   const taskToggleUndoRef = useRef<
     Array<{ path: string; line?: number; taskId?: string; htmlTask: boolean; completeBefore: boolean }>
   >([]);
-  const undoTaskToggleRef = useRef<() => Promise<boolean>>(async () => false);
+  // Redo stack for undone toggles, newest last; cleared by any new toggle.
+  const taskToggleRedoRef = useRef<typeof taskToggleUndoRef.current>([]);
+  // One chronological timeline across edits and toggles: Edit Undo pops
+  // the most recent action whatever its kind, instead of draining the
+  // edit stack before ever reaching a newer toggle.
+  const undoTimelineRef = useRef(createUndoTimeline());
   const [, setHistoryVersion] = useState(0);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
@@ -412,15 +427,22 @@ export default function App() {
       if (next !== history) {
         editHistoriesRef.current.set(id, next);
         setHistoryVersion((version) => version + 1);
+        // A new undo step joins the timeline (a coalesced typing burst
+        // adds no step, so it adds no token); any new action clears redo.
+        if (next.past.length > history.past.length) {
+          recordTimelineAction(undoTimelineRef.current, { kind: 'edit', noteId: id });
+        } else {
+          undoTimelineRef.current.redo = [];
+        }
       }
       noteSnapshotsRef.current.set(id, after);
     }
     setOpenNotes((items) => items.map((note) => (note.id === id ? { ...note, content } : note)));
   };
 
-  /** Apply one recorded undo/redo step to the active note. Returns false when it has none. */
-  const applyEditHistory = (direction: 'undo' | 'redo'): boolean => {
-    const note = openNotes.find((item) => item.id === selectedTab);
+  /** Apply one recorded undo/redo step to the given note. Returns false when it has none. */
+  const applyEditHistoryFor = (noteId: string, direction: 'undo' | 'redo'): boolean => {
+    const note = openNotes.find((item) => item.id === noteId);
     const history = note ? editHistoriesRef.current.get(note.id) : undefined;
     if (note && history) {
       const textarea = editorRef.current;
@@ -446,16 +468,20 @@ export default function App() {
         setOpenNotes((items) =>
           items.map((item) => (item.id === note.id ? { ...item, content: result.snapshot.content } : item)),
         );
-        requestAnimationFrame(() => {
-          const editor = editorRef.current;
-          if (editor && document.activeElement === editor) {
-            try {
-              editor.setSelectionRange(result.snapshot.selectionStart, result.snapshot.selectionEnd);
-            } catch {
-              // Caret restore is best-effort; the content is restored regardless.
+        // Caret restore only applies to the active note's editor; an
+        // undone edit in another open note still shows as unsaved there.
+        if (note.id === selectedTab) {
+          requestAnimationFrame(() => {
+            const editor = editorRef.current;
+            if (editor && document.activeElement === editor) {
+              try {
+                editor.setSelectionRange(result.snapshot.selectionStart, result.snapshot.selectionEnd);
+              } catch {
+                // Caret restore is best-effort; the content is restored regardless.
+              }
             }
-          }
-        });
+          });
+        }
         setStatusMessage(direction === 'undo' ? 'Undid the last edit.' : 'Redid the edit.');
         return true;
       }
@@ -464,26 +490,41 @@ export default function App() {
   };
 
   const stepEditHistory = async (direction: 'undo' | 'redo') => {
-    // Note edits undo first (most recent action wins). When the active
-    // note has no step, an accidental task check-off is next: reverse
-    // the last recorded toggle. Otherwise fall back to the native undo
-    // so fields outside the note editor keep their standard behavior.
-    if (direction === 'undo') {
-      if (applyEditHistory('undo')) return;
-      if (await undoTaskToggleRef.current()) return;
-      try {
-        document.execCommand('undo');
-      } catch {
-        // No native undo target (e.g. a non-editor view with nothing to undo).
+    // The timeline owns the order: the most recent action wins, whether
+    // it was a note edit or a task toggle. A token for another open note
+    // applies to that note in place (its tab shows the unsaved change).
+    const timeline = undoTimelineRef.current;
+    const token = direction === 'undo' ? takeTimelineUndo(timeline) : takeTimelineRedo(timeline);
+    if (token) {
+      if (token.kind === 'edit') {
+        if (applyEditHistoryFor(token.noteId, direction)) {
+          if (direction === 'undo') completeTimelineUndo(timeline, token);
+          else completeTimelineRedo(timeline, token);
+          return;
+        }
+      } else {
+        const result = direction === 'undo' ? await undoLastTaskToggle() : await redoLastTaskToggle();
+        if (result === 'kept') {
+          if (direction === 'undo') restoreTimelineUndo(timeline, token);
+          else restoreTimelineRedo(timeline, token);
+          return;
+        }
+        if (result === 'done') {
+          if (direction === 'undo') completeTimelineUndo(timeline, token);
+          else completeTimelineRedo(timeline, token);
+          return;
+        }
+        if (result === 'dropped') return;
+        // 'none' means the toggle stack desynced from the timeline;
+        // fall through to the native undo below like an empty timeline.
       }
-      return;
     }
-    if (!applyEditHistory('redo')) {
-      try {
-        document.execCommand('redo');
-      } catch {
-        // As above.
-      }
+    // No timeline token: fall back to the native undo so fields outside
+    // the note editor keep their standard behavior.
+    try {
+      document.execCommand(direction);
+    } catch {
+      // No native undo target (e.g. a non-editor view with nothing to undo).
     }
   };
 
@@ -491,12 +532,11 @@ export default function App() {
   // Edit menu's native roles own them while the menu is active, and they
   // can never be command shortcuts. When a keypress does reach the
   // renderer (for example while the native menu is disabled), the
-  // recorded history owns it inside the note editor's textarea when it
-  // has a step to apply; otherwise it falls through to the native undo
-  // untouched. The commands above remain the always-available path via
-  // the command palette.
-  const applyEditHistoryRef = useRef(applyEditHistory);
-  applyEditHistoryRef.current = applyEditHistory;
+  // timeline owns it when it has a step; otherwise it falls through to
+  // the native undo untouched. The commands remain the always-available
+  // path via the command palette.
+  const stepEditHistoryRef = useRef(stepEditHistory);
+  stepEditHistoryRef.current = stepEditHistory;
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (!editorRef.current || event.target !== editorRef.current) return;
@@ -505,15 +545,10 @@ export default function App() {
       const direction =
         key === 'z' && !event.shiftKey ? 'undo' : key === 'z' || key === 'y' ? 'redo' : null;
       if (!direction) return;
-      if (applyEditHistoryRef.current(direction)) {
+      const timeline = undoTimelineRef.current;
+      if ((direction === 'undo' ? timeline.undo.length : timeline.redo.length) > 0) {
         event.preventDefault();
-        return;
-      }
-      // In the editor with no note step, Ctrl+Z still reverses a task
-      // toggle made from Tasks, instead of falling through to nothing.
-      if (direction === 'undo' && taskToggleUndoRef.current.length) {
-        event.preventDefault();
-        void undoTaskToggleRef.current();
+        void stepEditHistoryRef.current(direction);
       }
     };
     window.addEventListener('keydown', handler, true);
@@ -2212,6 +2247,7 @@ export default function App() {
       if (!openIds.has(id)) {
         editHistoriesRef.current.delete(id);
         noteSnapshotsRef.current.delete(id);
+        purgeTimelineNote(undoTimelineRef.current, id);
       }
     }
   }, [openNotes]);
@@ -2800,6 +2836,9 @@ export default function App() {
           htmlTask: !!task.htmlTask,
           completeBefore: task.complete,
         });
+        // A new toggle joins the timeline and clears every redo path.
+        taskToggleRedoRef.current = [];
+        recordTimelineAction(undoTimelineRef.current, { kind: 'toggle' });
       }
       setTasks(updated);
       const nextComplete = !task.complete;
@@ -2830,14 +2869,21 @@ export default function App() {
       setStatusMessage('Could not update the task.');
     }
   };
-  /** Reverse the most recent task toggle, if it can still be found. */
-  const undoLastTaskToggle = async (): Promise<boolean> => {
+  /**
+   * Reverse the most recent task toggle. 'done' means the toggle was
+   * reversed (and is now redoable); 'kept' means the entry was put back
+   * because the note is dirty or the toggle failed, so the caller must
+   * restore its timeline token; 'dropped' means the task changed since
+   * it was toggled, so the entry is gone and the token is consumed;
+   * 'none' means the stack was empty.
+   */
+  const undoLastTaskToggle = async (): Promise<'done' | 'kept' | 'dropped' | 'none'> => {
     const entry = taskToggleUndoRef.current.pop();
-    if (!entry) return false;
+    if (!entry) return 'none';
     const bridge = window.a11yNotebook?.vault;
     if (!bridge?.getTasks || !bridge?.toggleTask) {
       taskToggleUndoRef.current.push(entry);
-      return false;
+      return 'kept';
     }
     if (
       openNotes.some((note) => note.path === entry.path && note.content !== note.saved) ||
@@ -2845,7 +2891,7 @@ export default function App() {
     ) {
       taskToggleUndoRef.current.push(entry);
       setStatusMessage('Save or resolve unsaved note changes before undoing this task.');
-      return true;
+      return 'kept';
     }
     try {
       const current = (await bridge.getTasks()).find((task) =>
@@ -2853,18 +2899,53 @@ export default function App() {
       );
       if (!current || current.complete === entry.completeBefore) {
         setStatusMessage('That task has changed since it was toggled, so it was not undone.');
-        return true;
+        return 'dropped';
       }
       await toggleTask(current, false);
+      taskToggleRedoRef.current.push(entry);
       setStatusMessage('Undid the task change.');
-      return true;
+      return 'done';
     } catch {
       taskToggleUndoRef.current.push(entry);
       setStatusMessage('Could not undo the task change.');
-      return true;
+      return 'kept';
     }
   };
-  undoTaskToggleRef.current = undoLastTaskToggle;
+  /** Re-apply the most recently undone task toggle; same contract as undo. */
+  const redoLastTaskToggle = async (): Promise<'done' | 'kept' | 'dropped' | 'none'> => {
+    const entry = taskToggleRedoRef.current.pop();
+    if (!entry) return 'none';
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getTasks || !bridge?.toggleTask) {
+      taskToggleRedoRef.current.push(entry);
+      return 'kept';
+    }
+    if (
+      openNotes.some((note) => note.path === entry.path && note.content !== note.saved) ||
+      activeConflict
+    ) {
+      taskToggleRedoRef.current.push(entry);
+      setStatusMessage('Save or resolve unsaved note changes before redoing this task.');
+      return 'kept';
+    }
+    try {
+      const current = (await bridge.getTasks()).find((task) =>
+        entry.htmlTask ? task.taskId === entry.taskId : task.path === entry.path && task.line === entry.line,
+      );
+      if (!current || current.complete === !entry.completeBefore) {
+        setStatusMessage('That task has changed since it was toggled, so it was not redone.');
+        return 'dropped';
+      }
+      await toggleTask(current, false);
+      taskToggleUndoRef.current.push(entry);
+      setStatusMessage('Redid the task change.');
+      return 'done';
+    } catch {
+      taskToggleRedoRef.current.push(entry);
+      setStatusMessage('Could not redo the task change.');
+      return 'kept';
+    }
+  };
   const completeReminder = async (reminder: Reminder) => {
     if (
       switchingRef.current ||
@@ -3704,12 +3785,10 @@ export default function App() {
     }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
     if (id === 'edit-undo') {
-      const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
-      return (!history || !canUndo(history)) && taskToggleUndoRef.current.length === 0;
+      return undoTimelineRef.current.undo.length === 0;
     }
     if (id === 'edit-redo') {
-      const history = currentNote ? editHistoriesRef.current.get(currentNote.id) : undefined;
-      return !history || !canRedo(history);
+      return undoTimelineRef.current.redo.length === 0;
     }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
     if (id === 'bookmark-heading-at-cursor' || id === 'bookmark-position-at-cursor')
