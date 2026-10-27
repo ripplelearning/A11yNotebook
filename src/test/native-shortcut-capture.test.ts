@@ -136,7 +136,7 @@ describe('native shortcut capture suppression', () => {
     capture(true);
     expect(mock.webContents.setIgnoreMenuShortcuts).toHaveBeenLastCalledWith(true);
     for (const group of mock.template) {
-      for (const item of group.submenu as MenuItemConstructorOptions[]) {
+      for (const item of (Array.isArray(group.submenu) ? group.submenu : []) as MenuItemConstructorOptions[]) {
         if (item.type !== 'separator') expect(item.enabled).toBe(false);
       }
     }

@@ -181,7 +181,11 @@ export function buildApplicationMenu(
 
   if (isShortcutCaptureActive()) {
     for (const group of template) {
-      for (const item of group.submenu as MenuItemConstructorOptions[]) {
+      const submenu = group.submenu as MenuItemConstructorOptions[] | undefined;
+      // The macOS appMenu role entry has no submenu; skipping it here
+      // is what keeps shortcut capture working on Mac at all.
+      if (!submenu) continue;
+      for (const item of submenu) {
         if (item.type !== 'separator') item.enabled = false;
       }
     }
