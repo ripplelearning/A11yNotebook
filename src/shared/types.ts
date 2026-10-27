@@ -85,6 +85,10 @@ export interface VaultLink {
   targetTitle: string;
   resolved: boolean;
   attachment: boolean;
+  /** Target exactly as written in the source note (href or wiki text), for unresolved links. */
+  writtenTarget?: string;
+  /** Library-relative path the link points at, for unresolved links: where creating the note would repair it. */
+  candidatePath?: string;
 }
 
 /** Current vault-wide forward links, backlinks, and unresolved references. */

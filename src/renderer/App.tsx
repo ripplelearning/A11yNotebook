@@ -73,6 +73,8 @@ import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
 import SpellingDialog from './features/vault/SpellingDialog';
 import ThesaurusDialog from './features/vault/ThesaurusDialog';
+import { BrokenLinksDialog } from './features/vault/BrokenLinksDialog';
+import { retargetLinkContent } from '../shared/link-retarget';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
@@ -132,7 +134,8 @@ type DialogId =
   | 'attachment-insert'
   | 'web-capture'
   | 'note-metadata'
-  | 'new-task';
+  | 'new-task'
+  | 'broken-links';
 type TreeAction = 'new-note' | 'new-template' | 'rename' | 'move' | 'delete' | 'reveal' | 'external' | 'bookmark';
 
 interface ContextMenuRequest {
@@ -255,6 +258,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'convert-current-note',
       'convert-note-to-outline',
       'refresh-links',
+      'repair-broken-links',
       'check-spelling-grammar',
       'open-thesaurus',
       'show-reminders',
@@ -321,6 +325,7 @@ export default function App() {
   const [openNotes, setOpenNotes] = useState<OpenNote[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
   const [links, setLinks] = useState<VaultLink[]>([]);
+  const [brokenLinkFilter, setBrokenLinkFilter] = useState<string | null>(null);
   const [bookmarks, setBookmarks] = useState<VaultBookmark[]>([]);
   const [pendingBookmarkAnchor, setPendingBookmarkAnchor] = useState<{
     path: string;
@@ -1886,6 +1891,59 @@ export default function App() {
     if (savedBookmarks) setBookmarks(savedBookmarks);
   };
 
+  const brokenLinks = links.filter((link) => !link.resolved);
+
+  const createBrokenLinkTarget = async (candidatePath: string) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.createNote) {
+      setStatusMessage('Creating notes is unavailable.');
+      return;
+    }
+    try {
+      const updated = await bridge.createNote(candidatePath);
+      setVault(updated);
+      setStatusMessage(`Created ${candidatePath}.`);
+      await refreshLinkIndex();
+    } catch {
+      setStatusMessage(`Could not create ${candidatePath}.`);
+    }
+  };
+
+  const retargetBrokenLink = async (link: VaultLink, newPath: string) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.readNote || !bridge?.saveNote) {
+      setStatusMessage('Editing notes is unavailable.');
+      return;
+    }
+    if (!link.writtenTarget) {
+      setStatusMessage('That link could not be retargeted.');
+      return;
+    }
+    const open = openNotes.find((note) => note.path === link.sourcePath);
+    if (open && open.content !== open.saved) {
+      setStatusMessage(`Save or discard changes in ${link.sourcePath} before retargeting its link.`);
+      return;
+    }
+    try {
+      const before = await bridge.readNote(link.sourcePath);
+      const after = retargetLinkContent(before, link.sourcePath, link.writtenTarget, newPath);
+      if (after === null) {
+        setStatusMessage('That link was already changed.');
+        await refreshLinkIndex();
+        return;
+      }
+      await bridge.saveNote(link.sourcePath, after, before);
+      if (open) {
+        updateNoteContent(open.id, after, 'edit');
+        setOpenNotes((items) => items.map((item) => (item.id === open.id ? { ...item, saved: after } : item)));
+      }
+      setStatusMessage(`Retargeted the link to ${newPath}.`);
+      await refreshLinkIndex();
+    } catch {
+      setStatusMessage('Could not retarget that link.');
+    }
+  };
+
   const openLinkTarget = async (href: string) => {
     const currentNote = openNotes.find((item) => item.id === selectedTab);
     if (!currentNote) return;
@@ -3303,6 +3361,11 @@ export default function App() {
       setStatusMessage('Library and links refreshed.');
       return;
     }
+    if (commandId === 'repair-broken-links') {
+      setBrokenLinkFilter(null);
+      void refreshLinkIndex().then(() => setActiveDialog('broken-links'));
+      return;
+    }
     if (commandId === 'close-current-tab') {
       closeContextTab(selectedTab);
       return;
@@ -3639,6 +3702,7 @@ export default function App() {
         'show-notebooks',
         'show-notes-files',
         'backup-library',
+        'repair-broken-links',
       ].includes(id)
     )
       return !vault;
@@ -4493,7 +4557,18 @@ export default function App() {
                               {link.targetTitle}
                             </button>
                           ) : (
-                            <span>{link.targetTitle}, missing note</span>
+                            <>
+                              <span>{link.targetTitle}, missing note</span>{' '}
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setBrokenLinkFilter(link.sourcePath);
+                                  setActiveDialog('broken-links');
+                                }}
+                              >
+                                Repair
+                              </button>
+                            </>
                           )}
                         </li>
                       ))}
@@ -4710,6 +4785,23 @@ export default function App() {
           canReplace={mode === 'edit' && !currentNoteEditLocked && thesaurusRequest.selection !== null}
           onReplace={replaceThesaurusSelection}
           onClose={() => setThesaurusRequest(null)}
+        />
+      ) : null}
+      {activeDialog === 'broken-links' ? (
+        <BrokenLinksDialog
+          links={brokenLinkFilter ? brokenLinks.filter((link) => link.sourcePath === brokenLinkFilter) : brokenLinks}
+          notes={flattenEntries(vault?.entries ?? [])
+            .filter((entry) => entry.kind === 'note')
+            .map((entry) => ({
+              path: entry.path,
+              title: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
+            }))}
+          entries={vault?.entries ?? []}
+          filterSource={brokenLinkFilter}
+          onClearFilter={() => setBrokenLinkFilter(null)}
+          onCreate={(candidatePath) => void createBrokenLinkTarget(candidatePath)}
+          onRetarget={(link, newPath) => void retargetBrokenLink(link, newPath)}
+          onClose={closeDialog}
         />
       ) : null}
       {externalFile && !securityLocked ? (

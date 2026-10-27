@@ -269,6 +269,12 @@ menu and the command palette. Opening an anchored bookmark lands on its heading 
 at its position in edit mode. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
 
+When a link points at a note that does not exist, the right pane marks it as a missing note with a Repair
+button. **Repair broken links**, in the Tools menu and the command palette, lists every broken link in the
+library: create the missing note, or retarget the link to an existing note. Creating a note repairs every
+link that pointed at it; retargeting rewrites the link in its source note, leaving fenced code blocks and
+other links untouched. A link that was already changed reports that instead of writing an identical note.
+
 ## Citations and bibliographies
 
 Each notebook keeps its own bibliography. From the Insert menu, choose **Citation generator…**

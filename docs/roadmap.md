@@ -148,7 +148,7 @@ XML parser to patched `@xmldom/xmldom` 0.8.15. It changes no app version and pub
 - ⏳ Calendar-like organization of tag and metadata suggestions is not implemented.
 - ✅ Notebook task-completion summaries, milestone service/progress and planning UI; manual Windows AT validation remains open.
 - 🚧 The shared asset registry is extensible by adding trusted application code; user-loaded executable plugins are not supported.
-- ⏳ Missing-link repair prompts are not implemented.
+- ✅ Missing-link repair prompts: the Repair broken links dialog lists every link that points at a missing note, with Create note and Retarget actions per link; the right pane offers Repair beside each missing note.
 - ✅ Recent-library picker lists the ten most recent libraries on the Libraries screen; the app still restores the last opened library automatically (PR #64).
 - ⛔ Windows signing, UI Automation execution, native notification delivery verification, and real JAWS/NVDA/Narrator speech checks need owner-provisioned credentials or Windows/manual test infrastructure.
 
