@@ -55,6 +55,8 @@ export interface VaultBridge {
   move(path: string, destination: string): Promise<VaultInfo>;
   search(query: VaultSearchQuery): Promise<VaultSearchResult[]>;
   getTags(): Promise<string[]>;
+  /** Library front-matter field names with their values; absent on older bridges. */
+  getFrontMatterIndex?(): Promise<Record<string, string[]>>;
   onChanged(callback: (event: VaultChangedEvent) => void): () => void;
   getAnnotations(path: string): Promise<NoteAnnotation[]>;
   addAnnotation(annotation: NewAnnotation): Promise<NoteAnnotation>;

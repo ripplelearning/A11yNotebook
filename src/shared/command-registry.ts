@@ -718,7 +718,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'edit-note-metadata',
     label: 'Edit note metadata…',
     description:
-      'View and edit the active note’s YAML front matter — title, tags, and other fields — with tag suggestions from the library.',
+      'View and edit the active note’s YAML front matter — any field, with field-name and value suggestions from the library. Numbers, booleans, and null keep their type instead of becoming quoted text.',
     shortcut: 'Ctrl+Shift+D',
   },
   { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },

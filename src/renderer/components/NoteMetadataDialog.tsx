@@ -3,14 +3,19 @@ import Modal from './Modal';
 import {
   parseFrontMatter,
   serializeFrontMatter,
+  suggestKeys,
   suggestTags,
+  suggestValues,
   type FrontMatterEntry,
+  type ScalarType,
 } from '../../shared/front-matter';
 
 interface NoteMetadataDialogProps {
   noteTitle: string;
   content: string;
   libraryTags: string[];
+  /** Library field names with their values; suggestions are hidden when absent. */
+  libraryFields?: Record<string, string[]>;
   onApply: (content: string) => void;
   onClose: () => void;
 }
@@ -19,6 +24,8 @@ interface Row {
   key: string;
   kind: 'scalar' | 'list';
   text: string;
+  raw?: string;
+  scalarType?: ScalarType;
 }
 
 function toRows(entries: FrontMatterEntry[]): Row[] {
@@ -26,6 +33,8 @@ function toRows(entries: FrontMatterEntry[]): Row[] {
     key: entry.key,
     kind: entry.kind,
     text: entry.kind === 'list' ? entry.items.join(', ') : entry.value,
+    raw: entry.raw,
+    scalarType: entry.scalarType,
   }));
 }
 
@@ -41,19 +50,29 @@ function toEntries(rows: Row[]): FrontMatterEntry[] {
             .map((item) => item.trim())
             .filter((item) => item.length > 0),
         }
-      : { key: row.key, kind: 'scalar' as const, value: row.text, items: [] },
+      : {
+          key: row.key,
+          kind: 'scalar' as const,
+          value: row.text,
+          items: [],
+          raw: row.raw,
+          scalarType: row.scalarType,
+        },
   );
 }
 
 /**
  * Structured editor for a note's YAML front matter. Only the bounded
  * subset from shared/front-matter is editable; richer blocks are shown
- * read-only with the reason rather than risk mangling them.
+ * read-only with the reason rather than risk mangling them. Scalars keep
+ * their YAML type (numbers, booleans, and null stay unquoted), and field
+ * names and values suggest from what the library already uses.
  */
 export default function NoteMetadataDialog({
   noteTitle,
   content,
   libraryTags,
+  libraryFields = {},
   onApply,
   onClose,
 }: NoteMetadataDialogProps) {
@@ -88,6 +107,23 @@ export default function NoteMetadataDialog({
         setRows((current) => current.map((item, i) => (i === index ? { ...item, kind: 'list' } : item)));
     }
   };
+
+  /** Apply a suggested value: replace a scalar, append to a list. */
+  const addValue = (index: number, value: string) => {
+    const row = rows[index];
+    if (row.kind === 'list') {
+      updateRow(index, row.text.trim() ? `${row.text.replace(/,\s*$/, '')}, ${value}` : value);
+    } else {
+      updateRow(index, value);
+    }
+  };
+
+  const keySuggestions = suggestKeys(
+    libraryFields,
+    rows.map((row) => row.key),
+  ).filter((key) =>
+    newKey.trim() ? key.toLowerCase().startsWith(newKey.trim().toLowerCase()) : true,
+  );
 
   const addField = () => {
     const key = newKey.trim();
@@ -124,35 +160,56 @@ export default function NoteMetadataDialog({
       ) : (
         <>
           {rows.length === 0 ? <p>This note has no front-matter fields yet. Add one below.</p> : null}
-          {rows.map((row, index) => (
-            <div key={`${row.key}-${index}`}>
-              <label>
-                {row.key}
-                <input
-                  value={row.text}
-                  aria-describedby={row.kind === 'list' ? listHintId : undefined}
-                  onChange={(event) => updateRow(index, event.target.value)}
-                />
-              </label>
-              {row.kind === 'list' ? <span id={listHintId}>Comma-separated list.</span> : null}{' '}
-              <button
-                type="button"
-                onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
-              >
-                Remove {row.key}
-              </button>
-              {row.key.toLowerCase() === 'tags' && suggestions.length ? (
-                <div>
-                  <span>Suggested tags: </span>
-                  {suggestions.map((tag) => (
-                    <button key={tag} type="button" onClick={() => addTag(tag)}>
-                      Add {tag}
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ))}
+          {rows.map((row, index) => {
+            const isTags = row.key.toLowerCase() === 'tags';
+            const rowValues =
+              row.kind === 'list'
+                ? row.text
+                    .split(',')
+                    .map((item) => item.trim())
+                    .filter((item) => item.length > 0)
+                : [row.text.trim()].filter((item) => item.length > 0);
+            const valueSuggestions = isTags ? [] : suggestValues(libraryFields, row.key, rowValues);
+            return (
+              <div key={`${row.key}-${index}`}>
+                <label>
+                  {row.key}
+                  <input
+                    value={row.text}
+                    aria-describedby={row.kind === 'list' ? listHintId : undefined}
+                    onChange={(event) => updateRow(index, event.target.value)}
+                  />
+                </label>
+                {row.kind === 'list' ? <span id={listHintId}>Comma-separated list.</span> : null}{' '}
+                <button
+                  type="button"
+                  onClick={() => setRows((current) => current.filter((_, i) => i !== index))}
+                >
+                  Remove {row.key}
+                </button>
+                {isTags && suggestions.length ? (
+                  <div>
+                    <span>Suggested tags: </span>
+                    {suggestions.map((tag) => (
+                      <button key={tag} type="button" onClick={() => addTag(tag)}>
+                        Add {tag}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {!isTags && valueSuggestions.length ? (
+                  <div>
+                    <span>Suggested values: </span>
+                    {valueSuggestions.map((value) => (
+                      <button key={value} type="button" onClick={() => addValue(index, value)}>
+                        {row.kind === 'list' ? `Add ${value}` : `Use ${value}`}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
           <div>
             <label>
               New field name
@@ -165,6 +222,16 @@ export default function NoteMetadataDialog({
             <button type="button" onClick={addField}>
               Add field
             </button>
+            {keySuggestions.length ? (
+              <div>
+                <span>Suggested fields: </span>
+                {keySuggestions.map((key) => (
+                  <button key={key} type="button" onClick={() => setNewKey(key)}>
+                    Use {key}
+                  </button>
+                ))}
+              </div>
+            ) : null}
           </div>
           <div>
             <button
