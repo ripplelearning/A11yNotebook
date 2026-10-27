@@ -406,10 +406,24 @@ export default function SettingsDialog({
             Alert me after the app closes (Windows only)
           </label>
           <p>
-            When this is on, Windows Task Scheduler briefly launches the app at each due time to show a generic alert,
+            When this is on, Windows Task Scheduler briefly launches the app at each due time to show an alert,
             even after you close the app. The scheduled task and the small snapshot it reads contain only due times —
-            never reminder titles or note content — and alerts stay generic until you unlock the library. Turning this
-            off deletes the scheduled task.
+            never note content — and alerts stay generic until you unlock the library, unless you opt into naming
+            reminders below. Turning this off deletes the scheduled task.
+          </p>
+          <label>
+            <input
+              type="checkbox"
+              checked={draft.backgroundReminderTitles ?? false}
+              disabled={!draft.backgroundReminders}
+              onChange={(event) => setDraft({ ...draft, backgroundReminderTitles: event.target.checked })}
+            />
+            Name reminders in alerts after the app closes
+          </label>
+          <p>
+            When this is on, reminder titles are stored in plain text in the library's small due snapshot so the
+            wake alert can name them. Reminders marked hide-title stay generic, flashcard alerts stay generic, and
+            alerts while the library is locked stay generic. Turning this off rewrites the snapshot without titles.
           </p>
           <p role="status">{soundNotice}</p>
         </fieldset>

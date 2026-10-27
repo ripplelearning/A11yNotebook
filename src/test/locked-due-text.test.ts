@@ -31,4 +31,23 @@ describe('lockedDueText', () => {
       title: 'Due reminders and flashcards',
     });
   });
+
+  it('names reminders in wake text only when titles are supplied', () => {
+    expect(lockedDueText(['reminder'], 1, ['Call back'])).toEqual({
+      headline: 'Reminder due: Call back.',
+      detail: 'Unlock the library to view it.',
+      waiting: '1 reminder waiting.',
+      title: 'Reminder',
+    });
+    expect(lockedDueText(['reminder'], 3, ['Call back', 'Water plants'])).toEqual({
+      headline: '3 reminders are due.',
+      detail: 'Unlock the library to view Call back, Water plants and others.',
+      waiting: '3 reminders waiting.',
+      title: 'Reminder',
+    });
+    expect(lockedDueText(['reminder', 'flashcard'], 2, ['Call back']).detail).toBe(
+      'Unlock the library to view Call back and review the flashcards.',
+    );
+    expect(lockedDueText(['flashcard'], 1, ['ignored']).headline).toBe('A flashcard is due for review.');
+  });
 });

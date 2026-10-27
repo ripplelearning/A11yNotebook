@@ -18,6 +18,8 @@ export interface NotebookSettings {
   reminderSoundChoice?: 'gentle-chime';
   reminderVolume?: number;
   backgroundReminders?: boolean;
+  /** Name reminder titles in alerts after the app closes; off by default, and titles then stay out of the snapshot. */
+  backgroundReminderTitles?: boolean;
   /** Words the user added from the spelling dialog; never flagged again. */
   customDictionary?: string[];
   /** Whole-interface scale in percent (100 = normal). Distinct from font size. */
@@ -55,6 +57,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderSoundChoice: 'gentle-chime',
   reminderVolume: 50,
   backgroundReminders: false,
+  backgroundReminderTitles: false,
   customDictionary: [],
   zoomPercent: 100,
   focusRing: 'standard',
@@ -226,6 +229,8 @@ export function validateSettings(value: unknown): NotebookSettings {
     settings.reminderSoundChoice === undefined ? 'gentle-chime' : settings.reminderSoundChoice;
   const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
   const backgroundReminders = settings.backgroundReminders === undefined ? false : settings.backgroundReminders;
+  const backgroundReminderTitles =
+    settings.backgroundReminderTitles === undefined ? false : settings.backgroundReminderTitles;
   const showCommandButtons = settings.showCommandButtons === undefined ? false : settings.showCommandButtons;
   const zoomPercent = settings.zoomPercent === undefined ? 100 : settings.zoomPercent;
   const focusRing = settings.focusRing === undefined ? 'standard' : settings.focusRing;
@@ -255,6 +260,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     (defaultNoteOpenMode !== 'read-only' && defaultNoteOpenMode !== 'edit') ||
     typeof reminderAlerts !== 'boolean' ||
     typeof backgroundReminders !== 'boolean' ||
+    typeof backgroundReminderTitles !== 'boolean' ||
     typeof reminderSound !== 'boolean' ||
     reminderSoundChoice !== 'gentle-chime' ||
     !Number.isInteger(reminderVolume) ||
@@ -313,6 +319,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     reminderSoundChoice,
     reminderVolume,
     backgroundReminders,
+    backgroundReminderTitles,
     customDictionary: normalizeCustomDictionary(settings.customDictionary),
     zoomPercent,
     focusRing,

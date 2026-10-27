@@ -3,11 +3,16 @@
  *
  * When a protected library locks, its reminder service stops (it can no
  * longer read protected content). Before it stops, the app keeps a
- * privacy-safe snapshot of upcoming due times — identifiers and times only,
- * never titles or paths. This watcher counts those times down and emits a
- * single content-free signal per due batch so the user still hears the
- * configured sound and sees a generic "A reminder is due. Unlock the
- * library to view it." alert.
+ * privacy-safe snapshot of upcoming due times — identifiers and times only
+ * by default. The user may opt into named wake alerts (the
+ * backgroundReminderTitles setting): then reminder titles join the
+ * persisted snapshot so a Task Scheduler wake launch can name them.
+ * Titles are stripped again at persist time unless that opt-in is on,
+ * reminders marked hide-title never contribute a title, and locked-library
+ * alerts stay generic either way. This watcher counts those times down
+ * and emits a single content-free signal per due batch so the user still
+ * hears the configured sound and sees a generic "A reminder is due. Unlock
+ * the library to view it." alert.
  *
  * Cancellation is generation-based: arming or cancelling bumps the
  * generation, and a timer callback that wakes after a cancel (unlock,
@@ -18,6 +23,8 @@ export interface DueSnapshotEntry {
   id: string;
   scheduledAt: string;
   kind: 'reminder' | 'flashcard';
+  /** Reminder title, present only when the user opted into named wake alerts. */
+  title?: string;
 }
 
 export interface LockedDueWatcher {

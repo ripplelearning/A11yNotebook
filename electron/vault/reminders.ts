@@ -458,15 +458,32 @@ export function createReminderService(options: ReminderServiceOptions) {
     refresh,
     getReminders: refresh,
     /**
-     * Privacy-safe view of what will come due: identifiers and times only,
-     * never titles or paths. Used to keep a generic due alert possible while
-     * the library is locked and this service is stopped.
+     * View of what will come due for locked and exited-process alerts:
+     * identifiers and times, plus reminder titles. Titles ride the
+     * in-memory snapshot only — the persisted file strips them unless
+     * the user opted into named wake alerts — and reminders marked
+     * hide-title never contribute one. Flashcard reviews carry no title.
      */
-    dueSnapshot: (): Array<{ id: string; scheduledAt: string; kind: 'reminder' | 'flashcard' }> => {
+    dueSnapshot: (): Array<{
+      id: string;
+      scheduledAt: string;
+      kind: 'reminder' | 'flashcard';
+      title?: string;
+    }> => {
       if (!initialized || stopped) return [];
-      const entries: Array<{ id: string; scheduledAt: string; kind: 'reminder' | 'flashcard' }> = reminders
+      const entries: Array<{
+        id: string;
+        scheduledAt: string;
+        kind: 'reminder' | 'flashcard';
+        title?: string;
+      }> = reminders
         .filter((item) => item.status === 'pending')
-        .map((item) => ({ id: item.id, scheduledAt: item.scheduledAt, kind: 'reminder' as const }));
+        .map((item) => ({
+          id: item.id,
+          scheduledAt: item.scheduledAt,
+          kind: 'reminder' as const,
+          ...(item.privacy === 'hide-title' ? {} : { title: item.title }),
+        }));
       for (const review of reviews) {
         if (store.reviewStates?.[review.id] !== review.scheduledAt) {
           entries.push({ id: review.id, scheduledAt: review.scheduledAt, kind: 'flashcard' as const });

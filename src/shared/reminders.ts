@@ -55,17 +55,24 @@ export interface DueFlashcardReview {
 }
 
 /**
- * Wording for a locked-library due batch. Reminder-only batches keep the
- * long-standing text exactly; flashcard-only batches name flashcards, and
- * mixed batches name both. The locked alert never names a reminder, a
- * flashcard, or any content — only the kind of thing that is due.
+ * Wording for a locked-library or wake due batch. Without titles the
+ * text is exactly the long-standing generic wording: it never names a
+ * reminder, a flashcard, or any content — only the kind of thing that
+ * is due. With titles (wake alerts only, when the user opted into
+ * named wake alerts), reminder batches name the due reminders, listing
+ * at most three and counting the rest; flashcard-only batches stay
+ * generic because flashcard reviews carry no title.
  */
 export function lockedDueText(
   kinds: LockedDueKind[],
   count: number,
+  titles: string[] = [],
 ): { headline: string; detail: string; waiting: string; title: string } {
   const hasReminder = kinds.includes('reminder');
   const hasFlashcard = kinds.includes('flashcard');
+  const named = titles.filter((title) => title.trim().length > 0).slice(0, 3);
+  const extra = titles.length - named.length;
+  const nameList = named.length ? `${named.join(', ')}${extra > 0 ? ` and ${extra} more` : ''}` : '';
   if (hasFlashcard && !hasReminder) {
     return {
       headline: count === 1 ? 'A flashcard is due for review.' : `${count} flashcards are due for review.`,
@@ -77,14 +84,24 @@ export function lockedDueText(
   if (hasReminder && hasFlashcard) {
     return {
       headline: 'Reminders and flashcards are due.',
-      detail: 'Unlock the library to view them.',
+      detail: nameList
+        ? `Unlock the library to view ${nameList} and review the flashcards.`
+        : 'Unlock the library to view them.',
       waiting: 'Reminders and flashcards waiting.',
       title: 'Due reminders and flashcards',
     };
   }
   return {
-    headline: count === 1 ? 'A reminder is due.' : `${count} reminders are due.`,
-    detail: count === 1 ? 'Unlock the library to view it.' : 'Unlock the library to view them.',
+    headline:
+      count === 1 && named.length === 1 ? `Reminder due: ${named[0]}.` : count === 1 ? 'A reminder is due.' : `${count} reminders are due.`,
+    detail:
+      count === 1 && named.length === 1
+        ? 'Unlock the library to view it.'
+        : nameList
+          ? `Unlock the library to view ${nameList}${titles.length < count ? ' and others' : ''}.`
+          : count === 1
+            ? 'Unlock the library to view it.'
+            : 'Unlock the library to view them.',
     waiting: count === 1 ? '1 reminder waiting.' : `${count} reminders waiting.`,
     title: 'Reminder',
   };

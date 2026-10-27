@@ -523,9 +523,15 @@ describe('vault reminder scheduler', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it('snapshots only pending due times, without titles or paths, for locked alerts', async () => {
+  it('snapshots pending due times with reminder titles except hide-title, and no paths, for locked alerts', async () => {
     const f = fixture('- [ ] Future task remind:2026-10-05 09:00');
     await f.service.initialize();
+    await f.service.createReminder({
+      title: 'Secret meeting',
+      path: 'Study.md',
+      scheduledAt: '2026-10-05 10:00',
+      privacy: 'hide-title',
+    });
     const review = {
       id: `flashcard:Study.md#${'b'.repeat(64)}`,
       path: 'Study.md',
@@ -538,9 +544,17 @@ describe('vault reminder scheduler', () => {
     });
     await withReviews.initialize();
     const snapshot = withReviews.dueSnapshot();
-    expect(snapshot.map((entry) => entry.kind)).toEqual(['reminder', 'flashcard']);
+    expect(snapshot.map((entry) => entry.kind)).toEqual(['reminder', 'reminder', 'flashcard']);
+    // The task reminder carries its title; the hide-title reminder and
+    // the flashcard carry none. Titles are stripped again at persist
+    // time unless the named-wake-alert opt-in is on.
+    expect(snapshot[0].title).toBe('Future task');
+    expect(snapshot[1].title).toBeUndefined();
+    expect(snapshot[2].title).toBeUndefined();
     for (const entry of snapshot) {
-      expect(Object.keys(entry).sort()).toEqual(['id', 'kind', 'scheduledAt']);
+      expect(Object.keys(entry).sort()).toEqual(
+        entry.title === undefined ? ['id', 'kind', 'scheduledAt'] : ['id', 'kind', 'scheduledAt', 'title'],
+      );
     }
     // The past-due task in the default fixture fires at initialize and is excluded.
     const past = fixture();

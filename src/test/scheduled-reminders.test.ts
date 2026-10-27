@@ -102,4 +102,24 @@ describe('due snapshot persistence', () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, backgroundReminders: true }).backgroundReminders).toBe(true);
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, backgroundReminders: 'yes' as never })).toThrow();
   });
+
+  it('strips snapshot titles by default and keeps them only under the opt-in', () => {
+    const titled = { id: 't1', scheduledAt: entries[1].scheduledAt, kind: 'reminder' as const, title: 'Call back' };
+    expect(serializeDueSnapshot([titled]).entries).toEqual([
+      { id: 't1', scheduledAt: entries[1].scheduledAt, kind: 'reminder' },
+    ]);
+    expect(serializeDueSnapshot([titled], true).entries).toEqual([titled]);
+    expect(validateDueSnapshot({ entries: [titled] })).toEqual([titled]);
+    expect(
+      validateDueSnapshot({ entries: [{ ...titled, title: 'x'.repeat(501) }] }),
+    ).toEqual([{ id: 't1', scheduledAt: entries[1].scheduledAt, kind: 'reminder' }]);
+  });
+
+  it('keeps the backgroundReminderTitles setting boolean with a false default', () => {
+    expect(DEFAULT_SETTINGS.backgroundReminderTitles).toBe(false);
+    expect(
+      validateSettings({ ...DEFAULT_SETTINGS, backgroundReminderTitles: true }).backgroundReminderTitles,
+    ).toBe(true);
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, backgroundReminderTitles: 'yes' as never })).toThrow();
+  });
 });
