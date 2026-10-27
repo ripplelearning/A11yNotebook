@@ -21,7 +21,7 @@ describe('release workflow publication', () => {
   const script = publish
     ?.split('        run: |\n')[1]
     ?.replace(/^ {10}/gm, '')
-    ?.split(/^\n  [A-Za-z0-9_-]+:\s*$/m)[0];
+    ?.split(/^\n {2}[A-Za-z0-9_-]+:\s*$/m)[0];
 
   it('keeps exact-tag and main ancestry validation without rejecting existing release metadata', () => {
     const verify = workflow.split('      - name: Verify exact merged tag\n')[1]?.split('      - name:')[0];
