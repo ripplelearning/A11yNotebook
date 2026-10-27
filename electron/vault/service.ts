@@ -9,7 +9,7 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
-import { cleanTaskLinks, type TaskLink } from '../../src/shared/task-links';
+import { cleanTaskLinks, dropMissingStableTaskLinks, type TaskLink } from '../../src/shared/task-links';
 import {
   cleanSyncState,
   pruneTombstones,
@@ -534,6 +534,10 @@ export function createVaultService(
       }
       await replaceNote(relativePath, content, expectedContent, assertCurrent);
       await refreshSearchIndex();
+      // Prune links to stable-id tasks this save just removed. Best
+      // effort: a cleanup failure must not fail a note save that
+      // already succeeded.
+      await pruneLinksForSavedNote(relativePath, content).catch(() => undefined);
     });
   }
 
@@ -1007,6 +1011,17 @@ export function createVaultService(
     const cleaned = cleanTaskLinks(links);
     await writeTaskLinksRaw({ version: 1, links: cleaned });
     return cleaned;
+  }
+
+  async function pruneLinksForSavedNote(relativePath: string, content: string): Promise<void> {
+    const tasks =
+      path.extname(relativePath).toLowerCase() === '.html'
+        ? parseHtmlTasks(content, relativePath)
+        : parseMarkdownTasks(content, relativePath);
+    const present = new Set(tasks.map((task) => task.id));
+    const links = await readTaskLinksFile();
+    const kept = dropMissingStableTaskLinks(links, relativePath, present);
+    if (kept.length !== links.length) await saveTaskLinks(kept);
   }
 
   async function writeCalendarRaw(value: { version: 1; appointments: CalendarAppointment[] }): Promise<void> {

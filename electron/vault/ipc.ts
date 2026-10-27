@@ -31,6 +31,7 @@ import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
+import { dropLinksForDeletedPath } from '../../src/shared/task-links';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
@@ -3361,6 +3362,9 @@ export function setupVaultIpc(
       try {
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
+        const links = await vault.getTaskLinks();
+        const kept = dropLinksForDeletedPath(links, relativePath);
+        if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
         await vault.refreshSearchIndex();
         return vault.getVault();

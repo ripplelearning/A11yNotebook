@@ -234,7 +234,9 @@ option is always kept, and option names are single words so they survive in task
 The same context menu offers **Link to note**, **Link to file**, and **Link to Notebook**. Each opens a
 dialog listing the library's notes, files, or notebooks; choosing one links it to the focused task. Linked
 items appear in the Links column of the Tasks table, where each link can be opened or removed. Links are
-stored in `.a11ynotebook/task-links.json`.
+stored in `.a11ynotebook/task-links.json`. Links to tasks removed from a note, and links in a deleted
+note or notebook, are removed automatically; links to tasks without a stable ID are kept, since a line
+move renumbers them.
 
 HTML checklist items are `<li>` elements with a unique stable ID and completion state, for example:
 

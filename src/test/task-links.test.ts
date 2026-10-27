@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
-import { cleanTaskLinks, type TaskLink } from '../shared/task-links';
+import { cleanTaskLinks, dropLinksForDeletedPath, dropMissingStableTaskLinks, type TaskLink } from '../shared/task-links';
 
 let temporaryDirectory = '';
 
@@ -49,6 +49,35 @@ describe('cleanTaskLinks', () => {
   });
 });
 
+describe('dropLinksForDeletedPath', () => {
+  it('drops links in the deleted note and under a deleted notebook, and keeps the rest', () => {
+    const links = [
+      link({ id: 'a', taskPath: 'Note.md' }),
+      link({ id: 'b', taskPath: 'Work/Note.md' }),
+      link({ id: 'c', taskPath: 'Work2/Note.md' }),
+      link({ id: 'd', taskPath: 'Other.md' }),
+    ];
+    expect(dropLinksForDeletedPath(links, 'Note.md')).toEqual([links[1], links[2], links[3]]);
+    expect(dropLinksForDeletedPath(links, 'Work')).toEqual([links[0], links[2], links[3]]);
+  });
+});
+
+describe('dropMissingStableTaskLinks', () => {
+  it('drops only missing stable-id links in the saved note', () => {
+    const links = [
+      link({ id: 'a', taskId: 'Note.md#gone1234', taskPath: 'Note.md' }),
+      link({ id: 'b', taskId: 'Note.md#kept1234', taskPath: 'Note.md' }),
+      link({ id: 'c', taskId: 'Note.md:3', taskPath: 'Note.md' }),
+      link({ id: 'd', taskId: 'Other.md#gone1234', taskPath: 'Other.md' }),
+    ];
+    expect(dropMissingStableTaskLinks(links, 'Note.md', new Set(['Note.md#kept1234']))).toEqual([
+      links[1],
+      links[2],
+      links[3],
+    ]);
+  });
+});
+
 describe('task link storage', () => {
   it('persists links and cleans them on save and read', async () => {
     temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-task-links-'));
@@ -66,5 +95,25 @@ describe('task link storage', () => {
     ]);
     expect(await service.getTaskLinks()).toEqual(saved);
     expect(await service.saveTaskLinks([])).toEqual([]);
+  });
+
+  it('prunes stable-id links when a note save removes their task, and keeps line-number links', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-task-links-'));
+    const service = createVaultService(temporaryDirectory);
+    await service.initialize();
+    await service.createNote(
+      'Note.md',
+      '- [ ] Stable task <!-- a11y-task-id:stable123 -->\n- [ ] Plain task\n',
+    );
+    await service.saveTaskLinks([
+      link({ id: 'link-stable', taskId: 'Note.md#stable123', taskPath: 'Note.md' }),
+      link({ id: 'link-line', taskId: 'Note.md:2', taskPath: 'Note.md' }),
+      link({ id: 'link-other', taskId: 'Other.md#other123', taskPath: 'Other.md' }),
+    ]);
+    await service.saveNote('Note.md', '# Note\n\nNo tasks here.\n');
+    expect(await service.getTaskLinks()).toEqual([
+      link({ id: 'link-line', taskId: 'Note.md:2', taskPath: 'Note.md' }),
+      link({ id: 'link-other', taskId: 'Other.md#other123', taskPath: 'Other.md' }),
+    ]);
   });
 });
