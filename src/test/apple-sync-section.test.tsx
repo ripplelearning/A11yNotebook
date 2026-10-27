@@ -147,4 +147,103 @@ describe('apple sync section', () => {
       await screen.findByText('Apple ID saved. Enter your app-specific password to sign in again.'),
     ).toBeTruthy();
   });
+
+  it('offers a calendar picker and saves the chosen calendar', async () => {
+    const { bridge } = setup(
+      { configured: true, signedIn: true },
+      {
+        listAppleCalendars: vi.fn(async () => [
+          { name: 'Calendar', url: 'cal-url' },
+          { name: 'Family', url: 'fam-url' },
+        ]),
+      },
+    );
+    await screen.findByText('Syncing with the first calendar found in the account.');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Apple calendar' }));
+    await screen.findByText('Found 2 Apple calendars.');
+    fireEvent.change(screen.getByLabelText('Apple calendar'), { target: { value: 'fam-url' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save calendar choice' }));
+    await screen.findByText('Now syncing with "Family".');
+    const saved = bridge.saveSyncState.mock.calls[0][0] as {
+      providers: { apple?: { calendarUrl?: string; calendarName?: string } };
+    };
+    expect(saved.providers.apple).toEqual({
+      provider: 'apple',
+      calendarUrl: 'fam-url',
+      calendarName: 'Family',
+    });
+  });
+
+  it('asks for confirmation before switching calendars with linked appointments', async () => {
+    const linked = {
+      id: 'local-1',
+      title: 'Dentist',
+      start: '2026-11-02T10:00:00-08:00',
+      allDay: false,
+      provider: 'apple',
+      externalId: 'a-1',
+    };
+    const { bridge } = setup(
+      { configured: true, signedIn: true },
+      {
+        listAppleCalendars: vi.fn(async () => [
+          { name: 'Calendar', url: 'cal-url' },
+          { name: 'Family', url: 'fam-url' },
+        ]),
+        getCalendar: vi.fn(async () => [linked]),
+        getSyncState: vi.fn(async () => ({
+          version: 1,
+          providers: { apple: { provider: 'apple', lastSyncAt: '2026-10-26T00:00:00.000Z' } },
+          tombstones: [],
+        })),
+      },
+    );
+    await screen.findByText('Signed in with Apple.');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Apple calendar' }));
+    await screen.findByText('Found 2 Apple calendars.');
+    fireEvent.change(screen.getByLabelText('Apple calendar'), { target: { value: 'fam-url' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save calendar choice' }));
+    await screen.findByText(/Switching calendars unlinks your existing Apple events/);
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm calendar switch' }));
+    await screen.findByText(/Now syncing with "Family"/);
+    const cleared = bridge.saveCalendar.mock.calls[0][0] as Array<Record<string, unknown>>;
+    expect(cleared[0]).not.toHaveProperty('provider');
+    expect(cleared[0]).not.toHaveProperty('externalId');
+    const saved = bridge.saveSyncState.mock.calls[0][0] as {
+      providers: { apple?: Record<string, unknown> };
+    };
+    expect(saved.providers.apple).not.toHaveProperty('lastSyncAt');
+    expect(saved.providers.apple?.calendarUrl).toBe('fam-url');
+  });
+
+  it('shows the saved pick and treats re-saving it as a no-op', async () => {
+    const { bridge } = setup(
+      { configured: true, signedIn: true },
+      {
+        listAppleCalendars: vi.fn(async () => [
+          { name: 'Calendar', url: 'cal-url' },
+          { name: 'Family', url: 'fam-url' },
+        ]),
+        getSyncState: vi.fn(async () => ({
+          version: 1,
+          providers: {
+            apple: { provider: 'apple', calendarUrl: 'cal-url', calendarName: 'Calendar' },
+          },
+          tombstones: [],
+        })),
+      },
+    );
+    await screen.findByText('Syncing with "Calendar".');
+    fireEvent.click(screen.getByRole('button', { name: 'Choose Apple calendar' }));
+    await screen.findByText('Found 2 Apple calendars.');
+    fireEvent.click(screen.getByRole('button', { name: 'Save calendar choice' }));
+    await screen.findByText('Already syncing with "Calendar".');
+    expect(bridge.saveSyncState).not.toHaveBeenCalled();
+  });
+
+  it('hides the picker when the bridge offers no calendar list', async () => {
+    setup({ configured: true, signedIn: true });
+    await screen.findByText('Signed in with Apple.');
+    expect(screen.queryByRole('button', { name: 'Choose Apple calendar' })).toBeNull();
+  });
 });

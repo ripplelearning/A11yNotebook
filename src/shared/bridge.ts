@@ -200,6 +200,7 @@ export interface VaultBridge {
   appleStatus?(): Promise<{ configured: boolean; signedIn: boolean }>;
   getAppleCredentials?(): Promise<{ appleId: string; appPassword: string }>;
   verifyApple?(): Promise<{ calendarName: string }>;
+  listAppleCalendars?(): Promise<Array<{ name: string; url: string }>>;
   signOutApple?(): Promise<{ signedIn: boolean }>;
   getReadingPosition?(path: string): Promise<ReadingPosition | null>;
   setReadingPosition?(path: string, position: { cfi: string; sectionIndex: number }): Promise<void>;

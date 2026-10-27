@@ -14,16 +14,18 @@ import {
  * never the main Apple ID password), and an optional fetch
  * implementation for tests.
  *
- * Sync semantics: discovery finds the first VEVENT-capable calendar in
- * the user's calendar home set (there is no calendar picker yet), then
- * RFC 6578 sync-collection REPORTs list changes and calendar-multiget
- * REPORTs fetch the changed events. A 403 on an incremental
- * sync-collection means Apple expired the sync token; that surfaces as
- * SyncTokenExpiredError and the engine retries once as a full pull.
- * Deletes of already-gone events (404) count as success, so retries
- * stay idempotent. Updates overwrite without etag preconditions: the
- * engine only pushes items that changed locally and were not remotely
- * touched, and conflicts are reported on pull before any push.
+ * Sync semantics: discovery lists the VEVENT-capable calendars in the
+ * user's calendar home set. Without a picked calendar, sync uses the
+ * first one; with a pick saved in the library's sync state, sync uses
+ * that calendar. RFC 6578 sync-collection REPORTs list changes and
+ * calendar-multiget REPORTs fetch the changed events. A 403 on an
+ * incremental sync-collection means Apple expired the sync token; that
+ * surfaces as SyncTokenExpiredError and the engine retries once as a
+ * full pull. Deletes of already-gone events (404) count as success, so
+ * retries stay idempotent. Updates overwrite without etag
+ * preconditions: the engine only pushes items that changed locally and
+ * were not remotely touched, and conflicts are reported on pull before
+ * any push.
  *
  * XML parsing uses the repo's existing xmldom dependency and matches
  * elements by local name, so server prefix choices do not matter.
@@ -157,6 +159,24 @@ export async function discoverAppleCalendar(input: {
   fetchImpl: AppleTransportFetch;
   serverUrl?: string;
 }): Promise<DiscoveredAppleCalendar> {
+  const calendars = await listAppleCalendars(input);
+  const first = calendars[0];
+  if (!first) throw new Error('Apple returned no event calendar for this account.');
+  return first;
+}
+
+/**
+ * List every VEVENT-capable calendar in the user's calendar home set,
+ * in the order Apple returns them: server root ->
+ * current-user-principal -> calendar-home-set -> calendars. The picker
+ * shows these names; the chosen calendar's URL is what sync uses.
+ */
+export async function listAppleCalendars(input: {
+  appleId: string;
+  appPassword: string;
+  fetchImpl: AppleTransportFetch;
+  serverUrl?: string;
+}): Promise<DiscoveredAppleCalendar[]> {
   const auth = appleBasicAuthHeader({ appleId: input.appleId, appPassword: input.appPassword });
   const request = async (
     method: string,
@@ -207,6 +227,7 @@ export async function discoverAppleCalendar(input: {
     '<D:propfind xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:prop><D:resourcetype /><D:displayname /><C:supported-calendar-component-set /></D:prop></D:propfind>',
     '1',
   );
+  const calendars: DiscoveredAppleCalendar[] = [];
   for (const response of allElements(parseXml(listing.text), 'response')) {
     const href = firstChildText(response, 'href');
     if (!href) continue;
@@ -229,12 +250,12 @@ export async function discoverAppleCalendar(input: {
       }
     }
     if (!compNames.includes('VEVENT')) continue;
-    return {
+    calendars.push({
       url: resolveHref(homeUrl, href),
       displayName: firstChildText(prop, 'displayname') ?? 'Calendar',
-    };
+    });
   }
-  throw new Error('Apple returned no event calendar for this account.');
+  return calendars;
 }
 
 export class AppleTransport implements ProviderTransport {
@@ -242,6 +263,7 @@ export class AppleTransport implements ProviderTransport {
   private readonly appPassword: string;
   private readonly fetchImpl: AppleTransportFetch;
   private cachedCalendarUrl: string | undefined;
+  private resolvedCalendar: DiscoveredAppleCalendar | undefined;
 
   constructor(options: AppleTransportOptions) {
     this.appleId = options.appleId;
@@ -252,6 +274,16 @@ export class AppleTransport implements ProviderTransport {
         throw new Error('No fetch implementation available for Apple transport.');
       }));
     this.cachedCalendarUrl = options.calendarUrl;
+  }
+
+  /**
+   * The calendar this transport discovered, once known. Sync runs
+   * record it in sync state so the picker can show the current
+   * calendar even when the user never picked one. A picked calendar
+   * needs no recording: its name is already in sync state.
+   */
+  resolvedCalendarInfo(): DiscoveredAppleCalendar | undefined {
+    return this.resolvedCalendar;
   }
 
   private async request(
@@ -281,6 +313,7 @@ export class AppleTransport implements ProviderTransport {
         fetchImpl: this.fetchImpl,
       });
       this.cachedCalendarUrl = discovered.url;
+      this.resolvedCalendar = discovered;
     }
     return this.cachedCalendarUrl;
   }

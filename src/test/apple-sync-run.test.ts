@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { resolveAppleConflict, runAppleSync } from '../shared/apple-sync-run';
+import { AppleTransport, type AppleTransportFetch } from '../shared/apple-transport';
 import type { ProviderTransport, PulledChange } from '../shared/calendar-sync-engine';
 import type { CalendarAppointment } from '../shared/calendar';
 import type { SyncStateFile } from '../shared/calendar-sync';
@@ -55,6 +56,89 @@ describe('apple sync run', () => {
     expect(savedLocal).toHaveLength(1);
     expect(savedLocal![0]).toMatchObject({ externalId: 'a-1', title: 'Dentist' });
     expect(savedState!.providers.apple).toMatchObject({ syncToken: 'tok-2' });
+  });
+
+  it('passes a picked calendar URL to the transport instead of discovering', async () => {
+    const seenOptions: unknown[] = [];
+    await runAppleSync({
+      getCalendar: async () => [],
+      saveCalendar: async (items) => items,
+      getSyncState: async () => ({
+        version: 1,
+        providers: {
+          apple: {
+            provider: 'apple',
+            calendarUrl: 'https://caldav.icloud.com/123/calendars/family/',
+            calendarName: 'Family',
+          },
+        },
+        tombstones: [],
+      }),
+      saveSyncState: async (state) => state,
+      getCredentials: async () => ({ appleId: 'test@icloud.com', appPassword: 'pw' }),
+      createTransport: (options) => {
+        seenOptions.push(options);
+        return {
+          pull: async () => ({ changes: [], syncToken: undefined }),
+          pushCreate: async () => ({ externalId: 'a-new' }),
+          pushUpdate: async () => ({}),
+          pushDelete: async () => undefined,
+        };
+      },
+    });
+    expect(seenOptions).toEqual([
+      {
+        appleId: 'test@icloud.com',
+        appPassword: 'pw',
+        calendarUrl: 'https://caldav.icloud.com/123/calendars/family/',
+      },
+    ]);
+  });
+
+  it('records the discovered calendar in sync state when none is picked', async () => {
+    const principalXml =
+      '<D:multistatus xmlns:D="DAV:"><D:response><D:href>/</D:href><D:propstat><D:prop>' +
+      '<D:current-user-principal><D:href>/123/principals/users/test/</D:href></D:current-user-principal>' +
+      '</D:prop></D:propstat></D:response></D:multistatus>';
+    const homeXml =
+      '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav"><D:response>' +
+      '<D:href>/123/principals/users/test/</D:href><D:propstat><D:prop>' +
+      '<C:calendar-home-set><D:href>/123/calendars/</D:href></C:calendar-home-set>' +
+      '</D:prop></D:propstat></D:response></D:multistatus>';
+    const listingXml =
+      '<D:multistatus xmlns:D="DAV:" xmlns:C="urn:ietf:params:xml:ns:caldav">' +
+      '<D:response><D:href>/123/calendars/main/</D:href><D:propstat><D:prop>' +
+      '<D:resourcetype><D:collection /><C:calendar /></D:resourcetype>' +
+      '<D:displayname>Calendar</D:displayname>' +
+      '<C:supported-calendar-component-set><C:comp name="VEVENT" /></C:supported-calendar-component-set>' +
+      '</D:prop></D:propstat></D:response></D:multistatus>';
+    const fetchImpl: AppleTransportFetch = async (url) => {
+      let body = '';
+      if (url === 'https://caldav.icloud.com/') body = principalXml;
+      else if (url === 'https://caldav.icloud.com/123/principals/users/test/') body = homeXml;
+      else if (url === 'https://caldav.icloud.com/123/calendars/') body = listingXml;
+      else if (url === 'https://caldav.icloud.com/123/calendars/main/')
+        body = '<D:multistatus xmlns:D="DAV:"><D:sync-token>tok-9</D:sync-token></D:multistatus>';
+      else throw new Error(`Unexpected URL: ${url}`);
+      return { ok: true, status: 207, text: async () => body };
+    };
+    let savedState: SyncStateFile = { version: 1, providers: {}, tombstones: [] };
+    await runAppleSync({
+      getCalendar: async () => [],
+      saveCalendar: async (items) => items,
+      getSyncState: async () => savedState,
+      saveSyncState: async (state) => {
+        savedState = state;
+        return state;
+      },
+      getCredentials: async () => ({ appleId: 'test@icloud.com', appPassword: 'pw' }),
+      createTransport: (options) => new AppleTransport({ ...options, fetchImpl }),
+    });
+    expect(savedState.providers.apple).toMatchObject({
+      calendarUrl: 'https://caldav.icloud.com/123/calendars/main/',
+      calendarName: 'Calendar',
+      syncToken: 'tok-9',
+    });
   });
 });
 

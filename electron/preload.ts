@@ -84,6 +84,7 @@ const CHANNELS: typeof SharedChannels = {
   authAppleStatus: 'auth:apple-status',
   authAppleCredentials: 'auth:apple-credentials',
   authAppleVerify: 'auth:apple-verify',
+  authAppleCalendars: 'auth:apple-calendars',
   authAppleSignOut: 'auth:apple-sign-out',
   vaultFetchCitationMetadata: 'vault:fetch-citation-metadata',
   vaultGetReadingPosition: 'vault:get-reading-position',
@@ -351,6 +352,7 @@ const bridge: NotebookBridge = {
     appleStatus: () => ipcRenderer.invoke(CHANNELS.authAppleStatus),
     getAppleCredentials: () => ipcRenderer.invoke(CHANNELS.authAppleCredentials),
     verifyApple: () => ipcRenderer.invoke(CHANNELS.authAppleVerify),
+    listAppleCalendars: () => ipcRenderer.invoke(CHANNELS.authAppleCalendars),
     signOutApple: () => ipcRenderer.invoke(CHANNELS.authAppleSignOut),
     fetchCitationMetadata: (identifier) =>
       ipcRenderer.invoke(CHANNELS.vaultFetchCitationMetadata, identifier),

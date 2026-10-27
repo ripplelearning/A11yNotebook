@@ -19,6 +19,15 @@ export interface ProviderSyncState {
   lastSyncAt?: string;
   /** Opaque provider token (for example Google's nextSyncToken). */
   syncToken?: string;
+  /**
+   * Apple only: the picked calendar's CalDAV URL, saved by the calendar
+   * picker. Absent means sync uses the first event calendar found.
+   * The URL is a resource locator, not a credential; it lives in the
+   * library's sync-state file alongside the sync token.
+   */
+  calendarUrl?: string;
+  /** Apple only: the picked calendar's display name, for the picker UI. */
+  calendarName?: string;
 }
 
 export interface SyncTombstone {
@@ -60,6 +69,10 @@ export function cleanSyncState(value: unknown): SyncStateFile {
     const state: ProviderSyncState = { provider };
     if (isValidIso(entry.lastSyncAt)) state.lastSyncAt = entry.lastSyncAt;
     if (typeof entry.syncToken === 'string' && entry.syncToken) state.syncToken = entry.syncToken;
+    if (typeof entry.calendarUrl === 'string' && entry.calendarUrl)
+      state.calendarUrl = entry.calendarUrl;
+    if (typeof entry.calendarName === 'string' && entry.calendarName)
+      state.calendarName = entry.calendarName;
     providers[provider] = state;
   }
   const tombstones: SyncTombstone[] = [];

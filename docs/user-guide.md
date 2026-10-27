@@ -465,7 +465,12 @@ immediately. Then, in the app's Apple Calendar sync section, enter your
 Apple ID and that app-specific password and save: the app verifies the
 sign-in by finding your calendar at `caldav.icloud.com` and reports the
 calendar name it found. Sync uses the first event calendar in the
-account; there is no calendar picker yet. As with Outlook, events with a
+account until you pick another: the Choose Apple calendar button lists
+your event calendars, and saving a choice switches sync to it. Switching
+after syncing asks for confirmation, because it resets Apple sync state
+and unlinks existing Apple events from local appointments (the
+appointments themselves stay, and upload to the new calendar on the next
+sync). As with Outlook, events with a
 relative recurrence (for example "the second Tuesday of each month")
 are skipped when pulling from Apple. You can revoke the password at any
 time from the same Apple ID page. Never enter your main Apple ID password

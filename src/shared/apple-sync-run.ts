@@ -20,15 +20,21 @@ export interface AppleSyncDeps {
   getSyncState(): Promise<SyncStateFile>;
   saveSyncState(state: SyncStateFile): Promise<SyncStateFile>;
   getCredentials(): Promise<AppleCredentials>;
-  createTransport?(credentials: AppleCredentials): ProviderTransport;
+  /** Receives the credentials plus the picked calendar URL, when one is saved. */
+  createTransport?(options: AppleCredentials & { calendarUrl?: string }): ProviderTransport;
+}
+
+async function transportForRun(deps: AppleSyncDeps): Promise<ProviderTransport> {
+  const credentials = await deps.getCredentials();
+  const state = await deps.getSyncState();
+  const calendarUrl = state.providers.apple?.calendarUrl;
+  const options = calendarUrl ? { ...credentials, calendarUrl } : credentials;
+  return deps.createTransport ? deps.createTransport(options) : new AppleTransport(options);
 }
 
 export async function runAppleSync(deps: AppleSyncDeps): Promise<SyncRunResult> {
-  const credentials = await deps.getCredentials();
-  const transport = deps.createTransport
-    ? deps.createTransport(credentials)
-    : new AppleTransport({ ...credentials });
-  return runSync({
+  const transport = await transportForRun(deps);
+  const result = await runSync({
     provider: 'apple',
     loadLocal: deps.getCalendar,
     loadState: deps.getSyncState,
@@ -36,6 +42,32 @@ export async function runAppleSync(deps: AppleSyncDeps): Promise<SyncRunResult> 
     saveState: deps.saveSyncState,
     transport,
   });
+  // Record the calendar a discovery-based run used, so the picker shows
+  // the current calendar (and picking it again is a no-op instead of
+  // needlessly unlinking). Never overwrites an explicit pick, and never
+  // touches the sync token or timestamp.
+  if (transport instanceof AppleTransport) {
+    const resolved = transport.resolvedCalendarInfo();
+    if (resolved) {
+      const current = await deps.getSyncState();
+      const apple = current.providers.apple;
+      if (!apple?.calendarUrl) {
+        await deps.saveSyncState({
+          ...current,
+          providers: {
+            ...current.providers,
+            apple: {
+              ...apple,
+              provider: 'apple',
+              calendarUrl: resolved.url,
+              calendarName: resolved.displayName,
+            },
+          },
+        });
+      }
+    }
+  }
+  return result;
 }
 
 export type AppleConflictChoice = 'local' | 'remote';
@@ -53,10 +85,7 @@ export async function resolveAppleConflict(
   conflict: SyncConflict,
   choice: AppleConflictChoice,
 ): Promise<void> {
-  const credentials = await deps.getCredentials();
-  const transport = deps.createTransport
-    ? deps.createTransport(credentials)
-    : new AppleTransport({ ...credentials });
+  const transport = await transportForRun(deps);
   if (choice === 'local') {
     if (!conflict.local.externalId) {
       throw new Error('This appointment is not linked to an Apple event.');
