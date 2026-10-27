@@ -3,8 +3,10 @@ export type TaskLinkKind = 'note' | 'file' | 'notebook';
 /**
  * A link from one task to a note, file, or notebook. taskId is the
  * VaultTask id (note path plus a stable marker, or note path plus line
- * number), so links survive task text edits but not note moves; taskPath
- * is kept alongside for filtering without parsing the id.
+ * number), so links survive task text edits; taskPath is kept alongside
+ * for filtering without parsing the id. Both ends follow moves: when a
+ * note or notebook moves, migrateTaskLinks rewrites the task's own note
+ * and the link target to the new paths.
  */
 export interface TaskLink {
   id: string;
@@ -68,4 +70,35 @@ export function dropMissingStableTaskLinks(
     if (!link.taskId.startsWith(`${notePath}#`)) return true;
     return presentTaskIds.has(link.taskId);
   });
+}
+
+function rewriteMovedPath(value: string, source: string, destination: string): string {
+  return value === source || value.startsWith(`${source}/`) ? destination + value.slice(source.length) : value;
+}
+
+function rewriteMovedTaskId(taskId: string, oldTaskPath: string, newTaskPath: string): string {
+  if (taskId.startsWith(`${oldTaskPath}#`)) return `${newTaskPath}#${taskId.slice(oldTaskPath.length + 1)}`;
+  if (taskId.startsWith(`${oldTaskPath}:`)) return `${newTaskPath}:${taskId.slice(oldTaskPath.length + 1)}`;
+  return taskId;
+}
+
+/**
+ * Rewrite links for a move of a note, file, or notebook: the task's own
+ * note (taskPath and the path prefix of taskId) and the link target both
+ * follow the moved path, so a task keeps its links when its note moves
+ * and keeps pointing at a target that moved. Returns the input unchanged
+ * when no link mentions the moved path.
+ */
+export function migrateTaskLinks(links: TaskLink[], source: string, destination: string): TaskLink[] {
+  let changed = false;
+  const migrated = links.map((link) => {
+    const taskPath = rewriteMovedPath(link.taskPath, source, destination);
+    const taskId = rewriteMovedTaskId(link.taskId, link.taskPath, taskPath);
+    const target = rewriteMovedPath(link.target, source, destination);
+    if (taskPath !== link.taskPath || taskId !== link.taskId || target !== link.target) changed = true;
+    return taskPath === link.taskPath && taskId === link.taskId && target === link.target
+      ? link
+      : { ...link, taskId, taskPath, target };
+  });
+  return changed ? cleanTaskLinks(migrated) : links;
 }

@@ -238,7 +238,8 @@ dialog listing the library's notes, files, or notebooks; choosing one links it t
 items appear in the Links column of the Tasks table, where each link can be opened or removed. Links are
 stored in `.a11ynotebook/task-links.json`. Links to tasks removed from a note, and links in a deleted
 note or notebook, are removed automatically; links to tasks without a stable ID are kept, since a line
-move renumbers them.
+move renumbers them. When a note, file, or notebook moves, its task links move with it: links from its
+tasks and links pointing at it are rewritten to the new paths.
 
 HTML checklist items are `<li>` elements with a unique stable ID and completion state, for example:
 
@@ -371,7 +372,8 @@ are stored in the library's `.a11ynotebook/calendar.json` and may stand alone or
 Links live in library files and survive local saves, cloud-folder copies, offline mode, and provider sync;
 provider sync never sends a link, so a link does not transfer to a fresh library through Google, but it is
 never deleted from the library file either. If a linked note, file, or task is gone, the calendar shows that
-the linked item is no longer available instead of dropping the link.
+the linked item is no longer available instead of dropping the link. When a linked note, file, or
+notebook moves, the appointment link is rewritten to the new path.
 Timed appointments may also carry a reminder: in the appointment dialog, choose No reminder, At start, or a
 preset before the start (5 or 15 or 30 minutes, 1 hour, 1 day). All-day appointments do not offer reminders,
 because their start has no time to count back from. Reminders fire through the same alert pipeline as task

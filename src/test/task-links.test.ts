@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
-import { cleanTaskLinks, dropLinksForDeletedPath, dropMissingStableTaskLinks, type TaskLink } from '../shared/task-links';
+import { cleanTaskLinks, dropLinksForDeletedPath, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../shared/task-links';
 
 let temporaryDirectory = '';
 
@@ -75,6 +75,44 @@ describe('dropMissingStableTaskLinks', () => {
       links[2],
       links[3],
     ]);
+  });
+});
+
+describe('migrateTaskLinks', () => {
+  it('rewrites the task note and the target when either moves', () => {
+    const links = [
+      link({ id: 'a', taskId: 'Tasks.md#stable123', taskPath: 'Tasks.md', target: 'Notes/Guide.md' }),
+      link({ id: 'b', taskId: 'Tasks.md:2', taskPath: 'Tasks.md', target: 'Tasks.md' }),
+      link({ id: 'c', taskId: 'Other.md#stable123', taskPath: 'Other.md', target: 'Notes/Guide.md' }),
+    ];
+    expect(migrateTaskLinks(links, 'Tasks.md', 'Work/Tasks.md')).toEqual([
+      link({ id: 'a', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', target: 'Notes/Guide.md' }),
+      link({ id: 'b', taskId: 'Work/Tasks.md:2', taskPath: 'Work/Tasks.md', target: 'Work/Tasks.md' }),
+      link({ id: 'c', taskId: 'Other.md#stable123', taskPath: 'Other.md', target: 'Notes/Guide.md' }),
+    ]);
+    expect(migrateTaskLinks(links, 'Notes/Guide.md', 'Notes/Handbook.md')).toEqual([
+      link({ id: 'a', taskId: 'Tasks.md#stable123', taskPath: 'Tasks.md', target: 'Notes/Handbook.md' }),
+      link({ id: 'b', taskId: 'Tasks.md:2', taskPath: 'Tasks.md', target: 'Tasks.md' }),
+      link({ id: 'c', taskId: 'Other.md#stable123', taskPath: 'Other.md', target: 'Notes/Handbook.md' }),
+    ]);
+  });
+
+  it('follows whole-notebook moves on both ends and leaves unrelated links alone', () => {
+    const links = [
+      link({ id: 'a', taskId: 'Work/Tasks.md#stable123', taskPath: 'Work/Tasks.md', target: 'Work/Guide.md' }),
+      link({ id: 'b', taskId: 'Other.md:1', taskPath: 'Other.md', target: 'Elsewhere.md' }),
+    ];
+    const migrated = migrateTaskLinks(links, 'Work', 'Archive/Work');
+    expect(migrated).toEqual([
+      link({
+        id: 'a',
+        taskId: 'Archive/Work/Tasks.md#stable123',
+        taskPath: 'Archive/Work/Tasks.md',
+        target: 'Archive/Work/Guide.md',
+      }),
+      links[1],
+    ]);
+    expect(migrateTaskLinks(links, 'Missing.md', 'Elsewhere.md')).toBe(links);
   });
 });
 

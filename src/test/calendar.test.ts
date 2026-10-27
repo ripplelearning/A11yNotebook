@@ -6,6 +6,7 @@ import {
   combineDateTime,
   dateKeyFromParts,
   expandAppointments,
+  migrateCalendarAppointments,
   parseAppointmentTime,
   type CalendarAppointment,
 } from '../shared/calendar';
@@ -101,6 +102,33 @@ describe('calendar parsing and cleaning', () => {
     expect(cleaned[3].reminderMinutesBefore).toBeUndefined();
     expect(cleaned[4].reminderMinutesBefore).toBeUndefined();
     expect(cleaned[5].reminderMinutesBefore).toBeUndefined();
+  });
+});
+
+describe('migrateCalendarAppointments', () => {
+  it('rewrites note, file, and task links when their paths move', () => {
+    const appointments = [
+      appointment({ id: 'a', link: { kind: 'note', path: 'Notes/Guide.md' } }),
+      appointment({ id: 'b', link: { kind: 'task', path: 'Tasks.md', taskId: 'Tasks.md#stable123' } }),
+      appointment({ id: 'c', link: { kind: 'task', path: 'Tasks.md', taskId: 'Tasks.md:4' } }),
+      appointment({ id: 'd', link: { kind: 'file', path: 'Files/Doc.pdf' } }),
+      appointment({ id: 'e' }),
+    ];
+    expect(migrateCalendarAppointments(appointments, 'Tasks.md', 'Work/Tasks.md')).toEqual([
+      appointments[0],
+      appointment({ id: 'b', link: { kind: 'task', path: 'Work/Tasks.md', taskId: 'Work/Tasks.md#stable123' } }),
+      appointment({ id: 'c', link: { kind: 'task', path: 'Work/Tasks.md', taskId: 'Work/Tasks.md:4' } }),
+      appointments[3],
+      appointments[4],
+    ]);
+    expect(migrateCalendarAppointments(appointments, 'Notes', 'Archive/Notes')).toEqual([
+      appointment({ id: 'a', link: { kind: 'note', path: 'Archive/Notes/Guide.md' } }),
+      appointments[1],
+      appointments[2],
+      appointments[3],
+      appointments[4],
+    ]);
+    expect(migrateCalendarAppointments(appointments, 'Missing.md', 'Elsewhere.md')).toBe(appointments);
   });
 });
 

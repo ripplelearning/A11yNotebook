@@ -327,6 +327,45 @@ export function cleanAppointments(value: unknown): CalendarAppointment[] {
   return cleaned;
 }
 
+function rewriteMovedPath(value: string, source: string, destination: string): string {
+  return value === source || value.startsWith(`${source}/`) ? destination + value.slice(source.length) : value;
+}
+
+/**
+ * Rewrite one appointment link for a move: the linked note or file path,
+ * and for task links the path prefix of the task id. Links are local-only
+ * and never sent to providers, so rewriting them cannot echo to a sync.
+ */
+export function migrateCalendarLink(link: CalendarLink, source: string, destination: string): CalendarLink {
+  const path = rewriteMovedPath(link.path, source, destination);
+  if (link.kind !== 'task' || !link.taskId) return path === link.path ? link : { kind: link.kind, path };
+  const taskId = link.taskId.startsWith(`${link.path}#`)
+    ? `${path}#${link.taskId.slice(link.path.length + 1)}`
+    : link.taskId.startsWith(`${link.path}:`)
+      ? `${path}:${link.taskId.slice(link.path.length + 1)}`
+      : link.taskId;
+  return path === link.path && taskId === link.taskId ? link : { kind: 'task', path, taskId };
+}
+
+/**
+ * Rewrite appointment links for a move of a note, file, or notebook.
+ * Returns the input unchanged when no appointment links at the moved path.
+ */
+export function migrateCalendarAppointments(
+  appointments: CalendarAppointment[],
+  source: string,
+  destination: string,
+): CalendarAppointment[] {
+  let changed = false;
+  const migrated = appointments.map((appointment) => {
+    if (!appointment.link) return appointment;
+    const link = migrateCalendarLink(appointment.link, source, destination);
+    if (link !== appointment.link) changed = true;
+    return link === appointment.link ? appointment : { ...appointment, link };
+  });
+  return changed ? migrated : appointments;
+}
+
 const MAX_OCCURRENCES = 2000;
 const MAX_STEPS = 20000;
 
