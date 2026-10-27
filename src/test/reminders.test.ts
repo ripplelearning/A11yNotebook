@@ -1,6 +1,6 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createReminderService, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
+import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
 import { parseReminderDate, snoozeUntil, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
@@ -549,5 +549,79 @@ describe('vault reminder scheduler', () => {
     past.service.stop();
     withReviews.stop();
     f.service.stop();
+  });
+});
+
+describe('migrateReminderStorePaths', () => {
+  const at = '2026-10-03T09:00:00.000Z';
+  const store = {
+    version: 1 as const,
+    standalone: [
+      {
+        id: 'standalone:1',
+        source: 'standalone' as const,
+        title: 'Call',
+        path: 'Old/Note.md',
+        scheduledAt: at,
+        originalScheduledAt: at,
+        status: 'pending' as const,
+      },
+      {
+        id: 'standalone:2',
+        source: 'standalone' as const,
+        title: 'Other',
+        path: 'Elsewhere.md',
+        scheduledAt: at,
+        originalScheduledAt: at,
+        status: 'pending' as const,
+      },
+    ],
+    states: {
+      'task:Old/Note.md:md:seedtask1:2026-10-03T09:00:00.000Z': {
+        scheduledAt: at,
+        originalScheduledAt: at,
+        status: 'pending' as const,
+      },
+      'task:Old/Note.md:3:2026-10-03T09:00:00.000Z': {
+        scheduledAt: at,
+        originalScheduledAt: at,
+        status: 'pending' as const,
+      },
+      'task:Untouched.md:md:otherid1:2026-10-03T09:00:00.000Z': {
+        scheduledAt: at,
+        originalScheduledAt: at,
+        status: 'pending' as const,
+      },
+    },
+    reviewStates: {
+      [`flashcard:Old/Note.md#${'a'.repeat(64)}`]: '2026-10-04T09:00:00.000Z',
+      [`flashcard:Elsewhere.md#${'b'.repeat(64)}`]: '2026-10-04T09:00:00.000Z',
+    },
+  };
+
+  it('migrates standalone paths, task state ids, and flashcard review ids for a moved note', () => {
+    const moved = migrateReminderStorePaths(store, 'Old/Note.md', 'New/Note.md');
+    expect(moved.standalone[0].path).toBe('New/Note.md');
+    expect(moved.standalone[1].path).toBe('Elsewhere.md');
+    expect(Object.keys(moved.states).sort()).toEqual([
+      'task:New/Note.md:3:2026-10-03T09:00:00.000Z',
+      'task:New/Note.md:md:seedtask1:2026-10-03T09:00:00.000Z',
+      'task:Untouched.md:md:otherid1:2026-10-03T09:00:00.000Z',
+    ]);
+    expect(Object.keys(moved.reviewStates ?? {}).sort()).toEqual([
+      `flashcard:Elsewhere.md#${'b'.repeat(64)}`,
+      `flashcard:New/Note.md#${'a'.repeat(64)}`,
+    ]);
+  });
+
+  it('migrates a whole notebook prefix without touching lookalike names', () => {
+    const moved = migrateReminderStorePaths(store, 'Old', 'New');
+    expect(moved.standalone[0].path).toBe('New/Note.md');
+    expect(moved.standalone[1].path).toBe('Elsewhere.md');
+    expect(Object.keys(moved.states)).toContain('task:New/Note.md:md:seedtask1:2026-10-03T09:00:00.000Z');
+  });
+
+  it('rejects an invalid migration path', () => {
+    expect(() => migrateReminderStorePaths(store, '', 'New.md')).toThrow();
   });
 });

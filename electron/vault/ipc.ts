@@ -54,7 +54,7 @@ import {
   type ScheduledReminderManager,
 } from '../scheduled-reminders';
 import { parseMoveJournal, planMoveRecovery, type MoveJournal } from './move-journal';
-import { createReminderService, parseTaskReminders, validateReminderStore } from './reminders';
+import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from './reminders';
 import type { CreateReminderInput, VaultReminderEvent, SnoozeDuration } from '../../src/shared/reminders';
 import { lockedDueText, type LockedDueKind } from '../../src/shared/reminders';
 import { applyReminderDefaults, createReminderDefaultsStore } from './reminder-defaults';
@@ -591,6 +591,29 @@ async function recoverInterruptedMove(vaultService: VaultService, vault: VaultIn
               )
               .catch(() => undefined);
           }
+        }
+        // Reminders are the one migration the live move does after its
+        // operation completes (withPathMigration), so a crash mid-move
+        // leaves reminders.json on the old paths; recovery migrates the
+        // persisted store directly, since it runs before the scheduler
+        // starts and the service refuses to migrate uninitialized.
+        try {
+          const reminderSnapshot = await store.read('reminders.json').catch(() => null);
+          if (reminderSnapshot && typeof reminderSnapshot === 'object' && !Array.isArray(reminderSnapshot)) {
+            await store
+              .write(
+                'reminders.json',
+                migrateReminderStorePaths(
+                  validateReminderStore(reminderSnapshot),
+                  journal.source,
+                  journal.destination,
+                ),
+              )
+              .catch(() => undefined);
+          }
+        } catch {
+          // An unreadable or invalid reminder store is left for the user;
+          // recovery of the move itself continues.
         }
       } else {
         conflicts += 1;
