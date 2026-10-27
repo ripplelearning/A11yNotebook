@@ -1110,6 +1110,268 @@ a:focus-visible,
   }
 }
 
+/* High contrast theme. Until now the only high-contrast rules lived inside
+   the forced-colors block above, so choosing High contrast in Settings
+   changed nothing in ordinary mode — the same dead-control bug the light
+   theme had. These rules live in normal CSS, wrapped in
+   (forced-colors: none) so they never override the system colors when
+   forced-colors mode is on; the trapped rules above stay as the
+   forced-colors-mode fallback. Palette checked against WCAG 2.2 AA
+   (text >= 4.5:1, UI boundaries and focus >= 3:1): white on black 21.00:1,
+   yellow on black 19.56:1, #ccc on black 13.08:1, #808080 on black 5.32:1,
+   error #ff8a80 on black 9.20:1, white on #333 hover 12.63:1. Selected
+   elements use a yellow fill with black text (19.56:1) and a white outline,
+   which sits on the surrounding black background. */
+@media (forced-colors: none) {
+  :root[data-theme='high-contrast'] {
+    color-scheme: dark;
+    color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] body {
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] ::placeholder {
+    color: #ccc;
+  }
+
+  :root[data-theme='high-contrast'] button:focus-visible,
+  :root[data-theme='high-contrast'] input:focus-visible,
+  :root[data-theme='high-contrast'] select:focus-visible,
+  :root[data-theme='high-contrast'] textarea:focus-visible,
+  :root[data-theme='high-contrast'] a:focus-visible,
+  :root[data-theme='high-contrast'] [tabindex]:focus-visible {
+    outline-color: #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .app-header,
+  :root[data-theme='high-contrast'] .menu-bar,
+  :root[data-theme='high-contrast'] .status-bar {
+    border-bottom-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .app-header,
+  :root[data-theme='high-contrast'] .menu-bar {
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .status-bar {
+    background: #000;
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .current-item,
+  :root[data-theme='high-contrast'] .command-list small,
+  :root[data-theme='high-contrast'] .context-menu-shortcut {
+    color: #ccc;
+  }
+
+  :root[data-theme='high-contrast'] .global-search input,
+  :root[data-theme='high-contrast'] .command-palette input {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .menu-label {
+    color: #ccc;
+  }
+
+  :root[data-theme='high-contrast'] .menu-item {
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .menu-item:hover,
+  :root[data-theme='high-contrast'] .tab:hover {
+    background: #333;
+  }
+
+  :root[data-theme='high-contrast'] .panel,
+  :root[data-theme='high-contrast'] .side-panel,
+  :root[data-theme='high-contrast'] .content-panel {
+    border-right-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .panel,
+  :root[data-theme='high-contrast'] .side-panel {
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .nav-list li {
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .tab-bar {
+    border-bottom-color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .tab {
+    background: #000;
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .tab.active-tab {
+    background: #ffff00;
+    border-color: #ffff00;
+    color: #000;
+  }
+
+  :root[data-theme='high-contrast'] .document {
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .details-view [role='columnheader'] {
+    border-bottom-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .details-view [role='row'][aria-selected='true'] {
+    background: #ffff00;
+    color: #000;
+    outline-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .document-body {
+    border-color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .document-body:focus {
+    border-color: #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .side-panel dt {
+    color: #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .side-panel dd {
+    color: #ccc;
+  }
+
+  :root[data-theme='high-contrast'] .modal {
+    background: #000;
+    border-color: #fff;
+    box-shadow: none;
+  }
+
+  :root[data-theme='high-contrast'] .modal-actions button {
+    background: #000;
+    color: #fff;
+    border-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .modal-actions button:first-child {
+    background: #ffff00;
+    border-color: #ffff00;
+    color: #000;
+  }
+
+  :root[data-theme='high-contrast'] .modal a,
+  :root[data-theme='high-contrast'] .markdown-body a {
+    color: #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .error-message {
+    color: #ff8a80;
+    border-left-color: #ff8a80;
+  }
+
+  :root[data-theme='high-contrast'] .progress-track {
+    border-color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] .progress-fill {
+    background: #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .table-scroll th,
+  :root[data-theme='high-contrast'] .table-scroll td {
+    border-bottom-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .command-list li {
+    background: #000;
+    border-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .command-list button {
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .active-panel {
+    box-shadow: inset 0 0 0 2px #ffff00;
+  }
+
+  :root[data-theme='high-contrast'] .close-tab {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] [role='tree'] [role='treeitem'][aria-selected='true'] {
+    background: #ffff00;
+    color: #000;
+    outline-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .markdown-editor {
+    border-color: #fff;
+    background: #000;
+    color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .global-context-menu {
+    border-color: #fff;
+    background: #000;
+    box-shadow: none;
+  }
+
+  :root[data-theme='high-contrast'] .global-context-menu button[aria-disabled='true'] {
+    color: #808080;
+  }
+
+  :root[data-theme='high-contrast'] .global-context-menu button:focus-visible {
+    outline-color: #ffff00;
+    background: #333;
+  }
+
+  :root[data-theme='high-contrast'] .markdown-body a.missing-note {
+    color: #ff8a80;
+  }
+
+  :root[data-theme='high-contrast'] .markdown-body pre {
+    background: #000;
+    color: #fff;
+    border-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] .markdown-body th,
+  :root[data-theme='high-contrast'] .markdown-body td {
+    border-color: #fff;
+  }
+
+  :root[data-theme='high-contrast'] input,
+  :root[data-theme='high-contrast'] textarea,
+  :root[data-theme='high-contrast'] select {
+    background: #000;
+    color: #fff;
+    border-color: #fff;
+  }
+
+  /* Narrow layout: panels stack with a bottom divider instead of a right
+     one, and that divider needs the same high-contrast border color. */
+  @media (max-width: 760px) {
+    :root[data-theme='high-contrast'] .panel,
+    :root[data-theme='high-contrast'] .side-panel,
+    :root[data-theme='high-contrast'] .content-panel {
+      border-bottom-color: #fff;
+    }
+  }
+}
+
 /* Focus Mode (F11, Toggle Focus Mode command): hide every persistent chrome
    pane except the title header (which holds the search box), the menu bar,
    and the document itself. display:none also removes the hidden panes from
