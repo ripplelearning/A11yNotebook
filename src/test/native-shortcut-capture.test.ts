@@ -96,7 +96,7 @@ function capture(value: unknown, event = trustedEvent()) {
 
 function menuItem(label: string) {
   return mock.template
-    .flatMap((group) => group.submenu as MenuItemConstructorOptions[])
+    .flatMap((group) => (Array.isArray(group.submenu) ? group.submenu : []))
     .find((item) => item.label === label)!;
 }
 

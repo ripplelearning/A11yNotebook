@@ -1,4 +1,4 @@
-import { mkdtemp, writeFile } from 'node:fs/promises';
+import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -8,7 +8,10 @@ import { buildDocFixture } from './helpers/doc-fixture';
 const assertCurrent = () => {};
 
 async function writeTempFile(name: string, content: string | Buffer): Promise<string> {
-  const directory = await mkdtemp(path.join(tmpdir(), 'a11y-import-formats-'));
+  // The import guard rejects any symlinked ancestor, and on macOS the
+  // system temp dir lives under the /var -> /private/var symlink, so
+  // the test must use the canonical temp dir.
+  const directory = await mkdtemp(path.join(await realpath(tmpdir()), 'a11y-import-formats-'));
   const file = path.join(directory, name);
   await writeFile(file, content);
   return file;

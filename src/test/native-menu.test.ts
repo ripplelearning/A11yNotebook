@@ -47,6 +47,9 @@ describe('native command menu', () => {
     buildApplicationMenu(sendCommand, false);
     const template = menuTemplate();
     expect(template.map((item) => item.label)).toEqual([
+      // On macOS the template starts with the role-only app menu, whose
+      // label is undefined until Electron fills in the app name.
+      ...(process.platform === 'darwin' ? [undefined] : []),
       '&File',
       '&Edit',
       '&View',
