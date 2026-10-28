@@ -3127,7 +3127,7 @@ export function setupVaultIpc(
         // other failure (tampering, corruption) surfaces with a reason
         // the renderer can report instead of a generic message.
         if (!protectedMetadata?.protects('settings') || masterKey !== null) {
-          throw new Error('settings-load: vault-read-failed');
+          throw new Error('settings-load: library-read-failed');
         }
       }
       if (saved) {
@@ -3135,7 +3135,7 @@ export function setupVaultIpc(
         try {
           validated = validateSettings(saved);
         } catch {
-          throw new Error('settings-load: vault-validation-failed');
+          throw new Error('settings-load: library-validation-failed');
         }
         idleLockMinutes = validated.vaultLockMinutes ?? 15;
         return validated;

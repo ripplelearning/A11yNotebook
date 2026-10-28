@@ -335,16 +335,16 @@ export function validateSettings(value: unknown): NotebookSettings {
 
 /**
  * Status text for a failed settings load. The main process reports a
- * reason code when it knows one (the vault settings file could not be
+ * reason code when it knows one (the library settings file could not be
  * read, or it failed its validity check); anything else keeps the
  * generic message, so older or wrapped errors still read as before.
  */
 export function settingsLoadStatusMessage(error: unknown): string {
   const message = error instanceof Error ? error.message : '';
-  if (message.includes('settings-load: vault-read-failed')) {
+  if (message.includes('settings-load: library-read-failed')) {
     return 'Could not load settings: the settings file could not be read.';
   }
-  if (message.includes('settings-load: vault-validation-failed')) {
+  if (message.includes('settings-load: library-validation-failed')) {
     return 'Could not load settings: the settings file failed its validity check.';
   }
   return 'Could not load settings.';

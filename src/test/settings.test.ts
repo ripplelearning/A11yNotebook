@@ -191,10 +191,10 @@ describe('settings and shortcut validation', () => {
 
 describe('settings load failure messages', () => {
   it('names the vault read and validation failures distinctly', () => {
-    expect(settingsLoadStatusMessage(new Error('settings-load: vault-read-failed'))).toBe(
+    expect(settingsLoadStatusMessage(new Error('settings-load: library-read-failed'))).toBe(
       'Could not load settings: the settings file could not be read.',
     );
-    expect(settingsLoadStatusMessage(new Error('settings-load: vault-validation-failed'))).toBe(
+    expect(settingsLoadStatusMessage(new Error('settings-load: library-validation-failed'))).toBe(
       'Could not load settings: the settings file failed its validity check.',
     );
   });
