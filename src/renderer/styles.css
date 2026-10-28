@@ -508,6 +508,11 @@ a:focus-visible,
   margin-top: 1rem;
 }
 
+.modal-title + .modal-actions {
+  margin-top: 0;
+  margin-bottom: 1rem;
+}
+
 .modal-actions button {
   background: rgba(30, 41, 59, 0.9);
   color: white;
