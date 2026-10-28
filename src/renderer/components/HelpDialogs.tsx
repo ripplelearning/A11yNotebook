@@ -59,6 +59,11 @@ export function AboutDialog({ onClose }: DialogProps) {
       describedBy="about-dialog-summary"
       onClose={onClose}
     >
+      <div className="modal-actions">
+        <button type="button" data-autofocus onClick={onClose}>
+          Close
+        </button>
+      </div>
       <div className="modal-body">
         <p id="about-dialog-summary">
           {APP_NAME} version {__APP_VERSION__}. An accessibility-first personal knowledge notebook.
@@ -70,11 +75,6 @@ export function AboutDialog({ onClose }: DialogProps) {
           </a>
         </p>
         <p>Released under the MIT License.</p>
-      </div>
-      <div className="modal-actions">
-        <button type="button" data-autofocus onClick={onClose}>
-          Close
-        </button>
       </div>
     </Modal>
   );
