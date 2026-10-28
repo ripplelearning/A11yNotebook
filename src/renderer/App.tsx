@@ -47,6 +47,7 @@ import CommandPalette from './components/CommandPalette';
 import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
+import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
@@ -292,7 +293,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'focus-search',
     ],
   },
-  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about'] },
+  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-about'] },
 ];
 
 export default function App() {
@@ -313,6 +314,7 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [focusAnnouncement]);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
+  const [tutorialOpen, setTutorialOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
@@ -326,7 +328,7 @@ export default function App() {
     }, 50);
   };
   useEffect(() => () => clearTimeout(navigationAnnouncementTimer.current), []);
-  const [selectedTab, setSelectedTab] = useState('welcome');
+  const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
@@ -780,7 +782,6 @@ export default function App() {
   const rightPaneRef = useRef<HTMLElement>(null);
   const statusRef = useRef<HTMLElement>(null);
   const tabs = [
-    { id: 'welcome', label: 'Welcome' },
     ...NAVIGATION_SCREENS.filter((tab) => tab.id === selectedTab),
     ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
     ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
@@ -1029,9 +1030,9 @@ export default function App() {
       setExportRequest(null);
       setSelectedTab((current) =>
         NAVIGATION_SCREENS.some((screen) => screen.id === current) ||
-        ['welcome', 'tasks', 'reminders'].includes(current)
+        ['tasks', 'reminders'].includes(current)
           ? current
-          : 'welcome',
+          : 'notes-files',
       );
       setPendingFocus(null);
       setAssetTabOpen(false);
@@ -1314,6 +1315,23 @@ export default function App() {
     initialFocusTakenRef.current = true;
     button.focus();
   }, [selectedTab]);
+
+  // Show the guided tour the first time the app runs after an install or
+  // an update, unless the user checked "Don't show this again". The tour
+  // waits until no library switch, lock prompt, or password dialog is in
+  // flight, so it never stacks on top of another dialog.
+  const tutorialDecidedRef = useRef(false);
+  useEffect(() => {
+    if (tutorialDecidedRef.current) return;
+    if (switchingVault || securityLocked || notePasswordDialog) return;
+    tutorialDecidedRef.current = true;
+    const state = readTutorialState();
+    if (state.suppressed) return;
+    if (state.lastVersionSeen !== __APP_VERSION__) {
+      setTutorialOpen(true);
+    }
+    writeTutorialState({ suppressed: false, lastVersionSeen: __APP_VERSION__ });
+  }, [switchingVault, securityLocked, notePasswordDialog]);
 
   // If the right pane is hidden while it contains focus, keep focus in the workspace.
   useEffect(() => {
@@ -2336,7 +2354,7 @@ export default function App() {
       setOpenNotes((current) =>
         current.filter((item) => item.path !== entryPath && !item.path.startsWith(`${entryPath}/`)),
       );
-      if (affectedNotes.some((item) => item.id === selectedTab)) setSelectedTab('welcome');
+      if (affectedNotes.some((item) => item.id === selectedTab)) setSelectedTab('notes-files');
     } catch {
       setStatusMessage('Could not delete the selected item.');
     }
@@ -2549,7 +2567,7 @@ export default function App() {
       announceNavigation(notebook ? `Notes and Files in ${notebook.name}` : 'Notes and Files');
       setPendingGridFocusPath(gridReturnPath ?? null);
     } else {
-      if (selectedTab === tabId) setSelectedTab('welcome');
+      if (selectedTab === tabId) setSelectedTab('notes-files');
       setPendingFocus('tabs');
     }
   };
@@ -3154,7 +3172,7 @@ export default function App() {
           setAssetTabOpen(false);
           setAssetInitialPath(undefined);
           setAssetDirty(false);
-          setSelectedTab(create ? 'libraries' : 'welcome');
+          setSelectedTab(create ? 'libraries' : 'notes-files');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
         }
@@ -3638,6 +3656,7 @@ export default function App() {
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
       showAbout: () => setActiveDialog('about'),
+      showTutorial: () => setTutorialOpen(true),
     });
     if (result) {
       setStatusMessage(result);
@@ -3870,7 +3889,7 @@ export default function App() {
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
     if (id === 'close-current-tab')
       return !tabs.some(
-        (tab) => tab.id === selectedTab && !['welcome', ...NAVIGATION_SCREENS.map((item) => item.id)].includes(tab.id),
+        (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
       );
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')
@@ -3958,7 +3977,6 @@ export default function App() {
       .filter((command) => command.requiresSelection)
       .forEach((command) => disabledContextCommands.add(command.id));
   if (contextMenu?.context === 'tab' && tabs.length <= 1) disabledContextCommands.add('context-close-other-tabs');
-  if (contextMenu?.tabId === 'welcome') disabledContextCommands.add('context-close-tab');
   if (contextMenu?.context === 'tree-note' && (!securityEnabled || encryptedNotePath === contextMenu.path))
     disabledContextCommands.add('context-encrypt-note');
   if (
@@ -4315,7 +4333,7 @@ export default function App() {
                   >
                     {tab.label}
                   </button>
-                  {tab.id !== 'welcome' && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id) ? (
+                  {!NAVIGATION_SCREENS.some((screen) => screen.id === tab.id) ? (
                     <button
                       type="button"
                       className="close-tab"
@@ -4732,13 +4750,15 @@ export default function App() {
                 </div>
               </>
             ) : (
-              <div className="document-body">
-                <h2>Welcome to A11y Notebook</h2>
-                <p>Open or create a local library to begin organizing Markdown notes and attachments.</p>
-                <p>
-                  Use F6 and Shift+F6 to move between panes, Ctrl+Shift+P for commands, Ctrl+K to insert a link, Ctrl+E to switch read/edit mode, and F11 for Focus Mode.
-                </p>
-              </div>
+              <LibrariesScreen
+                showCommandButtons={showCommandButtons}
+                vault={vault}
+                recentLibraries={recentLibraries}
+                onOpenLibrary={() => handleCommand('open-vault')}
+                onNewLibrary={() => handleCommand('new-library')}
+                onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
+                disabled={switchingVault || securityLocked}
+              />
             )}
           </article>
         </main>
@@ -4876,6 +4896,7 @@ export default function App() {
         />
       ) : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+      {tutorialOpen ? <TutorialDialog onClose={() => setTutorialOpen(false)} /> : null}
       {vault && !securityLocked && settingsVaultPath === vault.path ? (
         <ReminderAlerts
           key={vault.path}

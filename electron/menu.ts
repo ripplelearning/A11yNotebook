@@ -152,6 +152,7 @@ export function buildApplicationMenu(
         // registry label stays plain so in-app surfaces are unaffected.
         { ...commandItem('check-for-updates'), label: 'Check for &Updates' },
         commandItem('show-keyboard-shortcuts'),
+        commandItem('show-tutorial'),
         { type: 'separator' },
         commandItem('show-about'),
       ],

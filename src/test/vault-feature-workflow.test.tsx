@@ -251,7 +251,7 @@ describe('feature wiring in the application shell', () => {
     expect(bridge.vault.openExternal).not.toHaveBeenCalled();
   });
   it('keeps timed-out dirty notes locked across tab switches and failed saves, clearing only after a successful save', async () => {
-    const { bridge } = setup(false, undefined, { noteEditLockMinutes: 1 });
+    const { bridge, menu } = setup(false, undefined, { noteEditLockMinutes: 1 });
     const editor = await editNote();
     vi.useFakeTimers();
     try {
@@ -259,7 +259,7 @@ describe('feature wiring in the application shell', () => {
       await act(async () => {
         vi.advanceTimersByTime(60_000);
       });
-      fireEvent.click(screen.getByRole('tab', { name: 'Welcome' }));
+      menu('show-tasks');
       fireEvent.click(screen.getByRole('tab', { name: /Note/ }));
       fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
       expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
@@ -297,6 +297,10 @@ describe('feature wiring in the application shell', () => {
   it('creates HTML notes from the format picker', async () => {
     const { bridge, menu } = setup();
     await screen.findByRole('heading', { name: 'Study' });
+    // New note from the Notes & Files grid requires a notebook selected,
+    // so step to Contents first; the dialog and picker behavior is what
+    // this test covers.
+    menu('show-contents');
     menu('new-note');
     const dialog = await screen.findByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'New Note Name' }), { target: { value: 'Briefing' } });
@@ -406,6 +410,10 @@ describe('feature wiring in the application shell', () => {
   it('opens a labelled creation dialog instead of a browser prompt', async () => {
     const { bridge, menu } = setup();
     await screen.findByRole('heading', { name: 'Study' });
+    // New note from the Notes & Files grid requires a notebook selected,
+    // so step to Contents first; the dialog labelling is what this test
+    // covers.
+    menu('show-contents');
     menu('new-note');
     const dialog = screen.getByRole('dialog', { name: 'New note' });
     fireEvent.change(within(dialog).getByLabelText('New Note Name'), { target: { value: 'New' } });

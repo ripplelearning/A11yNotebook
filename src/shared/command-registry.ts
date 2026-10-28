@@ -39,6 +39,7 @@ export type CommandId =
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
   | 'show-about'
+  | 'show-tutorial'
   | 'show-settings'
   | 'check-spelling-grammar'
   | 'open-thesaurus'
@@ -135,6 +136,7 @@ export type CommandActionContext = {
   checkForUpdates: () => void;
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
+  showTutorial: () => void;
   navigateBack?: () => void;
   navigateForward?: () => void;
   showContents?: () => void;
@@ -776,6 +778,11 @@ export const COMMANDS: CommandDefinition[] = [
     description: 'Show the application name, version, and repository link.',
     shortcut: 'Ctrl+Shift+H',
   },
+  {
+    id: 'show-tutorial',
+    label: 'Tutorial',
+    description: 'Show the guided tour of A11y Notebook.',
+  },
 ];
 
 /** Pane order used by F6 (forward) and Shift+F6 (backward). */
@@ -998,7 +1005,7 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       context.bookmarkPositionAtCursor();
       return undefined;
     case 'close-current-tab':
-      context.setSelectedTab('welcome');
+      context.setSelectedTab('notes-files');
       return 'Current tab closed.';
     case 'toggle-read-only-mode': {
       const nextMode: AppMode = context.mode === 'read-only' ? 'edit' : 'read-only';
@@ -1026,6 +1033,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return undefined;
     case 'show-about':
       context.showAbout();
+      return undefined;
+    case 'show-tutorial':
+      context.showTutorial();
       return undefined;
     default:
       return 'Command not recognized.';

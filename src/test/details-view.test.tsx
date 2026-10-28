@@ -99,6 +99,10 @@ function renderLibrary() {
     },
   } as unknown as NotebookBridge;
   window.a11yNotebook = bridge;
+  // Tests in this file clear localStorage to reset search scope; without
+  // the suppression the guided tour would open over the app on render and
+  // swallow the keyboard shortcuts these tests use to navigate.
+  window.localStorage.setItem('a11y-notebook.tutorial', JSON.stringify({ suppressed: true, lastVersionSeen: '' }));
   render(<App />);
   return { vault, bridge, menu: (command: MenuCommand) => act(() => menuListener?.(command)) };
 }

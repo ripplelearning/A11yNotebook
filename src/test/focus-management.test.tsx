@@ -17,7 +17,7 @@ describe('F6 pane navigation', () => {
   it('starts on the selected tab, then moves forward through main, right pane, status, and navigation, then wraps', () => {
     render(<App />);
     const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
-    const selectedTab = screen.getByRole('tab', { name: 'Welcome' });
+    const selectedTab = screen.getByRole('tab', { name: 'Notes & Files' });
     const panel = screen.getByRole('tabpanel');
     const rightPane = screen.getByRole('complementary', { name: 'Right information pane' });
     const status = screen.getByLabelText('Status bar');
@@ -44,7 +44,7 @@ describe('F6 pane navigation', () => {
     panel.focus();
 
     pressF6(true);
-    expect(screen.getByRole('tab', { name: 'Welcome' })).toHaveFocus();
+    expect(screen.getByRole('tab', { name: 'Notes & Files' })).toHaveFocus();
     pressF6(true);
     expect(screen.getByRole('complementary', { name: 'Navigation pane' })).toHaveFocus();
     pressF6(true);
@@ -152,16 +152,16 @@ describe('command palette', () => {
 });
 
 describe('tabs', () => {
-  it('starts with one real welcome tab and a labelled tab panel', () => {
+  it('starts with one real notes-files tab and a labelled tab panel', () => {
     render(<App />);
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
     const tabs = within(tablist).getAllByRole('tab');
-    const [welcome] = tabs;
+    const [notesFiles] = tabs;
 
     expect(tabs).toHaveLength(1);
-    expect(welcome).toHaveAttribute('aria-selected', 'true');
-    expect(welcome).toHaveAttribute('tabindex', '0');
-    expect(screen.getByRole('tabpanel')).toHaveAttribute('aria-labelledby', welcome.id);
+    expect(notesFiles).toHaveAttribute('aria-selected', 'true');
+    expect(notesFiles).toHaveAttribute('tabindex', '0');
+    expect(screen.getByRole('tabpanel')).toHaveAccessibleName('Notes and Files');
   });
 
   it('moves focus and selection across multiple tabs with arrow, Home, and End keys', async () => {
@@ -200,28 +200,28 @@ describe('tabs', () => {
     });
 
     const tabs = within(tablist).getAllByRole('tab');
-    expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Welcome', 'Tasks', 'Note']);
-    const [welcome, tasks, note] = tabs;
+    expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Tasks', 'Note']);
+    const [tasks, note] = tabs;
     const panel = screen.getByRole('tabpanel');
     expect(note).toHaveAttribute('aria-selected', 'true');
     expect(panel).toHaveAttribute('aria-labelledby', note.id);
 
     fireEvent.keyDown(note, { key: 'ArrowRight' });
-    expect(welcome).toHaveFocus();
-    expect(welcome).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
+    expect(tasks).toHaveFocus();
+    expect(tasks).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAccessibleName('Tasks in Study');
 
-    fireEvent.keyDown(welcome, { key: 'ArrowLeft' });
+    fireEvent.keyDown(tasks, { key: 'ArrowLeft' });
     expect(note).toHaveFocus();
     expect(note).toHaveAttribute('aria-selected', 'true');
     expect(panel).toHaveAttribute('aria-labelledby', note.id);
 
     fireEvent.keyDown(note, { key: 'Home' });
-    expect(welcome).toHaveFocus();
-    expect(welcome).toHaveAttribute('aria-selected', 'true');
-    expect(panel).toHaveAttribute('aria-labelledby', welcome.id);
+    expect(tasks).toHaveFocus();
+    expect(tasks).toHaveAttribute('aria-selected', 'true');
+    expect(panel).toHaveAccessibleName('Tasks in Study');
 
-    fireEvent.keyDown(welcome, { key: 'End' });
+    fireEvent.keyDown(tasks, { key: 'End' });
     expect(note).toHaveFocus();
     expect(note).toHaveAttribute('aria-selected', 'true');
     expect(panel).toHaveAttribute('aria-labelledby', note.id);

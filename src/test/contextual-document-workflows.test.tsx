@@ -145,7 +145,7 @@ describe('contextual shell document workflows', () => {
     setup();
     await screen.findByRole('heading', { name: 'Study' });
     shortcut('1', { isComposing: true });
-    expect(screen.getByRole('tab', { name: 'Welcome' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Notes & Files' })).toHaveAttribute('aria-selected', 'true');
     shortcut('2');
     shortcut('n');
     expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
