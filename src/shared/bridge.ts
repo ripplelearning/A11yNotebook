@@ -44,7 +44,7 @@ export interface VaultBridge {
   pasteLibraryOpen?(source: string): Promise<import('./types').VaultInfo>;
   pasteNotebook?(source: string): Promise<{ notebook: string; files: number }>;
   pasteFiles?(sources: string[], notebookPath: string): Promise<{ files: string[] }>;
-  pasteOrganize?(libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file'): Promise<string[]>;
+  pasteOrganize?(libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file', notebookName?: string): Promise<string[]>;
   getRecentLibraries?(): Promise<RecentLibrary[]>;
   openLibraryPath?(path: string): Promise<VaultInfo | null>;
   get(): Promise<VaultInfo | null>;

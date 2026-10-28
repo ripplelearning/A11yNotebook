@@ -2695,17 +2695,23 @@ export function setupVaultIpc(
   );
   ipcMain.handle(
     IPC_CHANNELS.vaultPasteOrganize,
-    async (event, libraryPath: unknown, orphanFiles: unknown, mode: unknown) => {
+    async (event, libraryPath: unknown, orphanFiles: unknown, mode: unknown, notebookName: unknown) => {
       assertTrusted(event, isTrustedSender);
       if (
         typeof libraryPath !== 'string' ||
         !Array.isArray(orphanFiles) ||
         !orphanFiles.every((item) => typeof item === 'string') ||
-        (mode !== 'one' && mode !== 'per-file')
+        (mode !== 'one' && mode !== 'per-file') ||
+        (notebookName !== undefined && typeof notebookName !== 'string')
       ) {
         throw new Error('Library orphan organization needs a library, file names, and a mode.');
       }
-      return organizeLibraryOrphans(libraryPath, orphanFiles as string[], mode);
+      return organizeLibraryOrphans(
+        libraryPath,
+        orphanFiles as string[],
+        mode,
+        notebookName as string | undefined,
+      );
     },
   );
   ipcMain.handle(IPC_CHANNELS.vaultGet, async (event) => {

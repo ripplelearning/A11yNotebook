@@ -63,6 +63,25 @@ describe('paste planning and copying', () => {
     expect(await lstat(path.join(library, 'c', 'c.txt'))).toBeTruthy();
   });
 
+  it('uses the given notebook name for one notebook, sanitized, unique, and with a fallback', async () => {
+    await fixture();
+    const library = path.join(temporaryDirectory, 'Library');
+    await mkdir(library, { recursive: true });
+    await writeFile(path.join(library, 'a.txt'), 'a');
+    const named = await organizeLibraryOrphans(library, ['a.txt'], 'one', 'Loose ends');
+    expect(named).toEqual(['Loose ends']);
+    expect(await lstat(path.join(library, 'Loose ends', 'a.txt'))).toBeTruthy();
+    await writeFile(path.join(library, 'b.txt'), 'b');
+    const illegal = await organizeLibraryOrphans(library, ['b.txt'], 'one', 'Bad/name?');
+    expect(illegal).toEqual(['Bad_name_']);
+    await writeFile(path.join(library, 'c.txt'), 'c');
+    const duplicate = await organizeLibraryOrphans(library, ['c.txt'], 'one', 'Loose ends');
+    expect(duplicate).toEqual(['Loose ends-2']);
+    await writeFile(path.join(library, 'd.txt'), 'd');
+    const blank = await organizeLibraryOrphans(library, ['d.txt'], 'one', '   ');
+    expect(blank).toEqual(['Pasted files']);
+  });
+
   it('describes a single file source', async () => {
     const source = await fixture();
     const file = path.join(source, 'loose.txt');

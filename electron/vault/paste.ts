@@ -105,28 +105,34 @@ export async function copyFolder(source: string, destination: string): Promise<{
 /**
  * Move a library's direct (orphan) files into notebooks, so the library
  * contains no files outside a notebook. Mode 'one' puts all orphans in a
- * single "Pasted files" notebook; mode 'per-file' gives each its own
- * notebook named after the file. Returns the notebook names created.
+ * single notebook named notebookName (default "Pasted files"); mode
+ * 'per-file' gives each its own notebook named after the file. Returns
+ * the notebook names created.
  */
 export async function organizeLibraryOrphans(
   libraryPath: string,
   orphanFiles: string[],
   mode: 'one' | 'per-file',
+  notebookName?: string,
 ): Promise<string[]> {
   const created: string[] = [];
-  const sanitize = (name: string) => {
-    const stem = name
-      .replace(/\.[^.]*$/, '')
+  const sanitizeCharacters = (name: string) =>
+    name
       .replace(/[<>:"/\\|?*]/g, '_')
       .split('')
       .map((character) => (character.charCodeAt(0) < 32 ? '_' : character))
       .join('')
       .trim()
       .replace(/[. ]+$/, '');
-    return stem || 'Pasted file';
+  const sanitize = (name: string) => {
+    const stem = name.replace(/\.[^.]*$/, '');
+    return sanitizeCharacters(stem) || 'Pasted file';
   };
+  // A typed notebook name keeps its text as-is (no extension stripping);
+  // illegal characters are replaced and a blank name falls back.
+  const sanitizeNotebookName = (name: string) => sanitizeCharacters(name) || 'Pasted files';
   if (mode === 'one') {
-    const notebook = await resolveUniqueFolder(libraryPath, 'Pasted files');
+    const notebook = await resolveUniqueFolder(libraryPath, sanitizeNotebookName(notebookName ?? 'Pasted files'));
     await mkdir(notebook, { recursive: true });
     for (const file of orphanFiles) {
       await rename(path.join(libraryPath, file), path.join(notebook, file));

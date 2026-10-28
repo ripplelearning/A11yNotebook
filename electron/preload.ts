@@ -211,8 +211,8 @@ const bridge: NotebookBridge = {
     pasteNotebook: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteNotebook, source),
     pasteFiles: (sources: string[], notebookPath: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteFiles, sources, notebookPath),
-    pasteOrganize: (libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file') =>
-      ipcRenderer.invoke(CHANNELS.vaultPasteOrganize, libraryPath, orphanFiles, mode),
+    pasteOrganize: (libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file', notebookName?: string) =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteOrganize, libraryPath, orphanFiles, mode, notebookName),
     createTask: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateTask, input),
     openWith: (relativePath, options) => ipcRenderer.invoke(CHANNELS.vaultOpenWith, relativePath, options),
     get: () => ipcRenderer.invoke(CHANNELS.vaultGet),

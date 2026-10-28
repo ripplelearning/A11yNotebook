@@ -1,21 +1,29 @@
 import { useState } from 'react';
 import Modal from '../../components/Modal';
 
-export type PasteOrphanChoice = 'one' | 'per-file' | 'cancel';
+export type PasteOrphanResult =
+  | { mode: 'one'; notebookName: string }
+  | { mode: 'per-file' }
+  | { mode: 'cancel' };
 
 interface Props {
   files: string[];
-  onChoice: (choice: PasteOrphanChoice) => void;
+  onChoice: (result: PasteOrphanResult) => void;
 }
 
 export default function PasteOrphanDialog({ files, onChoice }: Props) {
-  const [choice, setChoice] = useState<PasteOrphanChoice>('one');
+  const [choice, setChoice] = useState<'one' | 'per-file'>('one');
+  const [notebookName, setNotebookName] = useState('Pasted files');
   return (
-    <Modal title="Organize pasted files" titleId="paste-orphan-title" onClose={() => onChoice('cancel')}>
+    <Modal title="Organize pasted files" titleId="paste-orphan-title" onClose={() => onChoice({ mode: 'cancel' })}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          onChoice(choice);
+          onChoice(
+            choice === 'one'
+              ? { mode: 'one', notebookName: notebookName.trim() || 'Pasted files' }
+              : { mode: 'per-file' },
+          );
         }}
       >
         <p>
@@ -50,8 +58,19 @@ export default function PasteOrphanDialog({ files, onChoice }: Props) {
             Give each file its own new notebook
           </label>
         </fieldset>
+        {choice === 'one' && (
+          <label>
+            New notebook name
+            <input
+              type="text"
+              value={notebookName}
+              onChange={(event) => setNotebookName(event.target.value)}
+              data-autofocus
+            />
+          </label>
+        )}
         <button type="submit">Organize files</button>
-        <button type="button" onClick={() => onChoice('cancel')}>
+        <button type="button" onClick={() => onChoice({ mode: 'cancel' })}>
           Cancel paste
         </button>
       </form>
