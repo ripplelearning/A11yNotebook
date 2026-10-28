@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_SETTINGS, normalizeShortcut, shortcutConflicts, validateSettings } from '../shared/settings';
+import { DEFAULT_SETTINGS, normalizeShortcut, settingsLoadStatusMessage, shortcutConflicts, validateSettings } from '../shared/settings';
 
 describe('settings and shortcut validation', () => {
   it('defaults missing command-button preferences to menu-first and persists either mode', () => {
@@ -186,5 +186,22 @@ describe('settings and shortcut validation', () => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'show-calendar': 'F11' } })).toThrow(
       /Shortcut conflicts: F11/,
     );
+  });
+});
+
+describe('settings load failure messages', () => {
+  it('names the vault read and validation failures distinctly', () => {
+    expect(settingsLoadStatusMessage(new Error('settings-load: vault-read-failed'))).toBe(
+      'Could not load settings: the settings file could not be read.',
+    );
+    expect(settingsLoadStatusMessage(new Error('settings-load: vault-validation-failed'))).toBe(
+      'Could not load settings: the settings file failed its validity check.',
+    );
+  });
+
+  it('keeps the generic message for unknown errors', () => {
+    expect(settingsLoadStatusMessage(new Error('Settings unavailable.'))).toBe('Could not load settings.');
+    expect(settingsLoadStatusMessage('boom')).toBe('Could not load settings.');
+    expect(settingsLoadStatusMessage(undefined)).toBe('Could not load settings.');
   });
 });

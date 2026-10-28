@@ -93,6 +93,7 @@ import {
   DEFAULT_SETTINGS,
   formatPriorityName,
   resolvePriorityOptions,
+  settingsLoadStatusMessage,
   type NotebookSettings,
 } from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
@@ -580,11 +581,28 @@ export default function App() {
     }
   });
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
+  const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
   const [settingsVaultPath, setSettingsVaultPath] = useState<string>();
   const [securityEnabled, setSecurityEnabled] = useState(false);
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
   const navigationHistoryRef = useRef<NavigationHistoryState>(emptyNavigationHistory());
+
+  // Save settings only when the last load succeeded: after a failed load
+  // the in-memory settings are defaults, and persisting them would
+  // overwrite the stored settings file. Returns false when blocked.
+  const persistSettings = useCallback(
+    async (next: NotebookSettings): Promise<boolean> => {
+      if (settingsLoadFailed) {
+        setStatusMessage('Settings did not load, so saving is disabled to protect your stored settings.');
+        return false;
+      }
+      await window.a11yNotebook!.vault.saveSettings(next);
+      setSettings(next);
+      return true;
+    },
+    [settingsLoadFailed],
+  );
 
   const applyHistoryLocation = (location: NavigationLocation) => {
     if (location.notebookPath) {
@@ -809,6 +827,7 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setSettingsVaultPath(undefined);
+    setSettingsLoadFailed(false);
     if (securityLocked) return;
     void window.a11yNotebook?.vault
       .getSettings?.()
@@ -816,10 +835,14 @@ export default function App() {
         if (!cancelled) {
           setSettings(value);
           setSettingsVaultPath(vault?.path);
+          setSettingsLoadFailed(false);
         }
       })
-      .catch(() => {
-        if (!cancelled) setStatusMessage('Could not load settings.');
+      .catch((error) => {
+        if (!cancelled) {
+          setSettingsLoadFailed(true);
+          setStatusMessage(settingsLoadStatusMessage(error));
+        }
       });
     return () => {
       cancelled = true;
@@ -893,9 +916,9 @@ export default function App() {
       try {
         const result = await create(settings.autoBackupFolder ?? '', settings.autoBackupKeepCount ?? 5);
         const next = { ...settings, lastAutoBackupAt: new Date().toISOString() };
-        await window.a11yNotebook!.vault.saveSettings(next);
-        setSettings(next);
-        setStatusMessage(`Automatic backup created (${result.files} files).`);
+        if (await persistSettings(next)) {
+          setStatusMessage(`Automatic backup created (${result.files} files).`);
+        }
       } catch {
         setStatusMessage('Automatic backup failed; it will be retried later.');
       } finally {
@@ -905,7 +928,7 @@ export default function App() {
     void runIfDue();
     const timer = window.setInterval(() => void runIfDue(), 60 * 60 * 1000);
     return () => window.clearInterval(timer);
-  }, [vault, securityLocked, switchingVault, settings]);
+  }, [vault, securityLocked, switchingVault, settings, persistSettings]);
 
   useEffect(() => {
     let cancelled = false;
@@ -1683,8 +1706,7 @@ export default function App() {
   const savePriorityOptions = async (options: string[]) => {
     if (!window.a11yNotebook) return;
     const next = { ...settings, priorityOptions: options };
-    await window.a11yNotebook.vault.saveSettings(next);
-    setSettings(next);
+    await persistSettings(next);
   };
 
   const [spellingOpen, setSpellingOpen] = useState(false);
@@ -1753,8 +1775,7 @@ export default function App() {
       ...settings,
       customDictionary: [...(settings.customDictionary ?? []), word],
     };
-    await window.a11yNotebook.vault.saveSettings(next);
-    setSettings(next);
+    await persistSettings(next);
   };
 
   const refreshVault = async () => {
@@ -4881,9 +4902,9 @@ export default function App() {
           recoveryAvailable={recoveryAvailable}
           onClose={closeDialog}
           onSave={async (value) => {
-            await window.a11yNotebook!.vault.saveSettings(value);
-            setSettings(value);
-            setStatusMessage('Settings saved.');
+            if (await persistSettings(value)) {
+              setStatusMessage('Settings saved.');
+            }
           }}
           onSetVaultPassword={async (password) => {
             const setupPassword = window.a11yNotebook?.vault.setupVaultPassword;
