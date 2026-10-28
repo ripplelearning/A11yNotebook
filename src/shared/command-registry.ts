@@ -31,6 +31,8 @@ export type CommandId =
   | 'edit-note-metadata'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
+  | 'enable-reading-mode'
+  | 'find-in-note'
   | 'toggle-right-pane'
   | 'focus-search'
   | 'command-search'
@@ -137,6 +139,7 @@ export type CommandActionContext = {
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
   showTutorial: () => void;
+  showFindDialog: () => void;
   navigateBack?: () => void;
   navigateForward?: () => void;
   showContents?: () => void;
@@ -729,6 +732,18 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+E',
   },
   {
+    id: 'enable-reading-mode',
+    label: 'Enable reading mode',
+    description: 'Switch the current note to reading mode.',
+    shortcut: 'Ctrl+R',
+  },
+  {
+    id: 'find-in-note',
+    label: 'Find in note',
+    description: 'Search within the current note.',
+    shortcut: 'Ctrl+F',
+  },
+  {
     id: 'toggle-right-pane',
     label: 'Toggle right pane',
     description: 'Show or hide the right information pane.',
@@ -1011,6 +1026,14 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       const nextMode: AppMode = context.mode === 'read-only' ? 'edit' : 'read-only';
       context.setMode(nextMode);
       return `Mode switched to ${nextMode}.`;
+    }
+    case 'enable-reading-mode': {
+      context.setMode('read-only');
+      return 'Reading mode enabled.';
+    }
+    case 'find-in-note': {
+      context.showFindDialog();
+      return undefined;
     }
     case 'toggle-right-pane': {
       const nextState = !context.rightPaneOpen;

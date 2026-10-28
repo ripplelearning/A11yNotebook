@@ -122,7 +122,9 @@ document previews editable or bypass an encrypted-note or editing lock. Ctrl+E r
 The read view contains semantic content; Markdown renders with unsafe raw HTML removed, and HTML notes are sanitized
 on load, edit, paste, save, and render. Scripts, forms, active embedded content, event handlers, remote images, and
 unsafe URL schemes are not allowed. HTML images must have alternative text and use local raster files.
-Toggle **Read-only/edit mode** with Ctrl+E. **Plain source** edits Markdown or HTML source in a native text area;
+Toggle **Read-only/edit mode** with Ctrl+E. Ctrl+R switches straight to reading mode without toggling. Ctrl+F opens
+a Find dialog that searches within the current note, in both reading and editing mode, with Find next and Find
+previous and an optional Match case. **Plain source** edits Markdown or HTML source in a native text area;
 **Rich text** exposes an accessible formatting toolbar and multiline textbox. Ctrl+S saves immediately; edits also
 save after a short idle period. A tab marks unsaved content and asks before discarding it when closed.
 
@@ -644,6 +646,8 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+N                                                       | New item in the current view                   |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
+| Ctrl+R                                                       | Enable reading mode                            |
+| Ctrl+F                                                       | Find in note                                   |
 | Alt+Q                                                        | Focus global search                            |
 | Ctrl+Shift+P                                                 | Open command palette                           |
 | Ctrl+K                                                       | Insert link                                    |

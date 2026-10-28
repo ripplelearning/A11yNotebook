@@ -32,6 +32,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     showKeyboardShortcuts: vi.fn(),
     showAbout: vi.fn(),
     showTutorial: vi.fn(),
+    showFindDialog: vi.fn(),
     ...overrides,
   };
 }
@@ -55,6 +56,24 @@ describe('command registry', () => {
 
     expect(result).toBe('Mode switched to edit.');
     expect(currentMode).toBe('edit');
+  });
+
+  it('dispatches direct reading mode and the find dialog', () => {
+    let currentMode: AppMode = 'edit';
+    const result = dispatchCommand(
+      'enable-reading-mode',
+      createContext({
+        mode: currentMode,
+        setMode: (value) => {
+          currentMode = value;
+        },
+      }),
+    );
+    expect(result).toBe('Reading mode enabled.');
+    expect(currentMode).toBe('read-only');
+    const context = createContext();
+    expect(dispatchCommand('find-in-note', context)).toBeUndefined();
+    expect(context.showFindDialog).toHaveBeenCalledTimes(1);
   });
 
   it('registers Help menu commands', () => {

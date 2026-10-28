@@ -48,11 +48,13 @@ import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
+import FindDialog from './components/FindDialog';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
+import { findAllMatches } from '../shared/find-text';
 import {
   createEditHistory,
   recordEdit,
@@ -272,6 +274,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'convert-note-to-outline',
       'refresh-links',
       'repair-broken-links',
+      'find-in-note',
       'check-spelling-grammar',
       'open-thesaurus',
       'show-reminders',
@@ -289,6 +292,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'show-notes-files',
       'toggle-right-pane',
       'toggle-read-only-mode',
+      'enable-reading-mode',
       'show-assets',
       'focus-search',
     ],
@@ -1746,6 +1750,80 @@ export default function App() {
   };
 
   const [spellingOpen, setSpellingOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const findStateRef = useRef<{
+    noteId: string;
+    mode: AppMode;
+    query: string;
+    caseSensitive: boolean;
+    position: number;
+  } | null>(null);
+
+  /**
+   * Search within the current note and move to the next or previous match.
+   * In edit mode the textarea selection moves; in reading mode the match
+   * in the rendered document is selected. Matches wrap around. Returns
+   * the status text the Find dialog announces.
+   */
+  const findInNote = (query: string, direction: 'next' | 'prev', caseSensitive: boolean): string => {
+    if (!currentNote) return 'No note is open.';
+    if (!query) return 'Enter text to find.';
+    const previous = findStateRef.current;
+    let position =
+      previous &&
+      previous.noteId === currentNote.id &&
+      previous.mode === mode &&
+      previous.query === query &&
+      previous.caseSensitive === caseSensitive
+        ? previous.position
+        : -1;
+    if (mode === 'edit') {
+      const textarea = editorRef.current;
+      const text = textarea?.value ?? currentNote.content;
+      const matches = findAllMatches(text, query, caseSensitive);
+      if (!matches.length) {
+        findStateRef.current = null;
+        return `No matches for "${query}".`;
+      }
+      position = direction === 'next' ? (position < matches.length - 1 ? position + 1 : 0) : position > 0 ? position - 1 : matches.length - 1;
+      const match = matches[position];
+      if (!match) return `No matches for "${query}".`;
+      if (textarea) {
+        textarea.focus();
+        textarea.setSelectionRange(match.index, match.index + match.length);
+      }
+      findStateRef.current = { noteId: currentNote.id, mode, query, caseSensitive, position };
+      return `Match ${position + 1} of ${matches.length} for "${query}".`;
+    }
+    const root = annotationTools.documentRef.current;
+    if (!root) return 'The note is not displayed.';
+    const matches: { node: Text; start: number; length: number }[] = [];
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node: Text | null;
+    while ((node = walker.nextNode() as Text | null)) {
+      for (const match of findAllMatches(node.data, query, caseSensitive)) {
+        matches.push({ node, start: match.index, length: match.length });
+      }
+    }
+    if (!matches.length) {
+      findStateRef.current = null;
+      window.getSelection()?.removeAllRanges();
+      return `No matches for "${query}".`;
+    }
+    position = direction === 'next' ? (position < matches.length - 1 ? position + 1 : 0) : position > 0 ? position - 1 : matches.length - 1;
+    const match = matches[position];
+    if (!match) return `No matches for "${query}".`;
+    const range = document.createRange();
+    range.setStart(match.node, match.start);
+    range.setEnd(match.node, match.start + match.length);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const element = match.node.parentElement;
+    if (element && typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'center' });
+    findStateRef.current = { noteId: currentNote.id, mode, query, caseSensitive, position };
+    return `Match ${position + 1} of ${matches.length} for "${query}".`;
+  };
   type ThesaurusSelection =
     | { kind: 'plain'; start: number; end: number }
     | { kind: 'rich'; range: Range; element: HTMLElement };
@@ -3612,6 +3690,14 @@ export default function App() {
       setStatusMessage('This view has no note editor. Open a managed Markdown or HTML note to enable editing.');
       return;
     }
+    if (commandId === 'enable-reading-mode' && !currentNote) {
+      setStatusMessage('Open a note to enable reading mode.');
+      return;
+    }
+    if (commandId === 'find-in-note' && !currentNote) {
+      setStatusMessage('Open a note to search within it.');
+      return;
+    }
     if (commandId === 'toggle-read-only-mode' && mode === 'read-only' && currentNoteEditLocked) {
       setStatusMessage('Save this note before editing it again.');
       return;
@@ -3657,6 +3743,7 @@ export default function App() {
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
       showAbout: () => setActiveDialog('about'),
       showTutorial: () => setTutorialOpen(true),
+      showFindDialog: () => setFindOpen(true),
     });
     if (result) {
       setStatusMessage(result);
@@ -3874,6 +3961,7 @@ export default function App() {
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
     }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'enable-reading-mode' || id === 'find-in-note') return !currentNote;
     if (id === 'edit-undo') {
       return undoTimelineRef.current.undo.length === 0;
     }
@@ -5003,6 +5091,15 @@ export default function App() {
           }}
           onAddToDictionary={(word) => void addToCustomDictionary(word)}
           onClose={() => setSpellingOpen(false)}
+        />
+      ) : null}
+      {findOpen && currentNote ? (
+        <FindDialog
+          onClose={() => {
+            setFindOpen(false);
+            findStateRef.current = null;
+          }}
+          onSearch={findInNote}
         />
       ) : null}
       {thesaurusRequest && currentNote ? (
