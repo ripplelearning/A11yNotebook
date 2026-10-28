@@ -118,7 +118,7 @@ import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
-import PasteOrphanDialog, { type PasteOrphanChoice } from './features/vault/PasteOrphanDialog';
+import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
@@ -1813,7 +1813,7 @@ export default function App() {
   const [pasteLibraryPrompt, setPasteLibraryPrompt] = useState<{ name: string } | null>(null);
   const pasteLibraryResolver = useRef<((choice: PasteLibraryChoice) => void) | null>(null);
   const [pasteOrphanPrompt, setPasteOrphanPrompt] = useState<{ files: string[] } | null>(null);
-  const pasteOrphanResolver = useRef<((choice: PasteOrphanChoice) => void) | null>(null);
+  const pasteOrphanResolver = useRef<((result: PasteOrphanResult) => void) | null>(null);
   const [pasteBusy, setPasteBusy] = useState(false);
 
   const askPasteLibraryChoice = (name: string): Promise<PasteLibraryChoice> =>
@@ -1822,7 +1822,7 @@ export default function App() {
       setPasteLibraryPrompt({ name });
     });
 
-  const askPasteOrphanChoice = (files: string[]): Promise<PasteOrphanChoice> =>
+  const askPasteOrphanChoice = (files: string[]): Promise<PasteOrphanResult> =>
     new Promise((resolve) => {
       pasteOrphanResolver.current = resolve;
       setPasteOrphanPrompt({ files });
@@ -1919,8 +1919,8 @@ export default function App() {
               setStatusMessage('Organizing pasted library files is unavailable.');
               continue;
             }
-            const mode = await askPasteOrphanChoice(libraryInfo.files);
-            if (mode === 'cancel') {
+            const result = await askPasteOrphanChoice(libraryInfo.files);
+            if (result.mode === 'cancel') {
               setStatusMessage(
                 copied
                   ? `Paste cancelled. The copy remains at ${libraryPath}; open it from Libraries when ready.`
@@ -1928,7 +1928,12 @@ export default function App() {
               );
               continue;
             }
-            await bridge.pasteOrganize(libraryPath, libraryInfo.files, mode);
+            await bridge.pasteOrganize(
+              libraryPath,
+              libraryInfo.files,
+              result.mode,
+              result.mode === 'one' ? result.notebookName : undefined,
+            );
           }
           await openPastedLibrary(libraryPath);
         } else if (selectedTab === 'notebooks') {
@@ -4112,9 +4117,9 @@ export default function App() {
       {pasteOrphanPrompt ? (
         <PasteOrphanDialog
           files={pasteOrphanPrompt.files}
-          onChoice={(choice) => {
+          onChoice={(result) => {
             setPasteOrphanPrompt(null);
-            pasteOrphanResolver.current?.(choice);
+            pasteOrphanResolver.current?.(result);
             pasteOrphanResolver.current = null;
           }}
         />

@@ -18,6 +18,27 @@ describe('paste dialogs', () => {
     expect(screen.getByText('a.txt')).toBeTruthy();
     fireEvent.click(screen.getByLabelText(/Give each file its own new notebook/));
     fireEvent.click(screen.getByRole('button', { name: 'Organize files' }));
-    expect(onChoice).toHaveBeenCalledWith('per-file');
+    expect(onChoice).toHaveBeenCalledWith({ mode: 'per-file' });
+  });
+
+  it('names the single notebook from the textbox, defaulting to Pasted files', () => {
+    const onChoice = vi.fn();
+    render(<PasteOrphanDialog files={['a.txt', 'b.txt']} onChoice={onChoice} />);
+    const name = screen.getByRole('textbox', { name: 'New notebook name' });
+    expect(name).toHaveValue('Pasted files');
+    fireEvent.change(name, { target: { value: 'Loose ends' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Organize files' }));
+    expect(onChoice).toHaveBeenCalledWith({ mode: 'one', notebookName: 'Loose ends' });
+  });
+
+  it('hides the name box for one notebook per file and falls back when blank', () => {
+    const onChoice = vi.fn();
+    render(<PasteOrphanDialog files={['a.txt', 'b.txt']} onChoice={onChoice} />);
+    fireEvent.click(screen.getByLabelText(/Give each file its own new notebook/));
+    expect(screen.queryByRole('textbox', { name: 'New notebook name' })).toBeNull();
+    fireEvent.click(screen.getByLabelText(/Put all of them in one new notebook/));
+    fireEvent.change(screen.getByRole('textbox', { name: 'New notebook name' }), { target: { value: '   ' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Organize files' }));
+    expect(onChoice).toHaveBeenCalledWith({ mode: 'one', notebookName: 'Pasted files' });
   });
 });
