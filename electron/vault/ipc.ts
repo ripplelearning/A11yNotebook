@@ -3133,7 +3133,11 @@ export function setupVaultIpc(
       if (saved) {
         let validated;
         try {
-          validated = validateSettings(saved);
+          // Load-time only: a shortcut conflict must never fail the whole
+          // file. Explicit bindings win over defaults (see
+          // resolveShortcutConflicts) so the rest of the settings load
+          // and saves are unblocked; save-time validation stays strict.
+          validated = validateSettings(saved, { resolveConflictingShortcuts: true });
         } catch (error) {
           // Keep the underlying validation error: the renderer reports it
           // so the next failure names the failing check, not just the class.
