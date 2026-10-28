@@ -62,6 +62,10 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Shift+D   | Edit note metadata…                     |
 | Ctrl+W         | Close current tab                       |
 | Ctrl+E         | Toggle read-only/edit mode              |
+| Ctrl+R         | Enable reading mode                     |
+| Ctrl+F         | Find in document                        |
+| F3             | Find next match                         |
+| Shift+F3       | Find previous match                     |
 | F9             | Toggle right pane                       |
 | Alt+Q          | Focus search                            |
 | Ctrl+Shift+P   | Command Palette                         |

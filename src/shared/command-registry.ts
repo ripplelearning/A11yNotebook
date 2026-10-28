@@ -31,6 +31,10 @@ export type CommandId =
   | 'edit-note-metadata'
   | 'close-current-tab'
   | 'toggle-read-only-mode'
+  | 'enable-reading-mode'
+  | 'find-in-document'
+  | 'find-next'
+  | 'find-previous'
   | 'toggle-right-pane'
   | 'focus-search'
   | 'command-search'
@@ -137,6 +141,8 @@ export type CommandActionContext = {
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
   showTutorial: () => void;
+  startFind: () => void;
+  repeatFind: (direction: 'next' | 'prev') => string | undefined;
   navigateBack?: () => void;
   navigateForward?: () => void;
   showContents?: () => void;
@@ -729,6 +735,30 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+E',
   },
   {
+    id: 'enable-reading-mode',
+    label: 'Enable reading mode',
+    description: 'Switch the current note to reading mode.',
+    shortcut: 'Ctrl+R',
+  },
+  {
+    id: 'find-in-document',
+    label: 'Find in document',
+    description: 'Search within the current note or document.',
+    shortcut: 'Ctrl+F',
+  },
+  {
+    id: 'find-next',
+    label: 'Find next match',
+    description: 'Move to the next match of the last search.',
+    shortcut: 'F3',
+  },
+  {
+    id: 'find-previous',
+    label: 'Find previous match',
+    description: 'Move to the previous match of the last search.',
+    shortcut: 'Shift+F3',
+  },
+  {
     id: 'toggle-right-pane',
     label: 'Toggle right pane',
     description: 'Show or hide the right information pane.',
@@ -1011,6 +1041,20 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       const nextMode: AppMode = context.mode === 'read-only' ? 'edit' : 'read-only';
       context.setMode(nextMode);
       return `Mode switched to ${nextMode}.`;
+    }
+    case 'enable-reading-mode': {
+      context.setMode('read-only');
+      return 'Reading mode enabled.';
+    }
+    case 'find-in-document': {
+      context.startFind();
+      return undefined;
+    }
+    case 'find-next': {
+      return context.repeatFind('next');
+    }
+    case 'find-previous': {
+      return context.repeatFind('prev');
     }
     case 'toggle-right-pane': {
       const nextState = !context.rightPaneOpen;
