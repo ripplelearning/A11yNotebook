@@ -3134,8 +3134,11 @@ export function setupVaultIpc(
         let validated;
         try {
           validated = validateSettings(saved);
-        } catch {
-          throw new Error('settings-load: library-validation-failed');
+        } catch (error) {
+          // Keep the underlying validation error: the renderer reports it
+          // so the next failure names the failing check, not just the class.
+          const detail = error instanceof Error ? error.message : 'Unknown validation failure.';
+          throw new Error(`settings-load: library-validation-failed: ${detail}`);
         }
         idleLockMinutes = validated.vaultLockMinutes ?? 15;
         return validated;

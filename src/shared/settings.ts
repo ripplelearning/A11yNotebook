@@ -288,7 +288,12 @@ export function validateSettings(value: unknown): NotebookSettings {
     throw new Error('Invalid settings values.');
   const shortcuts: NotebookSettings['shortcuts'] = {};
   for (const [id, shortcut] of Object.entries(settings.shortcuts)) {
-    if (!COMMANDS.some((command) => command.id === id) || typeof shortcut !== 'string') {
+    // Settings files outlive commands: a binding saved for a command that
+    // was later removed or renamed must not fail the whole file. Drop
+    // unknown ids; a non-string binding for a surviving command still
+    // throws, since that indicates a damaged file rather than staleness.
+    if (!COMMANDS.some((command) => command.id === id)) continue;
+    if (typeof shortcut !== 'string') {
       throw new Error('Invalid command shortcut.');
     }
     shortcuts[id as CommandId] = normalizeShortcut(shortcut);
@@ -296,7 +301,8 @@ export function validateSettings(value: unknown): NotebookSettings {
   const aliasShortcuts: NotebookSettings['shortcutAliases'] = {};
   if (settings.shortcutAliases && typeof settings.shortcutAliases === 'object' && !Array.isArray(settings.shortcutAliases)) {
     for (const [id, shortcut] of Object.entries(settings.shortcutAliases)) {
-      if (!COMMANDS.some((command) => command.id === id) || typeof shortcut !== 'string') {
+      if (!COMMANDS.some((command) => command.id === id)) continue;
+      if (typeof shortcut !== 'string') {
         throw new Error('Invalid command shortcut.');
       }
       aliasShortcuts[id as CommandId] = normalizeShortcut(shortcut);
@@ -345,7 +351,16 @@ export function settingsLoadStatusMessage(error: unknown): string {
     return 'Could not load settings: the settings file could not be read.';
   }
   if (message.includes('settings-load: library-validation-failed')) {
-    return 'Could not load settings: the settings file failed its validity check.';
+    // The main process appends the underlying validation error after the
+    // reason code; surface it so the next report names the failing check
+    // instead of only the failure class.
+    const detail = message
+      .split('settings-load: library-validation-failed')[1]
+      ?.replace(/^[:\s]+/, '')
+      .replace(/\.+$/, '');
+    return detail
+      ? `Could not load settings: the settings file failed its validity check (${detail}).`
+      : 'Could not load settings: the settings file failed its validity check.';
   }
   return 'Could not load settings.';
 }

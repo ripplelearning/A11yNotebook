@@ -158,11 +158,22 @@ describe('settings and shortcut validation', () => {
       'new-contextual': 'Ctrl+Alt+N',
     });
   });
-  it('rejects invalid settings, typing keys and unknown commands', () => {
+  it('rejects invalid settings and typing keys, and drops shortcuts for unknown commands', () => {
     expect(() => normalizeShortcut('b')).toThrow();
     expect(() => normalizeShortcut('Ctrl+Ctrl+B')).toThrow();
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, autosaveDelay: -1 })).toThrow();
-    expect(() => validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { bad: 'Ctrl+T' } })).toThrow();
+    // A binding saved for a removed or renamed command must not fail the
+    // whole file: it is dropped, and the surviving settings load.
+    expect(
+      validateSettings({
+        ...DEFAULT_SETTINGS,
+        shortcuts: { 'focus-main-content': 'Alt+2', 'show-calendar': 'Ctrl+6' },
+        shortcutAliases: { 'focus-navigation': 'Alt+1' },
+      }),
+    ).toMatchObject({ shortcuts: { 'show-calendar': 'Ctrl+6' }, shortcutAliases: {} });
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'show-calendar': 6 } })).toThrow(
+      /Invalid command shortcut/,
+    );
   });
   it('validates idle and unsaved-edit lock timeouts with legacy defaults', () => {
     expect(validateSettings({ ...DEFAULT_SETTINGS, vaultLockMinutes: 0, noteEditLockMinutes: 10 })).toMatchObject({
@@ -196,6 +207,15 @@ describe('settings load failure messages', () => {
     );
     expect(settingsLoadStatusMessage(new Error('settings-load: library-validation-failed'))).toBe(
       'Could not load settings: the settings file failed its validity check.',
+    );
+  });
+
+  it('appends the underlying validation error when the main process reports one', () => {
+    expect(
+      settingsLoadStatusMessage(new Error('settings-load: library-validation-failed: Invalid command shortcut.')),
+    ).toBe('Could not load settings: the settings file failed its validity check (Invalid command shortcut).');
+    expect(settingsLoadStatusMessage(new Error('settings-load: library-validation-failed: Invalid settings values.'))).toBe(
+      'Could not load settings: the settings file failed its validity check (Invalid settings values).',
     );
   });
 
