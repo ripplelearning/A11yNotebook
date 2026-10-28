@@ -14,7 +14,7 @@ const pressF6 = (shiftKey = false) =>
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F6', shiftKey });
 
 describe('F6 pane navigation', () => {
-  it('moves forward through navigation, tabs, main, right pane, and status, then wraps', () => {
+  it('starts on the selected tab, then moves forward through main, right pane, status, and navigation, then wraps', () => {
     render(<App />);
     const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
     const selectedTab = screen.getByRole('tab', { name: 'Welcome' });
@@ -22,10 +22,10 @@ describe('F6 pane navigation', () => {
     const rightPane = screen.getByRole('complementary', { name: 'Right information pane' });
     const status = screen.getByLabelText('Status bar');
 
-    pressF6();
-    expect(navigation).toHaveFocus();
-    pressF6();
+    // Opening the app focuses the selected tab (instead of leaving focus
+    // on the body, which made JAWS read the whole window on open).
     expect(selectedTab).toHaveFocus();
+
     pressF6();
     expect(panel).toHaveFocus();
     pressF6();
@@ -34,6 +34,8 @@ describe('F6 pane navigation', () => {
     expect(status).toHaveFocus();
     pressF6();
     expect(navigation).toHaveFocus();
+    pressF6();
+    expect(selectedTab).toHaveFocus();
   });
 
   it('moves backward exactly one pane with Shift+F6', () => {
