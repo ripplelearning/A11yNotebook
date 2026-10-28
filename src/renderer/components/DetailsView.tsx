@@ -1,22 +1,30 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import type { VaultEntry } from '../../shared/types';
 
-type Column = 'name' | 'kind';
-type Sort = { column: Column; direction: 'ascending' | 'descending' };
-
-export interface DetailsViewProps {
-  label: string;
-  items: readonly VaultEntry[];
-  selectedPath: string | null;
-  onSelect: (entry: VaultEntry) => void;
-  onOpen: (entry: VaultEntry) => void;
-  onRename?: (entry: VaultEntry) => void;
-  onDelete?: (entry: VaultEntry) => void;
-  onContextMenu?: (entry: VaultEntry, invoker: HTMLElement, pointer?: { x: number; y: number }) => void;
-  emptyMessage?: string;
+export interface DetailsViewItem {
+  name: string;
+  path: string;
+  kind: string;
 }
 
-const COLUMNS: readonly Column[] = ['name', 'kind'];
+type Column = 'name' | 'kind' | 'path';
+type Sort = { column: Column; direction: 'ascending' | 'descending' };
+
+export interface DetailsViewProps<T extends DetailsViewItem = VaultEntry> {
+  label: string;
+  items: readonly T[];
+  selectedPath: string | null;
+  onSelect: (entry: T) => void;
+  onOpen: (entry: T) => void;
+  onRename?: (entry: T) => void;
+  onDelete?: (entry: T) => void;
+  onContextMenu?: (entry: T, invoker: HTMLElement, pointer?: { x: number; y: number }) => void;
+  emptyMessage?: string;
+  /** Columns to display; defaults to Name and Type, the notebooks and notes grids. */
+  columns?: readonly Column[];
+}
+
+const DEFAULT_COLUMNS: readonly Column[] = ['name', 'kind'];
 const CONTEXTS = {
   notebook: 'tree-folder',
   note: 'tree-note',
@@ -25,7 +33,7 @@ const CONTEXTS = {
 
 const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
-export default function DetailsView({
+export default function DetailsView<T extends DetailsViewItem>({
   label,
   items,
   selectedPath,
@@ -35,7 +43,8 @@ export default function DetailsView({
   onDelete,
   onContextMenu,
   emptyMessage = 'No items to display.',
-}: DetailsViewProps) {
+  columns = DEFAULT_COLUMNS,
+}: DetailsViewProps<T>) {
   const [sort, setSort] = useState<Sort>({ column: 'name', direction: 'ascending' });
   const [focusedPath, setFocusedPath] = useState<string | null>(items[0]?.path ?? null);
   const [focusedColumn, setFocusedColumn] = useState<Column>('name');
@@ -47,9 +56,10 @@ export default function DetailsView({
 
   const sortedItems = useMemo(() => {
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
+    const value = (item: T, column: Column) => (column === 'name' ? item.name : column === 'path' ? item.path : item.kind);
     return [...items].sort((left, right) => {
-      const first = sort.column === 'name' ? left.name : left.kind;
-      const second = sort.column === 'name' ? right.name : right.kind;
+      const first = value(left, sort.column);
+      const second = value(right, sort.column);
       return (
         collator.compare(first, second) * (sort.direction === 'ascending' ? 1 : -1) ||
         left.path.localeCompare(right.path)
@@ -98,19 +108,19 @@ export default function DetailsView({
     headers.current.get(column)?.focus();
   };
 
-  const select = (item: VaultEntry) => {
+  const select = (item: T) => {
     setFocusedPath(item.path);
     onSelect(item);
   };
 
-  const openContextMenu = (item: VaultEntry, invoker: HTMLElement, pointer?: { x: number; y: number }) => {
+  const openContextMenu = (item: T, invoker: HTMLElement, pointer?: { x: number; y: number }) => {
     if (!onContextMenu) return;
     select(item);
     onContextMenu(item, invoker, pointer);
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>, item: VaultEntry, index: number) => {
-    const columnIndex = COLUMNS.indexOf(focusedColumn);
+  const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>, item: T, index: number) => {
+    const columnIndex = columns.indexOf(focusedColumn);
     switch (event.key) {
       case 'ArrowDown':
         event.preventDefault();
@@ -123,18 +133,18 @@ export default function DetailsView({
         return;
       case 'ArrowRight':
         event.preventDefault();
-        focusCell(index, COLUMNS[Math.min(columnIndex + 1, COLUMNS.length - 1)]);
+        focusCell(index, columns[Math.min(columnIndex + 1, columns.length - 1)] ?? focusedColumn);
         return;
       case 'ArrowLeft':
         event.preventDefault();
-        focusCell(index, COLUMNS[Math.max(columnIndex - 1, 0)]);
+        focusCell(index, columns[Math.max(columnIndex - 1, 0)] ?? focusedColumn);
         return;
       case 'Home':
       case 'End':
         event.preventDefault();
         focusCell(
           event.ctrlKey ? (event.key === 'Home' ? 0 : sortedItems.length - 1) : index,
-          event.key === 'Home' ? 'name' : 'kind',
+          event.key === 'Home' ? (columns[0] ?? 'name') : (columns[columns.length - 1] ?? 'kind'),
         );
         return;
       case 'Enter':
@@ -171,15 +181,15 @@ export default function DetailsView({
   };
 
   const handleHeaderKeyDown = (event: KeyboardEvent<HTMLDivElement>, column: Column) => {
-    const columnIndex = COLUMNS.indexOf(column);
+    const columnIndex = columns.indexOf(column);
     switch (event.key) {
       case 'ArrowLeft':
         event.preventDefault();
-        focusHeader(COLUMNS[Math.max(columnIndex - 1, 0)]);
+        focusHeader(columns[Math.max(columnIndex - 1, 0)] ?? column);
         break;
       case 'ArrowRight':
         event.preventDefault();
-        focusHeader(COLUMNS[Math.min(columnIndex + 1, COLUMNS.length - 1)]);
+        focusHeader(columns[Math.min(columnIndex + 1, columns.length - 1)] ?? column);
         break;
       case 'ArrowDown':
         if (sortedItems.length) {
@@ -190,7 +200,7 @@ export default function DetailsView({
       case 'Home':
       case 'End':
         event.preventDefault();
-        focusHeader(COLUMNS[event.key === 'Home' ? 0 : COLUMNS.length - 1]);
+        focusHeader(columns[event.key === 'Home' ? 0 : columns.length - 1] ?? column);
         break;
       case 'Enter':
       case ' ':
@@ -215,11 +225,11 @@ export default function DetailsView({
       role="grid"
       aria-label={label}
       aria-rowcount={sortedItems.length + 1}
-      aria-colcount={COLUMNS.length}
+      aria-colcount={columns.length}
       aria-multiselectable="false"
     >
       <div role="row" aria-rowindex={1}>
-        {COLUMNS.map((column) => (
+        {columns.map((column) => (
           <div
             key={column}
             ref={(element) => {
@@ -227,7 +237,7 @@ export default function DetailsView({
               else headers.current.delete(column);
             }}
             role="columnheader"
-            aria-colindex={COLUMNS.indexOf(column) + 1}
+            aria-colindex={columns.indexOf(column) + 1}
             aria-sort={sort.column === column ? sort.direction : 'none'}
             tabIndex={focusedPath === null && focusedColumn === column ? 0 : -1}
             onFocus={() => {
@@ -238,7 +248,7 @@ export default function DetailsView({
             onKeyDown={(event) => handleHeaderKeyDown(event, column)}
           >
             <button type="button" tabIndex={-1} onClick={() => toggleSort(column)}>
-              {column === 'name' ? 'Name' : 'Type'}
+              {column === 'name' ? 'Name' : column === 'path' ? 'Path' : 'Type'}
             </button>
           </div>
         ))}
@@ -258,7 +268,7 @@ export default function DetailsView({
               openContextMenu(item, target, { x: event.clientX, y: event.clientY });
             }}
           >
-            {COLUMNS.map((column, columnIndex) => (
+            {columns.map((column, columnIndex) => (
               <div
                 key={column}
                 ref={(element) => {
@@ -268,7 +278,7 @@ export default function DetailsView({
                 }}
                 role="gridcell"
                 aria-colindex={columnIndex + 1}
-                data-context={CONTEXTS[item.kind]}
+                data-context={CONTEXTS[item.kind as keyof typeof CONTEXTS]}
                 data-path={item.path}
                 tabIndex={activePath === item.path && focusedColumn === column ? 0 : -1}
                 onFocus={() => {
@@ -288,14 +298,14 @@ export default function DetailsView({
                 onDoubleClick={() => onOpen(item)}
                 onKeyDown={(event) => handleKeyDown(event, item, index)}
               >
-                {column === 'name' ? item.name : item.kind}
+                {column === 'name' ? item.name : column === 'path' ? item.path : item.kind}
               </div>
             ))}
           </div>
         ))
       ) : (
         <div role="row" aria-rowindex={2}>
-          <div role="gridcell" aria-colspan={COLUMNS.length} tabIndex={-1}>
+          <div role="gridcell" aria-colspan={columns.length} tabIndex={-1}>
             {emptyMessage}
           </div>
         </div>

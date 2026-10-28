@@ -1,3 +1,5 @@
+import { useMemo } from 'react';
+import DetailsView from '../../components/DetailsView';
 import type { RecentLibrary, VaultInfo } from '../../../shared/types';
 
 interface LibrariesScreenProps {
@@ -19,6 +21,20 @@ export default function LibrariesScreen({
   disabled,
   showCommandButtons = true,
 }: LibrariesScreenProps) {
+  // Every library the app knows about: the open one first, then recent
+  // ones, deduplicated by path. The grid sorts by name; the open library
+  // row is marked selected.
+  const libraries = useMemo(() => {
+    const byPath = new Map<string, { name: string; path: string; kind: 'library' }>();
+    if (vault) byPath.set(vault.path, { name: vault.name, path: vault.path, kind: 'library' });
+    for (const library of recentLibraries) {
+      if (!byPath.has(library.path)) {
+        byPath.set(library.path, { name: library.name, path: library.path, kind: 'library' });
+      }
+    }
+    return [...byPath.values()];
+  }, [vault, recentLibraries]);
+
   return (
     <section aria-labelledby="libraries-heading">
       <h2 id="libraries-heading">{vault?.name ?? 'Libraries'}</h2>
@@ -32,43 +48,20 @@ export default function LibrariesScreen({
           </button>
         </>
       )}
-      {vault ? (
-        <dl>
-          <dt>Current library</dt>
-          <dd>{vault.name}</dd>
-        </dl>
-      ) : (
-        <p>No library is open. Open a local library to get started.</p>
-      )}
-      {recentLibraries.length > 0 && (
-        <>
-          <h3 id="recent-libraries-heading">Recent libraries</h3>
-          <ul aria-labelledby="recent-libraries-heading">
-            {recentLibraries.map((library) => {
-              const isCurrent = vault?.path === library.path;
-              return (
-                <li key={library.path}>
-                  <button
-                    type="button"
-                    onClick={() => onOpenRecent?.(library.path)}
-                    disabled={disabled || isCurrent || !onOpenRecent}
-                  >
-                    Open {library.name}
-                    {isCurrent ? ' (current)' : ''}
-                  </button>{' '}
-                  <span>{library.path}</span>
-                  {library.lastOpenedAt ? (
-                    <>
-                      {' '}
-                      <span>Last opened {new Date(library.lastOpenedAt).toLocaleDateString()}</span>
-                    </>
-                  ) : null}
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
+      {!vault && <p>No library is open. Open a local library to get started.</p>}
+      <DetailsView
+        label="Libraries"
+        items={libraries}
+        columns={['name', 'path']}
+        selectedPath={vault?.path ?? null}
+        // Selecting a row has no side effect here; the open library row
+        // is marked selected, and Enter opens a library.
+        onSelect={() => undefined}
+        onOpen={(entry) => {
+          if (!disabled && entry.path !== vault?.path) onOpenRecent?.(entry.path);
+        }}
+        emptyMessage="No libraries yet. Open or create a library to get started."
+      />
     </section>
   );
 }
