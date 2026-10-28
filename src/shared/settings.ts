@@ -213,7 +213,74 @@ export function shortcutConflicts(
   return conflicts;
 }
 
-export function validateSettings(value: unknown): NotebookSettings {
+/**
+ * Resolve shortcut conflicts for a load, instead of failing the whole
+ * file over them. Explicit bindings win over defaults: first all
+ * explicit entries claim their keys (aliases, then primaries, each in
+ * registry order; a later explicit entry colliding with an earlier one
+ * is dropped, and an explicit entry claiming a reserved key is dropped
+ * too, since reserved keys are never valid bindings), then defaults
+ * claim only keys still free, and a default that collides is explicitly
+ * unbound (''), so the resolution holds at runtime and persists on the
+ * next save. A command whose explicit entry was dropped has no surviving
+ * entry, so its defaults are considered in the second phase; a command
+ * with a surviving explicit entry keeps it and its defaults are skipped.
+ * Save-time validation stays strict: the Settings dialog must still
+ * refuse a conflicting binding while the user is present to fix it.
+ */
+function resolveShortcutConflicts(
+  shortcuts: Partial<Record<CommandId, string>>,
+  aliasShortcuts: Partial<Record<CommandId, string>>,
+): void {
+  const claimed = new Map<string, CommandId | 'reserved'>();
+  for (const reserved of RESERVED_SHORTCUTS) claimed.set(reserved.toLowerCase(), 'reserved');
+  const tryClaim = (id: CommandId, key: string): 'claimed' | 'same' | 'collided' => {
+    if (!key) return 'same';
+    const owner = claimed.get(key.toLowerCase());
+    if (owner === undefined) {
+      claimed.set(key.toLowerCase(), id);
+      return 'claimed';
+    }
+    return owner === id ? 'same' : 'collided';
+  };
+  for (const command of COMMANDS) {
+    if (Object.prototype.hasOwnProperty.call(aliasShortcuts, command.id)) {
+      for (const alias of effectiveShortcutAliases(command, aliasShortcuts)) {
+        if (tryClaim(command.id, normalizeShortcut(alias)) === 'collided') {
+          delete aliasShortcuts[command.id];
+        }
+      }
+    }
+  }
+  for (const command of COMMANDS) {
+    if (Object.prototype.hasOwnProperty.call(shortcuts, command.id)) {
+      const primary = normalizeShortcut(shortcuts[command.id] ?? '');
+      if (tryClaim(command.id, primary) === 'collided') {
+        delete shortcuts[command.id];
+      }
+    }
+  }
+  for (const command of COMMANDS) {
+    if (!Object.prototype.hasOwnProperty.call(aliasShortcuts, command.id)) {
+      for (const alias of command.shortcutAliases ?? []) {
+        if (tryClaim(command.id, normalizeShortcut(alias)) === 'collided') {
+          aliasShortcuts[command.id] = '';
+          break;
+        }
+      }
+    }
+  }
+  for (const command of COMMANDS) {
+    if (!Object.prototype.hasOwnProperty.call(shortcuts, command.id)) {
+      const fallback = normalizeShortcut(command.shortcut ?? '');
+      if (tryClaim(command.id, fallback) === 'collided') {
+        shortcuts[command.id] = '';
+      }
+    }
+  }
+}
+
+export function validateSettings(value: unknown, options?: { resolveConflictingShortcuts?: boolean }): NotebookSettings {
   if (!value || typeof value !== 'object') throw new Error('Invalid settings.');
   const settings = value as NotebookSettings;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
@@ -298,7 +365,7 @@ export function validateSettings(value: unknown): NotebookSettings {
     }
     shortcuts[id as CommandId] = normalizeShortcut(shortcut);
   }
-  const aliasShortcuts: NotebookSettings['shortcutAliases'] = {};
+  const aliasShortcuts: Partial<Record<CommandId, string>> = {};
   if (settings.shortcutAliases && typeof settings.shortcutAliases === 'object' && !Array.isArray(settings.shortcutAliases)) {
     for (const [id, shortcut] of Object.entries(settings.shortcutAliases)) {
       if (!COMMANDS.some((command) => command.id === id)) continue;
@@ -309,7 +376,13 @@ export function validateSettings(value: unknown): NotebookSettings {
     }
   }
   const conflicts = shortcutConflicts(shortcuts, aliasShortcuts);
-  if (conflicts.length) throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
+  if (conflicts.length) {
+    if (options?.resolveConflictingShortcuts) {
+      resolveShortcutConflicts(shortcuts, aliasShortcuts);
+    } else {
+      throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
+    }
+  }
   return {
     autosaveDelay: settings.autosaveDelay,
     theme: settings.theme,

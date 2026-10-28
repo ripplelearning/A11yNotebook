@@ -225,3 +225,52 @@ describe('settings load failure messages', () => {
     expect(settingsLoadStatusMessage(undefined)).toBe('Could not load settings.');
   });
 });
+
+describe('settings load conflict tolerance', () => {
+  it('still throws on shortcut conflicts in strict mode', () => {
+    expect(() =>
+      validateSettings({ ...DEFAULT_SETTINGS, shortcuts: { 'context-bookmark': 'Ctrl+Shift+B' } }),
+    ).toThrow(/Shortcut conflicts: Ctrl\+Shift\+B/);
+  });
+
+  it('keeps an explicit binding and unbinds the colliding default on load', () => {
+    // Real case: Back up library defaults to Ctrl+Shift+B, and a stored
+    // explicit Bookmark selected note binding claims the same key. The
+    // explicit binding wins; Back up becomes unbound.
+    const loaded = validateSettings(
+      { ...DEFAULT_SETTINGS, shortcuts: { 'context-bookmark': 'Ctrl+Shift+B' } },
+      { resolveConflictingShortcuts: true },
+    );
+    expect(loaded.shortcuts['context-bookmark']).toBe('Ctrl+Shift+B');
+    expect(loaded.shortcuts['backup-library']).toBe('');
+    expect(shortcutConflicts(loaded.shortcuts, loaded.shortcutAliases ?? {})).toEqual([]);
+    expect(loaded.theme).toBe(DEFAULT_SETTINGS.theme);
+  });
+
+  it('explicitly unbinds a default that collides with an earlier explicit binding', () => {
+    // Back up library (earlier in the registry) explicitly claims
+    // Ctrl+Shift+O, colliding with Open in external app's default.
+    const loaded = validateSettings(
+      { ...DEFAULT_SETTINGS, shortcuts: { 'backup-library': 'Ctrl+Shift+O' } },
+      { resolveConflictingShortcuts: true },
+    );
+    expect(loaded.shortcuts['backup-library']).toBe('Ctrl+Shift+O');
+    expect(loaded.shortcuts['open-selected-external']).toBe('');
+    expect(shortcutConflicts(loaded.shortcuts, loaded.shortcutAliases ?? {})).toEqual([]);
+  });
+
+  it('drops the later of two colliding explicit bindings on load', () => {
+    const loaded = validateSettings(
+      {
+        ...DEFAULT_SETTINGS,
+        shortcuts: { 'show-calendar': 'Ctrl+Shift+X', 'show-about': 'Ctrl+Shift+X' },
+      },
+      { resolveConflictingShortcuts: true },
+    );
+    const remaining = (['show-calendar', 'show-about'] as const).filter(
+      (id) => loaded.shortcuts[id] === 'Ctrl+Shift+X',
+    );
+    expect(remaining).toHaveLength(1);
+    expect(shortcutConflicts(loaded.shortcuts, loaded.shortcutAliases ?? {})).toEqual([]);
+  });
+});
