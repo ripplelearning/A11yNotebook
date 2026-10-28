@@ -3121,14 +3121,22 @@ export function setupVaultIpc(
       let saved: unknown = null;
       try {
         saved = await routedMetadataFor(vault).read('settings.json');
-      } catch (error) {
+      } catch {
         // While the library is locked, protected settings cannot be
         // read: fall through to the global/defaults path below. Any
-        // other failure (tampering, corruption) surfaces instead.
-        if (!protectedMetadata?.protects('settings') || masterKey !== null) throw error;
+        // other failure (tampering, corruption) surfaces with a reason
+        // the renderer can report instead of a generic message.
+        if (!protectedMetadata?.protects('settings') || masterKey !== null) {
+          throw new Error('settings-load: library-read-failed');
+        }
       }
       if (saved) {
-        const validated = validateSettings(saved);
+        let validated;
+        try {
+          validated = validateSettings(saved);
+        } catch {
+          throw new Error('settings-load: library-validation-failed');
+        }
         idleLockMinutes = validated.vaultLockMinutes ?? 15;
         return validated;
       }
