@@ -23,7 +23,7 @@ or one that contains it.
 | Notes and Files                                                   | Create a note in the selected notebook                                                                                                |
 | Tasks                                                             | Choose an associated note and add a persisted checkbox task, with optional due date and priority                                      |
 | Cognitive Tools                                                   | Choose Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, then name and create the tool at the library root                   |
-| Note tabs, Contents, Reminders, previews, and Welcome | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
+| Note tabs, Contents, Reminders, previews, and Libraries | Create a note using the current notebook context, or the library root when no notebook is selected                                    |
 
 The explicit **New notebook** command still creates a notebook; it has not been redefined to mean contextual New.
 Settings can change or disable New's shortcut, with conflict validation. The native File menu and command palette expose
@@ -112,7 +112,7 @@ use qualified wiki paths such as `[[Notebook/Title]]`. Reference-style Markdown 
 Notes open in tabs. Create either Markdown (`.md`) or HTML (`.html`) notes using the **Note format** selector.
 Opening the same note again reuses its tab; opening another note keeps existing notes and their unsaved edits.
 Navigation views do not close note tabs. Ctrl+Tab cycles open tabs, and arrow keys navigate the tab strip.
-Closing an active tab returns to Welcome and focuses the tab strip; cancelling an unsaved-change confirmation
+Closing an active tab returns to Notes & Files and focuses the tab strip; cancelling an unsaved-change confirmation
 keeps the note open. Reopening a closed note reloads its saved content and reapplies the default mode.
 When a note reopens in Read mode, it resumes at the heading you had reached while reading; bookmark jumps
 still take precedence over the resumed position.
