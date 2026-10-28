@@ -33,9 +33,6 @@ export type CommandId =
   | 'toggle-read-only-mode'
   | 'toggle-right-pane'
   | 'focus-search'
-  | 'focus-navigation'
-  | 'focus-main-content'
-  | 'focus-right-pane'
   | 'command-search'
   | 'refresh-links'
   | 'repair-broken-links'
@@ -743,24 +740,6 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
-    id: 'focus-navigation',
-    label: 'Focus navigation',
-    description: 'Move focus to the navigation pane.',
-    shortcut: 'Alt+1',
-  },
-  {
-    id: 'focus-main-content',
-    label: 'Focus main content',
-    description: 'Move focus to the content pane.',
-    shortcut: 'Alt+2',
-  },
-  {
-    id: 'focus-right-pane',
-    label: 'Focus right pane',
-    description: 'Move focus to the right pane.',
-    shortcut: 'Alt+3',
-  },
-  {
     id: 'command-search',
     label: 'Command Palette',
     aliases: ['Open command search'],
@@ -1033,18 +1012,6 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
     }
     case 'focus-search':
       context.focusTarget('search');
-      return undefined;
-    case 'focus-navigation':
-      context.focusTarget('navigation');
-      return undefined;
-    case 'focus-main-content':
-      context.focusTarget('main');
-      return undefined;
-    case 'focus-right-pane':
-      if (!context.rightPaneOpen) {
-        context.setRightPaneOpen(true);
-      }
-      context.focusTarget('right-pane');
       return undefined;
     case 'command-search':
       context.setCommandPaletteOpen(true);

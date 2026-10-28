@@ -144,18 +144,7 @@ describe('command registry', () => {
   it('moves focus for focus commands without a duplicate status message', () => {
     const context = createContext();
     expect(dispatchCommand('focus-search', context)).toBeUndefined();
-    expect(dispatchCommand('focus-navigation', context)).toBeUndefined();
-    expect(dispatchCommand('focus-main-content', context)).toBeUndefined();
     expect(context.focusTarget).toHaveBeenNthCalledWith(1, 'search');
-    expect(context.focusTarget).toHaveBeenNthCalledWith(2, 'navigation');
-    expect(context.focusTarget).toHaveBeenNthCalledWith(3, 'main');
-  });
-
-  it('opens a hidden right pane before focusing it', () => {
-    const context = createContext({ rightPaneOpen: false });
-    dispatchCommand('focus-right-pane', context);
-    expect(context.setRightPaneOpen).toHaveBeenCalledWith(true);
-    expect(context.focusTarget).toHaveBeenCalledWith('right-pane');
   });
 
   it('lists keyboard shortcuts for commands that have one', () => {

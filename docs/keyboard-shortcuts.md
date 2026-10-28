@@ -64,9 +64,6 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+E         | Toggle read-only/edit mode              |
 | F9             | Toggle right pane                       |
 | Alt+Q          | Focus search                            |
-| Alt+1          | Focus navigation                        |
-| Alt+2          | Focus main content                      |
-| Alt+3          | Focus right pane                        |
 | Ctrl+Shift+P   | Command Palette                         |
 | F5             | Refresh links                           |
 | F1             | Keyboard Shortcuts                      |

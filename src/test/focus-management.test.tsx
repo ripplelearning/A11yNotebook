@@ -70,29 +70,27 @@ describe('F6 pane navigation', () => {
 });
 
 describe('focus commands', () => {
-  it('moves focus with the Window menu commands', () => {
+  it('moves focus with the Focus search menu command', () => {
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Focus main content' }));
-    expect(screen.getByRole('tabpanel')).toHaveFocus();
-
-    fireEvent.click(screen.getByRole('button', { name: 'Focus navigation' }));
-    expect(screen.getByRole('complementary', { name: 'Navigation pane' })).toHaveFocus();
-
     fireEvent.click(screen.getByRole('button', { name: 'Focus search' }));
     expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
   });
 
-  it('opens and focuses the right pane when it is hidden', () => {
+  it('reopens the right pane with its toggle and reaches it with F6', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: 'Toggle right pane' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Focus right pane' }));
+    expect(screen.queryByRole('complementary', { name: 'Right information pane' })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Toggle right pane' }));
+    screen.getByRole('tabpanel').focus();
+    pressF6();
     expect(screen.getByRole('complementary', { name: 'Right information pane' })).toHaveFocus();
   });
 
   it('runs keyboard shortcuts from the command registry', () => {
     render(<App />);
-    fireEvent.keyDown(document.body, { key: '2', altKey: true });
-    expect(screen.getByRole('tabpanel')).toHaveFocus();
+    fireEvent.keyDown(document.body, { key: 'q', altKey: true });
+    expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     expect(screen.getByRole('status', { name: '' })).toHaveTextContent('This view has no note editor.');
@@ -142,12 +140,12 @@ describe('command palette', () => {
     render(<App />);
     fireEvent.click(screen.getByRole('button', { name: /^(?:Open command search|Command Palette)$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
-    fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'main content' } });
+    fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'focus search' } });
     expect(within(dialog).getByText('1 command')).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Focus main content' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Focus search' }));
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('tabpanel')).toHaveFocus();
+    expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
   });
 });
 

@@ -64,14 +64,15 @@ test('app shell is accessible end to end', async () => {
     });
 
     await expect(page).toHaveTitle(/A11y Notebook/);
-    // Landmark map, as built: banner (header), main (workspace),
-    // complementary (navigation pane sidebar), contentinfo. The in-app menu
+    // Landmark map, as built: banner (header), main (content panel,
+    // which holds the tabs and the Reader/Editor), complementary
+    // (navigation pane sidebar), contentinfo. The in-app menu
     // bar (<nav> "Main menu") is intentionally off by default
     // (settings.showCommandButtons defaults to false); the native menu
     // provides the same commands, so it must NOT be present here.
     await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Main menu' })).toHaveCount(0);
-    await expect(page.getByRole('main', { name: 'Workspace layout' })).toBeVisible();
+    await expect(page.getByRole('main', { name: 'Main content' })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Navigation pane' })).toBeVisible();
     await expect(page.getByRole('contentinfo', { name: 'Status bar' })).toBeVisible();
 
