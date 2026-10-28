@@ -4803,20 +4803,6 @@ export default function App() {
                 ))}
               </ul>
             </section>
-            <section aria-labelledby="tasks-heading-right">
-              <h3 id="tasks-heading-right">Tasks</h3>
-              <ul>
-                {tasks
-                  .filter((task) => !task.complete)
-                  .slice(0, 10)
-                  .map((task) => (
-                    <li key={task.id}>
-                      {task.text}
-                      {task.dueDate ? `, due ${task.dueDate}` : ''}
-                    </li>
-                  ))}
-              </ul>
-            </section>
           </aside>
         ) : null}
       </div>
