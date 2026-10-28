@@ -683,13 +683,13 @@ describe('accessible details view', () => {
     const { menu } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
     menu('show-notebooks');
-    expect(document.title).toBe('Notebooks | Study');
+    expect(document.title).toBe('Notebooks | Study | A11y Notebook');
     menu('show-tasks');
     expect(await screen.findByRole('table', { name: 'Tasks in Study' })).toBeInTheDocument();
-    expect(document.title).toBe('Tasks | Study');
+    expect(document.title).toBe('Tasks | Study | A11y Notebook');
     menu('show-assets');
-    expect(document.title).toBe('Cognitive Tools | Study');
+    expect(document.title).toBe('Cognitive Tools | Study | A11y Notebook');
     menu('show-notes-files');
-    expect(document.title).toBe('Files | Study');
+    expect(document.title).toBe('Files | Study | A11y Notebook');
   });
 });

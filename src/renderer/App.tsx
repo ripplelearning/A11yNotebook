@@ -185,10 +185,6 @@ function isManagedEntry(entry: VaultEntry): boolean {
   return entry.provenance === 'created' || entry.provenance === 'imported';
 }
 
-function isCompatibleImport(path: string): boolean {
-  return /\.(?:md|html?|txt|csv|pdf|epub|docx|png|jpe?g|gif|webp|bmp)$|\.mindmap\.json$/i.test(path);
-}
-
 function notebookForTask(task: VaultTask) {
   return task.path.split('/').slice(0, -1).join('/') || 'Root';
 }
@@ -281,6 +277,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'check-spelling-grammar',
       'open-thesaurus',
       'show-reminders',
+      'create-reminder',
       'show-calendar',
       'show-settings',
       'command-search',
@@ -547,17 +544,33 @@ export default function App() {
   stepEditHistoryRef.current = stepEditHistory;
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
-      if (!editorRef.current || event.target !== editorRef.current) return;
       if (event.altKey || !(event.ctrlKey || event.metaKey)) return;
       const key = event.key.toLowerCase();
       const direction =
         key === 'z' && !event.shiftKey ? 'undo' : key === 'z' || key === 'y' ? 'redo' : null;
       if (!direction) return;
       const timeline = undoTimelineRef.current;
-      if ((direction === 'undo' ? timeline.undo.length : timeline.redo.length) > 0) {
+      if ((direction === 'undo' ? timeline.undo.length : timeline.redo.length) === 0) return;
+      // Inside the note editor, the timeline always owns Ctrl+Z/Y.
+      if (editorRef.current && event.target === editorRef.current) {
         event.preventDefault();
         void stepEditHistoryRef.current(direction);
+        return;
       }
+      // Outside the editor, route to the timeline only where native undo
+      // is a no-op: task checkboxes, buttons, grid cells, and other
+      // non-editable targets. Text fields keep their native undo, and an
+      // open dialog keeps its own keyboard behavior.
+      if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+      const target = event.target instanceof Element ? event.target : null;
+      if (
+        target?.closest(
+          'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea, select, [contenteditable="true"], [role="textbox"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      void stepEditHistoryRef.current(direction);
     };
     window.addEventListener('keydown', handler, true);
     return () => window.removeEventListener('keydown', handler, true);
@@ -696,7 +709,9 @@ export default function App() {
           ? 'new-task'
           : selectedTab === 'assets'
             ? 'new-asset'
-            : 'new-note';
+            : selectedTab === 'reminders'
+              ? 'create-reminder'
+              : 'new-note';
   const currentEditLockKey = currentNote && vault ? `${vault.path}\0${currentNote.path}` : null;
   const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
   useEffect(() => {
@@ -725,6 +740,13 @@ export default function App() {
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
   const notePaths = allEntries
     .filter((entry) => entry.kind === 'note' && isManagedEntry(entry) && !assetRegistry.resolve(entry.path))
+    .map((entry) => entry.path);
+  // Reminders only link to a note; they never write into it, so they do
+  // not need the managed provenance that tasks require. A note whose
+  // origin record was lost (for example, a cloud sync replacing the file)
+  // can still receive reminders.
+  const reminderNotePaths = allEntries
+    .filter((entry) => entry.kind === 'note' && !assetRegistry.resolve(entry.path))
     .map((entry) => entry.path);
   const filePaths = allEntries.filter((entry) => entry.kind === 'attachment').map((entry) => entry.path);
   const beginExport = async (relativePath: string) => {
@@ -1532,6 +1554,16 @@ export default function App() {
     setVault(imported.vault);
     await openEntry(copy, undefined, isCurrent);
     if (isCurrent()) setStatusMessage(`Imported ${entry.name} as ${copy.name}.`);
+  };
+
+  const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
+  const openCreateReminder = () => {
+    if (!vault || securityLocked) {
+      setStatusMessage('Open and unlock a library before creating a reminder.');
+      return;
+    }
+    setSelectedTab('reminders');
+    setReminderCreateRequest((value) => value + 1);
   };
 
   const createNote = async () => {
@@ -2519,6 +2551,24 @@ export default function App() {
     }
   };
 
+  const deleteEntryPermanently = async (entryPath: string) => {
+    const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
+    const hasUnsavedChanges = affectedNotes.some((item) => item.content !== item.saved);
+    try {
+      const updated = await window.a11yNotebook?.vault.deletePermanently(entryPath, hasUnsavedChanges);
+      if (!updated) return;
+      setVault(updated);
+      if (findEntry(updated.entries, entryPath)) return;
+      setOpenNotes((current) =>
+        current.filter((item) => item.path !== entryPath && !item.path.startsWith(`${entryPath}/`)),
+      );
+      if (affectedNotes.some((item) => item.id === selectedTab)) setSelectedTab('notes-files');
+      setStatusMessage('Item permanently deleted.');
+    } catch {
+      setStatusMessage('Could not delete the selected item.');
+    }
+  };
+
   const renameEntry = (entryPath: string) => {
     setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
   };
@@ -2543,6 +2593,13 @@ export default function App() {
       );
       if (request.action === 'new-note')
         await openEntry({ name: leaf, path: relative, kind: 'note', provenance: 'created' });
+      if (request.action === 'new-note') {
+        // A note that was just created is created to be written in: it
+        // opens in Editing mode with the editor focused, regardless of
+        // the default open mode.
+        setMode('edit');
+        window.setTimeout(() => editorRef.current?.focus(), 0);
+      }
       setStatusMessage(`${request.action === 'new-note' ? 'Note' : 'Notebook'} created.`);
       return;
     }
@@ -2743,7 +2800,7 @@ export default function App() {
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
-    if (commandId === 'context-import-note' && entry) {
+    if (commandId === 'context-import-note' && entry && isInternallySupportedPath(entry.path)) {
       const importer = window.a11yNotebook?.vault;
       if (!importer?.importEntry) {
         setStatusMessage('Document import is unavailable.');
@@ -2787,12 +2844,6 @@ export default function App() {
       }
     } else if (commandId === 'context-export-note' && entry?.kind === 'note') {
       await beginExport(entry.path);
-    } else if (commandId === 'context-import-internal' && entry && isInternallySupportedPath(entry.path)) {
-      try {
-        await importInternalEntry(entry);
-      } catch (error) {
-        setStatusMessage(error instanceof Error ? error.message : 'Could not import the selected file.');
-      }
     } else if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
       await openLinkTarget(request.href);
     } else if (commandId === 'context-open' && request.context === 'annotation') {
@@ -2814,6 +2865,15 @@ export default function App() {
         setStatusMessage('Link copied.');
       } catch {
         setStatusMessage('Could not copy the link.');
+      }
+    } else if (commandId === 'context-reveal' && request.context === 'tab' && request.tabId) {
+      const note = openNotes.find((item) => item.id === request.tabId);
+      if (note) {
+        void window.a11yNotebook?.vault
+          .reveal(note.path)
+          ?.catch(() => setStatusMessage('Could not open the selected item.'));
+      } else {
+        setStatusMessage('Open a note before revealing it.');
       }
     } else if (
       entry &&
@@ -3369,6 +3429,8 @@ export default function App() {
         return;
       }
       setAssetCreationVersion((version) => version + 1);
+    } else if (selectedTab === 'reminders') {
+      openCreateReminder();
     } else {
       void createNote();
     }
@@ -3453,7 +3515,15 @@ export default function App() {
     }
     if (commandId === 'new-note') {
       if (activeDialog === 'palette') setActiveDialog(null);
+      if (selectedTab === 'reminders') {
+        openCreateReminder();
+        return;
+      }
       void createNote();
+      return;
+    }
+    if (commandId === 'create-reminder') {
+      openCreateReminder();
       return;
     }
     if (commandId === 'new-task') {
@@ -3508,6 +3578,7 @@ export default function App() {
     }
     if (commandId === 'reveal-selected') {
       if (treeSelection) void window.a11yNotebook?.vault.reveal(treeSelection);
+      else setStatusMessage('Select an item before revealing it.');
       return;
     }
     if (commandId === 'encrypt-current-note') {
@@ -3791,6 +3862,19 @@ export default function App() {
       stepEditHistory(commandId === 'edit-undo' ? 'undo' : 'redo');
       return;
     }
+    if (commandId === 'context-reveal') {
+      // Context commands need a target, so a shortcut assignment cannot
+      // carry one: reveal the selected tree item, or the open note.
+      const target = treeSelection ?? currentNote?.path;
+      if (target) {
+        void window.a11yNotebook?.vault
+          .reveal(target)
+          ?.catch(() => setStatusMessage('Could not open the selected item.'));
+      } else {
+        setStatusMessage('Select an item or open a note before revealing it.');
+      }
+      return;
+    }
     const result = dispatchCommand(commandId, {
       mode,
       rightPaneOpen,
@@ -3872,6 +3956,22 @@ export default function App() {
       focusNow(next);
       return;
     }
+    if (event.key === 'Delete' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      // Shift+Delete is permanent delete, mirroring the operating system
+      // convention. It never runs inside a text field, where Shift+Delete
+      // cuts text, and the dialog guard above keeps it out of dialogs.
+      // The confirmation dialog still appears, with Delete as the first
+      // (default) button and Escape cancelling.
+      const inTextField =
+        event.target instanceof Element &&
+        event.target.closest(
+          'input:not([type="checkbox"]):not([type="radio"]):not([type="button"]), textarea, select, [contenteditable="true"], [role="textbox"]',
+        );
+      if (inTextField || !treeSelection) return;
+      event.preventDefault();
+      void deleteEntryPermanently(treeSelection);
+      return;
+    }
     if (event.key === 'Tab' && event.ctrlKey) {
       event.preventDefault();
       const currentIndex = tabs.findIndex((tab) => tab.id === selectedTab);
@@ -3902,6 +4002,7 @@ export default function App() {
           'show-tasks',
           'show-assets',
           'show-calendar',
+          'show-reminders',
         ].includes(command.id)
       )
         return;
@@ -4096,6 +4197,7 @@ export default function App() {
     if (id === 'open-citation-generator' || id === 'open-bibliography')
       return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
+    if (id === 'create-reminder') return !vault || securityLocked;
     if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
     if (id === 'new-asset') return !vault || assetDirty || assetBusy;
     if (id === 'new-note' || id === 'new-from-template')
@@ -4123,11 +4225,10 @@ export default function App() {
   const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
   const contextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection))
-        .map((command) => (command.id === 'context-import-internal' ? getCommandById('context-import-note')! : command))
         .filter((command, index, commands) => commands.findIndex((item) => item.id === command.id) === index)
         .filter(
           (command) =>
-            command.id !== 'context-import-note' || (!!contextEntry && isCompatibleImport(contextEntry.path)),
+            command.id !== 'context-import-note' || (!!contextEntry && isInternallySupportedPath(contextEntry.path)),
         )
         .map((command) =>
           command.id === 'annotate-pdf-selection'
@@ -4138,7 +4239,7 @@ export default function App() {
         )
     : [];
   const disabledContextCommands = new Set<CommandId>();
-  if (!contextEntry || !isCompatibleImport(contextEntry.path) || !window.a11yNotebook?.vault.importEntry)
+  if (!contextEntry || !isInternallySupportedPath(contextEntry.path) || !window.a11yNotebook?.vault.importEntry)
     disabledContextCommands.add('context-import-note');
   if (!window.a11yNotebook?.vault.openWith) {
     disabledContextCommands.add('context-open-with');
@@ -4149,18 +4250,10 @@ export default function App() {
       .filter((command) => command.requiresSelection)
       .forEach((command) => disabledContextCommands.add(command.id));
   if (contextMenu?.context === 'tab' && tabs.length <= 1) disabledContextCommands.add('context-close-other-tabs');
+  if (contextMenu?.context === 'tab' && !openNotes.some((item) => item.id === contextMenu.tabId))
+    disabledContextCommands.add('context-reveal');
   if (contextMenu?.context === 'tree-note' && (!securityEnabled || encryptedNotePath === contextMenu.path))
     disabledContextCommands.add('context-encrypt-note');
-  if (
-    !contextEntry ||
-    contextEntry.kind === 'notebook' ||
-    contextEntry.provenance !== 'unknown' ||
-    !isInternallySupportedPath(contextEntry.path) ||
-    !window.a11yNotebook?.vault.importEntry ||
-    securityLocked ||
-    switchingVault
-  )
-    disabledContextCommands.add('context-import-internal');
   const contextMenuLabel = contextMenu?.path
     ? `Actions for ${contextMenu.path.split('/').at(-1)}`
     : contextMenu?.tabId
@@ -4196,11 +4289,13 @@ export default function App() {
     const setMenuState = window.a11yNotebook?.setMenuState;
     if (setMenuState) setMenuState(JSON.parse(nativeMenuStateJson) as NativeMenuState);
   }, [nativeMenuStateJson]);
-  // The titlebar names the current view and the current library, in
-  // exactly the form "View | Library", so keyboard view switches update
-  // it immediately. An open note keeps its title only while it is the
-  // selected tab, in the same "Note | Library" form. With no library
-  // open, the app name stands in for the library.
+  // The titlebar names the current view and the current library, and
+  // always ends with the app name, in the form "View | Library | A11y
+  // Notebook", so keyboard view switches update it immediately and a
+  // screen reader's title-bar shortcut always identifies the app. An open
+  // note keeps its title only while it is the selected tab, in the same
+  // "Note | Library | A11y Notebook" form. With no library open, the view
+  // and the app name are all there is to show.
   const titleView =
     activeDialog === 'settings'
       ? 'Settings'
@@ -4224,8 +4319,10 @@ export default function App() {
   useEffect(() => {
     document.title =
       currentNote && vault && selectedTab === currentNote.id
-        ? `${currentNote.title} | ${vault.name}`
-        : `${titleView} | ${vault?.name ?? 'A11y Notebook'}`;
+        ? `${currentNote.title} | ${vault.name} | A11y Notebook`
+        : vault
+          ? `${titleView} | ${vault.name} | A11y Notebook`
+          : `${titleView} | A11y Notebook`;
   }, [titleView, currentNote, vault, selectedTab]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
@@ -4316,7 +4413,6 @@ export default function App() {
       ) : null}
       <header className="app-header" aria-label="Application header">
         <div className="title-block">
-          <h1>A11y Notebook</h1>
           <span className="current-item">
             {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
           </span>
@@ -4625,7 +4721,8 @@ export default function App() {
               <RemindersView
                 title={viewTitles.reminders}
                 reminders={reminderState.reminders}
-                notePaths={notePaths}
+                notePaths={reminderNotePaths}
+                createRequest={reminderCreateRequest}
                 defaults={reminderState.defaults}
                 onSaveDefaults={reminderState.saveDefaults}
                 onCreate={async (input) => {
@@ -5332,12 +5429,14 @@ export default function App() {
             setVault(await window.a11yNotebook!.vault.createNote(relative, content));
             await openEntry({ path: relative, name: relative.split('/').at(-1)!, kind: 'note', provenance: 'created' });
             setStatusMessage('Note created from template.');
-            if (settings.defaultNoteOpenMode === 'edit') {
-              window.setTimeout(() => {
-                editorRef.current?.focus();
-                editorRef.current?.setSelectionRange(cursor, cursor);
-              }, 0);
-            }
+            // A note that was just created is created to be written in:
+            // Editing mode with the editor focused, regardless of the
+            // default open mode.
+            setMode('edit');
+            window.setTimeout(() => {
+              editorRef.current?.focus();
+              editorRef.current?.setSelectionRange(cursor, cursor);
+            }, 0);
           }}
         />
       ) : null}

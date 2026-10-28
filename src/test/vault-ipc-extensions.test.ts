@@ -40,7 +40,7 @@ const mock = vi.hoisted(() => ({
   failAuditWrite: false,
   failProvenanceWrite: false,
   auditWriteGate: undefined as undefined | (() => Promise<void>),
-  messages: [] as { title?: string; message?: string }[],
+  messages: [] as { title?: string; message?: string; buttons?: string[]; defaultId?: number; cancelId?: number }[],
   savePath: '',
   saveCanceled: false,
   saveOptions: undefined as unknown,
@@ -151,7 +151,13 @@ vi.mock('electron', () => ({
       if (mock.openDialogGate) await mock.openDialogGate();
       return { canceled: mock.openCanceled, filePaths: [selected] };
     },
-    showMessageBox: async (options: { title?: string; message?: string }) => {
+    showMessageBox: async (options: {
+      title?: string;
+      message?: string;
+      buttons?: string[];
+      defaultId?: number;
+      cancelId?: number;
+    }) => {
       mock.messages.push(options);
       if (options.title === 'Import selected document') await mock.importConsentGate?.();
       return { response: mock.confirm };
@@ -436,8 +442,17 @@ describe('extended vault IPC integration', () => {
     mock.openSelection = path.join(temporary, 'Imported.md');
     await writeFile(mock.openSelection, '# Original');
     await invoke(IPC_CHANNELS.vaultImport, '');
+    // Delete is the first (default) button in the confirmation dialog,
+    // and Escape maps to the second button, Cancel.
+    mock.confirm = 0;
     vi.mocked(shell.trashItem).mockRejectedValueOnce(new Error('Trash unavailable'));
     await expect(invoke(IPC_CHANNELS.vaultDelete, 'Imported.md')).rejects.toThrow('Trash unavailable');
+    expect(mock.messages.at(-1)).toMatchObject({
+      title: 'Delete item',
+      buttons: ['Delete', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+    });
     let view = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo;
     expect(view.entries.find((entry) => entry.path === 'Imported.md')?.provenance).toBe('imported');
     vi.mocked(shell.trashItem).mockImplementationOnce(async (filename) => {
@@ -1020,6 +1035,8 @@ describe('extended vault IPC integration', () => {
     vi.mocked(shell.trashItem).mockImplementationOnce(async (target) => {
       await rm(target);
     });
+    // Delete is the first button in the confirmation dialog.
+    mock.confirm = 0;
     await invoke(IPC_CHANNELS.vaultDelete, 'Moved.outline.md');
     expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, 'Moved.outline.md')).toMatchObject({ draft: null });
     const metadataPath = path.join(mock.root, '.a11ynotebook');

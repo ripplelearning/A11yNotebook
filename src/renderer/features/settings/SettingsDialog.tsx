@@ -834,18 +834,22 @@ export default function SettingsDialog({
             <legend>
               <h3>Scoped metadata encryption</h3>
             </legend>
-            <p>
-              This is not whole-library encryption. It encrypts Markdown, HTML, PDF, DOCX and ePub annotations and recovery drafts
-              for outlines, mindmaps, grids and flashcards. Ordinary notes,
-              attachments, saved cognitive asset files (including saved flashcards), filenames,
-              global preferences and the audit log remain plaintext. The app-global
-              fallback copy of settings also remains plaintext; it stops being updated while a library whose
-              settings are encrypted is open, and enabling settings encryption removes the stale copy. Reminders, reminder defaults,
-              bookmarks, the link index, image descriptions, flashcard schedules, library settings and the search index can each be migrated into encryption below once the base protection is on. Notes, source
-              attachments, exports and backups remain plaintext, not whole-library encrypted. Flashcard drafts are
-              encrypted, but their saved source files remain plaintext. Unlocked application memory is not protected.
-              Plaintext cleanup is not secure erasure. A stable version 3 library recovery envelope is required.
-            </p>
+            <details>
+              <summary>About scoped metadata encryption</summary>
+              <p>
+                This is not whole-library encryption. It encrypts Markdown, HTML, PDF, DOCX and ePub annotations
+                and recovery drafts for outlines, mindmaps, grids and flashcards. Ordinary notes, attachments, saved
+                cognitive asset files (including saved flashcards), filenames, global preferences and the audit log
+                remain plaintext. The app-global fallback copy of settings also remains plaintext; it stops being
+                updated while a library whose settings are encrypted is open, and enabling settings encryption
+                removes the stale copy. Reminders, reminder defaults, bookmarks, the link index, image descriptions,
+                flashcard schedules, library settings and the search index can each be migrated into encryption below
+                once the base protection is on. Notes, source attachments, exports and backups remain plaintext, not
+                whole-library encrypted. Flashcard drafts are encrypted, but their saved source files remain plaintext.
+                Unlocked application memory is not protected. Plaintext cleanup is not secure erasure. A stable
+                version 3 library recovery envelope is required.
+              </p>
+            </details>
             {metadataProtection.enabled ? (
               <>
                 <p role="status">

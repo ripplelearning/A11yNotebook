@@ -247,6 +247,13 @@ if (!app.requestSingleInstanceLock()) {
             mainWindow.show();
             mainWindow.focus();
           }
+          if (event.type === 'fired') {
+            // A firing reminder must be visible, not just audible: bring
+            // the window forward so the in-app alert dialog appears instead
+            // of sounding while the window sits in the background.
+            mainWindow.show();
+            mainWindow.focus();
+          }
         }
       },
       () => {

@@ -49,6 +49,7 @@ describe('local vault workflow', () => {
         openUrl: vi.fn(async () => undefined),
         importFile: vi.fn(async () => vault),
         delete: vi.fn(async () => vault),
+        deletePermanently: vi.fn(async () => vault),
         getTasks: vi.fn(async () => [
           {
             id: 'Class notes/Week 1.md:4',

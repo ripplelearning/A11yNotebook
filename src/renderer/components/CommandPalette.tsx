@@ -16,15 +16,14 @@ export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisab
   const filteredCommands = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     if (!normalized) {
-      return COMMANDS.filter((command) => command.id !== 'context-import-internal');
+      return COMMANDS;
     }
     return COMMANDS.filter(
       (command) =>
-        command.id !== 'context-import-internal' &&
-        (command.label.toLowerCase().includes(normalized) ||
-          command.aliases?.some((alias) => alias.toLowerCase().includes(normalized)) ||
-          command.description.toLowerCase().includes(normalized) ||
-          command.id.toLowerCase().includes(normalized)),
+        command.label.toLowerCase().includes(normalized) ||
+        command.aliases?.some((alias) => alias.toLowerCase().includes(normalized)) ||
+        command.description.toLowerCase().includes(normalized) ||
+        command.id.toLowerCase().includes(normalized),
     );
   }, [query]);
 

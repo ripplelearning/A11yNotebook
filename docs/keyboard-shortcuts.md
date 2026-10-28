@@ -32,6 +32,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Shift+A   | Annotate selection                      |
 | Ctrl+Alt+A     | Annotate PDF selection                  |
 | Ctrl+Alt+P     | Annotate this paragraph/heading/cell    |
+| Ctrl+7         | Open Reminders                          |
 | Ctrl+Shift+R   | Open Reminders                          |
 | Ctrl+6         | Calendar                                |
 | Ctrl+5         | Cognitive tools                         |

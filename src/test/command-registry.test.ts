@@ -264,3 +264,25 @@ describe('focus region cycling', () => {
     expect(cycleFocusRegions('right-pane', 'forward', available)).toBe('status');
   });
 });
+
+describe('batch 1 fixes (1.9.4)', () => {
+  it('merges the duplicate internal import into the managed-copy import', () => {
+    expect(COMMANDS.some((command) => (command.id as string) === 'context-import-internal')).toBe(false);
+    const managed = getCommandById('context-import-note');
+    expect(managed?.contexts).toEqual(
+      expect.arrayContaining(['tree-note', 'attachment', 'document-preview', 'search-result']),
+    );
+    expect(getContextMenuCommands('document-preview').map(({ id }) => id)).toContain('context-import-note');
+    expect(getContextMenuCommands('search-result').map(({ id }) => id)).toContain('context-import-note');
+  });
+
+  it('opens reminders with Ctrl+7 and keeps the old shortcut as an alias', () => {
+    expect(getCommandById('show-reminders')?.shortcut).toBe('Ctrl+7');
+    expect(getCommandById('show-reminders')?.shortcutAliases).toContain('Ctrl+Shift+R');
+  });
+
+  it('offers Reveal in Explorer from a note tab', () => {
+    expect(getCommandById('context-reveal')?.contexts).toContain('tab');
+    expect(getContextMenuCommands('tab').map(({ id }) => id)).toContain('context-reveal');
+  });
+});

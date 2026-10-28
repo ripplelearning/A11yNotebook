@@ -52,6 +52,7 @@ export type CommandId =
   | 'annotate-pdf-selection'
   | 'annotate-current-semantic-element'
   | 'show-reminders'
+  | 'create-reminder'
   | 'show-calendar'
   | 'show-assets'
   | 'format-bold'
@@ -87,7 +88,6 @@ export type CommandId =
   | 'context-copy'
   | 'context-paste'
   | 'context-open-external'
-  | 'context-import-internal'
   | 'context-copy-link'
   | 'context-toggle-task'
   | 'context-set-due-date'
@@ -273,8 +273,8 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-import-note',
     label: 'Import managed copy…',
     description:
-      'Import a managed copy. Markdown and HTML notes are editable; documents and images use read-only previews, and cognitive assets use their dedicated editors.',
-    contexts: ['tree-note', 'attachment'],
+      'Import a managed copy. Markdown and HTML notes are editable; documents and images use read-only previews, and cognitive assets use their dedicated editors. The original file is kept.',
+    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'context-open-with',
@@ -310,13 +310,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-reveal',
     label: 'Reveal this item in Explorer',
     description: 'Reveal the selected library item.',
-    contexts: ['tree-note', 'tree-folder', 'attachment'],
-  },
-  {
-    id: 'context-import-internal',
-    label: 'Import internal copy',
-    description: 'Import a separate compatible copy for internal reading or editing.',
-    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'tab'],
   },
   {
     id: 'context-bookmark',
@@ -515,7 +509,14 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'show-reminders',
     label: 'Open Reminders',
     description: 'Show reminders and the grouped agenda.',
-    shortcut: 'Ctrl+Shift+R',
+    shortcut: 'Ctrl+7',
+    shortcutAliases: ['Ctrl+Shift+R'],
+  },
+  {
+    id: 'create-reminder',
+    label: 'Create reminder',
+    description: 'Open the Create reminder dialog.',
+    contexts: ['general'],
   },
   {
     id: 'show-calendar',

@@ -1,4 +1,4 @@
-import { useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import {
   groupReminders,
   type CreateReminderInput,
@@ -12,6 +12,8 @@ export interface RemindersViewProps {
   title?: string;
   reminders: Reminder[];
   notePaths: string[];
+  /** Increment to open the Create reminder dialog (for example, from Ctrl+N). */
+  createRequest?: number;
   onCreate: (input: CreateReminderInput) => void | Promise<unknown>;
   onDismiss: (id: string) => void | Promise<unknown>;
   onSnooze: (id: string, duration: SnoozeDuration) => void | Promise<unknown>;
@@ -26,6 +28,7 @@ export default function RemindersView({
   title: headingTitle = 'Reminders',
   reminders,
   notePaths,
+  createRequest = 0,
   onCreate,
   onDismiss,
   onSnooze,
@@ -40,6 +43,9 @@ export default function RemindersView({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    if (createRequest > 0) setCreating(true);
+  }, [createRequest]);
   const visible = reminders
     .filter((item) => item.status !== 'dismissed' && item.status !== 'completed')
     .slice()
@@ -127,6 +133,7 @@ export default function RemindersView({
       <button type="button" disabled={notePaths.length === 0} onClick={() => setCreating(true)}>
         Create reminder
       </button>
+      {notePaths.length === 0 ? <p>Create reminder needs at least one note in the library.</p> : null}
       <label htmlFor={`${id}-view`}>Reminder view</label>
       <select id={`${id}-view`} value={view} onChange={(event) => setView(event.target.value)}>
         <option value="agenda">Grouped agenda</option>
