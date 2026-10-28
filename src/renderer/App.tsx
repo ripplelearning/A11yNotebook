@@ -289,9 +289,6 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'toggle-read-only-mode',
       'show-assets',
       'focus-search',
-      'focus-navigation',
-      'focus-main-content',
-      'focus-right-pane',
     ],
   },
   { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-about'] },
@@ -4152,7 +4149,7 @@ export default function App() {
         </nav>
       )}
 
-      <main className="workspace" aria-label="Workspace layout">
+      <div className="workspace">
         <aside
           ref={navigationRef}
           className={activeRegion === 'navigation' ? 'panel active-panel' : 'panel'}
@@ -4243,7 +4240,7 @@ export default function App() {
           ) : null}
         </aside>
 
-        <section className="content-panel" aria-label="Main content">
+        <main className="content-panel" aria-label="Main content">
           <div
             ref={tabListRef}
             className={activeRegion === 'tabs' ? 'tab-bar active-panel' : 'tab-bar'}
@@ -4700,7 +4697,7 @@ export default function App() {
               </div>
             )}
           </article>
-        </section>
+        </main>
 
         {rightPaneOpen ? (
           <aside
@@ -4822,7 +4819,7 @@ export default function App() {
             </section>
           </aside>
         ) : null}
-      </main>
+      </div>
 
       <footer ref={statusRef} className="status-bar" data-region="status" aria-label="Status bar" tabIndex={-1}>
         <span className="status-message" role="status" aria-live="polite">

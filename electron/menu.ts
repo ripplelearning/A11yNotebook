@@ -143,9 +143,6 @@ export function buildApplicationMenu(
       label: '&Window',
       submenu: [
         commandItem('focus-search'),
-        commandItem('focus-navigation'),
-        commandItem('focus-main-content'),
-        commandItem('focus-right-pane'),
       ],
     },
     {
