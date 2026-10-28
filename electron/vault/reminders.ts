@@ -246,6 +246,10 @@ export function createReminderService(options: ReminderServiceOptions) {
   let stopped = false;
   let timer: unknown;
   let published = '';
+  // A standalone reminder whose note cannot be read is reported once per
+  // service lifetime, not on every collection, so a stale reminder does
+  // not repeat "Could not update reminders." on every startup and refresh.
+  const reportedBroken = new Set<string>();
   let queued: Promise<unknown> = Promise.resolve();
   const report = (error: unknown) => {
     try {
@@ -321,12 +325,16 @@ export function createReminderService(options: ReminderServiceOptions) {
     );
     const standalone: Reminder[] = [];
     for (const item of store.standalone) {
+      if (item.path === undefined) continue;
+      const path = item.path;
       try {
-        if (item.path === undefined) continue;
-        await options.validateNote(item.path);
+        await options.validateNote(path);
         standalone.push(item);
       } catch (error) {
-        report(error);
+        if (!reportedBroken.has(path)) {
+          reportedBroken.add(path);
+          report(error);
+        }
       }
     }
     reviews = (await options.getFlashcardReviews?.()) ?? [];

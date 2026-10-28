@@ -54,6 +54,7 @@ function setup(
       createNotebook: vi.fn(async () => vault),
       rename: vi.fn(async () => vault),
       delete: vi.fn(async () => vault),
+        deletePermanently: vi.fn(async () => vault),
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),
       openUrl: vi.fn(async () => undefined),

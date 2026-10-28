@@ -69,13 +69,36 @@ const PAGES: { heading: string; body: string[] }[] = [
 export default function TutorialDialog({ onClose }: { onClose: () => void }) {
   const [page, setPage] = useState(0);
   const [suppressed, setSuppressed] = useState(() => readTutorialState().suppressed);
+  const [announcement, setAnnouncement] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstPageRef = useRef(true);
   const lastPage = PAGES.length - 1;
   const current = PAGES[page];
 
+  // While the tutorial is open, the window title names the dialog, so a
+  // screen reader's title-bar shortcut reads the tutorial, not the view
+  // behind it. Restored when the dialog closes.
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = 'Getting started with A11y Notebook – A11y Notebook';
+    return () => {
+      document.title = previousTitle;
+    };
+  }, []);
+
   useEffect(() => {
     headingRef.current?.focus();
-  }, [page]);
+    // Moving DOM focus to the heading is not enough on its own: a screen
+    // reader in browse mode does not follow a programmatic focus move to
+    // an unchanged element, so the new page would otherwise go unread.
+    // Announce the page change through a live region (skipped for the
+    // first page, which the dialog's opening focus already announces).
+    if (firstPageRef.current) {
+      firstPageRef.current = false;
+    } else {
+      setAnnouncement(`Page ${page + 1} of ${PAGES.length}: ${current.heading}`);
+    }
+  }, [page, current.heading]);
 
   return (
     <Modal titleId="tutorial-title" title="Getting started with A11y Notebook" onClose={onClose}>
@@ -88,6 +111,23 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
       <p>
         Page {page + 1} of {PAGES.length}
       </p>
+      <div aria-live="polite" className="sr-only">
+        {announcement}
+      </div>
+      <div>
+        {page < lastPage ? (
+          <button type="button" onClick={() => setPage((value) => Math.min(lastPage, value + 1))}>
+            Next
+          </button>
+        ) : (
+          <button type="button" onClick={onClose}>
+            Finish
+          </button>
+        )}
+        <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+          Previous
+        </button>
+      </div>
       <label>
         <input
           type="checkbox"
@@ -101,18 +141,6 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
         Don&apos;t show this again
       </label>
       <div>
-        <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
-          Previous
-        </button>
-        {page < lastPage ? (
-          <button type="button" onClick={() => setPage((value) => Math.min(lastPage, value + 1))}>
-            Next
-          </button>
-        ) : (
-          <button type="button" onClick={onClose}>
-            Finish
-          </button>
-        )}
         <button type="button" onClick={onClose}>
           Close
         </button>

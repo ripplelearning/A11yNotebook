@@ -14,7 +14,7 @@ describe('PDF contextual command routing', () => {
     invoker.tabIndex = 0;
     invoker.textContent = 'A selected PDF quote';
     container.append(invoker);
-    await screen.findByRole('heading', { name: 'A11y Notebook' });
+    await screen.findByLabelText('Application header');
     invoker.focus();
     const range = document.createRange();
     range.setStart(invoker.firstChild!, 2);
@@ -67,7 +67,7 @@ describe('PDF contextual command routing', () => {
 
   it('routes a virtual-cursor PDF selection when DOM focus remains on the body', async () => {
     const { container } = render(<App />);
-    await screen.findByRole('heading', { name: 'A11y Notebook' });
+    await screen.findByLabelText('Application header');
     const reader = document.createElement('div');
     reader.dataset.context = 'pdf-selection';
     reader.tabIndex = -1;

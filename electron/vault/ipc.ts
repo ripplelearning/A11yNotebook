@@ -1,5 +1,5 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
@@ -974,7 +974,15 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       const notes: NoteSource[] = [];
       async function collect(entries: VaultEntry[]) {
         for (const entry of entries) {
-          if (entry.kind === 'note') notes.push({ path: entry.path, content: await nextService.readNote(entry.path) });
+          if (entry.kind === 'note') {
+            // One unreadable note (a cloud placeholder, a corrupt file)
+            // must not break reminder collection for the whole library.
+            try {
+              notes.push({ path: entry.path, content: await nextService.readNote(entry.path) });
+            } catch {
+              // Skipped: its tasks simply do not contribute reminders.
+            }
+          }
           if (entry.children) await collect(entry.children);
         }
       }
@@ -3410,12 +3418,12 @@ export function setupVaultIpc(
       type: 'warning',
       title: 'Delete item',
       message: `Move “${path.basename(target)}” to the Recycle Bin?`,
-      buttons: ['Cancel', 'Delete'],
+      buttons: ['Delete', 'Cancel'],
       defaultId: 0,
-      cancelId: 0,
+      cancelId: 1,
       noLink: true,
     });
-    if (answer.response !== 1) return vault.getVault();
+    if (answer.response !== 0) return vault.getVault();
     assetDraftGeneration += 1;
     return serializeVaultOperation(async () => {
       access.assertCurrent();
@@ -3424,6 +3432,49 @@ export function setupVaultIpc(
       access.assertCurrent();
       assetDraftGeneration += 1;
       await shell.trashItem(target);
+      try {
+        access.assertCurrent();
+        await drafts?.deletePaths(relativePath);
+        const links = await vault.getTaskLinks();
+        const kept = dropLinksForDeletedPath(links, relativePath);
+        if (kept.length !== links.length) await vault.saveTaskLinks(kept);
+        await vault.pruneProvenance(access.assertCurrent);
+        await vault.refreshSearchIndex();
+        return vault.getVault();
+      } catch {
+        throw new Error(
+          'Item deleted, but recovery cleanup or index refresh failed. Reopen the library; do not repeat deletion.',
+        );
+      }
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultDeletePermanent, async (event, relativePath: unknown, hasUnsavedChanges: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Path must be text.');
+    const vault = requireService();
+    const access = captureVaultAccess(event, isTrustedSender);
+    const target = await vault.resolveEntry(relativePath);
+    if (target === vaultPathOf(await vault.getVault())) throw new Error('The library itself cannot be deleted here.');
+    const answer = await dialog.showMessageBox({
+      type: 'warning',
+      title: 'Delete item permanently',
+      message: `Permanently delete “${path.basename(target)}”? This cannot be undone and does not go to the Recycle Bin.${
+        hasUnsavedChanges === true ? ' It contains unsaved note changes, which will be lost.' : ''
+      }`,
+      buttons: ['Delete permanently', 'Cancel'],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+    });
+    if (answer.response !== 0) return vault.getVault();
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const drafts = protectedMetadata?.enabled() ? draftStore(access.assertCurrent) : null;
+      if (drafts) await drafts.read(relativePath);
+      access.assertCurrent();
+      assetDraftGeneration += 1;
+      await rm(target, { recursive: true, force: true });
       try {
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);

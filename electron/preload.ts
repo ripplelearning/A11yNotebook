@@ -51,6 +51,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultImportEntry: 'vault:import-entry',
   vaultAdoptEncrypted: 'vault:adopt-encrypted',
   vaultDelete: 'vault:delete',
+  vaultDeletePermanent: 'vault:delete-permanent',
   vaultGetTasks: 'vault:get-tasks',
   vaultToggleTask: 'vault:toggle-task',
   vaultTaskDueDate: 'vault:task-due-date',
@@ -313,6 +314,8 @@ const bridge: NotebookBridge = {
     adoptEncrypted: (relativePath, password) =>
       ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
+    deletePermanently: (relativePath, hasUnsavedChanges) =>
+      ipcRenderer.invoke(CHANNELS.vaultDeletePermanent, relativePath, hasUnsavedChanges),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),
     toggleTask: (relativePath, location, complete, revision) =>
       ipcRenderer.invoke(CHANNELS.vaultToggleTask, relativePath, location, complete, revision),

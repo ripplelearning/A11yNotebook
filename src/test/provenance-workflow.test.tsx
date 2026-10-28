@@ -42,6 +42,7 @@ function installBridge() {
       createNote: vi.fn(async () => library),
       rename: vi.fn(async () => library),
       delete: vi.fn(async () => library),
+      deletePermanently: vi.fn(async () => library),
       reveal: vi.fn(),
       openExternal: vi.fn(),
       openUrl: vi.fn(),
