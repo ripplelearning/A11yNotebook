@@ -32,7 +32,9 @@ export type CommandId =
   | 'close-current-tab'
   | 'toggle-read-only-mode'
   | 'enable-reading-mode'
-  | 'find-in-note'
+  | 'find-in-document'
+  | 'find-next'
+  | 'find-previous'
   | 'toggle-right-pane'
   | 'focus-search'
   | 'command-search'
@@ -139,7 +141,8 @@ export type CommandActionContext = {
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
   showTutorial: () => void;
-  showFindDialog: () => void;
+  startFind: () => void;
+  repeatFind: (direction: 'next' | 'prev') => string | undefined;
   navigateBack?: () => void;
   navigateForward?: () => void;
   showContents?: () => void;
@@ -738,10 +741,22 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+R',
   },
   {
-    id: 'find-in-note',
-    label: 'Find in note',
-    description: 'Search within the current note.',
+    id: 'find-in-document',
+    label: 'Find in document',
+    description: 'Search within the current note or document.',
     shortcut: 'Ctrl+F',
+  },
+  {
+    id: 'find-next',
+    label: 'Find next match',
+    description: 'Move to the next match of the last search.',
+    shortcut: 'F3',
+  },
+  {
+    id: 'find-previous',
+    label: 'Find previous match',
+    description: 'Move to the previous match of the last search.',
+    shortcut: 'Shift+F3',
   },
   {
     id: 'toggle-right-pane',
@@ -1031,9 +1046,15 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       context.setMode('read-only');
       return 'Reading mode enabled.';
     }
-    case 'find-in-note': {
-      context.showFindDialog();
+    case 'find-in-document': {
+      context.startFind();
       return undefined;
+    }
+    case 'find-next': {
+      return context.repeatFind('next');
+    }
+    case 'find-previous': {
+      return context.repeatFind('prev');
     }
     case 'toggle-right-pane': {
       const nextState = !context.rightPaneOpen;

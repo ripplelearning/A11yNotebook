@@ -11,7 +11,7 @@ export default function FindDialog({ onClose, onSearch }: Props) {
   const [caseSensitive, setCaseSensitive] = useState(false);
   const [status, setStatus] = useState('Type text to find in this note.');
   return (
-    <Modal title="Find in note" titleId="find-title" onClose={onClose}>
+    <Modal title="Find in document" titleId="find-title" onClose={onClose}>
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -19,7 +19,7 @@ export default function FindDialog({ onClose, onSearch }: Props) {
         }}
       >
         <label>
-          Find in note
+          Find in document
           <input
             type="text"
             value={query}

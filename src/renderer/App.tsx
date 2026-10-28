@@ -55,6 +55,7 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { findAllMatches } from '../shared/find-text';
+import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
 import {
   createEditHistory,
   recordEdit,
@@ -274,7 +275,9 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'convert-note-to-outline',
       'refresh-links',
       'repair-broken-links',
-      'find-in-note',
+      'find-in-document',
+      'find-next',
+      'find-previous',
       'check-spelling-grammar',
       'open-thesaurus',
       'show-reminders',
@@ -1751,78 +1754,156 @@ export default function App() {
 
   const [spellingOpen, setSpellingOpen] = useState(false);
   const [findOpen, setFindOpen] = useState(false);
-  const findStateRef = useRef<{
-    noteId: string;
-    mode: AppMode;
-    query: string;
-    caseSensitive: boolean;
-    position: number;
-  } | null>(null);
+  // The last search term survives the dialog closing so F3 can repeat it.
+  const findQueryRef = useRef<{ query: string; caseSensitive: boolean } | null>(null);
+  // The match position is per document: a new document starts fresh.
+  const findPositionRef = useRef<{ docKey: string; position: number } | null>(null);
+  const attachmentRef = useRef<HTMLDivElement>(null);
+
+  const isReaderAttachment = (path: string) => /\.(?:pdf|epub|docx)$/i.test(path);
+  const isImageAttachment = (path: string) => /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path);
+
+  /** Advance a match position with wrap-around; an out-of-range position restarts. */
+  const advanceFindPosition = (total: number, position: number, direction: 'next' | 'prev'): number => {
+    if (position < 0 || position >= total) return direction === 'next' ? 0 : total - 1;
+    if (direction === 'next') return position < total - 1 ? position + 1 : 0;
+    return position > 0 ? position - 1 : total - 1;
+  };
+
+  /** Search the rendered text under root and select the next or previous match. */
+  const searchDomRoot = (
+    root: HTMLElement,
+    docKey: string,
+    query: string,
+    direction: 'next' | 'prev',
+    caseSensitive: boolean,
+  ): string => {
+    const matches = findDomMatches(root, query, caseSensitive);
+    if (!matches.length) {
+      findPositionRef.current = null;
+      window.getSelection()?.removeAllRanges();
+      return `No matches for "${query}".`;
+    }
+    const stored = findPositionRef.current;
+    const position = advanceFindPosition(
+      matches.length,
+      stored && stored.docKey === docKey ? stored.position : -1,
+      direction,
+    );
+    selectDomMatch(matches, position);
+    findPositionRef.current = { docKey, position };
+    return `Match ${position + 1} of ${matches.length} for "${query}".`;
+  };
 
   /**
-   * Search within the current note and move to the next or previous match.
-   * In edit mode the textarea selection moves; in reading mode the match
-   * in the rendered document is selected. Matches wrap around. Returns
-   * the status text the Find dialog announces.
+   * Search the active document and move to the next or previous match.
+   * Notes search the editor selection in edit mode and the rendered
+   * document in reading mode. Text and CSV attachments search their
+   * rendered preview; HTML attachments can only be counted, because
+   * their preview is a sandboxed frame the app cannot select inside.
+   * Returns the status text the Find dialog announces.
    */
-  const findInNote = (query: string, direction: 'next' | 'prev', caseSensitive: boolean): string => {
-    if (!currentNote) return 'No note is open.';
+  const searchDocument = (query: string, direction: 'next' | 'prev', caseSensitive: boolean): string => {
     if (!query) return 'Enter text to find.';
-    const previous = findStateRef.current;
-    let position =
-      previous &&
-      previous.noteId === currentNote.id &&
-      previous.mode === mode &&
-      previous.query === query &&
-      previous.caseSensitive === caseSensitive
-        ? previous.position
-        : -1;
+    findQueryRef.current = { query, caseSensitive };
+    if (selectedTab === 'attachment' && attachment) {
+      if (isImageAttachment(attachment.path)) return 'This image has no text to search.';
+      if (isReaderAttachment(attachment.path)) return 'This document has its own search box.';
+      if (/\.html?$/i.test(attachment.path)) {
+        const template = document.createElement('template');
+        template.innerHTML = attachment.text;
+        const text = template.content.textContent ?? '';
+        const matches = findAllMatches(text, query, caseSensitive);
+        if (!matches.length) {
+          findPositionRef.current = null;
+          return `No matches for "${query}".`;
+        }
+        const docKey = `attachment:${attachment.path}`;
+        const stored = findPositionRef.current;
+        const position = advanceFindPosition(
+          matches.length,
+          stored && stored.docKey === docKey ? stored.position : -1,
+          direction,
+        );
+        findPositionRef.current = { docKey, position };
+        return `Match ${position + 1} of ${matches.length} for "${query}".`;
+      }
+      const root = attachmentRef.current;
+      if (!root) return 'The document is not displayed.';
+      return searchDomRoot(root, `attachment:${attachment.path}`, query, direction, caseSensitive);
+    }
+    if (!currentNote) return 'Open a note or document to search within it.';
     if (mode === 'edit') {
       const textarea = editorRef.current;
       const text = textarea?.value ?? currentNote.content;
       const matches = findAllMatches(text, query, caseSensitive);
       if (!matches.length) {
-        findStateRef.current = null;
+        findPositionRef.current = null;
         return `No matches for "${query}".`;
       }
-      position = direction === 'next' ? (position < matches.length - 1 ? position + 1 : 0) : position > 0 ? position - 1 : matches.length - 1;
+      const docKey = `note:${currentNote.id}:${mode}`;
+      const stored = findPositionRef.current;
+      const position = advanceFindPosition(
+        matches.length,
+        stored && stored.docKey === docKey ? stored.position : -1,
+        direction,
+      );
       const match = matches[position];
       if (!match) return `No matches for "${query}".`;
       if (textarea) {
         textarea.focus();
         textarea.setSelectionRange(match.index, match.index + match.length);
       }
-      findStateRef.current = { noteId: currentNote.id, mode, query, caseSensitive, position };
+      findPositionRef.current = { docKey, position };
       return `Match ${position + 1} of ${matches.length} for "${query}".`;
     }
     const root = annotationTools.documentRef.current;
     if (!root) return 'The note is not displayed.';
-    const matches: { node: Text; start: number; length: number }[] = [];
-    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
-    let node: Text | null;
-    while ((node = walker.nextNode() as Text | null)) {
-      for (const match of findAllMatches(node.data, query, caseSensitive)) {
-        matches.push({ node, start: match.index, length: match.length });
+    return searchDomRoot(root, `note:${currentNote.id}:${mode}`, query, direction, caseSensitive);
+  };
+
+  /**
+   * Start finding in the active document. PDF, ePub, and DOCX readers
+   * have their own search boxes, so Ctrl+F focuses the box instead of
+   * opening the Find dialog. Images have no text to search.
+   */
+  const startFind = () => {
+    if (selectedTab === 'attachment' && attachment) {
+      if (isImageAttachment(attachment.path)) {
+        setStatusMessage('This image has no text to search.');
+        return;
       }
+      if (isReaderAttachment(attachment.path)) {
+        const root = attachmentRef.current;
+        if (root && focusReaderSearchBox(root)) return;
+        setStatusMessage('The document search is not ready yet.');
+        return;
+      }
+      setFindOpen(true);
+      return;
     }
-    if (!matches.length) {
-      findStateRef.current = null;
-      window.getSelection()?.removeAllRanges();
-      return `No matches for "${query}".`;
+    if (currentNote) {
+      setFindOpen(true);
+      return;
     }
-    position = direction === 'next' ? (position < matches.length - 1 ? position + 1 : 0) : position > 0 ? position - 1 : matches.length - 1;
-    const match = matches[position];
-    if (!match) return `No matches for "${query}".`;
-    const range = document.createRange();
-    range.setStart(match.node, match.start);
-    range.setEnd(match.node, match.start + match.length);
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range);
-    const element = match.node.parentElement;
-    if (element && typeof element.scrollIntoView === 'function') element.scrollIntoView({ block: 'center' });
-    findStateRef.current = { noteId: currentNote.id, mode, query, caseSensitive, position };
-    return `Match ${position + 1} of ${matches.length} for "${query}".`;
+    setStatusMessage('Open a note or document to search within it.');
+  };
+
+  /**
+   * Repeat the last search after the Find dialog closed (F3 / Shift+F3).
+   * Reader documents just refocus their search box; other documents
+   * search with the stored term. Returns the status text, or undefined
+   * when focus itself is the feedback.
+   */
+  const repeatFind = (direction: 'next' | 'prev'): string | undefined => {
+    const stored = findQueryRef.current;
+    if (!stored) return 'No previous search. Open Find first.';
+    if (selectedTab === 'attachment' && attachment && isReaderAttachment(attachment.path)) {
+      const root = attachmentRef.current;
+      if (root && focusReaderSearchBox(root)) return undefined;
+      return 'The document search is not ready yet.';
+    }
+    return searchDocument(stored.query, direction, stored.caseSensitive);
   };
   type ThesaurusSelection =
     | { kind: 'plain'; start: number; end: number }
@@ -3694,8 +3775,8 @@ export default function App() {
       setStatusMessage('Open a note to enable reading mode.');
       return;
     }
-    if (commandId === 'find-in-note' && !currentNote) {
-      setStatusMessage('Open a note to search within it.');
+    if (commandId === 'find-in-document' && !currentNote && !(selectedTab === 'attachment' && attachment)) {
+      setStatusMessage('Open a note or document to search within it.');
       return;
     }
     if (commandId === 'toggle-read-only-mode' && mode === 'read-only' && currentNoteEditLocked) {
@@ -3743,7 +3824,8 @@ export default function App() {
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
       showAbout: () => setActiveDialog('about'),
       showTutorial: () => setTutorialOpen(true),
-      showFindDialog: () => setFindOpen(true),
+      startFind,
+      repeatFind,
     });
     if (result) {
       setStatusMessage(result);
@@ -3961,7 +4043,9 @@ export default function App() {
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
     }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
-    if (id === 'enable-reading-mode' || id === 'find-in-note') return !currentNote;
+    if (id === 'enable-reading-mode') return !currentNote;
+    if (id === 'find-in-document')
+      return !currentNote && !(selectedTab === 'attachment' && attachment);
     if (id === 'edit-undo') {
       return undoTimelineRef.current.undo.length === 0;
     }
@@ -4563,9 +4647,10 @@ export default function App() {
                 onOpenCalendar={() => setSelectedTab('calendar')}
               />
             ) : selectedTab === 'attachment' && attachment ? (
-              <AttachmentView
-                key={attachment.path}
-                preview={attachment}
+              <div ref={attachmentRef}>
+                <AttachmentView
+                  key={attachment.path}
+                  preview={attachment}
                 alt={imageAlt}
                 announce={setStatusMessage}
                 onExternal={() =>
@@ -4578,6 +4663,7 @@ export default function App() {
                   setImageAlt(alt);
                 }}
               />
+              </div>
             ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
                 <h2 id="tasks-heading">{viewTitles.tasks}</h2>
@@ -5093,13 +5179,10 @@ export default function App() {
           onClose={() => setSpellingOpen(false)}
         />
       ) : null}
-      {findOpen && currentNote ? (
+      {findOpen ? (
         <FindDialog
-          onClose={() => {
-            setFindOpen(false);
-            findStateRef.current = null;
-          }}
-          onSearch={findInNote}
+          onClose={() => setFindOpen(false)}
+          onSearch={searchDocument}
         />
       ) : null}
       {thesaurusRequest && currentNote ? (

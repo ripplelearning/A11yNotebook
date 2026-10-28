@@ -6,7 +6,7 @@ describe('Find dialog', () => {
   it('searches forward and back, honoring match case', () => {
     const onSearch = vi.fn(() => 'Match 1 of 2 for "Idea".');
     render(<FindDialog onClose={vi.fn()} onSearch={onSearch} />);
-    fireEvent.change(screen.getByRole('textbox', { name: 'Find in note' }), { target: { value: 'Idea' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Idea' } });
     fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
     expect(onSearch).toHaveBeenCalledWith('Idea', 'next', false);
     expect(screen.getByRole('status')).toHaveTextContent('Match 1 of 2 for "Idea".');
