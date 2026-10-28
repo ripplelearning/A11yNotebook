@@ -1297,6 +1297,24 @@ export default function App() {
     return () => document.removeEventListener('focusin', handleFocusIn);
   }, []);
 
+  // On first open, give the window a focused element. With focus left on
+  // the body, JAWS reads the whole window top to bottom on open; that
+  // started with the 1.9.1 landmark change, which altered what JAWS sees
+  // at startup. Focusing the selected tab button announces one element
+  // instead. Runs once, only while focus is still on the body and no
+  // dialog is open, so it never steals focus from a dialog, a click, or
+  // a later focus request.
+  const initialFocusTakenRef = useRef(false);
+  useEffect(() => {
+    if (initialFocusTakenRef.current) return;
+    if (document.activeElement && document.activeElement !== document.body) return;
+    if (document.querySelector('[role="dialog"], [role="alertdialog"]')) return;
+    const button = tabRefs.current[selectedTab];
+    if (!button) return;
+    initialFocusTakenRef.current = true;
+    button.focus();
+  }, [selectedTab]);
+
   // If the right pane is hidden while it contains focus, keep focus in the workspace.
   useEffect(() => {
     if (!rightPaneOpen && activeRegion === 'right-pane') {
