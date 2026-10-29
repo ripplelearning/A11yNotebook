@@ -692,6 +692,8 @@ export default function App() {
   // Files grid: the path of the item to focus, or null for the grid's active
   // cell. Undefined means no grid focus is pending.
   const [pendingGridFocusPath, setPendingGridFocusPath] = useState<string | null | undefined>(undefined);
+  // Set when a closed library should hand focus to the Libraries grid.
+  const [pendingLibraryGridFocus, setPendingLibraryGridFocus] = useState(false);
   const updater = useUpdater();
   const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage, (replacedPath) =>
     invalidateEditHistory(replacedPath),
@@ -1345,6 +1347,19 @@ export default function App() {
     }
     setPendingGridFocusPath(undefined);
   }, [pendingGridFocusPath, selectedTab]);
+
+  // After closing a library, focus lands on the Libraries grid itself, not
+  // on the Notes and Files view the app used to return to.
+  useEffect(() => {
+    if (!pendingLibraryGridFocus || selectedTab !== 'libraries') return;
+    const panel = tabPanelRef.current;
+    const target = panel?.querySelector<HTMLElement>('[role="grid"] [role="gridcell"]') ?? panel;
+    if (target) {
+      target.focus();
+      setActiveRegion('main');
+    }
+    setPendingLibraryGridFocus(false);
+  }, [pendingLibraryGridFocus, selectedTab]);
 
   // Keep the highlighted region in sync when focus moves by mouse or Tab.
   useEffect(() => {
@@ -2798,6 +2813,43 @@ export default function App() {
     }
   };
 
+  // Closing a library closes everything inside it: every open note, file,
+  // task, reminder, asset, and attachment tab, plus the notebook selection.
+  // The app returns to the Libraries view with focus on the libraries grid.
+  const closeLibrary = () => {
+    if (!vault) {
+      setStatusMessage('No library is open.');
+      return;
+    }
+    if (
+      assetDirty ||
+      assetBusy ||
+      openNotes.some((note) => note.content !== note.saved) ||
+      activeConflict ||
+      switchingRef.current
+    ) {
+      setStatusMessage('Save or resolve unsaved changes before closing the library.');
+      return;
+    }
+    const name = vault.name;
+    vaultGenerationRef.current += 1;
+    setVault(null);
+    setOpenNotes([]);
+    setAttachment(null);
+    setAssetTabOpen(false);
+    setAssetInitialPath(undefined);
+    setAssetDirty(false);
+    setTaskTabOpen(false);
+    setReminderTabOpen(false);
+    setSelectedNotebookPath(undefined);
+    setTreeSelection(null);
+    setPinnedTabs(new Set());
+    setSelectedTab('libraries');
+    setPendingLibraryGridFocus(true);
+    setStatusMessage(`Closed library ${name}.`);
+    refreshRecentLibraries();
+  };
+
   const closeContextTab = (tabId: string) => {
     const note = openNotes.find((item) => item.id === tabId);
     // Closing the note or file being read returns to the Notes and Files grid
@@ -3440,7 +3492,7 @@ export default function App() {
           setAssetTabOpen(false);
           setAssetInitialPath(undefined);
           setAssetDirty(false);
-          setSelectedTab(create ? 'libraries' : 'notes-files');
+          setSelectedTab(create ? 'libraries' : 'notebooks');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
         }
@@ -3881,7 +3933,26 @@ export default function App() {
       return;
     }
     if (commandId === 'close-current-tab') {
-      closeContextTab(selectedTab);
+      // Ctrl+W closes whatever is current: a tab, then the library from the
+      // Libraries view, then a selected notebook, then the library from
+      // anywhere else. Closing a notebook clears its selection.
+      const closableTab = tabs.some(
+        (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+      );
+      if (closableTab) {
+        closeContextTab(selectedTab);
+      } else if (selectedTab === 'libraries' && vault) {
+        closeLibrary();
+      } else if (selectedNotebookPath) {
+        const notebookName = findEntry(vault?.entries ?? [], selectedNotebookPath)?.name;
+        setSelectedNotebookPath(undefined);
+        setTreeSelection(null);
+        setStatusMessage(notebookName ? `Closed notebook ${notebookName}.` : 'Notebook closed.');
+      } else if (vault) {
+        closeLibrary();
+      } else {
+        setStatusMessage('Nothing to close.');
+      }
       return;
     }
     if (activeDialog === 'palette' && commandId !== 'command-search') {
@@ -4211,8 +4282,12 @@ export default function App() {
     if (id === 'save-current-note')
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
     if (id === 'close-current-tab')
-      return !tabs.some(
-        (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+      return (
+        !tabs.some(
+          (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+        ) &&
+        !vault &&
+        !selectedNotebookPath
       );
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')

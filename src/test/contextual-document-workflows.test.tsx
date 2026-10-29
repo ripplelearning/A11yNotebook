@@ -204,6 +204,47 @@ describe('contextual shell document workflows', () => {
     },
   );
 
+  it('closes the open library with Ctrl+W from the Libraries view and focuses the libraries grid', async () => {
+    setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    shortcut('1');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Study' });
+    shortcut('w');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Libraries' });
+    expect(
+      within(screen.getByLabelText('Status bar')).getByRole('status'),
+    ).toHaveTextContent('Closed library Study.');
+    const active = document.activeElement as HTMLElement | null;
+    expect(active?.getAttribute('role')).toBe('gridcell');
+    expect(screen.getByRole('tabpanel', { name: 'Libraries' })).toContainElement(active);
+  });
+
+  it('closes a selected notebook with Ctrl+W and keeps the library open', async () => {
+    setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    shortcut('3');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', {
+      name: 'Notes and Files in Research',
+    });
+    shortcut('w');
+    expect(
+      within(screen.getByLabelText('Status bar')).getByRole('status'),
+    ).toHaveTextContent('Closed notebook Research.');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', {
+      name: 'Notes and Files in Study',
+    });
+    expect(screen.getByRole('treeitem', { name: /Research/ })).toBeInTheDocument();
+  });
+
+  it('opens a library on the Notebooks view', async () => {
+    setup({ loadVault: async () => null as never });
+    shortcut('1');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Libraries' });
+    fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'Open library' }));
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Notebooks in Study' });
+  });
+
   it.each(['settings-first', 'library-first'] as const)(
     'preserves notebook context with deferred initialization (%s)',
     async (ordering) => {

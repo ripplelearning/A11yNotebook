@@ -726,7 +726,7 @@ export const COMMANDS: CommandDefinition[] = [
       'View and edit the active note’s YAML front matter — any field, with field-name and value suggestions from the library. Numbers, booleans, and null keep their type instead of becoming quoted text.',
     shortcut: 'Ctrl+Shift+D',
   },
-  { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
+  { id: 'close-current-tab', label: 'Close current item', description: 'Close the active tab, notebook, or library.', shortcut: 'Ctrl+W' },
   {
     id: 'toggle-read-only-mode',
     label: 'Toggle read-only/edit mode',

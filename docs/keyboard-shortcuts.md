@@ -61,7 +61,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Alt+J     | Bookmark position at cursor             |
 | F11            | Toggle Focus Mode                       |
 | Ctrl+Shift+D   | Edit note metadata…                     |
-| Ctrl+W         | Close current tab                       |
+| Ctrl+W         | Close current item                      |
 | Ctrl+E         | Toggle read-only/edit mode              |
 | Ctrl+R         | Enable reading mode                     |
 | Ctrl+F         | Find in document                        |
