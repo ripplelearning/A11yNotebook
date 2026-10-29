@@ -2,7 +2,7 @@
 // Once a managed copy is imported from a file already in the library,
 // the original is flagged superseded so views hide it, and deleting the
 // copy drops the flag on the next scan so the original comes back.
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
@@ -45,7 +45,9 @@ describe('superseded originals', () => {
 
   it('does not supersede anything when importing a file from outside the library', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
-    const outside = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-outside-'));
+    // macOS temp folders sit under /var, a symlink; the import guard rejects
+    // symlinked paths, so canonicalize the outside folder first.
+    const outside = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-outside-')));
     try {
       const service = createVaultService(dir);
       await service.initialize();
