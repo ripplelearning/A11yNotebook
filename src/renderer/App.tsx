@@ -1512,7 +1512,13 @@ export default function App() {
         setVault(adopted);
         await openEntry(recovered, notePassword, canContinue, onOpened);
         return;
-      } else {
+      }
+      // Every entry that reaches this opener already lives inside the
+      // library, so a missing origin record must not prompt: records
+      // predate the provenance system, and cloud sync can replace a
+      // file and drop its identity. Unsupported files still prompt
+      // below; legacy encrypted notes were handled above.
+      if (!isInternallySupportedPath(entry.path)) {
         setExternalFile(entry);
         return;
       }

@@ -90,19 +90,14 @@ describe('provenance-aware row activation', () => {
     expect(bridge.vault.openExternal).not.toHaveBeenCalled();
   });
 
-  it('does not classify an unknown Markdown file as managed just because of its extension or folder', async () => {
+  it('opens an unknown Markdown file inside the library without a chooser', async () => {
     const bridge = installBridge();
     render(<App />);
     const grid = await showFiles();
     fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Outside.md' }), { key: 'Enter' });
-    const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
-    expect(bridge.vault.readNote).not.toHaveBeenCalled();
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 75)));
-    expect(within(screen.getByLabelText('Status bar')).getByRole('status')).not.toHaveTextContent(
-      'Notes and Files in Research',
-    );
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Open with…' }));
-    await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('Research/Outside.md'));
+    await screen.findByRole('heading', { name: 'Outside', level: 2 });
+    expect(bridge.vault.readNote).toHaveBeenCalledWith('Research/Outside.md', undefined);
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
     expect(bridge.vault.openExternal).not.toHaveBeenCalled();
   });
 
@@ -151,9 +146,9 @@ describe('provenance-aware row activation', () => {
     vi.mocked(bridge.vault.importEntry!).mockImplementation(() => new Promise((resolve) => (finish = resolve)));
     render(<App />);
     const grid = await showFiles();
-    fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Outside.md' }), { key: 'Enter' });
-    const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Import into A11y Notebook' }));
+    const row = within(grid).getByRole('gridcell', { name: 'Outside.md' });
+    fireEvent.contextMenu(row);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
     await act(async () => lock());
     await act(async () => finish({ vault: library, path: 'Research/Imported.md' }));
     expect(bridge.vault.readNote).not.toHaveBeenCalled();

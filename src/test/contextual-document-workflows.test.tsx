@@ -617,25 +617,28 @@ describe('contextual shell document workflows', () => {
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledTimes(2));
   });
 
-  it('routes unknown and missing-provenance Markdown and assets through Open With without reading them', async () => {
+  it('opens missing-provenance library notes and assets natively, and still prompts for unsupported files', async () => {
     const { bridge } = setup({
       entries: [
         { name: 'External.md', path: 'External.md', kind: 'note', provenance: 'unknown' },
         { name: 'External.outline.md', path: 'External.outline.md', kind: 'attachment' },
+        { name: 'Archive.zip', path: 'Archive.zip', kind: 'attachment' },
       ],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    for (const path of ['External.md', 'External.outline.md']) {
-      fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(`^${path.replaceAll('.', '\\.')}`) }));
-      const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
-      fireEvent.click(within(dialog).getByRole('button', { name: /Open with/i }));
-      await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith(path));
-      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    }
-    expect(bridge.vault.readNote).not.toHaveBeenCalled();
-    expect(bridge.vault.readAsset).not.toHaveBeenCalled();
-    shortcut('5');
-    expect(within(screen.getByRole('combobox', { name: 'Asset file' })).getAllByRole('option')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.md/ }));
+    await screen.findByRole('tab', { name: 'External' });
+    expect(bridge.vault.readNote).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
+    bridge.vault.readAsset.mockResolvedValue({ path: 'External.outline.md', type: 'outline', content: '- First item\n' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.outline\.md/ }));
+    await waitFor(() => expect(bridge.vault.readAsset).toHaveBeenCalledWith('External.outline.md'));
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('treeitem', { name: /^Archive\.zip/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Open with/i }));
+    await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('Archive.zip'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('authenticates legacy encrypted recovery before reading or internally opening its note', async () => {
