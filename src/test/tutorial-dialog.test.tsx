@@ -39,8 +39,8 @@ describe('Tutorial dialog', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Fixes' })).toBeInTheDocument();
-    expect(screen.getByText(/Original files are hidden once a managed copy is imported/)).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument();
+    expect(screen.getByText(/Closing a library closes everything inside it/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });

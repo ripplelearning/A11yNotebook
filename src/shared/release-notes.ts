@@ -7,20 +7,15 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Original files are hidden once a managed copy is imported: the tree, grid, and search results show the copy, not the original. Settings gains Show original files to bring originals back.',
-      'Plain text joins the New note format list: Markdown, HTML, and Plain text (.txt), with Markdown still the default.',
+      'Ctrl+W now closes whatever is current: a tab, a selected notebook, or the open library. Closing a library closes everything inside it and returns to the Libraries view with focus on the libraries grid.',
+      'Libraries can finally be deleted: focus a library in the Libraries grid and press Delete, or choose Delete library from its context menu. Confirming moves the whole folder to the Recycle Bin.',
+      'Opening a library now lands on the Notebooks view instead of Notes and Files.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'There is now one import command: Import file (Ctrl+Shift+I) opens the file picker for a file from outside the library, and on a selected library file it imports a managed copy of that file.',
-    ],
-  },
-  {
-    heading: 'Fixes',
-    items: [
-      'Note menus keep Open selected item first, with Import file right after it.',
+      'The search box is now the first element in the header, and the search scope controls sit right after it, so scope can be chosen without navigating away from the box.',
     ],
   },
 ];
