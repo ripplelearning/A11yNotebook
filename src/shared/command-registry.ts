@@ -43,6 +43,7 @@ export type CommandId =
   | 'show-keyboard-shortcuts'
   | 'check-for-updates'
   | 'show-about'
+  | 'show-feedback'
   | 'show-tutorial'
   | 'show-settings'
   | 'check-spelling-grammar'
@@ -140,6 +141,7 @@ export type CommandActionContext = {
   checkForUpdates: () => void;
   showKeyboardShortcuts: () => void;
   showAbout: () => void;
+  showFeedback: () => void;
   showTutorial: () => void;
   startFind: () => void;
   repeatFind: (direction: 'next' | 'prev') => string | undefined;
@@ -810,6 +812,12 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+Shift+H',
   },
   {
+    id: 'show-feedback',
+    label: 'Provide Feedback…',
+    description:
+      'Send feedback about A11y Notebook. Only the message you type is sent; no notes, files, or library content are included.',
+  },
+  {
     id: 'show-tutorial',
     label: 'Tutorial',
     description: 'Show the guided tour of A11y Notebook.',
@@ -1078,6 +1086,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return undefined;
     case 'show-about':
       context.showAbout();
+      return undefined;
+    case 'show-feedback':
+      context.showFeedback();
       return undefined;
     case 'show-tutorial':
       context.showTutorial();
