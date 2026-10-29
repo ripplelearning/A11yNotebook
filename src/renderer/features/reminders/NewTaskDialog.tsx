@@ -18,7 +18,8 @@ interface Props {
 export default function NewTaskDialog({ onCreate, onClose }: Props) {
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
-  const [reminder, setReminder] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
   const [priority, setPriority] = useState('normal');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -35,9 +36,18 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
             setError('Enter task text.');
             return;
           }
+          if ((reminderDate && !reminderTime) || (!reminderDate && reminderTime)) {
+            setError('Set both a reminder date and time, or leave both blank.');
+            return;
+          }
           setBusy(true);
           setError('');
-          void onCreate({ text: text.trim(), due, reminder, priority })
+          void onCreate({
+            text: text.trim(),
+            due,
+            reminder: reminderDate && reminderTime ? `${reminderDate}T${reminderTime}` : '',
+            priority,
+          })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
             .finally(() => setBusy(false));
@@ -52,12 +62,21 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
         </label>
         <label>
+          Reminder date
+          <input
+            type="date"
+            value={reminderDate}
+            disabled={busy}
+            onChange={(event) => setReminderDate(event.target.value)}
+          />
+        </label>
+        <label>
           Reminder time
           <input
-            type="datetime-local"
-            value={reminder}
+            type="time"
+            value={reminderTime}
             disabled={busy}
-            onChange={(event) => setReminder(event.target.value)}
+            onChange={(event) => setReminderTime(event.target.value)}
           />
         </label>
         <label>
@@ -103,8 +122,10 @@ export function AssociatedTaskDialog({
   const [path, setPath] = useState(initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''));
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
-  const [reminder, setReminder] = useState('');
+  const [reminderDate, setReminderDate] = useState('');
+  const [reminderTime, setReminderTime] = useState('');
   const [priority, setPriority] = useState(options.includes('medium') ? 'medium' : (options[0] ?? ''));
+  const [localError, setLocalError] = useState('');
   useEffect(() => {
     setPath((current) =>
       paths.includes(current) ? current : initialPath && paths.includes(initialPath) ? initialPath : (paths[0] ?? ''),
@@ -121,7 +142,19 @@ export function AssociatedTaskDialog({
       <form
         onSubmit={(event) => {
           event.preventDefault();
-          if (path && text.trim() && !busy) void onCreate(path, text.trim(), due, priority, reminder);
+          setLocalError('');
+          if ((reminderDate && !reminderTime) || (!reminderDate && reminderTime)) {
+            setLocalError('Set both a reminder date and time, or leave both blank.');
+            return;
+          }
+          if (path && text.trim() && !busy)
+            void onCreate(
+              path,
+              text.trim(),
+              due,
+              priority,
+              reminderDate && reminderTime ? `${reminderDate}T${reminderTime}` : '',
+            );
         }}
       >
         <p>Tasks are saved as checkboxes in their associated note.</p>
@@ -154,12 +187,21 @@ export function AssociatedTaskDialog({
           <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
         </label>
         <label>
+          Reminder date
+          <input
+            type="date"
+            value={reminderDate}
+            disabled={busy}
+            onChange={(event) => setReminderDate(event.target.value)}
+          />
+        </label>
+        <label>
           Reminder time
           <input
-            type="datetime-local"
-            value={reminder}
+            type="time"
+            value={reminderTime}
             disabled={busy}
-            onChange={(event) => setReminder(event.target.value)}
+            onChange={(event) => setReminderTime(event.target.value)}
           />
         </label>
         <label>
@@ -172,7 +214,7 @@ export function AssociatedTaskDialog({
             ))}
           </select>
         </label>
-        {error ? <p role="alert">{error}</p> : null}
+        {localError || error ? <p role="alert">{localError || error}</p> : null}
         <button type="submit" disabled={busy || !path || !text.trim()}>
           Create task
         </button>

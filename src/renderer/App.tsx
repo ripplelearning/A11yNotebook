@@ -697,6 +697,13 @@ export default function App() {
   );
   const { checking: checkingDisk, checkDisk, clearAllConflicts } = synchronization;
   const editorRef = useRef<HTMLTextAreaElement>(null);
+  // A note that was just created opens in Editing mode with the editor
+  // focused, regardless of the default open mode. The mode effect below
+  // would otherwise overwrite that explicit edit mode with the default
+  // when the new tab becomes current, and a setTimeout focus loses to
+  // the panel-focus effect. These refs are consumed once, after render.
+  const forceEditNoteRef = useRef<string | null>(null);
+  const pendingEditorFocusRef = useRef<{ path: string; cursor?: number } | null>(null);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
@@ -716,6 +723,14 @@ export default function App() {
   const currentEditLockKey = currentNote && vault ? `${vault.path}\0${currentNote.path}` : null;
   const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
   useEffect(() => {
+    const forced = forceEditNoteRef.current;
+    if (forced) {
+      forceEditNoteRef.current = null;
+      if (forced === currentNoteId && !securityLocked && !currentNoteEditLocked) {
+        setMode('edit');
+        return;
+      }
+    }
     setMode(
       currentNoteId && settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked
         ? 'edit'
@@ -1286,6 +1301,25 @@ export default function App() {
       setPendingFocus(null);
     }
   }, [pendingFocus, focusNow]);
+
+  // A just-created note takes editor focus once it is actually in Editing
+  // mode. Declared after the panel-focus effect above so it wins over the
+  // tab-panel focus that opening a note requests. The pending request is
+  // kept until the creation dialog has closed, because the dialog's own
+  // focus restore runs when it unmounts and would otherwise steal the
+  // editor focus back to the dialog's invoker.
+  useEffect(() => {
+    const pending = pendingEditorFocusRef.current;
+    if (!pending) return;
+    if (pending.path !== currentNoteId) {
+      pendingEditorFocusRef.current = null;
+      return;
+    }
+    if (mode !== 'edit' || !editorRef.current) return;
+    editorRef.current.focus();
+    if (pending.cursor !== undefined) editorRef.current.setSelectionRange(pending.cursor, pending.cursor);
+    if (!itemDialog && !activeDialog) pendingEditorFocusRef.current = null;
+  }, [mode, currentNoteId, itemDialog, activeDialog]);
 
   // After closing a note or file, focus returns to the Notes and Files grid —
   // to the closed item's cell when it is still listed, otherwise to the grid's
@@ -2597,9 +2631,11 @@ export default function App() {
       if (request.action === 'new-note') {
         // A note that was just created is created to be written in: it
         // opens in Editing mode with the editor focused, regardless of
-        // the default open mode.
+        // the default open mode. The refs survive the mode effect that
+        // applies the default when the new tab becomes current.
+        forceEditNoteRef.current = relative;
+        pendingEditorFocusRef.current = { path: relative };
         setMode('edit');
-        window.setTimeout(() => editorRef.current?.focus(), 0);
       }
       setStatusMessage(`${request.action === 'new-note' ? 'Note' : 'Notebook'} created.`);
       return;
@@ -5437,11 +5473,9 @@ export default function App() {
             // A note that was just created is created to be written in:
             // Editing mode with the editor focused, regardless of the
             // default open mode.
+            forceEditNoteRef.current = relative;
+            pendingEditorFocusRef.current = { path: relative, cursor };
             setMode('edit');
-            window.setTimeout(() => {
-              editorRef.current?.focus();
-              editorRef.current?.setSelectionRange(cursor, cursor);
-            }, 0);
           }}
         />
       ) : null}

@@ -161,6 +161,19 @@ describe('command registry', () => {
     expect(duplicates).toEqual([]);
   });
 
+  it('lists exactly one import row by default: Import file. Import managed copy appears only with an assigned key', () => {
+    // Import file brings a file from outside the library into a notebook;
+    // Import managed copy makes a managed copy of a file already in the
+    // library. They start from different places, so both commands stay,
+    // but the Shortcuts Manager shows a command only when it has a key.
+    const defaults = getKeyboardShortcuts().filter(({ label }) => label.toLowerCase().includes('import'));
+    expect(defaults).toEqual([{ commandId: 'import-file', label: 'Import file', shortcut: 'Ctrl+Shift+I' }]);
+    const assigned = getKeyboardShortcuts({ 'context-import-note': 'Ctrl+Shift+M' }).filter(({ label }) =>
+      label.toLowerCase().includes('import'),
+    );
+    expect(assigned.map(({ label }) => label)).toEqual(['Import file', 'Import managed copy…']);
+  });
+
   it('dispatches check-for-updates to the updater', () => {
     const context = createContext();
     expect(dispatchCommand('check-for-updates', context)).toBeUndefined();

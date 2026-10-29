@@ -22,9 +22,25 @@ describe('task schedule dialog', () => {
     render(<TaskScheduleDialog task={task} onSave={onSave} onClose={() => {}} />);
     expect(screen.getByLabelText('Due date')).toHaveValue('2026-10-05');
     expect(screen.getByLabelText('Due time')).toHaveValue('09:30');
-    expect(screen.getByLabelText('Reminder (optional)')).toHaveValue('2026-10-04T08:00');
+    expect(screen.getByLabelText('Reminder date')).toHaveValue('2026-10-04');
+    expect(screen.getByLabelText('Reminder time')).toHaveValue('08:00');
     fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
     expect(onSave).toHaveBeenCalledWith({ dueDate: '2026-10-05', dueTime: '09:30', remindAt: '2026-10-04 08:00' });
+  });
+
+  it('refuses a reminder date without a reminder time instead of silently dropping it', () => {
+    const onSave = vi.fn();
+    render(
+      <TaskScheduleDialog
+        task={{ ...task, dueDate: undefined, dueTime: undefined, remindAt: undefined }}
+        onSave={onSave}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Reminder date'), { target: { value: '2026-10-06' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
+    expect(screen.getByRole('alert')).toHaveTextContent('Set both a reminder date and time');
+    expect(onSave).not.toHaveBeenCalled();
   });
 
   it('refuses a due time without a due date', () => {

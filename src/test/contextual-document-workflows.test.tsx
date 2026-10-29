@@ -714,4 +714,18 @@ describe('contextual shell document workflows', () => {
     expect(bridge.vault.importEntry).not.toHaveBeenCalled();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
   });
+
+  it('opens a just-created note in Editing mode with the editor focused, even when the default open mode is read', async () => {
+    setup({ mode: 'read' });
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    shortcut('3');
+    await screen.findByText('Items in Research');
+    fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'New note' }));
+    const dialog = screen.getByRole('dialog', { name: 'New note' });
+    fireEvent.change(within(dialog).getByLabelText('New Note Name'), { target: { value: 'Fresh' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
+    const editor = await screen.findByLabelText('Markdown source');
+    expect(editor).toHaveFocus();
+  });
 });
