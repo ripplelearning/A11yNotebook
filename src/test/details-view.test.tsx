@@ -349,6 +349,17 @@ describe('accessible details view', () => {
     expect(await screen.findByText(/0 results shown \(up to 100\) in Whole library\./)).toBeInTheDocument();
   });
 
+  it('puts the search box first in the header with scope controls right after it', async () => {
+    window.localStorage.clear();
+    renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const searchbox = screen.getByRole('searchbox', { name: 'Global search' });
+    const header = searchbox.closest('header');
+    expect(header?.firstElementChild).toContainElement(searchbox);
+    const scope = screen.getByRole('group', { name: 'Search scope' });
+    expect(searchbox.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
   it('searches only the selected notebook in current-notebook scope and remembers the scope', async () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();

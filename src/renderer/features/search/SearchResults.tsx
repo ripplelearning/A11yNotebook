@@ -10,7 +10,6 @@ interface Props {
   active: boolean;
   onOpen: (relative: string) => void;
   scope: SearchScope;
-  onScope: (value: SearchScope) => void;
   selectedNotebookPath?: string;
   selectedNotebookName?: string;
   scopeBlocked: boolean;
@@ -24,7 +23,6 @@ export default function SearchResults({
   active,
   onOpen,
   scope,
-  onScope,
   selectedNotebookPath,
   selectedNotebookName,
   scopeBlocked,
@@ -36,29 +34,6 @@ export default function SearchResults({
   return (
     <section aria-labelledby="search-results-heading">
       <h3 id="search-results-heading">Search</h3>
-      <fieldset>
-        <legend>Search scope</legend>
-        <label>
-          <input
-            type="radio"
-            name="search-scope"
-            value="current"
-            checked={scope === 'current'}
-            onChange={() => onScope('current')}
-          />
-          {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
-        </label>
-        <label>
-          <input
-            type="radio"
-            name="search-scope"
-            value="library"
-            checked={scope === 'library'}
-            onChange={() => onScope('library')}
-          />
-          Whole library
-        </label>
-      </fieldset>
       <details>
         <summary>Search filters</summary>
         <label>

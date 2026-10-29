@@ -4604,11 +4604,6 @@ export default function App() {
         />
       ) : null}
       <header className="app-header" aria-label="Application header">
-        <div className="title-block">
-          <span className="current-item">
-            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
-          </span>
-        </div>
         <div className="global-search">
           <label htmlFor="global-search" className="sr-only">
             Global search
@@ -4621,6 +4616,36 @@ export default function App() {
             onChange={(event) => setSearchText(event.target.value)}
             placeholder="Search library, notes, tasks, files"
           />
+        </div>
+        {vault ? (
+          <fieldset className="global-search-scope">
+            <legend>Search scope</legend>
+            <label>
+              <input
+                type="radio"
+                name="search-scope"
+                value="current"
+                checked={searchScope === 'current'}
+                onChange={() => setSearchScope('current')}
+              />
+              {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="search-scope"
+                value="library"
+                checked={searchScope === 'library'}
+                onChange={() => setSearchScope('library')}
+              />
+              Whole library
+            </label>
+          </fieldset>
+        ) : null}
+        <div className="title-block">
+          <span className="current-item">
+            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
+          </span>
         </div>
       </header>
 
@@ -4736,7 +4761,6 @@ export default function App() {
               results={displaySearchResults}
               active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
               scope={searchScope}
-              onScope={setSearchScope}
               selectedNotebookPath={selectedNotebookPath}
               selectedNotebookName={selectedNotebookName}
               scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
