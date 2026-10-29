@@ -204,14 +204,6 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
-    id: 'import-file',
-    label: 'Import file',
-    description:
-      'Import a file into the library. Without a selected library file it opens a file picker for a file from outside the library; on a selected library file it imports a managed copy of that file. The original file is kept.',
-    shortcut: 'Ctrl+Shift+I',
-    contexts: ['general', 'tree-note', 'attachment', 'document-preview', 'search-result'],
-  },
-  {
     id: 'new-task',
     label: 'New task',
     description: 'Add a persisted task to an associated note.',
@@ -270,6 +262,17 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open selected item',
     description: 'Open the focused item.',
     contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
+  },
+  {
+    // Registry order is menu order: Import file sits right after Open so
+    // note menus keep Open first, as they did when the managed-copy
+    // command held this slot.
+    id: 'import-file',
+    label: 'Import file',
+    description:
+      'Import a file into the library. Without a selected library file it opens a file picker for a file from outside the library; on a selected library file it imports a managed copy of that file. The original file is kept.',
+    shortcut: 'Ctrl+Shift+I',
+    contexts: ['general', 'tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'context-open-with',
