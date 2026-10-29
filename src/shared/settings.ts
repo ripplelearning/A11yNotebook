@@ -20,6 +20,8 @@ export interface NotebookSettings {
   backgroundReminders?: boolean;
   /** Name reminder titles in alerts after the app closes; off by default, and titles then stay out of the snapshot. */
   backgroundReminderTitles?: boolean;
+  /** Show files superseded by a managed copy in library views; off by default, and originals stay hidden. */
+  showOriginalFiles?: boolean;
   /** Words the user added from the spelling dialog; never flagged again. */
   customDictionary?: string[];
   /** Whole-interface scale in percent (100 = normal). Distinct from font size. */
@@ -58,6 +60,7 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   reminderVolume: 50,
   backgroundReminders: false,
   backgroundReminderTitles: false,
+  showOriginalFiles: false,
   customDictionary: [],
   zoomPercent: 100,
   focusRing: 'standard',
@@ -298,6 +301,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
   const backgroundReminders = settings.backgroundReminders === undefined ? false : settings.backgroundReminders;
   const backgroundReminderTitles =
     settings.backgroundReminderTitles === undefined ? false : settings.backgroundReminderTitles;
+  const showOriginalFiles = settings.showOriginalFiles === undefined ? false : settings.showOriginalFiles;
   const showCommandButtons = settings.showCommandButtons === undefined ? false : settings.showCommandButtons;
   const zoomPercent = settings.zoomPercent === undefined ? 100 : settings.zoomPercent;
   const focusRing = settings.focusRing === undefined ? 'standard' : settings.focusRing;
@@ -328,6 +332,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     typeof reminderAlerts !== 'boolean' ||
     typeof backgroundReminders !== 'boolean' ||
     typeof backgroundReminderTitles !== 'boolean' ||
+    typeof showOriginalFiles !== 'boolean' ||
     typeof reminderSound !== 'boolean' ||
     reminderSoundChoice !== 'gentle-chime' ||
     !Number.isInteger(reminderVolume) ||
@@ -399,6 +404,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     reminderVolume,
     backgroundReminders,
     backgroundReminderTitles,
+    showOriginalFiles,
     customDictionary: normalizeCustomDictionary(settings.customDictionary),
     zoomPercent,
     focusRing,

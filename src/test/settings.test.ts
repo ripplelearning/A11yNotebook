@@ -273,4 +273,13 @@ describe('settings load conflict tolerance', () => {
     expect(remaining).toHaveLength(1);
     expect(shortcutConflicts(loaded.shortcuts, loaded.shortcutAliases ?? {})).toEqual([]);
   });
+
+  it('keeps the showOriginalFiles setting boolean with a false default', () => {
+    expect(DEFAULT_SETTINGS.showOriginalFiles).toBe(false);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, showOriginalFiles: true }).showOriginalFiles).toBe(true);
+    expect(validateSettings({ ...DEFAULT_SETTINGS, showOriginalFiles: undefined }).showOriginalFiles).toBe(
+      false,
+    );
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, showOriginalFiles: 'yes' as never })).toThrow();
+  });
 });

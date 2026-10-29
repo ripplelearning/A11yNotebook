@@ -45,6 +45,7 @@ import {
 import { createVaultWatcher } from './watcher';
 import { readImport } from './import';
 import { createProvenanceStore, type Provenance } from './provenance';
+import { createSupersededStore } from './superseded';
 import {
   decryptLibraryFile,
   encryptLibraryFile,
@@ -118,6 +119,7 @@ export function createVaultService(
   let initialization: Promise<VaultInfo> | undefined;
   let noteWrites: Promise<unknown> = Promise.resolve();
   const provenance = createProvenanceStore({ resolveMetadata }, liveProvenanceIdentities);
+  const superseded = createSupersededStore({ resolveMetadata }, (absolute) => provenance.identity(absolute));
   let libraryManifest: LibraryEncryptionManifest | null = libraryEncryption?.manifest() ?? null;
 
   function requireLibraryContentKey(): Buffer {
@@ -453,6 +455,8 @@ export function createVaultService(
     absolutePath: string,
     relativePath: string,
     origins: Awaited<ReturnType<typeof provenance.snapshot>>,
+    supersededRecords: Awaited<ReturnType<typeof superseded.snapshot>>,
+    live: Set<string>,
   ): Promise<VaultEntry[]> {
     const entries = await readdir(absolutePath, { withFileTypes: true });
     const result: VaultEntry[] = [];
@@ -466,16 +470,19 @@ export function createVaultService(
           name: entry.name,
           path: childRelative,
           kind: 'notebook',
-          children: await scanDirectory(childPath, childRelative, origins),
+          children: await scanDirectory(childPath, childRelative, origins, supersededRecords, live),
         });
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
         const origin = await provenance.get(childPath, origins);
+        const fileIdentity = await provenance.identity(childPath);
+        if (fileIdentity) live.add(fileIdentity);
         result.push({
           name: entry.name,
           path: childRelative,
           kind: isNote ? 'note' : 'attachment',
           ...(origin ? { provenance: origin } : {}),
+          ...(fileIdentity && fileIdentity in supersededRecords ? { superseded: true } : {}),
         });
       }
     }
@@ -484,10 +491,35 @@ export function createVaultService(
 
   async function getVault(): Promise<VaultInfo> {
     if (!root || disposed) throw new Error('Open a library first.');
+    const live = new Set<string>();
+    let records = await superseded.snapshot();
+    let entries = await scanDirectory(
+      root,
+      '',
+      await provenance.snapshot(),
+      records,
+      live,
+    );
+    // Pruning here is what restores an original after its copy is deleted,
+    // in the app or outside it: a record whose copy is gone no longer hides.
+    // When pruning drops anything, rescan so the returned entries already
+    // reflect the restored original instead of one refresh later. A
+    // corrupt sidecar must not break vault reads, so a failed prune is
+    // ignored here; the scan above already treated it as no records.
+    let pruned = false;
+    try {
+      pruned = await superseded.prune(live);
+    } catch {
+      pruned = false;
+    }
+    if (pruned) {
+      records = await superseded.snapshot();
+      entries = await scanDirectory(root, '', await provenance.snapshot(), records, new Set<string>());
+    }
     return {
       name: path.basename(root),
       path: root,
-      entries: await scanDirectory(root, '', await provenance.snapshot()),
+      entries,
     };
   }
 
@@ -859,12 +891,20 @@ export function createVaultService(
 
   async function importEntry(relative: string, assertCurrent: () => void = () => undefined) {
     const source = await resolveEntry(relative);
-    return importFileCopy(
+    const imported = await importFileCopy(
       source,
       path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative),
       assertCurrent,
       true,
     );
+    // Hiding is display-only: if recording fails, the import still stands
+    // and the original simply stays visible.
+    try {
+      await superseded.record(source, await resolveEntry(imported.path), imported.path, assertCurrent);
+    } catch {
+      // Leave the original visible.
+    }
+    return { vault: await getVault(), path: imported.path };
   }
 
   async function getProvenance(relative: string) {

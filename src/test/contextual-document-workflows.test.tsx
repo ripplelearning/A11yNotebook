@@ -176,6 +176,34 @@ describe('contextual shell document workflows', () => {
     expect(screen.getByRole('dialog', { name: 'New note' })).toBeInTheDocument();
   });
 
+  it.each([false, true] as const)(
+    'shows a superseded original in the tree only when Show original files is %s',
+    async (showOriginalFiles) => {
+      setup({
+        entries: [
+          {
+            name: 'Research',
+            path: 'Research',
+            kind: 'notebook',
+            children: [
+              { name: 'Original.md', path: 'Research/Original.md', kind: 'note', superseded: true },
+              { name: 'Copy.md', path: 'Research/Copy.md', kind: 'note', provenance: 'imported' },
+            ],
+          },
+        ],
+        settings: { showOriginalFiles },
+      });
+      await screen.findByRole('heading', { name: 'Study' });
+      fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+      expect(screen.getByRole('treeitem', { name: /Copy\.md/ })).toBeInTheDocument();
+      if (showOriginalFiles) {
+        expect(screen.getByRole('treeitem', { name: /Original\.md/ })).toBeInTheDocument();
+      } else {
+        expect(screen.queryByRole('treeitem', { name: /Original\.md/ })).not.toBeInTheDocument();
+      }
+    },
+  );
+
   it.each(['settings-first', 'library-first'] as const)(
     'preserves notebook context with deferred initialization (%s)',
     async (ordering) => {
