@@ -8,7 +8,7 @@ describe('Tutorial dialog', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     expect(document.activeElement).toBe(screen.getByRole('heading', { name: 'Libraries and notebooks' }));
     expect(container.querySelector('[aria-live="polite"]')).toHaveTextContent(
-      'Page 2 of 5: Libraries and notebooks',
+      'Page 2 of 6: Libraries and notebooks',
     );
   });
 
@@ -31,5 +31,16 @@ describe('Tutorial dialog', () => {
     expect(document.title).toBe('Getting started with A11y Notebook – A11y Notebook');
     unmount();
     expect(document.title).toBe('Files | My Library | A11y Notebook');
+  });
+
+  it('ends with a release-notes page for the current version', () => {
+    render(<TutorialDialog onClose={vi.fn()} />);
+    for (let step = 0; step < 5; step += 1) {
+      fireEvent.click(screen.getByRole('button', { name: 'Next' }));
+    }
+    expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Fixes' })).toBeInTheDocument();
+    expect(screen.getByText(/keep their managed status when closed and reopened/)).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });

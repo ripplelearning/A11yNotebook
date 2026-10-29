@@ -702,7 +702,13 @@ export function createVaultService(
       try {
         await link(staging, target);
         committed = true;
-        targetKey = stagingKey;
+        // A linked target does not always keep the staging file's
+        // identity: virtual and network filesystems can materialize the
+        // link as a new file. Record the target's own identity so the
+        // note still scans as managed; when it differs, the staging
+        // record is forgotten below.
+        targetKey = await provenance.identity(target);
+        if (targetKey !== stagingKey) await provenance.record(target, origin, assertCurrent);
         onCommitted?.(target, stagedIdentity);
       } catch (error) {
         if (

@@ -25,7 +25,7 @@ describe('guided tour', () => {
     render(<App />);
     expect(screen.getByRole('dialog', { name: 'Getting started with A11y Notebook' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Welcome to A11y Notebook' })).toBeInTheDocument();
-    expect(screen.getByText('Page 1 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Page 1 of 6')).toBeInTheDocument();
   });
 
   it('pages forward and back, moving focus to each page heading', () => {
@@ -35,7 +35,7 @@ describe('guided tour', () => {
     const second = screen.getByRole('heading', { name: 'Libraries and notebooks' });
     expect(second).toBeInTheDocument();
     expect(second).toHaveFocus();
-    expect(screen.getByText('Page 2 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Page 2 of 6')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Previous' }));
     const first = screen.getByRole('heading', { name: 'Welcome to A11y Notebook' });
     expect(first).toBeInTheDocument();
@@ -45,10 +45,10 @@ describe('guided tour', () => {
   it('closes from Finish on the last page', () => {
     window.localStorage.removeItem('a11y-notebook.tutorial');
     render(<App />);
-    for (let index = 0; index < 4; index += 1) {
+    for (let index = 0; index < 5; index += 1) {
       fireEvent.click(screen.getByRole('button', { name: 'Next' }));
     }
-    expect(screen.getByText('Page 5 of 5')).toBeInTheDocument();
+    expect(screen.getByText('Page 6 of 6')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
     expect(screen.queryByRole('dialog', { name: 'Getting started with A11y Notebook' })).not.toBeInTheDocument();
   });

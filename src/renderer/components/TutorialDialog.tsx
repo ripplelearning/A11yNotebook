@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
+import { RELEASE_NOTES_SECTIONS } from '../../shared/release-notes';
 
 const TUTORIAL_STORAGE_KEY = 'a11y-notebook.tutorial';
 
@@ -28,7 +29,7 @@ export function writeTutorialState(state: TutorialState): void {
   }
 }
 
-const PAGES: { heading: string; body: string[] }[] = [
+const PAGES: { heading: string; body: string[]; sections?: { heading: string; items: string[] }[] }[] = [
   {
     heading: 'Welcome to A11y Notebook',
     body: [
@@ -63,6 +64,11 @@ const PAGES: { heading: string; body: string[] }[] = [
       'Press Ctrl+Shift+P for the command palette, F6 and Shift+F6 to move between panes, and Ctrl+Tab to cycle through open tabs.',
       'The Help menu lists every keyboard shortcut, and you can reopen this tutorial from Help at any time.',
     ],
+  },
+  {
+    heading: `What's new in version ${__APP_VERSION__}`,
+    body: ['These are the changes in this version.'],
+    sections: RELEASE_NOTES_SECTIONS,
   },
 ];
 
@@ -107,6 +113,16 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
       </h3>
       {current.body.map((paragraph) => (
         <p key={paragraph}>{paragraph}</p>
+      ))}
+      {current.sections?.map((section) => (
+        <section key={section.heading}>
+          <h4>{section.heading}</h4>
+          <ul>
+            {section.items.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </section>
       ))}
       <p>
         Page {page + 1} of {PAGES.length}

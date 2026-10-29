@@ -15,14 +15,17 @@ interface Props {
   onClose: () => void;
 }
 
-function toDatetimeLocal(value: string): string {
-  return value.replace(' ', 'T');
+function splitReminder(value: string | undefined): [string, string] {
+  if (!value) return ['', ''];
+  const [date, time] = value.split(' ');
+  return [date ?? '', time ?? ''];
 }
 
 export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
   const [dueTime, setDueTime] = useState(task.dueTime ?? '');
-  const [reminder, setReminder] = useState(task.remindAt ? toDatetimeLocal(task.remindAt) : '');
+  const [reminderDate, setReminderDate] = useState(splitReminder(task.remindAt)[0]);
+  const [reminderTime, setReminderTime] = useState(splitReminder(task.remindAt)[1]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const close = () => {
@@ -38,9 +41,17 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             setError('Set a due date to use a due time.');
             return;
           }
+          if ((reminderDate && !reminderTime) || (!reminderDate && reminderTime)) {
+            setError('Set both a reminder date and time, or leave both blank.');
+            return;
+          }
           setBusy(true);
           setError('');
-          void onSave({ dueDate, dueTime, remindAt: reminder.replace('T', ' ') })
+          void onSave({
+            dueDate,
+            dueTime,
+            remindAt: reminderDate && reminderTime ? `${reminderDate} ${reminderTime}` : '',
+          })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
             .finally(() => setBusy(false));
@@ -62,12 +73,21 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
           <input type="time" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
         </label>
         <label>
-          Reminder (optional)
+          Reminder date
           <input
-            type="datetime-local"
-            value={reminder}
+            type="date"
+            value={reminderDate}
             disabled={busy}
-            onChange={(event) => setReminder(event.target.value)}
+            onChange={(event) => setReminderDate(event.target.value)}
+          />
+        </label>
+        <label>
+          Reminder time
+          <input
+            type="time"
+            value={reminderTime}
+            disabled={busy}
+            onChange={(event) => setReminderTime(event.target.value)}
           />
         </label>
         {error ? <p role="alert">{error}</p> : null}
