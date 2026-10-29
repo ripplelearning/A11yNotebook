@@ -20,10 +20,10 @@ describe('task schedule dialog', () => {
   it('prefills due date, time, and reminder, and saves them back', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
     render(<TaskScheduleDialog task={task} onSave={onSave} onClose={() => {}} />);
-    expect(screen.getByLabelText('Due date')).toHaveValue('2026-10-05');
-    expect(screen.getByLabelText('Due time')).toHaveValue('09:30');
-    expect(screen.getByLabelText('Reminder date')).toHaveValue('2026-10-04');
-    expect(screen.getByLabelText('Reminder time')).toHaveValue('08:00');
+    expect(screen.getByLabelText('Due date, YYYY-MM-DD')).toHaveValue('2026-10-05');
+    expect(screen.getByLabelText('Due time, HH:MM')).toHaveValue('09:30');
+    expect(screen.getByLabelText('Reminder date, YYYY-MM-DD')).toHaveValue('2026-10-04');
+    expect(screen.getByLabelText('Reminder time, HH:MM')).toHaveValue('08:00');
     fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
     expect(onSave).toHaveBeenCalledWith({ dueDate: '2026-10-05', dueTime: '09:30', remindAt: '2026-10-04 08:00' });
   });
@@ -37,7 +37,7 @@ describe('task schedule dialog', () => {
         onClose={() => {}}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Reminder date'), { target: { value: '2026-10-06' } });
+    fireEvent.change(screen.getByLabelText('Reminder date, YYYY-MM-DD'), { target: { value: '2026-10-06' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Set both a reminder date and time');
     expect(onSave).not.toHaveBeenCalled();
@@ -52,7 +52,7 @@ describe('task schedule dialog', () => {
         onClose={() => {}}
       />,
     );
-    fireEvent.change(screen.getByLabelText('Due time'), { target: { value: '09:30' } });
+    fireEvent.change(screen.getByLabelText('Due time, HH:MM'), { target: { value: '09:30' } });
     fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Set a due date to use a due time.');
     expect(onSave).not.toHaveBeenCalled();

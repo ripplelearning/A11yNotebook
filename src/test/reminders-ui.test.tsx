@@ -49,9 +49,9 @@ describe('accessible reminders UI', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText('Time')).toHaveValue('14:30');
+    expect(screen.getByLabelText('Time, HH:MM')).toHaveValue('14:30');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Private meeting' } });
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
@@ -236,8 +236,8 @@ describe('accessible reminders UI', () => {
     const dialog = screen.getByRole('dialog', { name: 'Create reminder' });
     expect(screen.getByRole('textbox', { name: 'Reminder title' })).toHaveFocus();
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-05' } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '12:30' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '12:30' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
@@ -263,8 +263,8 @@ describe('accessible reminders UI', () => {
     fireEvent.submit(screen.getByRole('textbox', { name: 'Reminder title' }).closest('form')!);
     expect(screen.getByRole('alert')).toHaveTextContent('valid date and time');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
-    fireEvent.change(screen.getByLabelText('Date'), { target: { value: '2026-10-05' } });
-    fireEvent.change(screen.getByLabelText('Time'), { target: { value: '12:30' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '12:30' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot save');
     expect(screen.getByRole('dialog')).toBeInTheDocument();

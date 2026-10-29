@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import Modal from '../../components/Modal';
+import { isValidDateText, isValidTimeText } from '../../../shared/reminders';
 import type { VaultTask } from '../../../shared/types';
 
 export interface TaskSchedule {
@@ -45,6 +46,22 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             setError('Set both a reminder date and time, or leave both blank.');
             return;
           }
+          if (dueDate && !isValidDateText(dueDate)) {
+            setError('Enter a due date as YYYY-MM-DD.');
+            return;
+          }
+          if (dueTime && !isValidTimeText(dueTime)) {
+            setError('Enter a due time as HH:MM.');
+            return;
+          }
+          if (reminderDate && !isValidDateText(reminderDate)) {
+            setError('Enter a reminder date as YYYY-MM-DD.');
+            return;
+          }
+          if (reminderTime && !isValidTimeText(reminderTime)) {
+            setError('Enter a reminder time as HH:MM.');
+            return;
+          }
           setBusy(true);
           setError('');
           void onSave({
@@ -59,32 +76,35 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
       >
         <p>Set when this task is due, and optionally when to be reminded about it.</p>
         <label>
-          Due date
+          Due date, YYYY-MM-DD
           <input
             data-autofocus
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={dueDate}
             disabled={busy}
             onChange={(event) => setDueDate(event.target.value)}
           />
         </label>
         <label>
-          Due time
-          <input type="time" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
+          Due time, HH:MM
+          <input type="text" placeholder="HH:MM" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
         </label>
         <label>
-          Reminder date
+          Reminder date, YYYY-MM-DD
           <input
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={reminderDate}
             disabled={busy}
             onChange={(event) => setReminderDate(event.target.value)}
           />
         </label>
         <label>
-          Reminder time
+          Reminder time, HH:MM
           <input
-            type="time"
+            type="text"
+            placeholder="HH:MM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}
