@@ -46,7 +46,7 @@ import type {
 import CommandPalette from './components/CommandPalette';
 import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
-import { AboutDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
+import { AboutDialog, FeedbackDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
 import FindDialog from './components/FindDialog';
 import UpdateDialog from './components/UpdateDialog';
@@ -145,6 +145,7 @@ type DialogId =
   | 'updates'
   | 'shortcuts'
   | 'about'
+  | 'feedback'
   | 'settings'
   | 'template'
   | 'attachment-insert'
@@ -297,7 +298,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'focus-search',
     ],
   },
-  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-about'] },
+  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-about', 'show-feedback'] },
 ];
 
 export default function App() {
@@ -3907,6 +3908,7 @@ export default function App() {
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
       showAbout: () => setActiveDialog('about'),
+      showFeedback: () => setActiveDialog('feedback'),
       showTutorial: () => setTutorialOpen(true),
       startFind,
       repeatFind,
@@ -5167,6 +5169,9 @@ export default function App() {
         />
       ) : null}
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
+      {activeDialog === 'feedback' ? (
+        <FeedbackDialog onClose={closeDialog} announce={setStatusMessage} />
+      ) : null}
       {tutorialOpen ? <TutorialDialog onClose={() => setTutorialOpen(false)} /> : null}
       {vault && !securityLocked && settingsVaultPath === vault.path ? (
         <ReminderAlerts

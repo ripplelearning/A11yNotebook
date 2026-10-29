@@ -31,6 +31,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     checkForUpdates: vi.fn(),
     showKeyboardShortcuts: vi.fn(),
     showAbout: vi.fn(),
+    showFeedback: vi.fn(),
     showTutorial: vi.fn(),
     startFind: vi.fn(),
     repeatFind: vi.fn(),
