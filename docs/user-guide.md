@@ -4,6 +4,10 @@
 
 Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
 as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
+Opening a library lands on the Notebooks view. **Ctrl+W** closes whatever is current: a tab, a selected notebook, or
+the open library; closing a library closes everything inside it and returns to the Libraries view. To delete a library,
+focus it in the Libraries grid and press **Delete**, or choose **Delete library** from its context menu; the confirmation
+warns that everything inside the library goes too, and confirming moves the whole folder to the Recycle Bin.
 
 Choose **File → Back up library** to copy the whole open library to a new timestamped folder inside a folder you
 choose. The copy includes the library's private metadata, so the backup folder opens as a library in its own right.
@@ -216,7 +220,7 @@ device; nothing is sent anywhere.
 
 Type in **Global search**; queries wait 250 ms after typing. A main-process index is stored under
 `.a11ynotebook/search-index.json` and refreshed incrementally when files change. Results show match context and
-announce the displayed count through the status bar. **Search scope** is a visible control above the filters:
+announce the displayed count through the status bar. **Search scope** sits right after the search box:
 **Current notebook** searches only the selected notebook (including its sub-notebooks) and, with no notebook
 selected, shows guidance instead of searching the whole library; **Whole library** searches every notebook.
 The scope is remembered on this device. In Whole library scope, the notebook filter in Search filters can still
