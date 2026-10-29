@@ -86,7 +86,9 @@ confirmation to use the existing unlock workflow. Content is shown only after au
 this does not silently classify other legacy files as app-created. Cancel leaves the encrypted file unchanged.
 
 For a compatible external file, use **Import into A11y Notebook** from its context menu to create a managed copy.
-The original is preserved. Markdown and HTML notes support reading and editing; supported text, image, PDF, ePub
+The original is preserved, but once its managed copy exists the original is hidden from the tree, the grid, and
+search results. Turn on **Show original files** in Settings to see it again; deleting the managed copy brings it
+back on its own. Markdown and HTML notes support reading and editing; supported text, image, PDF, ePub
 and DOCX previews are read-only unless a dedicated tool editor is provided (for example, a CSV grid).
 Unsupported or invalid formats are not offered as editable imports; oversized, unsafe, or malformed input is
 rejected. Cancelling an import does not modify the original. Keep the metadata folder when copying a whole library;

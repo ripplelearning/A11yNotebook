@@ -139,6 +139,7 @@ import NotebooksScreen from './features/screens/NotebooksScreen';
 import NotesFilesScreen from './features/screens/NotesFilesScreen';
 import ExternalFileDialog from './features/vault/ExternalFileDialog';
 import { isInternallySupportedPath } from '../shared/file-provenance';
+import { filterHiddenOriginals, supersededPaths } from '../shared/library-views';
 
 type DialogId =
   | 'palette'
@@ -1232,8 +1233,14 @@ export default function App() {
         .then((matches) => {
           if (!cancelled) {
             setSearchResults(matches);
+            // The list itself is filtered at render, but the announcement
+            // must count what is actually shown.
+            const hidden = settings.showOriginalFiles
+              ? new Set<string>()
+              : supersededPaths(vault?.entries ?? []);
+            const visible = matches.filter((match) => !hidden.has(match.path)).length;
             setStatusMessage(
-              `${matches.length} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
+              `${visible} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
             );
           }
         })
@@ -1245,7 +1252,7 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault]);
+  }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault, settings.showOriginalFiles]);
 
   const availableRegions = FOCUS_REGION_ORDER.filter(
     (region) => (region !== 'right-pane' || rightPaneOpen) && (!focusMode || region === 'main'),
@@ -4265,6 +4272,14 @@ export default function App() {
     return false;
   };
   const downloadPercent = updater.status.state === 'download-progress' ? updater.status.percent : null;
+  // Library views show the managed copy, not the original it came from,
+  // unless the user turns "Show original files" on. Internal logic keeps
+  // using the full vault; only these display lists are filtered.
+  const displayEntries = filterHiddenOriginals(vault?.entries ?? [], settings.showOriginalFiles ?? false);
+  const hiddenPaths = supersededPaths(vault?.entries ?? []);
+  const displaySearchResults = settings.showOriginalFiles
+    ? searchResults
+    : searchResults.filter((result) => !hiddenPaths.has(result.path));
   const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
   const contextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection))
@@ -4572,7 +4587,7 @@ export default function App() {
           )}
           {vault ? (
             <VaultTree
-              entries={vault.entries}
+              entries={displayEntries}
               selectedPath={treeSelection}
               onSelect={selectEntry}
               onOpen={(entry) =>
@@ -4589,7 +4604,7 @@ export default function App() {
               filters={searchFilters}
               onFilters={setSearchFilters}
               notebooks={notebooks}
-              results={searchResults}
+              results={displaySearchResults}
               active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
               scope={searchScope}
               onScope={setSearchScope}
@@ -4700,7 +4715,7 @@ export default function App() {
               </div>
             ) : null}
             {securityLocked || selectedTab === 'assets' ? null : selectedTab === 'contents' ? (
-              <ContentsScreen vault={vault} entries={vault?.entries ?? []} onNavigate={navigateScreen} />
+              <ContentsScreen vault={vault} entries={displayEntries} onNavigate={navigateScreen} />
             ) : selectedTab === 'libraries' ? (
               <LibrariesScreen
                 showCommandButtons={showCommandButtons}
@@ -4715,7 +4730,7 @@ export default function App() {
               <NotebooksScreen
                 showCommandButtons={showCommandButtons}
                 title={viewTitles.notebooks}
-                entries={vault?.entries ?? []}
+                entries={displayEntries}
                 hasLibrary={!!vault}
                 onNewNotebook={() => handleCommand('new-notebook')}
                 selectedPath={treeSelection}
@@ -4729,7 +4744,7 @@ export default function App() {
               <NotesFilesScreen
                 showCommandButtons={showCommandButtons}
                 title={viewTitles['notes-files']}
-                entries={vault?.entries ?? []}
+                entries={displayEntries}
                 hasLibrary={!!vault}
                 onNewNote={() => handleCommand('new-note')}
                 onNewFromTemplate={() => handleCommand('new-from-template')}

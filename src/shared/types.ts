@@ -38,6 +38,8 @@ export interface VaultEntry {
   children?: VaultEntry[];
   /** Missing metadata and externally replaced files are conservatively unknown. */
   provenance?: 'created' | 'imported' | 'unknown';
+  /** True when a managed copy was made from this file; views hide it unless the user shows originals. */
+  superseded?: boolean;
 }
 
 /** A library the user has opened before, offered in the recent-library picker. */

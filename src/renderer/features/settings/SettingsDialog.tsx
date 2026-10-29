@@ -272,6 +272,18 @@ export default function SettingsDialog({
           Show command/action buttons in the UI
         </label>
         <label>
+          <input
+            type="checkbox"
+            checked={draft.showOriginalFiles ?? false}
+            onChange={(event) => setDraft({ ...draft, showOriginalFiles: event.target.checked })}
+          />
+          Show original files
+        </label>
+        <p>
+          When this is off, a file you imported a managed copy from is hidden from the tree, the grid, and search
+          results. The file stays on disk, and deleting the managed copy brings it back.
+        </p>
+        <label>
           Zoom in percent (50 to 200; scales the whole interface, unlike font size)
           <input
             type="number"
