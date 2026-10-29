@@ -17,7 +17,6 @@ export type CommandId =
   | 'open-selected-external'
   | 'new-task'
   | 'new-asset'
-  | 'context-import-note'
   | 'context-open-with'
   | 'context-open-with-default'
   | 'save-current-note'
@@ -207,9 +206,10 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'import-file',
     label: 'Import file',
-    description: 'Import an external file into the selected notebook.',
+    description:
+      'Import a file into the library. Without a selected library file it opens a file picker for a file from outside the library; on a selected library file it imports a managed copy of that file. The original file is kept.',
     shortcut: 'Ctrl+Shift+I',
-    contexts: ['general'],
+    contexts: ['general', 'tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'new-task',
@@ -270,13 +270,6 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Open selected item',
     description: 'Open the focused item.',
     contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
-  },
-  {
-    id: 'context-import-note',
-    label: 'Import managed copy…',
-    description:
-      'Import a managed copy. Markdown and HTML notes are editable; documents and images use read-only previews, and cognitive assets use their dedicated editors. The original file is kept.',
-    contexts: ['tree-note', 'attachment', 'document-preview', 'search-result'],
   },
   {
     id: 'context-open-with',
