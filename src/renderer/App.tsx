@@ -2608,7 +2608,7 @@ export default function App() {
     setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
   };
 
-  const submitItem = async (name: string, notebook: string, format: 'markdown' | 'html' = 'markdown') => {
+  const submitItem = async (name: string, notebook: string, format: 'markdown' | 'html' | 'txt' = 'markdown') => {
     const bridge = window.a11yNotebook?.vault;
     if (!bridge || !vault || !itemDialog) return;
     const request = itemDialog;
@@ -2620,7 +2620,7 @@ export default function App() {
         (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? ''));
       const leaf =
         request.action === 'new-note'
-          ? `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : 'md'}`
+          ? `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : format === 'txt' ? 'txt' : 'md'}`
           : name;
       const relative = [parent, leaf].filter(Boolean).join('/');
       setVault(

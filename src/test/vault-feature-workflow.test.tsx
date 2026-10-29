@@ -309,6 +309,18 @@ describe('feature wiring in the application shell', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.html'));
   });
+  it('creates plain text notes from the format picker, with Markdown still the default', async () => {
+    const { bridge, menu } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    menu('show-contents');
+    menu('new-note');
+    const dialog = await screen.findByRole('dialog', { name: 'New note' });
+    expect(within(dialog).getByRole('combobox', { name: 'Note format' })).toHaveValue('markdown');
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New Note Name' }), { target: { value: 'Briefing' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'txt' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
+    await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.txt'));
+  });
   it('renders HTML task semantics accessibly and toggles by stable task identity', async () => {
     const task: VaultTask = {
       id: 'Note.html#task-1234',
