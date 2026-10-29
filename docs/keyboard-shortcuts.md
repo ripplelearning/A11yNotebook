@@ -16,7 +16,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Alt+ArrowLeft  | Back in history                         |
 | Alt+ArrowRight | Forward in history                      |
 | Ctrl+Shift+I   | Import file                             |
-| Ctrl+Shift+X   | Export current note…                    |
+| Ctrl+Shift+X   | Export note…                            |
 | Ctrl+Shift+W   | Capture webpage…                        |
 | Ctrl+Shift+E   | Reveal selected item in Explorer        |
 | Ctrl+Shift+Y   | Encrypt current note…                   |

@@ -2997,7 +2997,7 @@ export default function App() {
       } catch {
         setStatusMessage('Could not open the application chooser.');
       }
-    } else if (commandId === 'context-export-note' && entry?.kind === 'note') {
+    } else if (commandId === 'export-current-note' && entry?.kind === 'note') {
       await beginExport(entry.path);
     } else if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
       await openLinkTarget(request.href);
