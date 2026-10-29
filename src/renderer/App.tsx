@@ -4631,31 +4631,31 @@ export default function App() {
             placeholder="Search library, notes, tasks, files"
           />
         </div>
-        {vault ? (
-          <fieldset className="global-search-scope">
-            <legend>Search scope</legend>
-            <label>
-              <input
-                type="radio"
-                name="search-scope"
-                value="current"
-                checked={searchScope === 'current'}
-                onChange={() => setSearchScope('current')}
-              />
-              {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="search-scope"
-                value="library"
-                checked={searchScope === 'library'}
-                onChange={() => setSearchScope('library')}
-              />
-              Whole library
-            </label>
-          </fieldset>
-        ) : null}
+        <fieldset className="global-search-scope">
+          <legend>Search scope</legend>
+          <label>
+            <input
+              type="radio"
+              name="search-scope"
+              value="current"
+              checked={searchScope === 'current'}
+              onChange={() => setSearchScope('current')}
+              disabled={!vault}
+            />
+            {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="search-scope"
+              value="library"
+              checked={searchScope === 'library'}
+              onChange={() => setSearchScope('library')}
+              disabled={!vault}
+            />
+            Whole library
+          </label>
+        </fieldset>
         <div className="title-block">
           <span className="current-item">
             {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
