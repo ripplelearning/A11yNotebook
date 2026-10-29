@@ -222,6 +222,20 @@ a:focus-visible,
   min-width: 0;
 }
 
+/* The main landmark fills the column under the tab bar; the document
+   pane keeps its own scroll region inside it. */
+.content-panel > main {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.content-panel > main > .document {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
 .tab-bar {
   display: flex;
   gap: 0.5rem;

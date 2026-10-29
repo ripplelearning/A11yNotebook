@@ -4800,7 +4800,7 @@ export default function App() {
           ) : null}
         </aside>
 
-        <main className="content-panel" aria-label="Main content">
+        <div className="content-panel">
           <div
             ref={tabListRef}
             className={activeRegion === 'tabs' ? 'tab-bar active-panel' : 'tab-bar'}
@@ -4846,17 +4846,18 @@ export default function App() {
             })}
           </div>
 
-          <article
-            ref={tabPanelRef}
-            id={TAB_PANEL_ID}
-            className={activeRegion === 'main' ? 'document active-panel' : 'document'}
-            data-region="main"
-            role="tabpanel"
-            aria-label={activeViewTitle}
-            aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
-            tabIndex={0}
-            onPaste={(event) => void handlePanelPaste(event)}
-          >
+          <main aria-label="Main content">
+            <article
+              ref={tabPanelRef}
+              id={TAB_PANEL_ID}
+              className={activeRegion === 'main' ? 'document active-panel' : 'document'}
+              data-region="main"
+              role="tabpanel"
+              aria-label={activeViewTitle}
+              aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
+              tabIndex={0}
+              onPaste={(event) => void handlePanelPaste(event)}
+            >
             {assetTabOpen ? (
               <div hidden={selectedTab !== 'assets'}>
                 {vault ? (
@@ -5285,6 +5286,7 @@ export default function App() {
             )}
           </article>
         </main>
+        </div>
 
         {rightPaneOpen ? (
           <aside

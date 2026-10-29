@@ -392,6 +392,15 @@ describe('accessible details view', () => {
     expect(screen.getByRole('radio', { name: 'Whole library' })).toBeDisabled();
   });
 
+  it('keeps the open tabs outside the main landmark', async () => {
+    window.localStorage.clear();
+    renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const main = screen.getByRole('main', { name: 'Main content' });
+    expect(main).toContainElement(screen.getByRole('tabpanel'));
+    expect(main).not.toContainElement(screen.getByRole('tablist', { name: 'Open tabs' }));
+  });
+
   it('searches only the selected notebook in current-notebook scope and remembers the scope', async () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();
