@@ -7,22 +7,20 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Provide Feedback in the Help menu: send feedback about the app. Only the message you type is sent; no notes, files, or library content are included.',
-      'The tutorial ends with this release-notes page, so every update tells you what changed.',
+      'Original files are hidden once a managed copy is imported: the tree, grid, and search results show the copy, not the original. Settings gains Show original files to bring originals back.',
+      'Plain text joins the New note format list: Markdown, HTML, and Plain text (.txt), with Markdown still the default.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'Task reminder fields now use separate date and time fields instead of a combined date-time picker, so dates and times can be typed without opening a picker.',
+      'There is now one import command: Import file (Ctrl+Shift+I) opens the file picker for a file from outside the library, and on a selected library file it imports a managed copy of that file.',
     ],
   },
   {
     heading: 'Fixes',
     items: [
-      'Notes created in the app now keep their managed status when closed and reopened, instead of asking to open in another app or be imported.',
-      'A new note now opens in Editing mode with the editor focused, even when the default open mode is Reading.',
-      'Notes created from a template open the same way, with the cursor placed by the template.',
+      'Note menus keep Open selected item first, with Import file right after it.',
     ],
   },
 ];

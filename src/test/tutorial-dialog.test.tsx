@@ -40,7 +40,7 @@ describe('Tutorial dialog', () => {
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Fixes' })).toBeInTheDocument();
-    expect(screen.getByText(/keep their managed status when closed and reopened/)).toBeInTheDocument();
+    expect(screen.getByText(/Original files are hidden once a managed copy is imported/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });
