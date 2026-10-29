@@ -40,7 +40,7 @@ describe('Tutorial dialog', () => {
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument();
-    expect(screen.getByText(/Closing a library closes everything inside it/)).toBeInTheDocument();
+    expect(screen.getByText(/Export is now a single Export note command/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });

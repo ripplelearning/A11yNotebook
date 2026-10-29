@@ -7,15 +7,18 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Ctrl+W now closes whatever is current: a tab, a selected notebook, or the open library. Closing a library closes everything inside it and returns to the Libraries view with focus on the libraries grid.',
-      'Libraries can finally be deleted: focus a library in the Libraries grid and press Delete, or choose Delete library from its context menu. Confirming moves the whole folder to the Recycle Bin.',
-      'Opening a library now lands on the Notebooks view instead of Notes and Files.',
+      'Export is now a single Export note command (Ctrl+Shift+X): from a note or tab menu it exports that note, otherwise the current note.',
+      'In Markdown source, Enter on a list item continues the list, and Enter on an empty item ends it, so pressing Enter twice stops the list.',
+      'Closing a library now forgets it, so a closed library stays closed on the next launch.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'The search box is now the first element in the header, and the search scope controls sit right after it, so scope can be chosen without navigating away from the box.',
+      'Older notes without a provenance record now open natively instead of prompting with the external-file dialog.',
+      'Reminder and task dates and times are plain text fields (YYYY-MM-DD and HH:MM) instead of native pickers.',
+      'The search scope controls stay right after the search box even with no library open, where they are shown disabled.',
+      'The open tabs now sit outside the main landmark, which contains only the current tab’s content.',
     ],
   },
 ];
