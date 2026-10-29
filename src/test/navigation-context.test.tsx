@@ -143,7 +143,7 @@ describe('contextual navigation names and repeated announcements', () => {
     for (const key of ['1', '2', '3', 'n']) fireEvent.keyDown(input, { key, ctrlKey: true });
     expect(input).toHaveFocus();
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Study' })).toBeInTheDocument();
+    expect(screen.getByRole('tabpanel', { name: 'Notebooks in Study' })).toBeInTheDocument();
   });
 
   it('requires explicit consent before using the existing encrypted-note unlock path for legacy files', async () => {

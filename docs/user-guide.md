@@ -3,7 +3,7 @@
 ## Open a library
 
 Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
-as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time.
+as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time, on the Notebooks view. Closing a library forgets it, so a closed library stays closed on the next launch.
 Opening a library lands on the Notebooks view. **Ctrl+W** closes whatever is current: a tab, a selected notebook, or
 the open library; closing a library closes everything inside it and returns to the Libraries view. To delete a library,
 focus it in the Libraries grid and press **Delete**, or choose **Delete library** from its context menu; the confirmation
@@ -184,6 +184,8 @@ library, check both the installed and portable builds:
   unsafe HTML is removed, the original is unchanged, and rename/move/reopen retain the copy's provenance.
 
 The native Format menu and contextual formatting toolbar offer bold, italic, heading levels 1–6, lists, quote, and fenced code.
+In Markdown source, **Enter** on a list item continues the list (numbered lists increment, checked task items continue
+unchecked); **Enter** on an empty list item ends the list, so pressing Enter twice in a row stops the list.
 Ctrl+B/Ctrl+I format the selection; Ctrl+K (or Ctrl+Shift+L) opens a link dialog with a note picker. The table dialog chooses
 rows and columns. Insert image or attachment chooses an already imported library file and requires a text description.
 Rich-text paste keeps safe semantic formatting. The rich editor supports bold, italic, underline, strikethrough,
@@ -220,7 +222,8 @@ device; nothing is sent anywhere.
 
 Type in **Global search**; queries wait 250 ms after typing. A main-process index is stored under
 `.a11ynotebook/search-index.json` and refreshed incrementally when files change. Results show match context and
-announce the displayed count through the status bar. **Search scope** sits right after the search box:
+announce the displayed count through the status bar. **Search scope** sits right after the search box, even with no
+library open (where the scope controls are shown disabled):
 **Current notebook** searches only the selected notebook (including its sub-notebooks) and, with no notebook
 selected, shows guidance instead of searching the whole library; **Whole library** searches every notebook.
 The scope is remembered on this device. In Whole library scope, the notebook filter in Search filters can still
@@ -536,8 +539,8 @@ Locking/switching clears the editor and rejects stale checkpoint requests. Save 
 
 ## Export and web capture
 
-Use **File → Export current note…** on an open note, or **Export note…** in
-the note context menu. Choose standalone HTML or Markdown and then a location in the native save dialog. The source is
+Use **File → Export note…** (Ctrl+Shift+X) on an open note, or **Export note…** in
+a note or tab menu; from a menu it exports that note, otherwise it exports the current note. Choose standalone HTML or Markdown and then a location in the native save dialog. The source is
 never changed; overwrites require native confirmation and the original source cannot be selected as the destination.
 HTML output is sanitized in the main process, contains no scripts/forms/remote resources, and embeds bounded local
 raster images. Relative links and other attachments are not copied or rebased. Annotation metadata is stored separately
