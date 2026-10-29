@@ -81,6 +81,7 @@ import { useUpdater } from './hooks/useUpdater';
 import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
 import ConflictDialog from './features/vault/ConflictDialog';
+import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
@@ -336,6 +337,7 @@ export default function App() {
   useEffect(() => () => clearTimeout(navigationAnnouncementTimer.current), []);
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
+  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string } | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
@@ -692,6 +694,8 @@ export default function App() {
   // Files grid: the path of the item to focus, or null for the grid's active
   // cell. Undefined means no grid focus is pending.
   const [pendingGridFocusPath, setPendingGridFocusPath] = useState<string | null | undefined>(undefined);
+  // Set when a closed library should hand focus to the Libraries grid.
+  const [pendingLibraryGridFocus, setPendingLibraryGridFocus] = useState(false);
   const updater = useUpdater();
   const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage, (replacedPath) =>
     invalidateEditHistory(replacedPath),
@@ -1345,6 +1349,19 @@ export default function App() {
     }
     setPendingGridFocusPath(undefined);
   }, [pendingGridFocusPath, selectedTab]);
+
+  // After closing a library, focus lands on the Libraries grid itself, not
+  // on the Notes and Files view the app used to return to.
+  useEffect(() => {
+    if (!pendingLibraryGridFocus || selectedTab !== 'libraries') return;
+    const panel = tabPanelRef.current;
+    const target = panel?.querySelector<HTMLElement>('[role="grid"] [role="gridcell"]') ?? panel;
+    if (target) {
+      target.focus();
+      setActiveRegion('main');
+    }
+    setPendingLibraryGridFocus(false);
+  }, [pendingLibraryGridFocus, selectedTab]);
 
   // Keep the highlighted region in sync when focus moves by mouse or Tab.
   useEffect(() => {
@@ -2798,6 +2815,85 @@ export default function App() {
     }
   };
 
+  // Closing a library closes everything inside it: every open note, file,
+  // task, reminder, asset, and attachment tab, plus the notebook selection.
+  // The app returns to the Libraries view with focus on the libraries grid.
+  const closeLibraryState = () => {
+    vaultGenerationRef.current += 1;
+    setVault(null);
+    setOpenNotes([]);
+    setAttachment(null);
+    setAssetTabOpen(false);
+    setAssetInitialPath(undefined);
+    setAssetDirty(false);
+    setTaskTabOpen(false);
+    setReminderTabOpen(false);
+    setSelectedNotebookPath(undefined);
+    setTreeSelection(null);
+    setPinnedTabs(new Set());
+    setSelectedTab('libraries');
+    setPendingLibraryGridFocus(true);
+  };
+
+  const closeLibrary = () => {
+    if (!vault) {
+      setStatusMessage('No library is open.');
+      return;
+    }
+    if (
+      assetDirty ||
+      assetBusy ||
+      openNotes.some((note) => note.content !== note.saved) ||
+      activeConflict ||
+      switchingRef.current
+    ) {
+      setStatusMessage('Save or resolve unsaved changes before closing the library.');
+      return;
+    }
+    const name = vault.name;
+    closeLibraryState();
+    setStatusMessage(`Closed library ${name}.`);
+    refreshRecentLibraries();
+  };
+
+  // Deleting a library moves its whole folder to the Recycle Bin. The
+  // folder is deleted first and the open state closes after, so a failed
+  // delete never strands the user without their open library; unsaved
+  // changes block the delete exactly like they block closing.
+  const confirmDeleteLibrary = async () => {
+    const target = deleteLibraryTarget;
+    if (!target) return;
+    const isOpen = vault?.path === target.path;
+    if (
+      isOpen &&
+      (assetDirty ||
+        assetBusy ||
+        openNotes.some((note) => note.content !== note.saved) ||
+        activeConflict ||
+        switchingRef.current)
+    ) {
+      setStatusMessage('Save or resolve unsaved changes before closing the library.');
+      setDeleteLibraryTarget(null);
+      return;
+    }
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.deleteLibrary) {
+      setStatusMessage('Library deletion is unavailable.');
+      setDeleteLibraryTarget(null);
+      return;
+    }
+    setDeleteLibraryTarget(null);
+    try {
+      await bridge.deleteLibrary(target.path);
+    } catch {
+      setStatusMessage('Could not delete the library.');
+      return;
+    }
+    if (isOpen) closeLibraryState();
+    setStatusMessage(`Deleted library ${target.name}.`);
+    refreshRecentLibraries();
+  };
+
   const closeContextTab = (tabId: string) => {
     const note = openNotes.find((item) => item.id === tabId);
     // Closing the note or file being read returns to the Notes and Files grid
@@ -2841,6 +2937,16 @@ export default function App() {
           new CustomEvent(commandId, { detail: { range: request.selectionRange, element: request.invoker } }),
         );
       }, 0);
+      return;
+    }
+    if (commandId === 'context-delete-library' && request.path) {
+      const name =
+        vault?.path === request.path
+          ? vault.name
+          : (recentLibraries.find((library) => library.path === request.path)?.name ??
+            request.path.split('/').at(-1) ??
+            request.path);
+      setDeleteLibraryTarget({ name, path: request.path });
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
@@ -3440,7 +3546,7 @@ export default function App() {
           setAssetTabOpen(false);
           setAssetInitialPath(undefined);
           setAssetDirty(false);
-          setSelectedTab(create ? 'libraries' : 'notes-files');
+          setSelectedTab(create ? 'libraries' : 'notebooks');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
         }
@@ -3881,7 +3987,26 @@ export default function App() {
       return;
     }
     if (commandId === 'close-current-tab') {
-      closeContextTab(selectedTab);
+      // Ctrl+W closes whatever is current: a tab, then the library from the
+      // Libraries view, then a selected notebook, then the library from
+      // anywhere else. Closing a notebook clears its selection.
+      const closableTab = tabs.some(
+        (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+      );
+      if (closableTab) {
+        closeContextTab(selectedTab);
+      } else if (selectedTab === 'libraries' && vault) {
+        closeLibrary();
+      } else if (selectedNotebookPath) {
+        const notebookName = findEntry(vault?.entries ?? [], selectedNotebookPath)?.name;
+        setSelectedNotebookPath(undefined);
+        setTreeSelection(null);
+        setStatusMessage(notebookName ? `Closed notebook ${notebookName}.` : 'Notebook closed.');
+      } else if (vault) {
+        closeLibrary();
+      } else {
+        setStatusMessage('Nothing to close.');
+      }
       return;
     }
     if (activeDialog === 'palette' && commandId !== 'command-search') {
@@ -4211,8 +4336,12 @@ export default function App() {
     if (id === 'save-current-note')
       return !currentNote || (currentNote.content === currentNote.saved && !currentNoteEditLocked);
     if (id === 'close-current-tab')
-      return !tabs.some(
-        (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+      return (
+        !tabs.some(
+          (tab) => tab.id === selectedTab && !NAVIGATION_SCREENS.some((screen) => screen.id === tab.id),
+        ) &&
+        !vault &&
+        !selectedNotebookPath
       );
     if (id === 'toggle-right-pane') return false;
     if (id === 'capture-webpage')
@@ -4475,11 +4604,6 @@ export default function App() {
         />
       ) : null}
       <header className="app-header" aria-label="Application header">
-        <div className="title-block">
-          <span className="current-item">
-            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
-          </span>
-        </div>
         <div className="global-search">
           <label htmlFor="global-search" className="sr-only">
             Global search
@@ -4492,6 +4616,36 @@ export default function App() {
             onChange={(event) => setSearchText(event.target.value)}
             placeholder="Search library, notes, tasks, files"
           />
+        </div>
+        {vault ? (
+          <fieldset className="global-search-scope">
+            <legend>Search scope</legend>
+            <label>
+              <input
+                type="radio"
+                name="search-scope"
+                value="current"
+                checked={searchScope === 'current'}
+                onChange={() => setSearchScope('current')}
+              />
+              {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="search-scope"
+                value="library"
+                checked={searchScope === 'library'}
+                onChange={() => setSearchScope('library')}
+              />
+              Whole library
+            </label>
+          </fieldset>
+        ) : null}
+        <div className="title-block">
+          <span className="current-item">
+            {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
+          </span>
         </div>
       </header>
 
@@ -4607,7 +4761,6 @@ export default function App() {
               results={displaySearchResults}
               active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
               scope={searchScope}
-              onScope={setSearchScope}
               selectedNotebookPath={selectedNotebookPath}
               selectedNotebookName={selectedNotebookName}
               scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
@@ -4724,6 +4877,17 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onLibraryContextMenu={(library, invoker, pointer) => {
+                  const bounds = invoker.getBoundingClientRect();
+                  setContextMenu({
+                    context: 'library',
+                    invoker,
+                    path: library.path,
+                    x: pointer?.x ?? bounds.left,
+                    y: pointer?.y ?? bounds.bottom,
+                  });
+                }}
                 disabled={switchingVault || securityLocked}
               />
             ) : selectedTab === 'notebooks' ? (
@@ -5091,6 +5255,17 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onLibraryContextMenu={(library, invoker, pointer) => {
+                  const bounds = invoker.getBoundingClientRect();
+                  setContextMenu({
+                    context: 'library',
+                    invoker,
+                    path: library.path,
+                    x: pointer?.x ?? bounds.left,
+                    y: pointer?.y ?? bounds.bottom,
+                  });
+                }}
                 disabled={switchingVault || securityLocked}
               />
             )}
@@ -5579,6 +5754,13 @@ export default function App() {
       ) : null}
       {!securityLocked && activeConflict && !itemDialog && !activeDialog ? (
         <ConflictDialog key={activeConflict.path} conflict={activeConflict} onResolve={resolveConflict} />
+      ) : null}
+      {deleteLibraryTarget ? (
+        <DeleteLibraryDialog
+          library={deleteLibraryTarget}
+          onCancel={() => setDeleteLibraryTarget(null)}
+          onConfirm={() => void confirmDeleteLibrary()}
+        />
       ) : null}
       {activeDialog === 'updates' ? (
         <UpdateDialog

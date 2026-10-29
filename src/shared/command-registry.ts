@@ -78,6 +78,7 @@ export type CommandId =
   | 'context-rename'
   | 'context-move'
   | 'context-delete'
+  | 'context-delete-library'
   | 'context-reveal'
   | 'context-bookmark'
   | 'context-new-note'
@@ -121,6 +122,7 @@ export type MenuContext =
   | 'attachment'
   | 'document-preview'
   | 'pdf-selection'
+  | 'library'
   | 'pdf-semantic';
 
 export type CommandActionContext = {
@@ -303,6 +305,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Delete selected item',
     description: 'Delete the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder'],
+  },
+  {
+    id: 'context-delete-library',
+    label: 'Delete library',
+    description: 'Delete the selected library and everything inside it.',
+    contexts: ['library'],
   },
   {
     id: 'context-reveal',
@@ -726,7 +734,7 @@ export const COMMANDS: CommandDefinition[] = [
       'View and edit the active note’s YAML front matter — any field, with field-name and value suggestions from the library. Numbers, booleans, and null keep their type instead of becoming quoted text.',
     shortcut: 'Ctrl+Shift+D',
   },
-  { id: 'close-current-tab', label: 'Close current tab', description: 'Close the active tab.', shortcut: 'Ctrl+W' },
+  { id: 'close-current-tab', label: 'Close current item', description: 'Close the active tab, notebook, or library.', shortcut: 'Ctrl+W' },
   {
     id: 'toggle-read-only-mode',
     label: 'Toggle read-only/edit mode',

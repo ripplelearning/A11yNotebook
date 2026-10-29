@@ -8,6 +8,12 @@ interface LibrariesScreenProps {
   onOpenLibrary: () => void;
   onNewLibrary?: () => void;
   onOpenRecent?: (path: string) => void;
+  onDeleteLibrary?: (library: { name: string; path: string }) => void;
+  onLibraryContextMenu?: (
+    library: { name: string; path: string },
+    invoker: HTMLElement,
+    pointer?: { x: number; y: number },
+  ) => void;
   disabled?: boolean;
   showCommandButtons?: boolean;
 }
@@ -18,6 +24,8 @@ export default function LibrariesScreen({
   onOpenLibrary,
   onNewLibrary,
   onOpenRecent,
+  onDeleteLibrary,
+  onLibraryContextMenu,
   disabled,
   showCommandButtons = true,
 }: LibrariesScreenProps) {
@@ -59,6 +67,12 @@ export default function LibrariesScreen({
         onSelect={() => undefined}
         onOpen={(entry) => {
           if (!disabled && entry.path !== vault?.path) onOpenRecent?.(entry.path);
+        }}
+        onDelete={(entry) => {
+          if (!disabled) onDeleteLibrary?.(entry);
+        }}
+        onContextMenu={(entry, invoker, pointer) => {
+          if (!disabled) onLibraryContextMenu?.(entry, invoker, pointer);
         }}
         emptyMessage="No libraries yet. Open or create a library to get started."
       />

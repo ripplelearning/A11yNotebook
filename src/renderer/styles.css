@@ -115,6 +115,16 @@ a:focus-visible,
   min-width: min(360px, 100%);
 }
 
+.global-search-scope {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
 .global-search input,
 .command-palette input {
   width: 100%;
