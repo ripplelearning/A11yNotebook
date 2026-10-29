@@ -2837,7 +2837,7 @@ export default function App() {
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
-    if (commandId === 'context-import-note' && entry && isInternallySupportedPath(entry.path)) {
+    if (commandId === 'import-file' && entry && isInternallySupportedPath(entry.path)) {
       const importer = window.a11yNotebook?.vault;
       if (!importer?.importEntry) {
         setStatusMessage('Document import is unavailable.');
@@ -2869,6 +2869,11 @@ export default function App() {
         if (!securityLockedRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation)
           setStatusMessage(`Could not import this document: ${(failure as Error).message}`);
       }
+    } else if (commandId === 'import-file') {
+      // No usable library entry: a menu opened without one, or the entry
+      // changed since the menu opened. Fall back to the file-picker import.
+      handleCommand('import-file');
+      return;
     } else if ((commandId === 'context-open-with' || commandId === 'context-open-with-default') && entry) {
       try {
         const result = await window.a11yNotebook?.vault.openWith?.(entry.path, {
@@ -4236,7 +4241,7 @@ export default function App() {
       return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (id === 'create-reminder') return !vault || securityLocked;
-    if (['context-import-note', 'context-open-with', 'context-open-with-default'].includes(id)) return true;
+    if (['context-open-with', 'context-open-with-default'].includes(id)) return true;
     if (id === 'new-asset') return !vault || assetDirty || assetBusy;
     if (id === 'new-note' || id === 'new-from-template')
       return !vault || assetDirty || assetBusy || (selectedTab === 'notes-files' && !selectedNotebookPath);
@@ -4266,7 +4271,9 @@ export default function App() {
         .filter((command, index, commands) => commands.findIndex((item) => item.id === command.id) === index)
         .filter(
           (command) =>
-            command.id !== 'context-import-note' || (!!contextEntry && isInternallySupportedPath(contextEntry.path)),
+            command.id !== 'import-file' ||
+              !contextEntry ||
+              isInternallySupportedPath(contextEntry.path),
         )
         .map((command) =>
           command.id === 'annotate-pdf-selection'
@@ -4277,8 +4284,11 @@ export default function App() {
         )
     : [];
   const disabledContextCommands = new Set<CommandId>();
-  if (!contextEntry || !isInternallySupportedPath(contextEntry.path) || !window.a11yNotebook?.vault.importEntry)
-    disabledContextCommands.add('context-import-note');
+  if (
+    contextEntry &&
+    (!isInternallySupportedPath(contextEntry.path) || !window.a11yNotebook?.vault.importEntry)
+  )
+    disabledContextCommands.add('import-file');
   if (!window.a11yNotebook?.vault.openWith) {
     disabledContextCommands.add('context-open-with');
     disabledContextCommands.add('context-open-with-default');

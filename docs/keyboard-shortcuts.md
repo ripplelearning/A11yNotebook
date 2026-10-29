@@ -9,13 +9,13 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+N         | New in current view                     |
 | Ctrl+Shift+B   | Back up library                         |
 | Ctrl+Shift+O   | Open in external app                    |
-| Ctrl+Shift+I   | Import file                             |
 | Ctrl+0         | Contents view                           |
 | Ctrl+1         | Libraries                               |
 | Ctrl+2         | Notebooks                               |
 | Ctrl+3         | Notes & Files                           |
 | Alt+ArrowLeft  | Back in history                         |
 | Alt+ArrowRight | Forward in history                      |
+| Ctrl+Shift+I   | Import file                             |
 | Ctrl+Shift+X   | Export current note…                    |
 | Ctrl+Shift+W   | Capture webpage…                        |
 | Ctrl+Shift+E   | Reveal selected item in Explorer        |

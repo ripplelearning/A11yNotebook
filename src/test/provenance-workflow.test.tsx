@@ -123,11 +123,21 @@ describe('provenance-aware row activation', () => {
     const grid = await showFiles();
     const row = within(grid).getByRole('gridcell', { name: 'Outside.md' });
     fireEvent.contextMenu(row);
-    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import managed copy…' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
     await screen.findByRole('heading', { name: 'Outside imported', level: 2 });
     expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/Outside.md');
     expect(bridge.vault.readNote).toHaveBeenCalledWith(copy.path, undefined);
     expect(bridge.vault.readNote).not.toHaveBeenCalledWith('Research/Outside.md', undefined);
+  });
+
+  it('opens the file picker from a context menu opened without a library entry', async () => {
+    const bridge = installBridge();
+    render(<App />);
+    const grid = await showFiles();
+    fireEvent.contextMenu(grid);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
+    await waitFor(() => expect(bridge.vault.importFile).toHaveBeenCalledWith('Research'));
+    expect(bridge.vault.importEntry).not.toHaveBeenCalled();
   });
 
   it('does not reopen imported content if the library locks while import is pending', async () => {
