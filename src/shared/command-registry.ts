@@ -98,7 +98,6 @@ export type CommandId =
   | 'context-link-task-file'
   | 'context-link-task-notebook'
   | 'context-encrypt-note'
-  | 'context-export-note'
   | 'export-current-note'
   | 'capture-webpage'
   | 'import-file'
@@ -414,17 +413,11 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['tree-note', 'editor-selection'],
   },
   {
-    id: 'context-export-note',
-    label: 'Export this note…',
-    description: 'Export this note as standalone HTML or Markdown.',
-    contexts: ['tree-note', 'tab'],
-  },
-  {
     id: 'export-current-note',
-    label: 'Export current note…',
-    description: 'Export the current note as standalone HTML or Markdown.',
+    label: 'Export note…',
+    description: 'Export a note as standalone HTML or Markdown. From a note menu it exports that note; otherwise it exports the current note.',
     shortcut: 'Ctrl+Shift+X',
-    contexts: ['general'],
+    contexts: ['general', 'tree-note', 'tab'],
   },
   { id: 'capture-webpage', label: 'Capture webpage…', description: 'Save a webpage into the current library.', shortcut: 'Ctrl+Shift+W' },
   { id: 'reveal-selected', label: 'Reveal selected item in Explorer', description: 'Reveal the selected item.', shortcut: 'Ctrl+Shift+E' },
@@ -1037,7 +1030,7 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
         context.exportCurrentNote();
         return undefined;
       }
-      return 'Export current note dialog ready.';
+      return 'Export note dialog ready.';
     case 'toggle-bookmark':
       context.toggleBookmark();
       return undefined;

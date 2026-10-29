@@ -9,6 +9,7 @@ import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
 import { expandMathSpans, htmlToMarkdown, markdownToHtml } from './format-conversion';
 import { sanitizeNoteHtml } from './sanitize-html';
+import { continueMarkdownList } from './smart-formatting';
 
 function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
@@ -144,6 +145,20 @@ export default function MarkdownDocument({
               onChange={(event) =>
                 onChange(format === 'html' ? sanitizeNoteHtml(event.target.value, notePath) : event.target.value)
               }
+              onKeyDown={(event) => {
+                if (format !== 'markdown' || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+                  return;
+                const area = event.currentTarget;
+                const continued = continueMarkdownList(area.value, area.selectionStart, area.selectionEnd);
+                if (!continued) return;
+                event.preventDefault();
+                onChange(continued.value);
+                // The parent re-renders the controlled textarea with the new
+                // value; restore the caret after that render lands.
+                window.setTimeout(() => {
+                  if (document.contains(area)) area.setSelectionRange(continued.caret, continued.caret);
+                }, 0);
+              }}
             />
           </label>
         )}

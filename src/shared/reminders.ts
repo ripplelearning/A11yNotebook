@@ -108,6 +108,23 @@ export function lockedDueText(
 }
 
 /** Calendar validation avoids Date's silent rollover of impossible dates. */
+export function isValidDateText(value: string): boolean {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, y, m, d] = match.map(Number);
+  if (y < 1000 || m < 1 || m > 12 || d < 1) return false;
+  const date = new Date(y, m - 1, d);
+  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+}
+
+/** HH:MM with real hour and minute ranges; text fields use this instead of native time pickers. */
+export function isValidTimeText(value: string): boolean {
+  const match = /^(\d{2}):(\d{2})$/.exec(value);
+  if (!match) return false;
+  const [, h, min] = match.map(Number);
+  return h <= 23 && min <= 59;
+}
+
 export function parseReminderDate(value: string): Date | null {
   if (typeof value !== 'string') return null;
   const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);

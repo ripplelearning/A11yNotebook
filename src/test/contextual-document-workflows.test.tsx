@@ -144,8 +144,11 @@ describe('contextual shell document workflows', () => {
   it('does not intercept IME events or shortcuts while a dialog is open', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Study' });
+    // A restored library lands on Notebooks, so the composing shortcut
+    // must leave Notebooks selected.
+    expect(screen.getByRole('tab', { name: 'Notebooks' })).toHaveAttribute('aria-selected', 'true');
     shortcut('1', { isComposing: true });
-    expect(screen.getByRole('tab', { name: 'Notes & Files' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Notebooks' })).toHaveAttribute('aria-selected', 'true');
     shortcut('2');
     shortcut('n');
     expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
@@ -205,7 +208,7 @@ describe('contextual shell document workflows', () => {
   );
 
   it('closes the open library with Ctrl+W from the Libraries view and focuses the libraries grid', async () => {
-    setup();
+    const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
     shortcut('1');
     await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Study' });
@@ -214,6 +217,7 @@ describe('contextual shell document workflows', () => {
     expect(
       within(screen.getByLabelText('Status bar')).getByRole('status'),
     ).toHaveTextContent('Closed library Study.');
+    await waitFor(() => expect(bridge.vault.forgetLastOpened).toHaveBeenCalled());
     const active = document.activeElement as HTMLElement | null;
     expect(active?.getAttribute('role')).toBe('gridcell');
     expect(screen.getByRole('tabpanel', { name: 'Libraries' })).toContainElement(active);
@@ -406,7 +410,7 @@ describe('contextual shell document workflows', () => {
         target: { value: `Research/Plan.${format}` },
       });
       fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
-      fireEvent.change(within(dialog).getByLabelText('Due date'), { target: { value: '2026-11-01' } });
+      fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
       fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
       await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalledOnce());
@@ -617,25 +621,28 @@ describe('contextual shell document workflows', () => {
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledTimes(2));
   });
 
-  it('routes unknown and missing-provenance Markdown and assets through Open With without reading them', async () => {
+  it('opens missing-provenance library notes and assets natively, and still prompts for unsupported files', async () => {
     const { bridge } = setup({
       entries: [
         { name: 'External.md', path: 'External.md', kind: 'note', provenance: 'unknown' },
         { name: 'External.outline.md', path: 'External.outline.md', kind: 'attachment' },
+        { name: 'Archive.zip', path: 'Archive.zip', kind: 'attachment' },
       ],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    for (const path of ['External.md', 'External.outline.md']) {
-      fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(`^${path.replaceAll('.', '\\.')}`) }));
-      const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
-      fireEvent.click(within(dialog).getByRole('button', { name: /Open with/i }));
-      await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith(path));
-      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    }
-    expect(bridge.vault.readNote).not.toHaveBeenCalled();
-    expect(bridge.vault.readAsset).not.toHaveBeenCalled();
-    shortcut('5');
-    expect(within(screen.getByRole('combobox', { name: 'Asset file' })).getAllByRole('option')).toHaveLength(1);
+    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.md/ }));
+    await screen.findByRole('tab', { name: 'External' });
+    expect(bridge.vault.readNote).toHaveBeenCalled();
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
+    bridge.vault.readAsset.mockResolvedValue({ path: 'External.outline.md', type: 'outline', content: '- First item\n' });
+    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.outline\.md/ }));
+    await waitFor(() => expect(bridge.vault.readAsset).toHaveBeenCalledWith('External.outline.md'));
+    expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('treeitem', { name: /^Archive\.zip/ }));
+    const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
+    fireEvent.click(within(dialog).getByRole('button', { name: /Open with/i }));
+    await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('Archive.zip'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('authenticates legacy encrypted recovery before reading or internally opening its note', async () => {

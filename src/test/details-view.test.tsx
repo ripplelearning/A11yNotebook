@@ -360,6 +360,47 @@ describe('accessible details view', () => {
     expect(searchbox.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
+  it('keeps the scope controls right after the search box even with no library open', async () => {
+    window.localStorage.clear();
+    window.localStorage.setItem('a11y-notebook.tutorial', JSON.stringify({ suppressed: true, lastVersionSeen: '' }));
+    const bridge = {
+      updater: {
+        check: vi.fn(async () => undefined),
+        download: vi.fn(async () => undefined),
+        installNow: vi.fn(async () => undefined),
+        installOnExit: vi.fn(async () => undefined),
+        onStatus: vi.fn(() => () => undefined),
+      },
+      vault: {
+        ...vaultExtensions(),
+        get: vi.fn(async () => null),
+        getSecurityStatus: vi.fn(async () => ({ enabled: false, locked: false, recoveryAvailable: false })),
+        getTasks: vi.fn(async () => []),
+        getLinkIndex: vi.fn(async () => ({ links: [] })),
+        getBookmarks: vi.fn(async () => []),
+        isNoteEncrypted: vi.fn(async () => false),
+        onSecurityLocked: vi.fn(() => () => undefined),
+      },
+      onMenuCommand: vi.fn(() => () => undefined),
+    } as unknown as NotebookBridge;
+    window.a11yNotebook = bridge;
+    render(<App />);
+    const searchbox = await screen.findByRole('searchbox', { name: 'Global search' });
+    const scope = screen.getByRole('group', { name: 'Search scope' });
+    expect(searchbox.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('radio', { name: 'Current notebook (none selected)' })).toBeDisabled();
+    expect(screen.getByRole('radio', { name: 'Whole library' })).toBeDisabled();
+  });
+
+  it('keeps the open tabs outside the main landmark', async () => {
+    window.localStorage.clear();
+    renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const main = screen.getByRole('main', { name: 'Main content' });
+    expect(main).toContainElement(screen.getByRole('tabpanel'));
+    expect(main).not.toContainElement(screen.getByRole('tablist', { name: 'Open tabs' }));
+  });
+
   it('searches only the selected notebook in current-notebook scope and remembers the scope', async () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();

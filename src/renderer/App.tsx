@@ -1020,7 +1020,10 @@ export default function App() {
       void bridge.vault
         .get()
         .then((latest) => {
-          if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
+          if (!switchingRef.current && generation === vaultGenerationRef.current) {
+            setVault(latest);
+            if (latest) setSelectedTab('notebooks');
+          }
         })
         .catch(() => setStatusMessage('Could not open the last library.'));
     if (bridge?.vault.getRecentLibraries)
@@ -1512,7 +1515,13 @@ export default function App() {
         setVault(adopted);
         await openEntry(recovered, notePassword, canContinue, onOpened);
         return;
-      } else {
+      }
+      // Every entry that reaches this opener already lives inside the
+      // library, so a missing origin record must not prompt: records
+      // predate the provenance system, and cloud sync can replace a
+      // file and drop its identity. Unsupported files still prompt
+      // below; legacy encrypted notes were handled above.
+      if (!isInternallySupportedPath(entry.path)) {
         setExternalFile(entry);
         return;
       }
@@ -2833,6 +2842,11 @@ export default function App() {
     setPinnedTabs(new Set());
     setSelectedTab('libraries');
     setPendingLibraryGridFocus(true);
+    // A closed library must stay closed across a restart, so forget the
+    // last-opened marker (the recents picker keeps the library).
+    void window.a11yNotebook?.vault.forgetLastOpened?.().catch(() =>
+      setStatusMessage('The library was closed, but it may reopen on next launch.'),
+    );
   };
 
   const closeLibrary = () => {
@@ -2997,7 +3011,7 @@ export default function App() {
       } catch {
         setStatusMessage('Could not open the application chooser.');
       }
-    } else if (commandId === 'context-export-note' && entry?.kind === 'note') {
+    } else if (commandId === 'export-current-note' && entry?.kind === 'note') {
       await beginExport(entry.path);
     } else if (commandId === 'context-open' && request.context === 'reader-link' && request.href) {
       await openLinkTarget(request.href);
@@ -4617,31 +4631,31 @@ export default function App() {
             placeholder="Search library, notes, tasks, files"
           />
         </div>
-        {vault ? (
-          <fieldset className="global-search-scope">
-            <legend>Search scope</legend>
-            <label>
-              <input
-                type="radio"
-                name="search-scope"
-                value="current"
-                checked={searchScope === 'current'}
-                onChange={() => setSearchScope('current')}
-              />
-              {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
-            </label>
-            <label>
-              <input
-                type="radio"
-                name="search-scope"
-                value="library"
-                checked={searchScope === 'library'}
-                onChange={() => setSearchScope('library')}
-              />
-              Whole library
-            </label>
-          </fieldset>
-        ) : null}
+        <fieldset className="global-search-scope">
+          <legend>Search scope</legend>
+          <label>
+            <input
+              type="radio"
+              name="search-scope"
+              value="current"
+              checked={searchScope === 'current'}
+              onChange={() => setSearchScope('current')}
+              disabled={!vault}
+            />
+            {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+          </label>
+          <label>
+            <input
+              type="radio"
+              name="search-scope"
+              value="library"
+              checked={searchScope === 'library'}
+              onChange={() => setSearchScope('library')}
+              disabled={!vault}
+            />
+            Whole library
+          </label>
+        </fieldset>
         <div className="title-block">
           <span className="current-item">
             {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
@@ -4786,7 +4800,7 @@ export default function App() {
           ) : null}
         </aside>
 
-        <main className="content-panel" aria-label="Main content">
+        <div className="content-panel">
           <div
             ref={tabListRef}
             className={activeRegion === 'tabs' ? 'tab-bar active-panel' : 'tab-bar'}
@@ -4832,17 +4846,18 @@ export default function App() {
             })}
           </div>
 
-          <article
-            ref={tabPanelRef}
-            id={TAB_PANEL_ID}
-            className={activeRegion === 'main' ? 'document active-panel' : 'document'}
-            data-region="main"
-            role="tabpanel"
-            aria-label={activeViewTitle}
-            aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
-            tabIndex={0}
-            onPaste={(event) => void handlePanelPaste(event)}
-          >
+          <main aria-label="Main content">
+            <article
+              ref={tabPanelRef}
+              id={TAB_PANEL_ID}
+              className={activeRegion === 'main' ? 'document active-panel' : 'document'}
+              data-region="main"
+              role="tabpanel"
+              aria-label={activeViewTitle}
+              aria-labelledby={viewTitles[selectedTab] ? undefined : tabDomId(selectedTab)}
+              tabIndex={0}
+              onPaste={(event) => void handlePanelPaste(event)}
+            >
             {assetTabOpen ? (
               <div hidden={selectedTab !== 'assets'}>
                 {vault ? (
@@ -5271,6 +5286,7 @@ export default function App() {
             )}
           </article>
         </main>
+        </div>
 
         {rightPaneOpen ? (
           <aside

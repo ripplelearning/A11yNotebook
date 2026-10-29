@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
+import { isValidDateText, isValidTimeText } from '../../../shared/reminders';
 
 export interface NewTaskFields {
   text: string;
@@ -40,6 +41,18 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
             setError('Set both a reminder date and time, or leave both blank.');
             return;
           }
+          if (due && !isValidDateText(due)) {
+            setError('Enter a due date as YYYY-MM-DD.');
+            return;
+          }
+          if (reminderDate && !isValidDateText(reminderDate)) {
+            setError('Enter a reminder date as YYYY-MM-DD.');
+            return;
+          }
+          if (reminderTime && !isValidTimeText(reminderTime)) {
+            setError('Enter a reminder time as HH:MM.');
+            return;
+          }
           setBusy(true);
           setError('');
           void onCreate({
@@ -58,22 +71,24 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           <input data-autofocus value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         </label>
         <label>
-          Due date
-          <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
+          Due date, YYYY-MM-DD
+          <input type="text" placeholder="YYYY-MM-DD" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
         </label>
         <label>
-          Reminder date
+          Reminder date, YYYY-MM-DD
           <input
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={reminderDate}
             disabled={busy}
             onChange={(event) => setReminderDate(event.target.value)}
           />
         </label>
         <label>
-          Reminder time
+          Reminder time, HH:MM
           <input
-            type="time"
+            type="text"
+            placeholder="HH:MM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}
@@ -147,6 +162,18 @@ export function AssociatedTaskDialog({
             setLocalError('Set both a reminder date and time, or leave both blank.');
             return;
           }
+          if (due && !isValidDateText(due)) {
+            setLocalError('Enter a due date as YYYY-MM-DD.');
+            return;
+          }
+          if (reminderDate && !isValidDateText(reminderDate)) {
+            setLocalError('Enter a reminder date as YYYY-MM-DD.');
+            return;
+          }
+          if (reminderTime && !isValidTimeText(reminderTime)) {
+            setLocalError('Enter a reminder time as HH:MM.');
+            return;
+          }
           if (path && text.trim() && !busy)
             void onCreate(
               path,
@@ -183,22 +210,24 @@ export function AssociatedTaskDialog({
           />
         </label>
         <label>
-          Due date
-          <input type="date" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
+          Due date, YYYY-MM-DD
+          <input type="text" placeholder="YYYY-MM-DD" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
         </label>
         <label>
-          Reminder date
+          Reminder date, YYYY-MM-DD
           <input
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={reminderDate}
             disabled={busy}
             onChange={(event) => setReminderDate(event.target.value)}
           />
         </label>
         <label>
-          Reminder time
+          Reminder time, HH:MM
           <input
-            type="time"
+            type="text"
+            placeholder="HH:MM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}

@@ -99,10 +99,24 @@ export default function CreateReminderDialog({
             </option>
           ))}
         </select>
-        <label htmlFor={`${id}-date`}>Date</label>
-        <input id={`${id}-date`} type="date" value={date} onChange={(event) => setDate(event.target.value)} required />
-        <label htmlFor={`${id}-time`}>Time</label>
-        <input id={`${id}-time`} type="time" value={time} onChange={(event) => setTime(event.target.value)} required />
+        <label htmlFor={`${id}-date`}>Date, YYYY-MM-DD</label>
+        <input
+          id={`${id}-date`}
+          type="text"
+          placeholder="YYYY-MM-DD"
+          value={date}
+          onChange={(event) => setDate(event.target.value)}
+          required
+        />
+        <label htmlFor={`${id}-time`}>Time, HH:MM</label>
+        <input
+          id={`${id}-time`}
+          type="text"
+          placeholder="HH:MM"
+          value={time}
+          onChange={(event) => setTime(event.target.value)}
+          required
+        />
         <label htmlFor={`${id}-snooze`}>Default snooze duration</label>
         <select
           id={`${id}-snooze`}

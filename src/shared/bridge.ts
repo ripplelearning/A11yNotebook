@@ -47,6 +47,7 @@ export interface VaultBridge {
   pasteOrganize?(libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file', notebookName?: string): Promise<string[]>;
   getRecentLibraries?(): Promise<RecentLibrary[]>;
   openLibraryPath?(path: string): Promise<VaultInfo | null>;
+  forgetLastOpened?(): Promise<void>;
   get(): Promise<VaultInfo | null>;
   readNote(path: string, password?: string): Promise<string>;
   saveNote(path: string, content: string, expectedContent?: string): Promise<void>;

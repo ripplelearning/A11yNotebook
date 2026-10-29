@@ -2547,6 +2547,22 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     return listRecentVaults();
   });
+  ipcMain.handle(IPC_CHANNELS.vaultForgetLastOpened, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    // Closing a library must survive a restart: drop lastOpened so the
+    // next launch does not restore it, while the recents picker keeps it.
+    try {
+      const parsed = JSON.parse(await readFile(recentFile(), 'utf8')) as { lastOpened?: unknown; recent?: unknown };
+      if (typeof parsed.lastOpened !== 'string') return;
+      await writeFile(
+        recentFile(),
+        JSON.stringify({ recent: Array.isArray(parsed.recent) ? parsed.recent : [] }),
+        'utf8',
+      );
+    } catch {
+      // No readable recents file means nothing to forget.
+    }
+  });
   ipcMain.handle(IPC_CHANNELS.vaultOpenPath, async (event, requested: unknown) => {
     assertTrusted(event, isTrustedSender, true);
     if (typeof requested !== 'string') throw new Error('Library path must be text.');
