@@ -19,3 +19,48 @@ export function detectSmartTrigger(beforeCaret: string): SmartTrigger | null {
   if (/^\[x\]$/i.test(beforeCaret)) return { type: 'task', checked: true };
   return null;
 }
+
+export interface ListContinuation {
+  value: string;
+  caret: number;
+}
+
+/**
+ * Word/Docs-style list continuation for the Markdown source textarea.
+ * Plain Enter on a list line inserts the next item; Enter on an empty
+ * item removes its marker and ends the list, so a second Enter in a row
+ * stops the list. Returns null when the caret is not on a list line, so
+ * the default Enter behavior applies.
+ */
+export function continueMarkdownList(
+  value: string,
+  selectionStart: number,
+  selectionEnd: number,
+): ListContinuation | null {
+  if (selectionStart !== selectionEnd) return null;
+  const caret = selectionStart;
+  const lineStart = value.lastIndexOf('\n', caret - 1) + 1;
+  const lineBreak = value.indexOf('\n', caret);
+  const lineEnd = lineBreak === -1 ? value.length : lineBreak;
+  const line = value.slice(lineStart, lineEnd);
+  const match = /^(\s*)([-*+]|\d+[.)])\s+(.*)$/.exec(line);
+  if (!match) return null;
+  const [, indent, marker, rest] = match;
+  const task = /^(\[[ xX]\])\s+(.*)$/.exec(rest);
+  const itemText = task ? task[2] : rest;
+  const afterCaret = value.slice(caret, lineEnd);
+  if (!itemText && !afterCaret) {
+    // Empty item: Enter ends the list instead of adding another marker.
+    return { value: value.slice(0, lineStart) + value.slice(lineEnd), caret: lineStart };
+  }
+  let nextMarker: string;
+  const ordered = /^(\d+)([.)])$/.exec(marker);
+  if (ordered) nextMarker = task ? `${Number(ordered[1]) + 1}${ordered[2]} [ ]` : `${Number(ordered[1]) + 1}${ordered[2]}`;
+  else if (task) nextMarker = `${marker} [ ]`;
+  else nextMarker = marker;
+  const insert = `\n${indent}${nextMarker} `;
+  return {
+    value: value.slice(0, caret) + insert + value.slice(caret),
+    caret: caret + insert.length,
+  };
+}
