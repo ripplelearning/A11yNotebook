@@ -161,17 +161,16 @@ describe('command registry', () => {
     expect(duplicates).toEqual([]);
   });
 
-  it('lists exactly one import row by default: Import file. Import managed copy appears only with an assigned key', () => {
-    // Import file brings a file from outside the library into a notebook;
-    // Import managed copy makes a managed copy of a file already in the
-    // library. They start from different places, so both commands stay,
-    // but the Shortcuts Manager shows a command only when it has a key.
+  it('lists exactly one import command: Import file, for the picker and for library entries', () => {
+    // One command covers both starting points: without a selected library
+    // file it opens a file picker for a file from outside the library;
+    // on a selected library file it imports a managed copy of that file.
+    // The Shortcuts Manager shows a command only when it has a key.
+    expect(COMMANDS.some((command) => (command.id as string) === 'context-import-note')).toBe(false);
     const defaults = getKeyboardShortcuts().filter(({ label }) => label.toLowerCase().includes('import'));
     expect(defaults).toEqual([{ commandId: 'import-file', label: 'Import file', shortcut: 'Ctrl+Shift+I' }]);
-    const assigned = getKeyboardShortcuts({ 'context-import-note': 'Ctrl+Shift+M' }).filter(({ label }) =>
-      label.toLowerCase().includes('import'),
-    );
-    expect(assigned.map(({ label }) => label)).toEqual(['Import file', 'Import managed copy…']);
+    for (const context of ['general', 'tree-note', 'attachment', 'document-preview', 'search-result'] as const)
+      expect(getContextMenuCommands(context).map(({ id }) => id)).toContain('import-file');
   });
 
   it('dispatches check-for-updates to the updater', () => {
@@ -282,12 +281,12 @@ describe('focus region cycling', () => {
 describe('batch 1 fixes (1.9.4)', () => {
   it('merges the duplicate internal import into the managed-copy import', () => {
     expect(COMMANDS.some((command) => (command.id as string) === 'context-import-internal')).toBe(false);
-    const managed = getCommandById('context-import-note');
-    expect(managed?.contexts).toEqual(
-      expect.arrayContaining(['tree-note', 'attachment', 'document-preview', 'search-result']),
+    const imported = getCommandById('import-file');
+    expect(imported?.contexts).toEqual(
+      expect.arrayContaining(['general', 'tree-note', 'attachment', 'document-preview', 'search-result']),
     );
-    expect(getContextMenuCommands('document-preview').map(({ id }) => id)).toContain('context-import-note');
-    expect(getContextMenuCommands('search-result').map(({ id }) => id)).toContain('context-import-note');
+    expect(getContextMenuCommands('document-preview').map(({ id }) => id)).toContain('import-file');
+    expect(getContextMenuCommands('search-result').map(({ id }) => id)).toContain('import-file');
   });
 
   it('opens reminders with Ctrl+7 and keeps the old shortcut as an alias', () => {
