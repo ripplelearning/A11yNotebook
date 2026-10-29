@@ -15,6 +15,7 @@ export function vaultExtensions() {
     addAnnotation: vi.fn(),
     updateAnnotation: vi.fn(),
     deleteAnnotation: vi.fn(async () => undefined),
+    deleteLibrary: vi.fn(async () => ({ deleted: true })),
     listPdfAnnotations: vi.fn(async () => []),
     addPdfAnnotation: vi.fn(),
     updatePdfAnnotation: vi.fn(),

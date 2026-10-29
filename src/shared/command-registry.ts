@@ -78,6 +78,7 @@ export type CommandId =
   | 'context-rename'
   | 'context-move'
   | 'context-delete'
+  | 'context-delete-library'
   | 'context-reveal'
   | 'context-bookmark'
   | 'context-new-note'
@@ -121,6 +122,7 @@ export type MenuContext =
   | 'attachment'
   | 'document-preview'
   | 'pdf-selection'
+  | 'library'
   | 'pdf-semantic';
 
 export type CommandActionContext = {
@@ -303,6 +305,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Delete selected item',
     description: 'Delete the selected library item.',
     contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder'],
+  },
+  {
+    id: 'context-delete-library',
+    label: 'Delete library',
+    description: 'Delete the selected library and everything inside it.',
+    contexts: ['library'],
   },
   {
     id: 'context-reveal',

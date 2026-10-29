@@ -3491,6 +3491,25 @@ export function setupVaultIpc(
       }
     });
   });
+  ipcMain.handle(IPC_CHANNELS.vaultDeleteLibrary, async (event, requested: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof requested !== 'string' || !requested) throw new Error('Library path must be text.');
+    // Only a library the app knows about can be deleted: a recent library,
+    // or the currently open one. Anything else is refused, so IPC data can
+    // never point the trash at an arbitrary folder.
+    const recents = await listRecentVaults();
+    const openPath = service ? vaultPathOf(await service.getVault()) : null;
+    const known = recents.some((entry) => entry.path === requested) || openPath === requested;
+    if (!known) throw new Error('Only a recently opened library can be deleted.');
+    const stat = await lstat(requested).catch(() => null);
+    if (!stat?.isDirectory() || stat.isSymbolicLink()) {
+      throw new Error('Library path is not a folder.');
+    }
+    // The trashed folder drops out of the picker on the next read, because
+    // listRecentVaults only keeps folders that still exist.
+    await shell.trashItem(requested);
+    return { deleted: true };
+  });
   ipcMain.handle(IPC_CHANNELS.vaultGetTasks, async (event) => {
     assertTrusted(event, isTrustedSender);
     return requireService().getTasks();

@@ -245,6 +245,42 @@ describe('contextual shell document workflows', () => {
     await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Notebooks in Study' });
   });
 
+  it('deletes the open library from the grid with Delete-first confirmation and Escape cancelling', async () => {
+    const { bridge } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    shortcut('1');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Study' });
+    const cell = screen.getByRole('gridcell', { name: 'Study' });
+    cell.focus();
+    fireEvent.keyDown(cell, { key: 'Delete' });
+    const dialog = await screen.findByRole('dialog', { name: 'Delete library' });
+    const buttons = within(dialog).getAllByRole('button');
+    expect(buttons.map((button) => button.textContent)).toEqual(['Delete', 'Cancel']);
+    expect(document.activeElement).toBe(buttons[0]);
+    fireEvent.keyDown(dialog, { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'Delete library' })).not.toBeInTheDocument());
+    expect(bridge.vault.deleteLibrary).not.toHaveBeenCalled();
+    cell.focus();
+    fireEvent.keyDown(cell, { key: 'Delete' });
+    const confirm = await screen.findByRole('dialog', { name: 'Delete library' });
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete' }));
+    await waitFor(() => expect(bridge.vault.deleteLibrary).toHaveBeenCalledWith('/study'));
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Libraries' });
+    expect(
+      within(screen.getByLabelText('Status bar')).getByRole('status'),
+    ).toHaveTextContent('Deleted library Study.');
+  });
+
+  it('offers Delete library from the grid context menu', async () => {
+    setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    shortcut('1');
+    await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Study' });
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Study' }));
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Delete library' }));
+    await screen.findByRole('dialog', { name: 'Delete library' });
+  });
+
   it.each(['settings-first', 'library-first'] as const)(
     'preserves notebook context with deferred initialization (%s)',
     async (ordering) => {
