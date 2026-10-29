@@ -25,6 +25,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpen: 'vault:open',
   vaultRecentLibraries: 'vault:recent-libraries',
   vaultOpenPath: 'vault:open-path',
+  vaultForgetLastOpened: 'vault:forget-last-opened',
   vaultCreateLibrary: 'vault:create-library',
   vaultBackupLibrary: 'vault:backup-library',
   vaultCreateAutoBackup: 'vault:create-auto-backup',
@@ -200,6 +201,7 @@ const bridge: NotebookBridge = {
     open: () => ipcRenderer.invoke(CHANNELS.vaultOpen),
     getRecentLibraries: () => ipcRenderer.invoke(CHANNELS.vaultRecentLibraries),
     openLibraryPath: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultOpenPath, libraryPath),
+    forgetLastOpened: () => ipcRenderer.invoke(CHANNELS.vaultForgetLastOpened),
     createLibrary: () => ipcRenderer.invoke(CHANNELS.vaultCreateLibrary),
     backupLibrary: () => ipcRenderer.invoke(CHANNELS.vaultBackupLibrary),
     createAutoBackup: (folder, keepCount) =>

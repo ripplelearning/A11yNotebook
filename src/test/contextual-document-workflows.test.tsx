@@ -144,8 +144,11 @@ describe('contextual shell document workflows', () => {
   it('does not intercept IME events or shortcuts while a dialog is open', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Study' });
+    // A restored library lands on Notebooks, so the composing shortcut
+    // must leave Notebooks selected.
+    expect(screen.getByRole('tab', { name: 'Notebooks' })).toHaveAttribute('aria-selected', 'true');
     shortcut('1', { isComposing: true });
-    expect(screen.getByRole('tab', { name: 'Notes & Files' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByRole('tab', { name: 'Notebooks' })).toHaveAttribute('aria-selected', 'true');
     shortcut('2');
     shortcut('n');
     expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();
@@ -205,7 +208,7 @@ describe('contextual shell document workflows', () => {
   );
 
   it('closes the open library with Ctrl+W from the Libraries view and focuses the libraries grid', async () => {
-    setup();
+    const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
     shortcut('1');
     await within(screen.getByRole('tabpanel')).findByRole('heading', { name: 'Study' });
@@ -214,6 +217,7 @@ describe('contextual shell document workflows', () => {
     expect(
       within(screen.getByLabelText('Status bar')).getByRole('status'),
     ).toHaveTextContent('Closed library Study.');
+    await waitFor(() => expect(bridge.vault.forgetLastOpened).toHaveBeenCalled());
     const active = document.activeElement as HTMLElement | null;
     expect(active?.getAttribute('role')).toBe('gridcell');
     expect(screen.getByRole('tabpanel', { name: 'Libraries' })).toContainElement(active);
@@ -406,7 +410,7 @@ describe('contextual shell document workflows', () => {
         target: { value: `Research/Plan.${format}` },
       });
       fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
-      fireEvent.change(within(dialog).getByLabelText('Due date'), { target: { value: '2026-11-01' } });
+      fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
       fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
       await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalledOnce());

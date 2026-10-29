@@ -1020,7 +1020,10 @@ export default function App() {
       void bridge.vault
         .get()
         .then((latest) => {
-          if (!switchingRef.current && generation === vaultGenerationRef.current) setVault(latest);
+          if (!switchingRef.current && generation === vaultGenerationRef.current) {
+            setVault(latest);
+            if (latest) setSelectedTab('notebooks');
+          }
         })
         .catch(() => setStatusMessage('Could not open the last library.'));
     if (bridge?.vault.getRecentLibraries)
@@ -2839,6 +2842,11 @@ export default function App() {
     setPinnedTabs(new Set());
     setSelectedTab('libraries');
     setPendingLibraryGridFocus(true);
+    // A closed library must stay closed across a restart, so forget the
+    // last-opened marker (the recents picker keeps the library).
+    void window.a11yNotebook?.vault.forgetLastOpened?.().catch(() =>
+      setStatusMessage('The library was closed, but it may reopen on next launch.'),
+    );
   };
 
   const closeLibrary = () => {
