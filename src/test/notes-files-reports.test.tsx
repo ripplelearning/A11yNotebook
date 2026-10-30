@@ -99,6 +99,6 @@ describe('Notes and Files view reports', () => {
     press('n');
     const dialog = await screen.findByRole('dialog', { name: 'New note' });
     expect(within(dialog).getByRole('textbox', { name: 'New Note Name' })).toHaveFocus();
-    expect(document.title).toBe('New note – A11y Notebook');
+    expect(document.title).toBe('New note | A11y Notebook');
   });
 });

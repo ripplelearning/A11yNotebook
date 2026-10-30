@@ -66,7 +66,7 @@ export default function UpdateDialog({
       ) : null;
       actions = (
         <>
-          <button type="button" data-autofocus onClick={onDownload}>
+          <button type="button" data-autofocus data-default onClick={onDownload}>
             Download
           </button>
           <button type="button" onClick={onClose}>

@@ -106,7 +106,7 @@ describe('item dialog naming', () => {
     );
     expect(screen.getByRole('dialog', { name: 'New note' })).toBeInTheDocument();
     expect(screen.getByRole('textbox', { name: 'New Note Name' })).toHaveFocus();
-    expect(document.title).toBe('New note – A11y Notebook');
+    expect(document.title).toBe('New note | A11y Notebook');
     unmount();
     expect(document.title).toBe(originalTitle);
   });
@@ -121,7 +121,7 @@ describe('item dialog naming', () => {
       />,
     );
     expect(screen.getByRole('textbox', { name: 'New Notebook Name' })).toBeInTheDocument();
-    expect(document.title).toBe('New notebook – A11y Notebook');
+    expect(document.title).toBe('New notebook | A11y Notebook');
   });
 });
 
