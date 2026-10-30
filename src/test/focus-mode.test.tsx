@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
@@ -93,7 +93,7 @@ describe('Focus Mode (F11)', () => {
     await openNote();
     pressF11();
     expect(shell().classList.contains('focus-mode')).toBe(true);
-    expect(focusAnnouncement()).toMatch(/Focus mode on/);
+    await waitFor(() => expect(focusAnnouncement()).toMatch(/Focus mode on/));
     expect(getComputedStyle(document.querySelector('.panel') as HTMLElement).display).toBe('none');
     expect(getComputedStyle(document.querySelector('.tab-bar') as HTMLElement).display).toBe('none');
     expect(getComputedStyle(document.querySelector('.status-bar') as HTMLElement).display).toBe('none');
@@ -103,7 +103,7 @@ describe('Focus Mode (F11)', () => {
     expect(getComputedStyle(document.querySelector('.document') as HTMLElement).display).not.toBe('none');
     pressF11();
     expect(shell().classList.contains('focus-mode')).toBe(false);
-    expect(focusAnnouncement()).toMatch(/Focus mode off/);
+    await waitFor(() => expect(focusAnnouncement()).toMatch(/Focus mode off/));
     expect(getComputedStyle(document.querySelector('.panel') as HTMLElement).display).not.toBe('none');
   });
 
@@ -158,13 +158,31 @@ describe('Focus Mode (F11)', () => {
     expect(document.querySelector('.document')?.contains(document.activeElement)).toBe(true);
   });
 
-  it('keeps a single status region while Focus Mode is not active', async () => {
-    // Regression: an always-rendered Focus announcement region duplicated
-    // the footer status region and broke tests (and AT users) that expect
-    // exactly one. The announcement region renders only while it carries
-    // an announcement.
+  it('hides note-action buttons and the editing-mode toggle in Focus Mode', async () => {
     setup();
     await openNote();
-    expect(screen.getAllByRole('status')).toHaveLength(1);
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+    await screen.findByRole('textbox', { name: 'Markdown source' });
+    expect(screen.getByRole('button', { name: /Convert to HTML copy/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Editing mode' })).toBeInTheDocument();
+    pressF11();
+    expect(shell().classList.contains('focus-mode')).toBe(true);
+    expect(screen.queryByRole('button', { name: /Convert to HTML copy/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('group', { name: 'Editing mode' })).not.toBeInTheDocument();
+    pressF11();
+    expect(shell().classList.contains('focus-mode')).toBe(false);
+    expect(screen.getByRole('button', { name: /Convert to HTML copy/ })).toBeInTheDocument();
+    expect(screen.getByRole('group', { name: 'Editing mode' })).toBeInTheDocument();
+  });
+
+  it('keeps the Focus announcement region empty while Focus Mode is not active', async () => {
+    // The announcement region stays mounted even when empty: a region
+    // that mounts already carrying text is announced only sometimes,
+    // while a text change on a persistent region announces every time.
+    // Empty, it announces nothing, so the footer status message stays
+    // the only spoken status in the normal layout.
+    setup();
+    await openNote();
+    expect(focusAnnouncement()).toBe('');
   });
 });

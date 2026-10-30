@@ -175,6 +175,25 @@ function createWindow() {
     }
   });
 
+  // Chromium reserves Ctrl+Shift+J and Ctrl+Shift+C for DevTools, so the
+  // page's key handler never sees them and the bibliography and citation
+  // shortcuts silently do nothing. Intercept them here (Windows and Linux
+  // only; macOS uses Cmd for these commands and has no such reservation)
+  // and forward them as the menu commands they are bound to. preventDefault
+  // stops DevTools from opening; the renderer's menu-command guard still
+  // applies, and opening the same dialog twice is a no-op, so a duplicate
+  // page keydown would be harmless.
+  if (process.platform !== 'darwin') {
+    mainWindow.webContents.on('before-input-event', (event, input) => {
+      if (input.type !== 'keyDown' || !input.control || !input.shift || input.alt || input.meta) return;
+      const key = input.key.toLowerCase();
+      const command = key === 'j' ? 'open-bibliography' : key === 'c' ? 'open-citation-generator' : null;
+      if (!command) return;
+      event.preventDefault();
+      sendToRenderer(IPC_CHANNELS.menuCommand, command);
+    });
+  }
+
   if (isDevelopment) {
     void mainWindow.loadURL(DEV_SERVER_URL);
   } else {

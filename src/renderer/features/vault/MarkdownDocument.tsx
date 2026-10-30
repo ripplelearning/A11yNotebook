@@ -74,6 +74,8 @@ interface MarkdownDocumentProps {
   onToggleHtmlTask?: (taskId: string) => void;
   /** Status announcements for automatic edits, such as list continuation. */
   announce?: (message: string) => void;
+  /** Focus Mode shows only the document: hide the editing-mode toggle. */
+  hideModeToggle?: boolean;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
@@ -91,6 +93,7 @@ export default function MarkdownDocument({
   htmlTasks = [],
   onToggleHtmlTask,
   announce,
+  hideModeToggle = false,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
   if (mode === 'edit' && format === 'text') {
@@ -114,14 +117,16 @@ export default function MarkdownDocument({
   if (mode === 'edit') {
     return (
       <>
-        <div role="group" aria-label="Editing mode">
-          <button type="button" aria-pressed={!richText} onClick={() => setRichText(false)}>
-            Plain source
-          </button>
-          <button type="button" aria-pressed={richText} onClick={() => setRichText(true)}>
-            Rich text
-          </button>
-        </div>
+        {!hideModeToggle ? (
+          <div role="group" aria-label="Editing mode">
+            <button type="button" aria-pressed={!richText} onClick={() => setRichText(false)}>
+              Plain source
+            </button>
+            <button type="button" aria-pressed={richText} onClick={() => setRichText(true)}>
+              Rich text
+            </button>
+          </div>
+        ) : null}
         {richText ? (
           <RichTextEditor
             content={

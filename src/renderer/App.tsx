@@ -326,6 +326,16 @@ export default function App() {
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
   const navigationAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
+  const focusAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
+  const announceFocusMode = (message: string) => {
+    // Delay past the focus move in toggleFocusMode: a live-region update
+    // landing in the same tick as a focus change is announced only
+    // sometimes, because the screen reader is busy announcing the new
+    // focus. The region stays mounted (see the render below), so this is
+    // a text change on an existing region, which announces every time.
+    clearTimeout(focusAnnouncementTimer.current);
+    focusAnnouncementTimer.current = setTimeout(() => setFocusAnnouncement(message), 50);
+  };
   const announceNavigation = (message: string) => {
     clearTimeout(navigationAnnouncementTimer.current);
     setStatusMessage('');
@@ -334,7 +344,13 @@ export default function App() {
         setStatusMessage((current) => (current === '' ? message : current));
     }, 50);
   };
-  useEffect(() => () => clearTimeout(navigationAnnouncementTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(navigationAnnouncementTimer.current);
+      clearTimeout(focusAnnouncementTimer.current);
+    },
+    [],
+  );
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string; permanent: boolean } | null>(null);
@@ -1978,6 +1994,7 @@ export default function App() {
     query: string,
     direction: 'next' | 'prev',
     caseSensitive: boolean,
+    moveFocus = false,
   ): string => {
     const matches = findDomMatches(root, query, caseSensitive);
     if (!matches.length) {
@@ -1993,6 +2010,14 @@ export default function App() {
     );
     selectDomMatch(matches, position);
     findPositionRef.current = { docKey, position };
+    // Edit mode focuses the textarea itself; the rendered document needs
+    // the same treatment, or F3 selects a match the keyboard focus never
+    // follows. Only the dialog-closed repeat path moves focus: while the
+    // Find dialog is open, its focus trap owns focus.
+    if (moveFocus) {
+      tabPanelRef.current?.focus();
+      setActiveRegion('main');
+    }
     return `Match ${position + 1} of ${matches.length} for "${query}".`;
   };
 
@@ -2004,7 +2029,12 @@ export default function App() {
    * their preview is a sandboxed frame the app cannot select inside.
    * Returns the status text the Find dialog announces.
    */
-  const searchDocument = (query: string, direction: 'next' | 'prev', caseSensitive: boolean): string => {
+  const searchDocument = (
+    query: string,
+    direction: 'next' | 'prev',
+    caseSensitive: boolean,
+    moveFocus = false,
+  ): string => {
     if (!query) return 'Enter text to find.';
     findQueryRef.current = { query, caseSensitive };
     if (selectedTab === 'attachment' && attachment) {
@@ -2031,7 +2061,7 @@ export default function App() {
       }
       const root = attachmentRef.current;
       if (!root) return 'The document is not displayed.';
-      return searchDomRoot(root, `attachment:${attachment.path}`, query, direction, caseSensitive);
+      return searchDomRoot(root, `attachment:${attachment.path}`, query, direction, caseSensitive, moveFocus);
     }
     if (!currentNote) return 'Open a note or document to search within it.';
     if (mode === 'edit') {
@@ -2060,7 +2090,7 @@ export default function App() {
     }
     const root = annotationTools.documentRef.current;
     if (!root) return 'The note is not displayed.';
-    return searchDomRoot(root, `note:${currentNote.id}:${mode}`, query, direction, caseSensitive);
+    return searchDomRoot(root, `note:${currentNote.id}:${mode}`, query, direction, caseSensitive, moveFocus);
   };
 
   /**
@@ -2104,7 +2134,7 @@ export default function App() {
       if (root && focusReaderSearchBox(root)) return undefined;
       return 'The document search is not ready yet.';
     }
-    return searchDocument(stored.query, direction, stored.caseSensitive);
+    return searchDocument(stored.query, direction, stored.caseSensitive, true);
   };
   type ThesaurusSelection =
     | { kind: 'plain'; start: number; end: number }
@@ -2907,7 +2937,7 @@ export default function App() {
   const toggleFocusMode = () => {
     if (focusMode) {
       setFocusMode(false);
-      setFocusAnnouncement('Focus mode off. The full layout is shown again.');
+      announceFocusMode('Focus mode off. The full layout is shown again.');
       return;
     }
     if (!currentNote) {
@@ -2916,7 +2946,7 @@ export default function App() {
     }
     setContextMenu(null);
     setFocusMode(true);
-    setFocusAnnouncement(
+    announceFocusMode(
       'Focus mode on. Only the title, menu, search, and document are shown. Press F11 to exit Focus mode.',
     );
     const active = document.activeElement;
@@ -4041,23 +4071,33 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('a11y:open-math-toolbar'));
         return;
       }
-      // Plain-source editing has no rich-text toolbar: insert a math template
-      // at the cursor (a math code span for Markdown, MathML for HTML).
+      // Plain-source editing has no rich-text toolbar: insert an empty math
+      // template at the cursor (a math code span for Markdown, MathML for
+      // HTML) with the caret just inside it, before the closing marker,
+      // so the user types only the math itself instead of editing around
+      // a prefilled example.
       const textarea = editorRef.current;
       if (!textarea) {
         setStatusMessage('Switch to rich text editing to use the Mathematics toolbar.');
         return;
       }
-      const template = /\.html?$/i.test(currentNote.path)
-        ? '<math alttext="sqrt(x)"><msqrt><mi>x</mi></msqrt></math>'
-        : '`math:sqrt(x)`';
+      const template = /\.html?$/i.test(currentNote.path) ? '<math></math>' : '`math:`';
       const start = textarea.selectionStart ?? currentNote.content.length;
       const end = textarea.selectionEnd ?? start;
+      const caret = start + template.length - (template === '`math:`' ? 1 : 7);
       updateNoteContent(
         currentNote.id,
         `${currentNote.content.slice(0, start)}${template}${currentNote.content.slice(end)}`,
       );
-      setStatusMessage('Math template inserted. Edit the ASCII math inside it.');
+      // The controlled textarea re-renders with the new value; place the
+      // caret after that render lands, as list continuation does.
+      window.setTimeout(() => {
+        if (document.contains(textarea)) {
+          textarea.focus();
+          textarea.setSelectionRange(caret, caret);
+        }
+      }, 0);
+      setStatusMessage('Math template inserted. Type the math inside it.');
       return;
     }
     if (commandId === 'open-vault' || commandId === 'new-library') {
@@ -4779,14 +4819,13 @@ export default function App() {
 
       {/* Focus Mode announcements live here, not in the status bar: the
           status bar is hidden in Focus Mode, and a display:none live region
-          would never be announced. This region renders only while it
-          carries an announcement, so the footer status message stays the
-          single status region in the normal layout. */}
-      {focusAnnouncement ? (
-        <p className="sr-only" role="status">
-          {focusAnnouncement}
-        </p>
-      ) : null}
+          would never be announced. The region stays mounted even when
+          empty: a freshly mounted region carrying text is announced only
+          sometimes, while a text change on a persistent region announces
+          every time. */}
+      <p className="sr-only" role="status">
+        {focusAnnouncement}
+      </p>
 
       {showCommandButtons && (
         <nav className="menu-bar" aria-label="Main menu">
@@ -5329,28 +5368,30 @@ export default function App() {
                     </button>
                   )
                 ) : null}
-                {showCommandButtons && (
+                {showCommandButtons && !focusMode && (
                   <button type="button" onClick={() => void beginExport(currentNote.path)}>
                     Export note…
                   </button>
                 )}
                 {mode === 'edit' ? (
                   <>
-                    {showCommandButtons && (
+                    {showCommandButtons && !focusMode && (
                       <button type="button" onClick={() => void saveActiveNote()}>
                         Save note
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={currentNote.path === encryptedNotePath}
-                      onClick={() => void convertActiveNoteFormat()}
-                    >
-                      Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
-                    </button>
+                    {!focusMode && (
+                      <button
+                        type="button"
+                        disabled={currentNote.path === encryptedNotePath}
+                        onClick={() => void convertActiveNoteFormat()}
+                      >
+                        Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
+                      </button>
+                    )}
                   </>
                 ) : null}
-                {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
+                {currentNoteEditLocked && currentNote.content !== currentNote.saved && !focusMode ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
                     Save locked note changes
                   </button>
@@ -5358,7 +5399,7 @@ export default function App() {
                 {mode === 'edit' ? (
                   <>
                     <EditorTools
-                      showCommandButtons={showCommandButtons}
+                      showCommandButtons={showCommandButtons && !focusMode}
                       ref={editorToolsRef}
                       textareaRef={editorRef}
                       bindShortcuts={false}
@@ -5371,7 +5412,7 @@ export default function App() {
                       onRequestAttachment={() => handleCommand('insert-attachment')}
                       onContentChange={(content) => updateNoteContent(currentNote.id, content)}
                     />
-                    {showCommandButtons ? (
+                    {showCommandButtons && !focusMode ? (
                       <>
                         <button type="button" onClick={() => void addAnchoredBookmark('heading')}>
                           Bookmark heading at cursor
@@ -5402,6 +5443,7 @@ export default function App() {
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
                     announce={setStatusMessage}
+                    hideModeToggle={focusMode}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                     htmlTasks={tasks.filter((task) => task.path === currentNote.path && task.htmlTask)}
