@@ -291,7 +291,12 @@ describe('feature wiring in the application shell', () => {
       await waitFor(() => expect(bridge.vault.getSettings).toHaveBeenCalledTimes(before + 1));
       expect(screen.queryByRole('dialog', { name: 'Library locked' })).not.toBeInTheDocument();
       if (!failure) await waitFor(() => expect(document.documentElement.dataset.theme).toBe('dark'));
-      else await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Could not load settings.'));
+      else
+        await waitFor(() =>
+          expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(
+            'Could not load settings.',
+          ),
+        );
     },
   );
 

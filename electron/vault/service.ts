@@ -886,12 +886,13 @@ export function createVaultService(
   }
 
   async function importFile(source: string, notebookPath = '', assertCurrent: () => void = () => undefined) {
-    // A file picked from inside the library is an original, not an outside
-    // file: it needs a unique copy name (otherwise the copy would collide
-    // with the original itself) and a superseded record so views hide the
-    // original, exactly like a managed copy made from a library file.
-    // Files from outside keep the previous behavior: the imported name,
-    // with no record, since there is no original in the library.
+    // Only an import whose destination would BE the source needs a unique
+    // copy name and a superseded record: picking a file already in the
+    // library and importing it into the folder it already lives in would
+    // otherwise collide with itself (EEXIST) and never hide the original.
+    // Every other pick keeps the previous behavior exactly: the imported
+    // name, no record — so a root file imported into a notebook keeps its
+    // filename, and re-importing it still rejects as a duplicate.
     let inLibraryRelative: string | null = null;
     let sourceReal: string | null = null;
     try {
@@ -901,16 +902,33 @@ export function createVaultService(
     } catch {
       // Outside the library or unreadable: existing behavior below.
     }
+    let collidesWithSource = false;
+    if (inLibraryRelative) {
+      try {
+        // Replicate importFileCopy's destination name exactly, including
+        // the .rtf -> .html and .doc -> .txt conversions, so the
+        // comparison is against the name that would actually be created.
+        const imported = await readImport(source, assertCurrent, true);
+        const originalName = path.basename(source);
+        const originalExtension = path.extname(originalName);
+        const filename = originalExtension
+          ? originalName.slice(0, -originalExtension.length) + imported.extension
+          : originalName;
+        collidesWithSource = path.posix.join(notebookPath, filename) === inLibraryRelative;
+      } catch {
+        // The copy attempt below surfaces the real error.
+      }
+    }
     const { path: copyRelative } = await importFileCopy(
       source,
       notebookPath,
       assertCurrent,
-      inLibraryRelative !== null,
+      collidesWithSource,
       true,
     );
     // Hiding is display-only: if recording fails, the import still stands
     // and the original simply stays visible.
-    if (inLibraryRelative && !inLibraryRelative.startsWith('.a11ynotebook/') && sourceReal) {
+    if (collidesWithSource && !inLibraryRelative!.startsWith('.a11ynotebook/') && sourceReal) {
       try {
         await superseded.record(sourceReal, await resolveEntry(copyRelative), copyRelative, assertCurrent);
       } catch {
