@@ -31,6 +31,18 @@ export function currentLocation(state: NavigationHistoryState): NavigationLocati
 }
 
 /**
+ * Screens whose view is defined by the notebook context (the notes grid
+ * shows that notebook's files). Every other tab is a document view — an
+ * open note, an attachment, an asset — whose content does not depend on
+ * which notebook the tree currently points at.
+ */
+const CONTEXT_SCREENS = new Set(['libraries', 'notebooks', 'notes-files', 'tasks', 'reminders', 'calendar', 'contents']);
+
+export function isDocumentTab(tab: string): boolean {
+  return !CONTEXT_SCREENS.has(tab);
+}
+
+/**
  * Record a location as the newest entry. Recording the location that
  * is already current is a no-op, which is also how a restored
  * (back/forward) location avoids being recorded again: after a jump
@@ -44,6 +56,16 @@ export function recordLocation(
 ): NavigationHistoryState {
   const current = currentLocation(state);
   if (current && sameLocation(current, location)) return state;
+  // Retargeting the tree while a document is open changes only the
+  // notebook context, not the visible view. Updating the current entry
+  // in place keeps Alt+Left to one press: without this, the context
+  // change becomes a phantom step that back must step through invisibly
+  // before reaching the previous view.
+  if (current && current.tab === location.tab && isDocumentTab(location.tab)) {
+    const entries = [...state.entries];
+    entries[state.index] = location;
+    return { entries, index: state.index };
+  }
   const entries = [...state.entries.slice(0, state.index + 1), location];
   while (entries.length > NAVIGATION_HISTORY_LIMIT) entries.shift();
   return { entries, index: entries.length - 1 };

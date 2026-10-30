@@ -15,7 +15,9 @@ export interface NotebookSettings {
   /** User-managed task priority options, highest first. Single words only, so they survive in task lines. */
   priorityOptions?: string[];
   reminderSound?: boolean;
-  reminderSoundChoice?: 'gentle-chime';
+  reminderSoundChoice?: 'gentle-chime' | 'custom';
+  /** Absolute path to a user-chosen sound file; used only when the choice is 'custom'. */
+  reminderSoundFile?: string;
   reminderVolume?: number;
   backgroundReminders?: boolean;
   /** Name reminder titles in alerts after the app closes; off by default, and titles then stay out of the snapshot. */
@@ -297,6 +299,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
   const reminderSound = settings.reminderSound === undefined ? false : settings.reminderSound;
   const reminderSoundChoice =
     settings.reminderSoundChoice === undefined ? 'gentle-chime' : settings.reminderSoundChoice;
+  const reminderSoundFile = settings.reminderSoundFile;
   const reminderVolume = settings.reminderVolume === undefined ? 50 : settings.reminderVolume;
   const backgroundReminders = settings.backgroundReminders === undefined ? false : settings.backgroundReminders;
   const backgroundReminderTitles =
@@ -334,7 +337,8 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     typeof backgroundReminderTitles !== 'boolean' ||
     typeof showOriginalFiles !== 'boolean' ||
     typeof reminderSound !== 'boolean' ||
-    reminderSoundChoice !== 'gentle-chime' ||
+    (reminderSoundChoice !== 'gentle-chime' && reminderSoundChoice !== 'custom') ||
+    (reminderSoundFile !== undefined && typeof reminderSoundFile !== 'string') ||
     !Number.isInteger(reminderVolume) ||
     reminderVolume < 0 ||
     reminderVolume > 100 ||
@@ -401,6 +405,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     reminderAlerts,
     reminderSound,
     reminderSoundChoice,
+    reminderSoundFile,
     reminderVolume,
     backgroundReminders,
     backgroundReminderTitles,

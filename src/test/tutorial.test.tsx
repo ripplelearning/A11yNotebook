@@ -23,7 +23,7 @@ describe('guided tour', () => {
   it('shows the tour on a first run', () => {
     window.localStorage.removeItem('a11y-notebook.tutorial');
     render(<App />);
-    expect(screen.getByRole('dialog', { name: 'Getting started with A11y Notebook' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Welcome Tutorial' })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'Welcome to A11y Notebook' })).toBeInTheDocument();
     expect(screen.getByText('Page 1 of 6')).toBeInTheDocument();
   });
@@ -50,7 +50,7 @@ describe('guided tour', () => {
     }
     expect(screen.getByText('Page 6 of 6')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Finish' }));
-    expect(screen.queryByRole('dialog', { name: 'Getting started with A11y Notebook' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
   });
 
   it('does not show again after "Don\'t show this again" is checked', () => {
@@ -61,19 +61,19 @@ describe('guided tour', () => {
     expect(JSON.parse(window.localStorage.getItem('a11y-notebook.tutorial') ?? '{}').suppressed).toBe(true);
     unmount();
     render(<App />);
-    expect(screen.queryByRole('dialog', { name: 'Getting started with A11y Notebook' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
   });
 
   it('does not auto-show for the same version', () => {
     setTutorialState({ suppressed: false, lastVersionSeen: VERSION });
     render(<App />);
-    expect(screen.queryByRole('dialog', { name: 'Getting started with A11y Notebook' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
   });
 
   it('auto-shows after an update and records the new version', () => {
     setTutorialState({ suppressed: false, lastVersionSeen: '9.9.8-test' });
     render(<App />);
-    expect(screen.getByRole('dialog', { name: 'Getting started with A11y Notebook' })).toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Welcome Tutorial' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(JSON.parse(window.localStorage.getItem('a11y-notebook.tutorial') ?? '{}').lastVersionSeen).toBe(VERSION);
   });

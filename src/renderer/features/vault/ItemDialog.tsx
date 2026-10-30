@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import Modal from '../../components/Modal';
 
 export interface ItemDialogRequest {
@@ -26,16 +26,8 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
   const nameLabel = { 'new-note': 'New Note Name', 'new-notebook': 'New Notebook Name', rename: 'New Name', move: 'Name' }[
     request.action
   ];
-  // While the dialog is open, the window title names the dialog so screen
-  // readers announce it on open and the say-titlebar command (Insert+T) reads
-  // it. The previous title is restored when the dialog closes.
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = `${title} – A11y Notebook`;
-    return () => {
-      document.title = previousTitle;
-    };
-  }, [title]);
+  // The shared Modal names the dialog in the window title, so a screen
+  // reader's title-bar shortcut reads it while the dialog is open.
   return (
     <Modal title={title} titleId="item-dialog-title" onClose={onClose}>
       <form
@@ -86,7 +78,7 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
           </label>
         ) : null}
         {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" disabled={busy}>
+        <button type="submit" data-default disabled={busy}>
           {title}
         </button>
         <button type="button" onClick={onClose}>

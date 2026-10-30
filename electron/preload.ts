@@ -31,6 +31,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultCreateAutoBackup: 'vault:create-auto-backup',
   vaultPasteInspect: 'vault:paste-inspect',
   vaultPasteChooseFolder: 'vault:paste-choose-folder',
+  vaultChooseReminderSound: 'vault:choose-reminder-sound',
+  vaultReadReminderSound: 'vault:read-reminder-sound',
   vaultPasteLibraryCopy: 'vault:paste-library-copy',
   vaultPasteLibraryOpen: 'vault:paste-library-open',
   vaultPasteNotebook: 'vault:paste-notebook',
@@ -209,6 +211,8 @@ const bridge: NotebookBridge = {
     getPathForFile: (file: File) => webUtils.getPathForFile(file),
     pasteInspect: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteInspect, source),
     pasteChooseFolder: (title: string) => ipcRenderer.invoke(CHANNELS.vaultPasteChooseFolder, title),
+    chooseReminderSoundFile: () => ipcRenderer.invoke(CHANNELS.vaultChooseReminderSound),
+    readReminderSoundFile: (soundPath: string) => ipcRenderer.invoke(CHANNELS.vaultReadReminderSound, soundPath),
     pasteLibraryCopy: (source: string, parent: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteLibraryCopy, source, parent),
     pasteLibraryOpen: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteLibraryOpen, source),
@@ -317,7 +321,7 @@ const bridge: NotebookBridge = {
     adoptEncrypted: (relativePath, password) =>
       ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
-    deleteLibrary: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultDeleteLibrary, libraryPath),
+    deleteLibrary: (libraryPath, permanent?) => ipcRenderer.invoke(CHANNELS.vaultDeleteLibrary, libraryPath, permanent),
     deletePermanently: (relativePath, hasUnsavedChanges) =>
       ipcRenderer.invoke(CHANNELS.vaultDeletePermanent, relativePath, hasUnsavedChanges),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),

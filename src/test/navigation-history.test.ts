@@ -41,6 +41,16 @@ describe('navigation history', () => {
     expect(goBack(state).location).toEqual(loc('notes-files', 'Research'));
   });
 
+  it('retargets the current entry in place when the tree moves under an open note', () => {
+    let state = emptyNavigationHistory();
+    state = recordLocation(state, loc('notes-files', 'Research'));
+    state = recordLocation(state, loc('Research/Idea.md', 'Research'));
+    state = recordLocation(state, loc('Research/Idea.md', 'Archive'));
+    expect(state.entries).toHaveLength(2);
+    expect(currentLocation(state)).toEqual(loc('Research/Idea.md', 'Archive'));
+    expect(goBack(state).location).toEqual(loc('notes-files', 'Research'));
+  });
+
   it('does not record a duplicate of the current location (restore no-op)', () => {
     let state = emptyNavigationHistory();
     state = recordLocation(state, loc('contents'));

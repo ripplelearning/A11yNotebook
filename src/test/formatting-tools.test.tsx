@@ -69,7 +69,7 @@ describe('accessible editor tools', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
     fireEvent.keyDown(textarea, { key: 'l', ctrlKey: true, shiftKey: true });
     expect(screen.getByRole('dialog', { name: 'Insert link' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'URL' })).toHaveFocus();
+    expect(screen.getByRole('textbox', { name: 'Link text' })).toHaveFocus();
     fireEvent.change(screen.getByRole('textbox', { name: 'URL' }), { target: { value: 'javascript:alert(1)' } });
     fireEvent.click(screen.getByRole('button', { name: 'Insert' }));
     expect(screen.getByRole('alert')).toHaveTextContent('http');

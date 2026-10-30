@@ -50,6 +50,18 @@ export default function Modal({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  // While any dialog is open, the window title names the dialog, so a
+  // screen reader's title-bar shortcut (JAWS Insert+T) reads the dialog
+  // title, not the view behind it. The previous title is restored when
+  // the dialog closes; a nested dialog restores its parent's title.
+  useEffect(() => {
+    const previousTitle = document.title;
+    document.title = `${title} | A11y Notebook`;
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [title]);
+
   useEffect(() => {
     const previouslyFocused =
       restoreFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
@@ -81,6 +93,28 @@ export default function Modal({
       event.stopPropagation();
       onCloseRef.current();
       return;
+    }
+    // Enter on a neutral element (the dialog itself, a heading, or message
+    // text) activates the dialog's default action, marked with data-default.
+    // Native controls keep their own Enter behavior: buttons click, text
+    // fields and selects edit, links follow.
+    if (event.key === 'Enter') {
+      const target = event.target as HTMLElement | null;
+      const isNativeControl =
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        target instanceof HTMLSelectElement ||
+        target instanceof HTMLButtonElement ||
+        target instanceof HTMLAnchorElement ||
+        target?.isContentEditable === true;
+      if (!isNativeControl && dialogRef.current) {
+        const defaultButton = dialogRef.current.querySelector<HTMLButtonElement>('[data-default]:not([disabled])');
+        if (defaultButton) {
+          event.preventDefault();
+          defaultButton.click();
+          return;
+        }
+      }
     }
     if (event.key !== 'Tab' || !dialogRef.current) {
       return;

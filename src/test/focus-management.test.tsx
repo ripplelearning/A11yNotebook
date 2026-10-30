@@ -95,7 +95,9 @@ describe('focus commands', () => {
     expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
-    expect(screen.getByRole('status', { name: '' })).toHaveTextContent('This view has no note editor.');
+    expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(
+      'This view has no note editor.',
+    );
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
   });
 });

@@ -10,7 +10,9 @@ import {
   type CalendarRecurrence,
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
+import { normalizeTimeText } from '../../../shared/reminders';
 import Modal from '../../components/Modal';
+import DatePickerField from '../../components/DatePickerField';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
@@ -97,7 +99,8 @@ export default function AppointmentDialog({
     if (!title.trim()) return 'Enter an appointment title.';
     if (title.trim().length > 500) return 'Keep the title to 500 characters or fewer.';
     if (!parseDateOnly(startDate)) return 'Enter a valid start date.';
-    const start = allDay ? startDate : combineDateTime(startDate, startTime);
+    const startTimeNormalized = allDay ? null : normalizeTimeText(startTime);
+    const start = allDay ? startDate : startTimeNormalized ? combineDateTime(startDate, startTimeNormalized) : null;
     if (!start) return allDay ? 'Enter a valid start date.' : 'Enter a valid start date and time.';
     let end: string | undefined;
     if (endDate) {
@@ -107,7 +110,8 @@ export default function AppointmentDialog({
         if (!end) return 'Enter a valid end date.';
       } else {
         if (!endTime) return 'Enter an end time when an end date is set.';
-        end = combineDateTime(endDate, endTime) ?? undefined;
+        const endTimeNormalized = normalizeTimeText(endTime);
+        end = endTimeNormalized ? (combineDateTime(endDate, endTimeNormalized) ?? undefined) : undefined;
         if (!end) return 'Enter a valid end date and time.';
       }
       const startPartsValue = parseAppointmentTime(start);
@@ -238,13 +242,12 @@ export default function AppointmentDialog({
             />
             All-day appointment
           </label>
-          <label htmlFor={`${id}-start-date`}>Start date</label>
-          <input
+          <DatePickerField
             id={`${id}-start-date`}
-            type="date"
-            disabled={busy}
+            label="Start date"
             value={startDate}
-            onChange={(event) => setStartDate(event.target.value)}
+            onChange={setStartDate}
+            disabled={busy}
             required
           />
           {!allDay && (
@@ -252,7 +255,8 @@ export default function AppointmentDialog({
               <label htmlFor={`${id}-start-time`}>Start time</label>
               <input
                 id={`${id}-start-time`}
-                type="time"
+                type="text"
+                placeholder="HH:MM or 9:30 AM"
                 disabled={busy}
                 value={startTime}
                 onChange={(event) => setStartTime(event.target.value)}
@@ -260,20 +264,20 @@ export default function AppointmentDialog({
               />
             </>
           )}
-          <label htmlFor={`${id}-end-date`}>End date (optional)</label>
-          <input
+          <DatePickerField
             id={`${id}-end-date`}
-            type="date"
-            disabled={busy}
+            label="End date (optional)"
             value={endDate}
-            onChange={(event) => setEndDate(event.target.value)}
+            onChange={setEndDate}
+            disabled={busy}
           />
           {!allDay && endDate && (
             <>
               <label htmlFor={`${id}-end-time`}>End time</label>
               <input
                 id={`${id}-end-time`}
-                type="time"
+                type="text"
+                placeholder="HH:MM or 9:30 AM"
                 disabled={busy}
                 value={endTime}
                 onChange={(event) => setEndTime(event.target.value)}
@@ -354,13 +358,12 @@ export default function AppointmentDialog({
                 value={count}
                 onChange={(event) => setCount(event.target.value)}
               />
-              <label htmlFor={`${id}-until`}>Repeat until (optional)</label>
-              <input
+              <DatePickerField
                 id={`${id}-until`}
-                type="date"
-                disabled={busy}
+                label="Repeat until (optional)"
                 value={until}
-                onChange={(event) => setUntil(event.target.value)}
+                onChange={setUntil}
+                disabled={busy}
               />
             </>
           )}

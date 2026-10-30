@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import Modal from '../../components/Modal';
-import { isValidDateText, isValidTimeText } from '../../../shared/reminders';
+import { isValidDateText, isValidTimeText, normalizeTimeText } from '../../../shared/reminders';
 import type { VaultTask } from '../../../shared/types';
 
 export interface TaskSchedule {
@@ -51,7 +51,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             return;
           }
           if (dueTime && !isValidTimeText(dueTime)) {
-            setError('Enter a due time as HH:MM.');
+            setError('Enter a due time as HH:MM or H:MM AM/PM.');
             return;
           }
           if (reminderDate && !isValidDateText(reminderDate)) {
@@ -59,15 +59,17 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             return;
           }
           if (reminderTime && !isValidTimeText(reminderTime)) {
-            setError('Enter a reminder time as HH:MM.');
+            setError('Enter a reminder time as HH:MM or H:MM AM/PM.');
             return;
           }
           setBusy(true);
           setError('');
+          const normalizedDueTime = dueTime ? (normalizeTimeText(dueTime) ?? '') : '';
+          const normalizedReminderTime = reminderTime ? (normalizeTimeText(reminderTime) ?? '') : '';
           void onSave({
             dueDate,
-            dueTime,
-            remindAt: reminderDate && reminderTime ? `${reminderDate} ${reminderTime}` : '',
+            dueTime: normalizedDueTime,
+            remindAt: reminderDate && normalizedReminderTime ? `${reminderDate} ${normalizedReminderTime}` : '',
           })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
@@ -88,7 +90,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
         </label>
         <label>
           Due time, HH:MM
-          <input type="text" placeholder="HH:MM" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
+          <input type="text" placeholder="HH:MM or 9:30 AM" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
         </label>
         <label>
           Reminder date, YYYY-MM-DD
@@ -104,7 +106,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
           Reminder time, HH:MM
           <input
             type="text"
-            placeholder="HH:MM"
+            placeholder="HH:MM or 9:30 AM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}

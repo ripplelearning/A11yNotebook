@@ -81,17 +81,9 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
   const lastPage = PAGES.length - 1;
   const current = PAGES[page];
 
-  // While the tutorial is open, the window title names the dialog, so a
-  // screen reader's title-bar shortcut reads the tutorial, not the view
-  // behind it. Restored when the dialog closes.
-  useEffect(() => {
-    const previousTitle = document.title;
-    document.title = 'Getting started with A11y Notebook – A11y Notebook';
-    return () => {
-      document.title = previousTitle;
-    };
-  }, []);
-
+  // The shared Modal names the dialog in the window title, so a screen
+  // reader's title-bar shortcut reads "Welcome Tutorial | A11y Notebook"
+  // while the tutorial is open.
   useEffect(() => {
     headingRef.current?.focus();
     // Moving DOM focus to the heading is not enough on its own: a screen
@@ -107,7 +99,7 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
   }, [page, current.heading]);
 
   return (
-    <Modal titleId="tutorial-title" title="Getting started with A11y Notebook" onClose={onClose}>
+    <Modal titleId="tutorial-title" title="Welcome Tutorial" onClose={onClose}>
       <h3 ref={headingRef} tabIndex={-1} data-autofocus>
         {current.heading}
       </h3>

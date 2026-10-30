@@ -383,11 +383,43 @@ export default function SettingsDialog({
             Reminder sound
             <select
               value={draft.reminderSoundChoice ?? 'gentle-chime'}
-              onChange={() => setDraft({ ...draft, reminderSoundChoice: 'gentle-chime' })}
+              onChange={(event) =>
+                setDraft({
+                  ...draft,
+                  reminderSoundChoice: event.target.value === 'custom' ? 'custom' : 'gentle-chime',
+                })
+              }
             >
               <option value="gentle-chime">Gentle chime</option>
+              <option value="custom">Custom sound file</option>
             </select>
           </label>
+          {draft.reminderSoundChoice === 'custom' ? (
+            <>
+              <p>
+                {draft.reminderSoundFile
+                  ? `Custom sound file: ${draft.reminderSoundFile.split(/[\\/]/).at(-1) ?? draft.reminderSoundFile}`
+                  : 'No custom sound file chosen yet.'}
+              </p>
+              <button
+                type="button"
+                onClick={() => {
+                  const choose = window.a11yNotebook?.vault.chooseReminderSoundFile;
+                  if (!choose) {
+                    setError('Choosing a sound file is unavailable.');
+                    return;
+                  }
+                  void choose()
+                    .then((soundPath) => {
+                      if (soundPath) setDraft({ ...draft, reminderSoundChoice: 'custom', reminderSoundFile: soundPath });
+                    })
+                    .catch(() => setError('Could not choose a sound file.'));
+                }}
+              >
+                Choose sound file…
+              </button>
+            </>
+          ) : null}
           <label>
             Reminder volume (percent)
             <input
@@ -402,7 +434,12 @@ export default function SettingsDialog({
           <button
             type="button"
             onClick={() => {
-              void playReminderSound({ ...DEFAULT_SETTINGS, reminderVolume: draft.reminderVolume ?? 50 })
+              void playReminderSound({
+                ...DEFAULT_SETTINGS,
+                reminderVolume: draft.reminderVolume ?? 50,
+                reminderSoundChoice: draft.reminderSoundChoice ?? 'gentle-chime',
+                reminderSoundFile: draft.reminderSoundFile,
+              })
                 .then(() => setSoundNotice('Test sound played.'))
                 .catch(() => setError('Could not play test sound.'));
             }}

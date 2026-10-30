@@ -162,7 +162,11 @@ describe('Help menu', () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
     });
     expect(bridge.vault.createNotebook).toHaveBeenCalledWith('Research');
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Notebook created.'));
+    await waitFor(() =>
+      expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(
+        'Notebook created.',
+      ),
+    );
     expect(search).toHaveFocus();
 
     menu('show-notebooks');

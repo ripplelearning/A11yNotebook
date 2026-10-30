@@ -129,8 +129,12 @@ describe('find in document', () => {
     expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
     menu('find-next');
     expect((await screen.findAllByText('Match 2 of 2 for "Idea".')).length).toBeGreaterThan(0);
+    // The repeat path moves keyboard focus into the document, matching
+    // edit mode, instead of leaving it wherever the dialog closed from.
+    expect(screen.getByRole('tabpanel')).toHaveFocus();
     menu('find-previous');
     expect((await screen.findAllByText('Match 1 of 2 for "Idea".')).length).toBeGreaterThan(0);
+    expect(screen.getByRole('tabpanel')).toHaveFocus();
   });
 
   it('F3 with no previous search reports it', async () => {

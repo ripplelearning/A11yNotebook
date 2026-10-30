@@ -119,10 +119,30 @@ export function isValidDateText(value: string): boolean {
 
 /** HH:MM with real hour and minute ranges; text fields use this instead of native time pickers. */
 export function isValidTimeText(value: string): boolean {
-  const match = /^(\d{2}):(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [, h, min] = match.map(Number);
-  return h <= 23 && min <= 59;
+  return normalizeTimeText(value) !== null;
+}
+
+/**
+ * Accept a typed time and normalize it to 24-hour HH:MM for storage, so
+ * every consumer keeps one canonical form. Accepts 24-hour HH:MM and
+ * 12-hour H:MM or HH:MM with AM or PM (case-insensitive, space optional:
+ * "2:30 PM", "2:30PM", "02:30 pm"). Returns null for anything else.
+ */
+export function normalizeTimeText(value: string): string | null {
+  const trimmed = value.trim();
+  const day = /^(\d{2}):(\d{2})$/.exec(trimmed);
+  if (day) {
+    const [, h, min] = day.map(Number);
+    return h <= 23 && min <= 59 ? trimmed : null;
+  }
+  const meridiem = /^(\d{1,2}):(\d{2})\s*([aA][mM]|[pP][mM])$/.exec(trimmed);
+  if (!meridiem) return null;
+  const hour = Number(meridiem[1]);
+  const minute = Number(meridiem[2]);
+  if (hour < 1 || hour > 12 || minute > 59) return null;
+  const isPm = meridiem[3].toLowerCase() === 'pm';
+  const hour24 = isPm ? (hour === 12 ? 12 : hour + 12) : hour === 12 ? 0 : hour;
+  return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
 export function parseReminderDate(value: string): Date | null {

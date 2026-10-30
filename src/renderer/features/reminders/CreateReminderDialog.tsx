@@ -1,6 +1,12 @@
 import { useEffect, useId, useState, type FormEvent } from 'react';
 import Modal from '../../components/Modal';
-import { parseReminderDate, type CreateReminderInput, type SnoozeDuration } from '../../../shared/reminders';
+import DatePickerField from '../../components/DatePickerField';
+import {
+  normalizeTimeText,
+  parseReminderDate,
+  type CreateReminderInput,
+  type SnoozeDuration,
+} from '../../../shared/reminders';
 import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../shared/reminder-defaults';
 
 export interface CreateReminderDialogProps {
@@ -45,7 +51,12 @@ export default function CreateReminderDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
-    const scheduledAt = `${date} ${time}`;
+    const normalizedTime = normalizeTimeText(time);
+    if (!normalizedTime) {
+      setError('Enter a title, note, and valid date and time.');
+      return;
+    }
+    const scheduledAt = `${date} ${normalizedTime}`;
     if (!title.trim() || !notePaths.includes(path) || !parseReminderDate(scheduledAt)) {
       setError('Enter a title, note, and valid date and time.');
       return;
@@ -55,7 +66,7 @@ export default function CreateReminderDialog({
     try {
       const nextDefaults: ReminderDefaults = {
         version: 1,
-        time,
+        time: normalizedTime,
         snooze,
         privacy,
         notification: { reminders: notifications, flashcards: flashcardNotifications },
@@ -99,20 +110,12 @@ export default function CreateReminderDialog({
             </option>
           ))}
         </select>
-        <label htmlFor={`${id}-date`}>Date, YYYY-MM-DD</label>
-        <input
-          id={`${id}-date`}
-          type="text"
-          placeholder="YYYY-MM-DD"
-          value={date}
-          onChange={(event) => setDate(event.target.value)}
-          required
-        />
+        <DatePickerField id={`${id}-date`} label="Date, YYYY-MM-DD" value={date} onChange={setDate} required />
         <label htmlFor={`${id}-time`}>Time, HH:MM</label>
         <input
           id={`${id}-time`}
           type="text"
-          placeholder="HH:MM"
+          placeholder="HH:MM or 9:30 AM"
           value={time}
           onChange={(event) => setTime(event.target.value)}
           required
@@ -163,7 +166,7 @@ export default function CreateReminderDialog({
             Use these choices as future defaults
           </label>
         )}
-        <p>Times use your local timezone.</p>
+        <p>Times use your local timezone. Type 24-hour time (14:30) or 12-hour time with AM or PM (2:30 PM).</p>
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={busy || notePaths.length === 0}>
           {busy ? 'Creating…' : 'Create reminder'}

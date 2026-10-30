@@ -326,6 +326,16 @@ export default function App() {
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
   const navigationAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
+  const focusAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
+  const announceFocusMode = (message: string) => {
+    // Delay past the focus move in toggleFocusMode: a live-region update
+    // landing in the same tick as a focus change is announced only
+    // sometimes, because the screen reader is busy announcing the new
+    // focus. The region stays mounted (see the render below), so this is
+    // a text change on an existing region, which announces every time.
+    clearTimeout(focusAnnouncementTimer.current);
+    focusAnnouncementTimer.current = setTimeout(() => setFocusAnnouncement(message), 50);
+  };
   const announceNavigation = (message: string) => {
     clearTimeout(navigationAnnouncementTimer.current);
     setStatusMessage('');
@@ -334,10 +344,16 @@ export default function App() {
         setStatusMessage((current) => (current === '' ? message : current));
     }, 50);
   };
-  useEffect(() => () => clearTimeout(navigationAnnouncementTimer.current), []);
+  useEffect(
+    () => () => {
+      clearTimeout(navigationAnnouncementTimer.current);
+      clearTimeout(focusAnnouncementTimer.current);
+    },
+    [],
+  );
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
-  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string } | null>(null);
+  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string; permanent: boolean } | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
@@ -613,6 +629,95 @@ export default function App() {
   const [recoveryAvailable, setRecoveryAvailable] = useState(false);
   const [securityLocked, setSecurityLocked] = useState(false);
   const navigationHistoryRef = useRef<NavigationHistoryState>(emptyNavigationHistory());
+
+  // Per-library view state, kept in memory for the session: switching away
+  // from a library snapshots its open notes, selected tab, notebook, and
+  // open task/reminder/calendar tabs, and switching back restores them.
+  // Nothing is persisted, so a fresh launch still lands on Notebooks.
+  // Unsaved notes block switching, so restored notes are always the saved
+  // content; unreadable or locked notes simply stay closed on return.
+  interface LibraryUiState {
+    openNotePaths: string[];
+    selectedTab: string;
+    selectedNotebookPath?: string;
+    taskTabOpen: boolean;
+    reminderTabOpen: boolean;
+    calendarTabOpen: boolean;
+    pinnedTabs: string[];
+  }
+  const libraryUiStatesRef = useRef(new Map<string, LibraryUiState>());
+
+  // Keep the current library's snapshot live as the user works, so
+  // switching back restores where they were working, not the Libraries
+  // picker they switched from: the picker screen itself never overwrites
+  // a snapshot. The switch itself only reads the snapshot.
+  useEffect(() => {
+    if (!vault || selectedTab === 'libraries') return;
+    libraryUiStatesRef.current.set(vault.path, {
+      openNotePaths: openNotes.map((note) => note.path),
+      selectedTab,
+      selectedNotebookPath,
+      taskTabOpen,
+      reminderTabOpen,
+      calendarTabOpen,
+      pinnedTabs: [...pinnedTabs],
+    });
+  }, [vault, openNotes, selectedTab, selectedNotebookPath, taskTabOpen, reminderTabOpen, calendarTabOpen, pinnedTabs]);
+
+  const restoreLibraryUiState = async (opened: VaultInfo) => {
+    const snapshot = libraryUiStatesRef.current.get(opened.path);
+    if (!snapshot) return;
+    const generation = vaultGenerationRef.current;
+    const bridge = window.a11yNotebook?.vault;
+    const restored: OpenNote[] = [];
+    if (bridge?.readNote) {
+      for (const notePath of snapshot.openNotePaths) {
+        const entry = findEntry(opened.entries, notePath);
+        if (!entry || entry.kind !== 'note' || !isManagedEntry(entry)) continue;
+        try {
+          const loaded = await bridge.readNote(notePath);
+          const content = /\.html?$/i.test(notePath) ? sanitizeNoteHtml(loaded, notePath) : loaded;
+          restored.push({
+            id: notePath,
+            path: notePath,
+            title: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
+            content,
+            saved: content,
+          });
+        } catch {
+          // Unreadable or locked notes simply stay closed on return.
+        }
+      }
+    }
+    // A second switch mid-restore must not apply stale state to the new library.
+    if (generation !== vaultGenerationRef.current || vaultPathRef.current !== opened.path) return;
+    if (restored.length) setOpenNotes(restored);
+    setTaskTabOpen(snapshot.taskTabOpen);
+    setReminderTabOpen(snapshot.reminderTabOpen);
+    setCalendarTabOpen(snapshot.calendarTabOpen);
+    setPinnedTabs(
+      new Set(
+        snapshot.pinnedTabs.filter(
+          (id) =>
+            restored.some((note) => note.id === id) ||
+            (id === 'tasks' && snapshot.taskTabOpen) ||
+            (id === 'reminders' && snapshot.reminderTabOpen) ||
+            (id === 'calendar' && snapshot.calendarTabOpen),
+        ),
+      ),
+    );
+    const tabAvailable =
+      NAVIGATION_SCREENS.some((screen) => screen.id === snapshot.selectedTab) ||
+      (snapshot.selectedTab === 'tasks' && snapshot.taskTabOpen) ||
+      (snapshot.selectedTab === 'reminders' && snapshot.reminderTabOpen) ||
+      (snapshot.selectedTab === 'calendar' && snapshot.calendarTabOpen) ||
+      restored.some((note) => note.id === snapshot.selectedTab);
+    if (tabAvailable) setSelectedTab(snapshot.selectedTab);
+    if (snapshot.selectedNotebookPath) {
+      const notebook = findEntry(opened.entries, snapshot.selectedNotebookPath);
+      if (notebook?.kind === 'notebook') setSelectedNotebookPath(snapshot.selectedNotebookPath);
+    }
+  };
 
   // Save settings only when the last load succeeded: after a failed load
   // the in-memory settings are defaults, and persisting them would
@@ -1023,9 +1128,21 @@ export default function App() {
           if (!switchingRef.current && generation === vaultGenerationRef.current) {
             setVault(latest);
             if (latest) setSelectedTab('notebooks');
+            else {
+              // No library to reopen: land on the Libraries picker itself,
+              // so opening a library is keyboard-reachable and announced
+              // instead of stranding the user on Notes and Files with
+              // nothing open.
+              setSelectedTab('libraries');
+              setPendingLibraryGridFocus(true);
+            }
           }
         })
-        .catch(() => setStatusMessage('Could not open the last library.'));
+        .catch(() => {
+          setStatusMessage('Could not open the last library.');
+          setSelectedTab('libraries');
+          setPendingLibraryGridFocus(true);
+        });
     if (bridge?.vault.getRecentLibraries)
       void bridge.vault
         .getRecentLibraries()
@@ -1877,6 +1994,7 @@ export default function App() {
     query: string,
     direction: 'next' | 'prev',
     caseSensitive: boolean,
+    moveFocus = false,
   ): string => {
     const matches = findDomMatches(root, query, caseSensitive);
     if (!matches.length) {
@@ -1892,6 +2010,14 @@ export default function App() {
     );
     selectDomMatch(matches, position);
     findPositionRef.current = { docKey, position };
+    // Edit mode focuses the textarea itself; the rendered document needs
+    // the same treatment, or F3 selects a match the keyboard focus never
+    // follows. Only the dialog-closed repeat path moves focus: while the
+    // Find dialog is open, its focus trap owns focus.
+    if (moveFocus) {
+      tabPanelRef.current?.focus();
+      setActiveRegion('main');
+    }
     return `Match ${position + 1} of ${matches.length} for "${query}".`;
   };
 
@@ -1903,7 +2029,12 @@ export default function App() {
    * their preview is a sandboxed frame the app cannot select inside.
    * Returns the status text the Find dialog announces.
    */
-  const searchDocument = (query: string, direction: 'next' | 'prev', caseSensitive: boolean): string => {
+  const searchDocument = (
+    query: string,
+    direction: 'next' | 'prev',
+    caseSensitive: boolean,
+    moveFocus = false,
+  ): string => {
     if (!query) return 'Enter text to find.';
     findQueryRef.current = { query, caseSensitive };
     if (selectedTab === 'attachment' && attachment) {
@@ -1930,7 +2061,7 @@ export default function App() {
       }
       const root = attachmentRef.current;
       if (!root) return 'The document is not displayed.';
-      return searchDomRoot(root, `attachment:${attachment.path}`, query, direction, caseSensitive);
+      return searchDomRoot(root, `attachment:${attachment.path}`, query, direction, caseSensitive, moveFocus);
     }
     if (!currentNote) return 'Open a note or document to search within it.';
     if (mode === 'edit') {
@@ -1959,7 +2090,7 @@ export default function App() {
     }
     const root = annotationTools.documentRef.current;
     if (!root) return 'The note is not displayed.';
-    return searchDomRoot(root, `note:${currentNote.id}:${mode}`, query, direction, caseSensitive);
+    return searchDomRoot(root, `note:${currentNote.id}:${mode}`, query, direction, caseSensitive, moveFocus);
   };
 
   /**
@@ -2003,7 +2134,7 @@ export default function App() {
       if (root && focusReaderSearchBox(root)) return undefined;
       return 'The document search is not ready yet.';
     }
-    return searchDocument(stored.query, direction, stored.caseSensitive);
+    return searchDocument(stored.query, direction, stored.caseSensitive, true);
   };
   type ThesaurusSelection =
     | { kind: 'plain'; start: number; end: number }
@@ -2132,6 +2263,7 @@ export default function App() {
         setSelectedTab('libraries');
         setStatusMessage(`Opened library ${opened.name}.`);
         refreshRecentLibraries();
+        void restoreLibraryUiState(opened);
         return true;
       }
       return false;
@@ -2805,7 +2937,7 @@ export default function App() {
   const toggleFocusMode = () => {
     if (focusMode) {
       setFocusMode(false);
-      setFocusAnnouncement('Focus mode off. The full layout is shown again.');
+      announceFocusMode('Focus mode off. The full layout is shown again.');
       return;
     }
     if (!currentNote) {
@@ -2814,7 +2946,7 @@ export default function App() {
     }
     setContextMenu(null);
     setFocusMode(true);
-    setFocusAnnouncement(
+    announceFocusMode(
       'Focus mode on. Only the title, menu, search, and document are shown. Press F11 to exit Focus mode.',
     );
     const active = document.activeElement;
@@ -2898,13 +3030,21 @@ export default function App() {
     }
     setDeleteLibraryTarget(null);
     try {
-      await bridge.deleteLibrary(target.path);
-    } catch {
-      setStatusMessage('Could not delete the library.');
+      // Permanent delete is opt-in only: the existing call shape (one
+      // argument) keeps meaning "move to the Recycle Bin".
+      if (target.permanent) await bridge.deleteLibrary(target.path, true);
+      else await bridge.deleteLibrary(target.path);
+    } catch (reason) {
+      // Surface the reason instead of a generic failure: a refused path
+      // ("only a recently opened library") and a trash failure need
+      // different next steps, and the user cannot diagnose a silent one.
+      setStatusMessage(
+        `Could not delete the library${reason instanceof Error ? `: ${reason.message}` : '.'}`,
+      );
       return;
     }
     if (isOpen) closeLibraryState();
-    setStatusMessage(`Deleted library ${target.name}.`);
+    setStatusMessage(target.permanent ? `Permanently deleted library ${target.name}.` : `Deleted library ${target.name}.`);
     refreshRecentLibraries();
   };
 
@@ -2960,7 +3100,7 @@ export default function App() {
           : (recentLibraries.find((library) => library.path === request.path)?.name ??
             request.path.split('/').at(-1) ??
             request.path);
-      setDeleteLibraryTarget({ name, path: request.path });
+      setDeleteLibraryTarget({ name, path: request.path, permanent: false });
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
@@ -3563,6 +3703,7 @@ export default function App() {
           setSelectedTab(create ? 'libraries' : 'notebooks');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
+          void restoreLibraryUiState(opened);
         }
       })
       .catch(() => setStatusMessage(create ? 'Could not create the library.' : 'Could not open the selected library.'))
@@ -3930,23 +4071,33 @@ export default function App() {
         window.dispatchEvent(new CustomEvent('a11y:open-math-toolbar'));
         return;
       }
-      // Plain-source editing has no rich-text toolbar: insert a math template
-      // at the cursor (a math code span for Markdown, MathML for HTML).
+      // Plain-source editing has no rich-text toolbar: insert an empty math
+      // template at the cursor (a math code span for Markdown, MathML for
+      // HTML) with the caret just inside it, before the closing marker,
+      // so the user types only the math itself instead of editing around
+      // a prefilled example.
       const textarea = editorRef.current;
       if (!textarea) {
         setStatusMessage('Switch to rich text editing to use the Mathematics toolbar.');
         return;
       }
-      const template = /\.html?$/i.test(currentNote.path)
-        ? '<math alttext="sqrt(x)"><msqrt><mi>x</mi></msqrt></math>'
-        : '`math:sqrt(x)`';
+      const template = /\.html?$/i.test(currentNote.path) ? '<math></math>' : '`math:`';
       const start = textarea.selectionStart ?? currentNote.content.length;
       const end = textarea.selectionEnd ?? start;
+      const caret = start + template.length - (template === '`math:`' ? 1 : 7);
       updateNoteContent(
         currentNote.id,
         `${currentNote.content.slice(0, start)}${template}${currentNote.content.slice(end)}`,
       );
-      setStatusMessage('Math template inserted. Edit the ASCII math inside it.');
+      // The controlled textarea re-renders with the new value; place the
+      // caret after that render lands, as list continuation does.
+      window.setTimeout(() => {
+        if (document.contains(textarea)) {
+          textarea.focus();
+          textarea.setSelectionRange(caret, caret);
+        }
+      }, 0);
+      setStatusMessage('Math template inserted. Type the math inside it.');
       return;
     }
     if (commandId === 'open-vault' || commandId === 'new-library') {
@@ -4166,6 +4317,9 @@ export default function App() {
       const currentIndex = tabs.findIndex((tab) => tab.id === selectedTab);
       const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
       setSelectedTab(tabs[nextIndex].id);
+      // Switching tabs leaves focus where it was, so the landed-on
+      // note or file would otherwise pass silently: announce its title.
+      setStatusMessage(tabs[nextIndex].label);
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
@@ -4665,14 +4819,13 @@ export default function App() {
 
       {/* Focus Mode announcements live here, not in the status bar: the
           status bar is hidden in Focus Mode, and a display:none live region
-          would never be announced. This region renders only while it
-          carries an announcement, so the footer status message stays the
-          single status region in the normal layout. */}
-      {focusAnnouncement ? (
-        <p className="sr-only" role="status">
-          {focusAnnouncement}
-        </p>
-      ) : null}
+          would never be announced. The region stays mounted even when
+          empty: a freshly mounted region carrying text is announced only
+          sometimes, while a text change on a persistent region announces
+          every time. */}
+      <p className="sr-only" role="status">
+        {focusAnnouncement}
+      </p>
 
       {showCommandButtons && (
         <nav className="menu-bar" aria-label="Main menu">
@@ -4763,10 +4916,40 @@ export default function App() {
               }
               onRename={renameEntry}
               onDelete={(entryPath) => void deleteEntry(entryPath)}
+              onDeletePermanent={(entryPath) => void deleteEntryPermanently(entryPath)}
             />
           ) : (
             <p>Open a folder as a local library from the File menu.</p>
           )}
+          {/* The notes grid stays available while a note or file is open:
+          it is the way to open several notes at once without leaving the
+          document to go back to the Notes and Files screen. It renders
+          only on document tabs, when the main grid is unmounted, so the
+          two never duplicate. Focus Mode hides the whole navigation
+          pane, which is the one case where the grid hides with a
+          document open. */}
+          {vault && !securityLocked &&
+          (selectedTab === 'attachment' ||
+            selectedTab === 'assets' ||
+            openNotes.some((note) => note.id === selectedTab)) ? (
+            <NotesFilesScreen
+              showCommandButtons={showCommandButtons}
+              title={viewTitles['notes-files']}
+              entries={displayEntries}
+              hasLibrary={!!vault}
+              onNewNote={() => handleCommand('new-note')}
+              onNewFromTemplate={() => handleCommand('new-from-template')}
+              notebookPath={selectedNotebookPath}
+              creationDisabled={securityLocked || switchingVault || !!relocatingPath}
+              selectedPath={treeSelection}
+              onSelect={selectEntry}
+              onOpen={openDetailsEntry}
+              onRename={(entry) => renameEntry(entry.path)}
+              onDelete={(entry) => void deleteEntry(entry.path)}
+              onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
+              onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
+            />
+          ) : null}
           {vault ? (
             <SearchResults
               filters={searchFilters}
@@ -4892,7 +5075,8 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
-                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget({ ...library, permanent: false })}
+                onDeletePermanent={(library) => setDeleteLibraryTarget({ ...library, permanent: true })}
                 onLibraryContextMenu={(library, invoker, pointer) => {
                   const bounds = invoker.getBoundingClientRect();
                   setContextMenu({
@@ -4917,6 +5101,7 @@ export default function App() {
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onDelete={(entry) => void deleteEntry(entry.path)}
+                onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'notes-files' ? (
@@ -4934,6 +5119,7 @@ export default function App() {
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onDelete={(entry) => void deleteEntry(entry.path)}
+                onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'calendar' ? (
@@ -5182,28 +5368,30 @@ export default function App() {
                     </button>
                   )
                 ) : null}
-                {showCommandButtons && (
+                {showCommandButtons && !focusMode && (
                   <button type="button" onClick={() => void beginExport(currentNote.path)}>
                     Export note…
                   </button>
                 )}
                 {mode === 'edit' ? (
                   <>
-                    {showCommandButtons && (
+                    {showCommandButtons && !focusMode && (
                       <button type="button" onClick={() => void saveActiveNote()}>
                         Save note
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={currentNote.path === encryptedNotePath}
-                      onClick={() => void convertActiveNoteFormat()}
-                    >
-                      Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
-                    </button>
+                    {!focusMode && (
+                      <button
+                        type="button"
+                        disabled={currentNote.path === encryptedNotePath}
+                        onClick={() => void convertActiveNoteFormat()}
+                      >
+                        Convert to {/\.(?:html)$/i.test(currentNote.path) ? 'Markdown' : 'HTML'} copy…
+                      </button>
+                    )}
                   </>
                 ) : null}
-                {currentNoteEditLocked && currentNote.content !== currentNote.saved ? (
+                {currentNoteEditLocked && currentNote.content !== currentNote.saved && !focusMode ? (
                   <button type="button" onClick={() => void saveActiveNote()}>
                     Save locked note changes
                   </button>
@@ -5211,16 +5399,20 @@ export default function App() {
                 {mode === 'edit' ? (
                   <>
                     <EditorTools
-                      showCommandButtons={showCommandButtons}
+                      showCommandButtons={showCommandButtons && !focusMode}
                       ref={editorToolsRef}
                       textareaRef={editorRef}
                       bindShortcuts={false}
-                      notePaths={notePaths}
+                      // Wiki links only point at a note; they never write
+                      // into it, so every note is linkable, including
+                      // legacy notes without an origin record that task
+                      // linking must exclude.
+                      notePaths={reminderNotePaths}
                       announce={setStatusMessage}
                       onRequestAttachment={() => handleCommand('insert-attachment')}
                       onContentChange={(content) => updateNoteContent(currentNote.id, content)}
                     />
-                    {showCommandButtons ? (
+                    {showCommandButtons && !focusMode ? (
                       <>
                         <button type="button" onClick={() => void addAnchoredBookmark('heading')}>
                           Bookmark heading at cursor
@@ -5250,6 +5442,8 @@ export default function App() {
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
+                    announce={setStatusMessage}
+                    hideModeToggle={focusMode}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                     htmlTasks={tasks.filter((task) => task.path === currentNote.path && task.htmlTask)}
@@ -5270,7 +5464,8 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
-                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget({ ...library, permanent: false })}
+                onDeletePermanent={(library) => setDeleteLibraryTarget({ ...library, permanent: true })}
                 onLibraryContextMenu={(library, invoker, pointer) => {
                   const bounds = invoker.getBoundingClientRect();
                   setContextMenu({
@@ -5774,6 +5969,7 @@ export default function App() {
       {deleteLibraryTarget ? (
         <DeleteLibraryDialog
           library={deleteLibraryTarget}
+          permanent={deleteLibraryTarget.permanent}
           onCancel={() => setDeleteLibraryTarget(null)}
           onConfirm={() => void confirmDeleteLibrary()}
         />

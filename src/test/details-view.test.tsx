@@ -223,6 +223,18 @@ describe('accessible details view', () => {
     expect(onDelete).toHaveBeenCalledWith(items[2]);
   });
 
+  it('routes Shift+Delete to the permanent handler, not the trash handler', () => {
+    const onDelete = vi.fn();
+    const onDeletePermanent = vi.fn();
+    renderDetails({ onDelete, onDeletePermanent });
+    const alpha = screen.getByRole('gridcell', { name: 'Alpha.md' });
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'Delete', shiftKey: true });
+    expect(onDeletePermanent).toHaveBeenCalledTimes(1);
+    expect(onDeletePermanent).toHaveBeenCalledWith(items[2]);
+    expect(onDelete).not.toHaveBeenCalled();
+  });
+
   it('moves focus to a nearby item if the focused identity is removed', () => {
     const { rerender } = render(
       <DetailsView label="Notebook items" items={items} selectedPath={null} onSelect={vi.fn()} onOpen={vi.fn()} />,

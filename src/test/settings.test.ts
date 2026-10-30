@@ -131,12 +131,19 @@ describe('settings and shortcut validation', () => {
       { reminderAlerts: 'yes' },
       { reminderSound: 1 },
       { reminderSoundChoice: '../file' },
+      { reminderSoundFile: 42 },
       { reminderVolume: -1 },
       { reminderVolume: 101 },
       { reminderVolume: 1.5 },
     ]) {
       expect(() => validateSettings({ ...DEFAULT_SETTINGS, ...value })).toThrow();
     }
+  });
+
+  it('persists a custom reminder sound file', () => {
+    expect(
+      validateSettings({ ...DEFAULT_SETTINGS, reminderSoundChoice: 'custom', reminderSoundFile: '/music/bell.mp3' }),
+    ).toMatchObject({ reminderSoundChoice: 'custom', reminderSoundFile: '/music/bell.mp3' });
   });
   it('canonicalizes shortcuts and detects collisions with defaults', () => {
     expect(normalizeShortcut('shift + ctrl + b')).toBe('Ctrl+Shift+B');

@@ -28,7 +28,7 @@ describe('Tutorial dialog', () => {
   it('names the dialog in the window title while open and restores it on close', () => {
     document.title = 'Files | My Library | A11y Notebook';
     const { unmount } = render(<TutorialDialog onClose={vi.fn()} />);
-    expect(document.title).toBe('Getting started with A11y Notebook – A11y Notebook');
+    expect(document.title).toBe('Welcome Tutorial | A11y Notebook');
     unmount();
     expect(document.title).toBe('Files | My Library | A11y Notebook');
   });

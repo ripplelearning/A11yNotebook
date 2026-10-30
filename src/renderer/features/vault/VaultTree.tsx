@@ -9,6 +9,8 @@ interface VaultTreeProps {
   onOpen: (entry: VaultEntry) => void;
   onRename: (path: string, name?: string) => void;
   onDelete: (path: string) => void;
+  /** Shift+Delete handler; without it, Shift+Delete falls back to onDelete. */
+  onDeletePermanent?: (path: string) => void;
 }
 
 interface VisibleEntry {
@@ -27,7 +29,7 @@ function visibleEntries(entries: VaultEntry[], expanded: Set<string>, level = 1,
 }
 
 /** Provides treeview focus, expansion, selection, and the core APG keyboard model. */
-export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onRename, onDelete }: VaultTreeProps) {
+export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onRename, onDelete, onDeletePermanent }: VaultTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
@@ -103,7 +105,12 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
         break;
       }
       case 'Delete':
-        onDelete(entry.path);
+        event.preventDefault();
+        // Shift+Delete is permanent delete. preventDefault also keeps the
+        // app-wide Shift+Delete handler from firing a second delete for
+        // the same keypress.
+        if (event.shiftKey && onDeletePermanent) onDeletePermanent(entry.path);
+        else onDelete(entry.path);
         break;
       case '*':
         setExpanded((current) => {
