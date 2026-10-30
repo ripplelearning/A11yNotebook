@@ -72,6 +72,8 @@ interface MarkdownDocumentProps {
   disabled?: boolean;
   htmlTasks?: VaultTask[];
   onToggleHtmlTask?: (taskId: string) => void;
+  /** Status announcements for automatic edits, such as list continuation. */
+  announce?: (message: string) => void;
 }
 
 /** Render safe browse-mode HTML or expose the unformatted Markdown source editor. */
@@ -88,6 +90,7 @@ export default function MarkdownDocument({
   disabled,
   htmlTasks = [],
   onToggleHtmlTask,
+  announce,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
   if (mode === 'edit' && format === 'text') {
@@ -153,6 +156,7 @@ export default function MarkdownDocument({
                 if (!continued) return;
                 event.preventDefault();
                 onChange(continued.value);
+                announce?.(continued.announcement);
                 // The parent re-renders the controlled textarea with the new
                 // value; restore the caret after that render lands.
                 window.setTimeout(() => {

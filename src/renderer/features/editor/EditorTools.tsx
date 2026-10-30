@@ -284,13 +284,17 @@ const EditorTools = forwardRef<EditorToolsHandle, EditorToolsProps>(function Edi
                     <option value="note">Note (wiki link)</option>
                   </select>
                   <label htmlFor={`${id}-label`}>Link text</label>
-                  <input id={`${id}-label`} value={label} onChange={(event) => setLabel(event.target.value)} />
+                  <input
+                    id={`${id}-label`}
+                    data-autofocus
+                    value={label}
+                    onChange={(event) => setLabel(event.target.value)}
+                  />
                   {linkKind === 'url' ? (
                     <>
                       <label htmlFor={`${id}-url`}>URL</label>
                       <input
                         id={`${id}-url`}
-                        data-autofocus
                         type="text"
                         value={url}
                         aria-describedby={`${id}-hint`}

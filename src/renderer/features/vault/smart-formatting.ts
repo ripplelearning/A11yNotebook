@@ -23,6 +23,14 @@ export function detectSmartTrigger(beforeCaret: string): SmartTrigger | null {
 export interface ListContinuation {
   value: string;
   caret: number;
+  /**
+   * What the screen reader should hear for the automatic change: the new
+   * marker itself for ordered lists ("3."), "bullet" for unordered ones,
+   * "task" for checklist items, or "List ended." when Enter ends the list.
+   * Without this, the inserted marker lands silently and the user cannot
+   * tell what the editor just did.
+   */
+  announcement: string;
 }
 
 /**
@@ -51,16 +59,18 @@ export function continueMarkdownList(
   const afterCaret = value.slice(caret, lineEnd);
   if (!itemText && !afterCaret) {
     // Empty item: Enter ends the list instead of adding another marker.
-    return { value: value.slice(0, lineStart) + value.slice(lineEnd), caret: lineStart };
+    return { value: value.slice(0, lineStart) + value.slice(lineEnd), caret: lineStart, announcement: 'List ended.' };
   }
   let nextMarker: string;
   const ordered = /^(\d+)([.)])$/.exec(marker);
   if (ordered) nextMarker = task ? `${Number(ordered[1]) + 1}${ordered[2]} [ ]` : `${Number(ordered[1]) + 1}${ordered[2]}`;
   else if (task) nextMarker = `${marker} [ ]`;
   else nextMarker = marker;
+  const announcement = task ? 'task' : ordered ? nextMarker : 'bullet';
   const insert = `\n${indent}${nextMarker} `;
   return {
     value: value.slice(0, caret) + insert + value.slice(caret),
     caret: caret + insert.length,
+    announcement,
   };
 }

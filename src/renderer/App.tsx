@@ -5330,7 +5330,11 @@ export default function App() {
                       ref={editorToolsRef}
                       textareaRef={editorRef}
                       bindShortcuts={false}
-                      notePaths={notePaths}
+                      // Wiki links only point at a note; they never write
+                      // into it, so every note is linkable, including
+                      // legacy notes without an origin record that task
+                      // linking must exclude.
+                      notePaths={reminderNotePaths}
                       announce={setStatusMessage}
                       onRequestAttachment={() => handleCommand('insert-attachment')}
                       onContentChange={(content) => updateNoteContent(currentNote.id, content)}
@@ -5365,6 +5369,7 @@ export default function App() {
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
+                    announce={setStatusMessage}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
                     htmlTasks={tasks.filter((task) => task.path === currentNote.path && task.htmlTask)}

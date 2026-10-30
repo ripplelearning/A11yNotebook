@@ -5,36 +5,36 @@ import { continueMarkdownList } from '../renderer/features/vault/smart-formattin
 
 describe('markdown list continuation', () => {
   it('continues an unordered item on Enter', () => {
-    expect(continueMarkdownList('- item', 6, 6)).toEqual({ value: '- item\n- ', caret: 9 });
+    expect(continueMarkdownList('- item', 6, 6)).toEqual({ value: '- item\n- ', caret: 9, announcement: 'bullet' });
   });
 
   it('increments an ordered item and keeps its delimiter', () => {
-    expect(continueMarkdownList('2. item', 7, 7)).toEqual({ value: '2. item\n3. ', caret: 11 });
-    expect(continueMarkdownList('1) item', 7, 7)).toEqual({ value: '1) item\n2) ', caret: 11 });
+    expect(continueMarkdownList('2. item', 7, 7)).toEqual({ value: '2. item\n3. ', caret: 11, announcement: '3.' });
+    expect(continueMarkdownList('1) item', 7, 7)).toEqual({ value: '1) item\n2) ', caret: 11, announcement: '2)' });
   });
 
   it('continues a checked task item as a fresh unchecked item', () => {
-    expect(continueMarkdownList('- [x] done', 10, 10)).toEqual({ value: '- [x] done\n- [ ] ', caret: 17 });
-    expect(continueMarkdownList('1. [ ] done', 11, 11)).toEqual({ value: '1. [ ] done\n2. [ ] ', caret: 19 });
+    expect(continueMarkdownList('- [x] done', 10, 10)).toEqual({ value: '- [x] done\n- [ ] ', caret: 17, announcement: 'task' });
+    expect(continueMarkdownList('1. [ ] done', 11, 11)).toEqual({ value: '1. [ ] done\n2. [ ] ', caret: 19, announcement: 'task' });
   });
 
   it('keeps the indent of a nested item', () => {
-    expect(continueMarkdownList('  - item', 8, 8)).toEqual({ value: '  - item\n  - ', caret: 13 });
+    expect(continueMarkdownList('  - item', 8, 8)).toEqual({ value: '  - item\n  - ', caret: 13, announcement: 'bullet' });
   });
 
   it('splits the item when Enter is pressed mid-line', () => {
-    expect(continueMarkdownList('- fooo', 4, 4)).toEqual({ value: '- fo\n- oo', caret: 7 });
+    expect(continueMarkdownList('- fooo', 4, 4)).toEqual({ value: '- fo\n- oo', caret: 7, announcement: 'bullet' });
   });
 
   it('ends the list on Enter in an empty item, so a second Enter stops the list', () => {
     const first = continueMarkdownList('- item', 6, 6)!;
     expect(first.value).toBe('- item\n- ');
     const second = continueMarkdownList(first.value, first.caret, first.caret)!;
-    expect(second).toEqual({ value: '- item\n', caret: 7 });
+    expect(second).toEqual({ value: '- item\n', caret: 7, announcement: 'List ended.' });
   });
 
   it('ends an empty ordered item too', () => {
-    expect(continueMarkdownList('3. ', 3, 3)).toEqual({ value: '', caret: 0 });
+    expect(continueMarkdownList('3. ', 3, 3)).toEqual({ value: '', caret: 0, announcement: 'List ended.' });
   });
 
   it('leaves non-list lines and selections alone', () => {
@@ -61,5 +61,25 @@ describe('markdown source textarea', () => {
     area.setSelectionRange(6, 6);
     fireEvent.keyDown(area, { key: 'Enter' });
     expect(onChange).toHaveBeenCalledWith('- item\n- ');
+  });
+
+  it('announces the auto-inserted marker instead of applying it silently', () => {
+    const onChange = vi.fn();
+    const announce = vi.fn();
+    render(
+      <MarkdownDocument
+        content="2. item"
+        mode="edit"
+        format="markdown"
+        links={[]}
+        onChange={onChange}
+        onNavigate={() => undefined}
+        announce={announce}
+      />,
+    );
+    const area = screen.getByLabelText('Markdown source') as HTMLTextAreaElement;
+    area.setSelectionRange(7, 7);
+    fireEvent.keyDown(area, { key: 'Enter' });
+    expect(announce).toHaveBeenCalledWith('3.');
   });
 });
