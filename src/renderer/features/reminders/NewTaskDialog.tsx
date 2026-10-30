@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
-import { isValidDateText, isValidTimeText } from '../../../shared/reminders';
+import { isValidDateText, isValidTimeText, normalizeTimeText } from '../../../shared/reminders';
 
 export interface NewTaskFields {
   text: string;
@@ -50,7 +50,7 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
             return;
           }
           if (reminderTime && !isValidTimeText(reminderTime)) {
-            setError('Enter a reminder time as HH:MM.');
+            setError('Enter a reminder time as HH:MM or H:MM AM/PM.');
             return;
           }
           setBusy(true);
@@ -58,7 +58,7 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           void onCreate({
             text: text.trim(),
             due,
-            reminder: reminderDate && reminderTime ? `${reminderDate}T${reminderTime}` : '',
+            reminder: reminderDate && reminderTime ? `${reminderDate}T${normalizeTimeText(reminderTime) ?? ''}` : '',
             priority,
           })
             .then(onClose)
@@ -88,7 +88,7 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           Reminder time, HH:MM
           <input
             type="text"
-            placeholder="HH:MM"
+            placeholder="HH:MM or 9:30 AM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}
@@ -171,7 +171,7 @@ export function AssociatedTaskDialog({
             return;
           }
           if (reminderTime && !isValidTimeText(reminderTime)) {
-            setLocalError('Enter a reminder time as HH:MM.');
+            setLocalError('Enter a reminder time as HH:MM or H:MM AM/PM.');
             return;
           }
           if (path && text.trim() && !busy)
@@ -180,7 +180,7 @@ export function AssociatedTaskDialog({
               text.trim(),
               due,
               priority,
-              reminderDate && reminderTime ? `${reminderDate}T${reminderTime}` : '',
+              reminderDate && reminderTime ? `${reminderDate}T${normalizeTimeText(reminderTime) ?? ''}` : '',
             );
         }}
       >
@@ -227,7 +227,7 @@ export function AssociatedTaskDialog({
           Reminder time, HH:MM
           <input
             type="text"
-            placeholder="HH:MM"
+            placeholder="HH:MM or 9:30 AM"
             value={reminderTime}
             disabled={busy}
             onChange={(event) => setReminderTime(event.target.value)}

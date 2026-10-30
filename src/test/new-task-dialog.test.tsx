@@ -54,7 +54,7 @@ describe('new task dialogs', () => {
     fireEvent.change(within(dialog).getByLabelText('Reminder date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
     fireEvent.change(within(dialog).getByLabelText('Reminder time, HH:MM'), { target: { value: '25:00' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter a reminder time as HH:MM.');
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter a reminder time as HH:MM or H:MM AM/PM.');
     expect(onCreate).not.toHaveBeenCalled();
   });
 

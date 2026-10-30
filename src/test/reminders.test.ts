@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
-import { parseReminderDate, snoozeUntil, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
+import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
@@ -75,6 +75,22 @@ describe('reminder parsing and validation', () => {
         complete: false,
       },
     ]);
+  });
+
+  it('normalizes typed 12-hour times to 24-hour storage and rejects bad ones', () => {
+    expect(normalizeTimeText('14:30')).toBe('14:30');
+    expect(normalizeTimeText('2:30 PM')).toBe('14:30');
+    expect(normalizeTimeText('2:30PM')).toBe('14:30');
+    expect(normalizeTimeText('02:30 pm')).toBe('14:30');
+    expect(normalizeTimeText('12:00 AM')).toBe('00:00');
+    expect(normalizeTimeText('12:00 PM')).toBe('12:00');
+    expect(normalizeTimeText('9:05 am')).toBe('09:05');
+    for (const value of ['13:30 PM', '0:30 AM', '2:60 PM', '2:30', '25:00', '2:30 XM', '']) {
+      expect(normalizeTimeText(value)).toBeNull();
+      expect(isValidTimeText(value)).toBe(false);
+    }
+    expect(isValidTimeText('2:30 PM')).toBe(true);
+    expect(isValidTimeText('14:30')).toBe(true);
   });
 
   it('rejects impossible calendar dates and timestamps rather than normalizing them', () => {
