@@ -4277,6 +4277,9 @@ export default function App() {
       const currentIndex = tabs.findIndex((tab) => tab.id === selectedTab);
       const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
       setSelectedTab(tabs[nextIndex].id);
+      // Switching tabs leaves focus where it was, so the landed-on
+      // note or file would otherwise pass silently: announce its title.
+      setStatusMessage(tabs[nextIndex].label);
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
@@ -4879,6 +4882,35 @@ export default function App() {
           ) : (
             <p>Open a folder as a local library from the File menu.</p>
           )}
+          {/* The notes grid stays available while a note or file is open:
+          it is the way to open several notes at once without leaving the
+          document to go back to the Notes and Files screen. It renders
+          only on document tabs, when the main grid is unmounted, so the
+          two never duplicate. Focus Mode hides the whole navigation
+          pane, which is the one case where the grid hides with a
+          document open. */}
+          {vault && !securityLocked &&
+          (selectedTab === 'attachment' ||
+            selectedTab === 'assets' ||
+            openNotes.some((note) => note.id === selectedTab)) ? (
+            <NotesFilesScreen
+              showCommandButtons={showCommandButtons}
+              title={viewTitles['notes-files']}
+              entries={displayEntries}
+              hasLibrary={!!vault}
+              onNewNote={() => handleCommand('new-note')}
+              onNewFromTemplate={() => handleCommand('new-from-template')}
+              notebookPath={selectedNotebookPath}
+              creationDisabled={securityLocked || switchingVault || !!relocatingPath}
+              selectedPath={treeSelection}
+              onSelect={selectEntry}
+              onOpen={openDetailsEntry}
+              onRename={(entry) => renameEntry(entry.path)}
+              onDelete={(entry) => void deleteEntry(entry.path)}
+              onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
+              onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
+            />
+          ) : null}
           {vault ? (
             <SearchResults
               filters={searchFilters}
