@@ -1112,9 +1112,21 @@ export default function App() {
           if (!switchingRef.current && generation === vaultGenerationRef.current) {
             setVault(latest);
             if (latest) setSelectedTab('notebooks');
+            else {
+              // No library to reopen: land on the Libraries picker itself,
+              // so opening a library is keyboard-reachable and announced
+              // instead of stranding the user on Notes and Files with
+              // nothing open.
+              setSelectedTab('libraries');
+              setPendingLibraryGridFocus(true);
+            }
           }
         })
-        .catch(() => setStatusMessage('Could not open the last library.'));
+        .catch(() => {
+          setStatusMessage('Could not open the last library.');
+          setSelectedTab('libraries');
+          setPendingLibraryGridFocus(true);
+        });
     if (bridge?.vault.getRecentLibraries)
       void bridge.vault
         .getRecentLibraries()
