@@ -148,6 +148,8 @@ export interface VaultBridge {
   delete(path: string): Promise<VaultInfo>;
   deletePermanently(path: string, hasUnsavedChanges: boolean): Promise<VaultInfo>;
   deleteLibrary?(path: string, permanent?: boolean): Promise<{ deleted: boolean }>;
+  chooseReminderSoundFile?(): Promise<string | null>;
+  readReminderSoundFile?(path: string): Promise<string>;
   getTasks(): Promise<VaultTask[]>;
   createTask?(input: {
     notebookPath?: string;

@@ -25,6 +25,8 @@ export const IPC_CHANNELS = {
   vaultCreateAutoBackup: 'vault:create-auto-backup',
   vaultPasteInspect: 'vault:paste-inspect',
   vaultPasteChooseFolder: 'vault:paste-choose-folder',
+  vaultChooseReminderSound: 'vault:choose-reminder-sound',
+  vaultReadReminderSound: 'vault:read-reminder-sound',
   vaultPasteLibraryCopy: 'vault:paste-library-copy',
   vaultPasteLibraryOpen: 'vault:paste-library-open',
   vaultPasteNotebook: 'vault:paste-notebook',

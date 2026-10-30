@@ -2647,6 +2647,38 @@ export function setupVaultIpc(
     });
     return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
   });
+  // Reminder sound choice: any audio file on the computer, picked with the
+  // system file dialog. Playback reads through the main process so the
+  // renderer never needs direct file access, and the file is capped so a
+  // music library cannot be loaded as a notification sound by accident.
+  ipcMain.handle(IPC_CHANNELS.vaultChooseReminderSound, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    const result = await dialog.showOpenDialog({
+      title: 'Choose a reminder sound',
+      buttonLabel: 'Choose sound',
+      properties: ['openFile'],
+      filters: [{ name: 'Audio', extensions: ['wav', 'mp3', 'ogg', 'm4a'] }],
+    });
+    return result.canceled || !result.filePaths[0] ? null : result.filePaths[0];
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReadReminderSound, async (event, soundPath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof soundPath !== 'string' || !soundPath) throw new Error('Sound file path must be text.');
+    const mimeByExtension: Record<string, string> = {
+      '.wav': 'audio/wav',
+      '.mp3': 'audio/mpeg',
+      '.ogg': 'audio/ogg',
+      '.m4a': 'audio/mp4',
+    };
+    const mime = mimeByExtension[path.extname(soundPath).toLowerCase()];
+    if (!mime) throw new Error('Sound file must be a WAV, MP3, OGG, or M4A file.');
+    const stat = await lstat(soundPath).catch(() => null);
+    if (!stat?.isFile() || stat.size > 10 * 1024 * 1024) {
+      throw new Error('Sound file must be a file under 10 MB.');
+    }
+    const bytes = await readFile(soundPath);
+    return `data:${mime};base64,${bytes.toString('base64')}`;
+  });
   ipcMain.handle(
     IPC_CHANNELS.vaultPasteLibraryCopy,
     async (event, source: unknown, parent: unknown) => {

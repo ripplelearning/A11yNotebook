@@ -328,4 +328,25 @@ describe('reminder sound settings', () => {
       ),
     );
   });
+
+  it('lets the user pick a custom sound file and tests that file', async () => {
+    const choose = vi.fn(async () => '/music/bell.mp3');
+    const read = vi.fn(async () => 'data:audio/mpeg;base64,AAA');
+    Object.assign(window.a11yNotebook!.vault, { chooseReminderSoundFile: choose, readReminderSoundFile: read });
+    const save = vi.fn().mockResolvedValue(undefined);
+    render(<SettingsDialog settings={DEFAULT_SETTINGS} onSave={save} onClose={vi.fn()} />);
+    fireEvent.change(screen.getByLabelText('Reminder sound'), { target: { value: 'custom' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Choose sound file…' }));
+    await waitFor(() => expect(choose).toHaveBeenCalled());
+    expect(screen.getByText(/Custom sound file: bell\.mp3/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Test sound' }));
+    await waitFor(() => expect(read).toHaveBeenCalledWith('/music/bell.mp3'));
+    await waitFor(() => expect(audio.play).toHaveBeenCalled());
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() =>
+      expect(save).toHaveBeenCalledWith(
+        expect.objectContaining({ reminderSoundChoice: 'custom', reminderSoundFile: '/music/bell.mp3' }),
+      ),
+    );
+  });
 });
