@@ -10,7 +10,7 @@ import { createVaultService } from '../../electron/vault/service';
 
 describe('superseded originals', () => {
   it('flags the source superseded after import, keeps the flag on re-read, and clears it when the copy is deleted', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-')));
     try {
       await writeFile(path.join(dir, 'Outside.md'), '# Outside\n');
       const service = createVaultService(dir);
@@ -44,7 +44,7 @@ describe('superseded originals', () => {
   });
 
   it('does not supersede anything when importing a file from outside the library', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-')));
     // macOS temp folders sit under /var, a symlink; the import guard rejects
     // symlinked paths, so canonicalize the outside folder first.
     const outside = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-outside-')));
@@ -62,7 +62,7 @@ describe('superseded originals', () => {
   });
 
   it('supersedes the original when Import file picks a file already inside the library', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-')));
     try {
       await writeFile(path.join(dir, 'Inside.md'), '# Inside\n');
       const service = createVaultService(dir);
@@ -76,7 +76,7 @@ describe('superseded originals', () => {
   });
 
   it('records the copy identity, not just its path, so a renamed copy still supersedes', async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
+    const dir = await realpath(await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-')));
     try {
       await writeFile(path.join(dir, 'Outside.md'), '# Outside\n');
       const service = createVaultService(dir);
