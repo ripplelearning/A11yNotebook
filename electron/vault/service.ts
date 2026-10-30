@@ -886,7 +886,40 @@ export function createVaultService(
   }
 
   async function importFile(source: string, notebookPath = '', assertCurrent: () => void = () => undefined) {
-    return (await importFileCopy(source, notebookPath, assertCurrent, false, true)).vault;
+    // A file picked from inside the library is an original, not an outside
+    // file: it needs a unique copy name (otherwise the copy would collide
+    // with the original itself) and a superseded record so views hide the
+    // original, exactly like a managed copy made from a library file.
+    // Files from outside keep the previous behavior: the imported name,
+    // with no record, since there is no original in the library.
+    let inLibraryRelative: string | null = null;
+    let sourceReal: string | null = null;
+    try {
+      sourceReal = await realpath(source);
+      const relative = root ? path.relative(root, sourceReal).split(path.sep).join(path.posix.sep) : '';
+      if (relative && !relative.startsWith('..') && !path.posix.isAbsolute(relative)) inLibraryRelative = relative;
+    } catch {
+      // Outside the library or unreadable: existing behavior below.
+    }
+    const { path: copyRelative } = await importFileCopy(
+      source,
+      notebookPath,
+      assertCurrent,
+      inLibraryRelative !== null,
+      true,
+    );
+    // Hiding is display-only: if recording fails, the import still stands
+    // and the original simply stays visible.
+    if (inLibraryRelative && !inLibraryRelative.startsWith('.a11ynotebook/') && sourceReal) {
+      try {
+        await superseded.record(sourceReal, await resolveEntry(copyRelative), copyRelative, assertCurrent);
+      } catch {
+        // Leave the original visible.
+      }
+    }
+    // Re-read after recording: the vault snapshot from the copy itself
+    // predates the superseded record, so it would not show the flag.
+    return getVault();
   }
 
   async function importEntry(relative: string, assertCurrent: () => void = () => undefined) {

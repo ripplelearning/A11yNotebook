@@ -61,6 +61,20 @@ describe('superseded originals', () => {
     }
   });
 
+  it('supersedes the original when Import file picks a file already inside the library', async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
+    try {
+      await writeFile(path.join(dir, 'Inside.md'), '# Inside\n');
+      const service = createVaultService(dir);
+      await service.initialize();
+      const view = await service.importFile(path.join(dir, 'Inside.md'), '');
+      expect(view.entries.find((entry) => entry.path === 'Inside.md')?.superseded).toBe(true);
+      expect(view.entries.some((entry) => /^Imported-[0-9a-f-]+-Inside\.md$/.test(entry.path))).toBe(true);
+    } finally {
+      await rm(dir, { recursive: true, force: true });
+    }
+  });
+
   it('records the copy identity, not just its path, so a renamed copy still supersedes', async () => {
     const dir = await mkdtemp(path.join(os.tmpdir(), 'a11y-superseded-'));
     try {
