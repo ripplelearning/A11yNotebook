@@ -18,6 +18,8 @@ export interface DetailsViewProps<T extends DetailsViewItem = VaultEntry> {
   onOpen: (entry: T) => void;
   onRename?: (entry: T) => void;
   onDelete?: (entry: T) => void;
+  /** Shift+Delete handler; without it, Shift+Delete falls back to onDelete. */
+  onDeletePermanent?: (entry: T) => void;
   onContextMenu?: (entry: T, invoker: HTMLElement, pointer?: { x: number; y: number }) => void;
   emptyMessage?: string;
   /** Columns to display; defaults to Name and Type, the notebooks and notes grids. */
@@ -41,6 +43,7 @@ export default function DetailsView<T extends DetailsViewItem>({
   onOpen,
   onRename,
   onDelete,
+  onDeletePermanent,
   onContextMenu,
   emptyMessage = 'No items to display.',
   columns = DEFAULT_COLUMNS,
@@ -158,10 +161,13 @@ export default function DetailsView<T extends DetailsViewItem>({
         }
         return;
       case 'Delete':
-        if (onDelete) {
-          event.preventDefault();
-          onDelete(item);
-        }
+        event.preventDefault();
+        // Shift+Delete is permanent delete, mirroring the operating system
+        // convention; without a permanent handler it falls back to trash.
+        // preventDefault also keeps the app-wide Shift+Delete handler from
+        // firing a second delete for the same keypress.
+        if (event.shiftKey && onDeletePermanent) onDeletePermanent(item);
+        else if (onDelete) onDelete(item);
         return;
       case ' ':
         event.preventDefault();

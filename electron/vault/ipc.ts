@@ -3507,15 +3507,24 @@ export function setupVaultIpc(
       }
     });
   });
-  ipcMain.handle(IPC_CHANNELS.vaultDeleteLibrary, async (event, requested: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultDeleteLibrary, async (event, requested: unknown, permanent: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof requested !== 'string' || !requested) throw new Error('Library path must be text.');
     // Only a library the app knows about can be deleted: a recent library,
     // or the currently open one. Anything else is refused, so IPC data can
-    // never point the trash at an arbitrary folder.
+    // never point the trash at an arbitrary folder. Paths are compared
+    // after resolving separators and, on Windows, case, because the same
+    // folder can arrive spelled differently from the picker and recents.
+    const samePath = (left: string, right: string) => {
+      const normalize = (value: string) => {
+        const resolved = path.resolve(value);
+        return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+      };
+      return normalize(left) === normalize(right);
+    };
     const recents = await listRecentVaults();
     const openPath = service ? vaultPathOf(await service.getVault()) : null;
-    const known = recents.some((entry) => entry.path === requested) || openPath === requested;
+    const known = recents.some((entry) => samePath(entry.path, requested)) || (openPath !== null && samePath(openPath, requested));
     if (!known) throw new Error('Only a recently opened library can be deleted.');
     const stat = await lstat(requested).catch(() => null);
     if (!stat?.isDirectory() || stat.isSymbolicLink()) {
@@ -3523,7 +3532,8 @@ export function setupVaultIpc(
     }
     // The trashed folder drops out of the picker on the next read, because
     // listRecentVaults only keeps folders that still exist.
-    await shell.trashItem(requested);
+    if (permanent === true) await rm(requested, { recursive: true, force: false });
+    else await shell.trashItem(requested);
     return { deleted: true };
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetTasks, async (event) => {

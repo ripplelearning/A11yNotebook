@@ -147,7 +147,7 @@ export interface VaultBridge {
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   deletePermanently(path: string, hasUnsavedChanges: boolean): Promise<VaultInfo>;
-  deleteLibrary?(path: string): Promise<{ deleted: boolean }>;
+  deleteLibrary?(path: string, permanent?: boolean): Promise<{ deleted: boolean }>;
   getTasks(): Promise<VaultTask[]>;
   createTask?(input: {
     notebookPath?: string;

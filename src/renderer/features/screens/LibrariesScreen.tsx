@@ -9,6 +9,7 @@ interface LibrariesScreenProps {
   onNewLibrary?: () => void;
   onOpenRecent?: (path: string) => void;
   onDeleteLibrary?: (library: { name: string; path: string }) => void;
+  onDeletePermanent?: (library: { name: string; path: string }) => void;
   onLibraryContextMenu?: (
     library: { name: string; path: string },
     invoker: HTMLElement,
@@ -25,6 +26,7 @@ export default function LibrariesScreen({
   onNewLibrary,
   onOpenRecent,
   onDeleteLibrary,
+  onDeletePermanent,
   onLibraryContextMenu,
   disabled,
   showCommandButtons = true,
@@ -70,6 +72,9 @@ export default function LibrariesScreen({
         }}
         onDelete={(entry) => {
           if (!disabled) onDeleteLibrary?.(entry);
+        }}
+        onDeletePermanent={(entry) => {
+          if (!disabled) onDeletePermanent?.(entry);
         }}
         onContextMenu={(entry, invoker, pointer) => {
           if (!disabled) onLibraryContextMenu?.(entry, invoker, pointer);

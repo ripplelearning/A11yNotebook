@@ -317,7 +317,7 @@ const bridge: NotebookBridge = {
     adoptEncrypted: (relativePath, password) =>
       ipcRenderer.invoke(CHANNELS.vaultAdoptEncrypted, relativePath, password),
     delete: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDelete, relativePath),
-    deleteLibrary: (libraryPath) => ipcRenderer.invoke(CHANNELS.vaultDeleteLibrary, libraryPath),
+    deleteLibrary: (libraryPath, permanent?) => ipcRenderer.invoke(CHANNELS.vaultDeleteLibrary, libraryPath, permanent),
     deletePermanently: (relativePath, hasUnsavedChanges) =>
       ipcRenderer.invoke(CHANNELS.vaultDeletePermanent, relativePath, hasUnsavedChanges),
     getTasks: () => ipcRenderer.invoke(CHANNELS.vaultGetTasks),

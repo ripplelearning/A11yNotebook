@@ -337,7 +337,7 @@ export default function App() {
   useEffect(() => () => clearTimeout(navigationAnnouncementTimer.current), []);
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
-  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string } | null>(null);
+  const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string; permanent: boolean } | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
@@ -2898,13 +2898,21 @@ export default function App() {
     }
     setDeleteLibraryTarget(null);
     try {
-      await bridge.deleteLibrary(target.path);
-    } catch {
-      setStatusMessage('Could not delete the library.');
+      // Permanent delete is opt-in only: the existing call shape (one
+      // argument) keeps meaning "move to the Recycle Bin".
+      if (target.permanent) await bridge.deleteLibrary(target.path, true);
+      else await bridge.deleteLibrary(target.path);
+    } catch (reason) {
+      // Surface the reason instead of a generic failure: a refused path
+      // ("only a recently opened library") and a trash failure need
+      // different next steps, and the user cannot diagnose a silent one.
+      setStatusMessage(
+        `Could not delete the library${reason instanceof Error ? `: ${reason.message}` : '.'}`,
+      );
       return;
     }
     if (isOpen) closeLibraryState();
-    setStatusMessage(`Deleted library ${target.name}.`);
+    setStatusMessage(target.permanent ? `Permanently deleted library ${target.name}.` : `Deleted library ${target.name}.`);
     refreshRecentLibraries();
   };
 
@@ -2960,7 +2968,7 @@ export default function App() {
           : (recentLibraries.find((library) => library.path === request.path)?.name ??
             request.path.split('/').at(-1) ??
             request.path);
-      setDeleteLibraryTarget({ name, path: request.path });
+      setDeleteLibraryTarget({ name, path: request.path, permanent: false });
       return;
     }
     const entry = request.path ? findEntry(vault?.entries ?? [], request.path) : undefined;
@@ -4763,6 +4771,7 @@ export default function App() {
               }
               onRename={renameEntry}
               onDelete={(entryPath) => void deleteEntry(entryPath)}
+              onDeletePermanent={(entryPath) => void deleteEntryPermanently(entryPath)}
             />
           ) : (
             <p>Open a folder as a local library from the File menu.</p>
@@ -4892,7 +4901,8 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
-                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget({ ...library, permanent: false })}
+                onDeletePermanent={(library) => setDeleteLibraryTarget({ ...library, permanent: true })}
                 onLibraryContextMenu={(library, invoker, pointer) => {
                   const bounds = invoker.getBoundingClientRect();
                   setContextMenu({
@@ -4917,6 +4927,7 @@ export default function App() {
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onDelete={(entry) => void deleteEntry(entry.path)}
+                onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'notes-files' ? (
@@ -4934,6 +4945,7 @@ export default function App() {
                 onOpen={openDetailsEntry}
                 onRename={(entry) => renameEntry(entry.path)}
                 onDelete={(entry) => void deleteEntry(entry.path)}
+                onDeletePermanent={(entry) => void deleteEntryPermanently(entry.path)}
                 onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
               />
             ) : selectedTab === 'calendar' ? (
@@ -5270,7 +5282,8 @@ export default function App() {
                 onOpenLibrary={() => handleCommand('open-vault')}
                 onNewLibrary={() => handleCommand('new-library')}
                 onOpenRecent={(libraryPath) => openLibrary(false, libraryPath)}
-                onDeleteLibrary={(library) => setDeleteLibraryTarget(library)}
+                onDeleteLibrary={(library) => setDeleteLibraryTarget({ ...library, permanent: false })}
+                onDeletePermanent={(library) => setDeleteLibraryTarget({ ...library, permanent: true })}
                 onLibraryContextMenu={(library, invoker, pointer) => {
                   const bounds = invoker.getBoundingClientRect();
                   setContextMenu({
@@ -5774,6 +5787,7 @@ export default function App() {
       {deleteLibraryTarget ? (
         <DeleteLibraryDialog
           library={deleteLibraryTarget}
+          permanent={deleteLibraryTarget.permanent}
           onCancel={() => setDeleteLibraryTarget(null)}
           onConfirm={() => void confirmDeleteLibrary()}
         />
