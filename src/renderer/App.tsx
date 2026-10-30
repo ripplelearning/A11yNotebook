@@ -614,6 +614,95 @@ export default function App() {
   const [securityLocked, setSecurityLocked] = useState(false);
   const navigationHistoryRef = useRef<NavigationHistoryState>(emptyNavigationHistory());
 
+  // Per-library view state, kept in memory for the session: switching away
+  // from a library snapshots its open notes, selected tab, notebook, and
+  // open task/reminder/calendar tabs, and switching back restores them.
+  // Nothing is persisted, so a fresh launch still lands on Notebooks.
+  // Unsaved notes block switching, so restored notes are always the saved
+  // content; unreadable or locked notes simply stay closed on return.
+  interface LibraryUiState {
+    openNotePaths: string[];
+    selectedTab: string;
+    selectedNotebookPath?: string;
+    taskTabOpen: boolean;
+    reminderTabOpen: boolean;
+    calendarTabOpen: boolean;
+    pinnedTabs: string[];
+  }
+  const libraryUiStatesRef = useRef(new Map<string, LibraryUiState>());
+
+  // Keep the current library's snapshot live as the user works, so
+  // switching back restores where they were working, not the Libraries
+  // picker they switched from: the picker screen itself never overwrites
+  // a snapshot. The switch itself only reads the snapshot.
+  useEffect(() => {
+    if (!vault || selectedTab === 'libraries') return;
+    libraryUiStatesRef.current.set(vault.path, {
+      openNotePaths: openNotes.map((note) => note.path),
+      selectedTab,
+      selectedNotebookPath,
+      taskTabOpen,
+      reminderTabOpen,
+      calendarTabOpen,
+      pinnedTabs: [...pinnedTabs],
+    });
+  }, [vault, openNotes, selectedTab, selectedNotebookPath, taskTabOpen, reminderTabOpen, calendarTabOpen, pinnedTabs]);
+
+  const restoreLibraryUiState = async (opened: VaultInfo) => {
+    const snapshot = libraryUiStatesRef.current.get(opened.path);
+    if (!snapshot) return;
+    const generation = vaultGenerationRef.current;
+    const bridge = window.a11yNotebook?.vault;
+    const restored: OpenNote[] = [];
+    if (bridge?.readNote) {
+      for (const notePath of snapshot.openNotePaths) {
+        const entry = findEntry(opened.entries, notePath);
+        if (!entry || entry.kind !== 'note' || !isManagedEntry(entry)) continue;
+        try {
+          const loaded = await bridge.readNote(notePath);
+          const content = /\.html?$/i.test(notePath) ? sanitizeNoteHtml(loaded, notePath) : loaded;
+          restored.push({
+            id: notePath,
+            path: notePath,
+            title: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
+            content,
+            saved: content,
+          });
+        } catch {
+          // Unreadable or locked notes simply stay closed on return.
+        }
+      }
+    }
+    // A second switch mid-restore must not apply stale state to the new library.
+    if (generation !== vaultGenerationRef.current || vaultPathRef.current !== opened.path) return;
+    if (restored.length) setOpenNotes(restored);
+    setTaskTabOpen(snapshot.taskTabOpen);
+    setReminderTabOpen(snapshot.reminderTabOpen);
+    setCalendarTabOpen(snapshot.calendarTabOpen);
+    setPinnedTabs(
+      new Set(
+        snapshot.pinnedTabs.filter(
+          (id) =>
+            restored.some((note) => note.id === id) ||
+            (id === 'tasks' && snapshot.taskTabOpen) ||
+            (id === 'reminders' && snapshot.reminderTabOpen) ||
+            (id === 'calendar' && snapshot.calendarTabOpen),
+        ),
+      ),
+    );
+    const tabAvailable =
+      NAVIGATION_SCREENS.some((screen) => screen.id === snapshot.selectedTab) ||
+      (snapshot.selectedTab === 'tasks' && snapshot.taskTabOpen) ||
+      (snapshot.selectedTab === 'reminders' && snapshot.reminderTabOpen) ||
+      (snapshot.selectedTab === 'calendar' && snapshot.calendarTabOpen) ||
+      restored.some((note) => note.id === snapshot.selectedTab);
+    if (tabAvailable) setSelectedTab(snapshot.selectedTab);
+    if (snapshot.selectedNotebookPath) {
+      const notebook = findEntry(opened.entries, snapshot.selectedNotebookPath);
+      if (notebook?.kind === 'notebook') setSelectedNotebookPath(snapshot.selectedNotebookPath);
+    }
+  };
+
   // Save settings only when the last load succeeded: after a failed load
   // the in-memory settings are defaults, and persisting them would
   // overwrite the stored settings file. Returns false when blocked.
@@ -2132,6 +2221,7 @@ export default function App() {
         setSelectedTab('libraries');
         setStatusMessage(`Opened library ${opened.name}.`);
         refreshRecentLibraries();
+        void restoreLibraryUiState(opened);
         return true;
       }
       return false;
@@ -3571,6 +3661,7 @@ export default function App() {
           setSelectedTab(create ? 'libraries' : 'notebooks');
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
+          void restoreLibraryUiState(opened);
         }
       })
       .catch(() => setStatusMessage(create ? 'Could not create the library.' : 'Could not open the selected library.'))
