@@ -11,6 +11,54 @@ import { expandMathSpans, htmlToMarkdown, markdownToHtml } from './format-conver
 import { sanitizeNoteHtml } from './sanitize-html';
 import { continueMarkdownList } from './smart-formatting';
 
+/**
+ * Reading view renders Markdown task items as real checkboxes. markdown-it
+ * core has no task-list support, so without this step `- [ ] do this`
+ * renders as the literal text "[ ] do this" instead of a checkbox.
+ * The checkbox is display-only (reading view never edits); toggling stays
+ * in edit mode and Tasks view. The aria-label matches the disabled
+ * checklist inputs the HTML sanitizer already emits for HTML notes.
+ */
+function renderMarkdownTaskCheckboxes(html: string): string {
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  template.content.querySelectorAll('li').forEach((item) => {
+    // The marker lives in the item's own first content: a direct text child
+    // for tight lists, or the first text inside a leading <p> for loose
+    // lists (whose <li> starts with a whitespace text node). Only the
+    // first content child is considered, so a parent item never inherits
+    // a nested item's marker.
+    let markerNode: Text | null = null;
+    for (const child of Array.from(item.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        if ((child.textContent ?? '').trim() === '') continue;
+        markerNode = child as Text;
+      } else if (child instanceof HTMLParagraphElement) {
+        markerNode =
+          (Array.from(child.childNodes).find((node) => node.nodeType === Node.TEXT_NODE) as Text | undefined) ??
+          null;
+      }
+      break;
+    }
+    if (!markerNode) return;
+    const match = /^\s*\[([ xX])\]\s*/.exec(markerNode.textContent ?? '');
+    if (!match) return;
+    markerNode.textContent = (markerNode.textContent ?? '').replace(/^\s*\[[ xX]\]\s*/, '');
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.disabled = true;
+    checkbox.setAttribute('aria-label', 'Checklist item');
+    if (match[1].toLowerCase() === 'x') {
+      // Set the attribute, not just the property: the property does not
+      // survive serializing the template back to an HTML string.
+      checkbox.setAttribute('checked', '');
+      checkbox.checked = true;
+    }
+    item.insertBefore(checkbox, item.firstChild);
+  });
+  return template.innerHTML;
+}
+
 function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
   const renderImage = markdown.renderer.rules.image!;
@@ -217,7 +265,9 @@ export default function MarkdownDocument({
           });
           return template.innerHTML;
         })()
-      : html;
+      : format === 'markdown' && mode === 'read-only'
+        ? renderMarkdownTaskCheckboxes(html)
+        : html;
   return (
     <div
       className="document-body markdown-body"
