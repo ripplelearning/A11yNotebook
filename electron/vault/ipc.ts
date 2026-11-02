@@ -1288,12 +1288,12 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
     detail: repairs.length
       ? `Links will be rewritten in:\n${repairs.map((item) => item.path).join('\n')}`
       : 'No local links need rewriting.',
-    buttons: ['Cancel', 'Move and repair links'],
+    buttons: ['Move and repair links', 'Cancel'],
     defaultId: 0,
-    cancelId: 0,
+    cancelId: 1,
     noLink: true,
   });
-  if (answer.response !== 1) return vault.getVault();
+  if (answer.response !== 0) return vault.getVault();
   assertCurrent();
   assetDraftGeneration += 1;
   metadataFor(vault);

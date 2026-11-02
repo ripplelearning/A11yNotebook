@@ -19,6 +19,8 @@ interface Props {
   onInsertInText: (text: string) => void;
   onInsertBibliography: (entries: BibliographyEntry[], style: CitationStyle) => void;
   onClose: () => void;
+  /** False in reading view (or for a locked note): the dialog still views and generates, but cannot insert. */
+  canInsert?: boolean;
 }
 
 type FieldKey =
@@ -82,6 +84,7 @@ export default function CitationDialog({
   onInsertInText,
   onInsertBibliography,
   onClose,
+  canInsert = true,
 }: Props) {
   const [view, setView] = useState<'generator' | 'bibliography'>(initialView);
   const [entries, setEntries] = useState<BibliographyEntry[]>([]);
@@ -233,7 +236,11 @@ export default function CitationDialog({
         found.doi ? 'Filled from the DOI record.' : found.isbn ? 'Filled from the ISBN record.' : 'Filled from the page.',
       );
     } catch (failure) {
-      setLookupStatus(failure instanceof Error ? failure.message : 'Nothing could be filled in.');
+      // Electron wraps a main-process throw as "Error invoking remote
+      // method '...': Error: <message>"; show only the real message.
+      const raw = failure instanceof Error ? failure.message : 'Nothing could be filled in.';
+      const cleaned = raw.replace(/^Error invoking remote method '[^']+': (?:Error: )?/, '');
+      setLookupStatus(cleaned || 'Nothing could be filled in.');
     } finally {
       setLookupBusy(false);
     }
@@ -252,6 +259,7 @@ export default function CitationDialog({
           Bibliography
         </button>
       </div>
+      {!canInsert ? <p>Inserting is disabled unless the note is open in edit mode.</p> : null}
       <label>
         Citation style
         <select value={style} onChange={(event) => setStyle(event.target.value as CitationStyle)}>
@@ -355,7 +363,7 @@ export default function CitationDialog({
           <button
             type="button"
             onClick={() => onInsertInText(formatInText(previewEntry, style))}
-            disabled={!previewEntry.title}
+            disabled={!canInsert || !previewEntry.title}
           >
             Insert in-text citation
           </button>
@@ -373,7 +381,7 @@ export default function CitationDialog({
           </label>
           <button
             type="button"
-            disabled={sorted.length === 0}
+            disabled={!canInsert || sorted.length === 0}
             onClick={() => onInsertBibliography(sorted, style)}
           >
             Insert full bibliography
@@ -382,7 +390,11 @@ export default function CitationDialog({
             {sorted.map((entry) => (
               <li key={entry.id}>
                 <p>{formatBibliography(entry, style, 'plain')}</p>
-                <button type="button" onClick={() => onInsertInText(formatInText(entry, style, page))}>
+                <button
+                  type="button"
+                  disabled={!canInsert}
+                  onClick={() => onInsertInText(formatInText(entry, style, page))}
+                >
                   Insert in-text citation
                 </button>
                 <button type="button" onClick={() => loadIntoForm(entry)}>

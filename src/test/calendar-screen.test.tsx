@@ -13,7 +13,7 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function setup(appointments: CalendarAppointment[]) {
+function setup(appointments: CalendarAppointment[], createRequest = 0) {
   const saveCalendar = vi.fn(async (items: CalendarAppointment[]) => items);
   const vault = {
     getCalendar: vi.fn(async () => appointments),
@@ -23,7 +23,7 @@ function setup(appointments: CalendarAppointment[]) {
     onSecurityLocked: () => () => undefined,
   };
   window.a11yNotebook = { vault } as unknown as NotebookBridge;
-  render(
+  const element = (request: number) => (
     <CalendarScreen
       title="Calendar"
       vaultPath="/vault"
@@ -32,9 +32,11 @@ function setup(appointments: CalendarAppointment[]) {
       isCurrent={() => true}
       onOpenEntry={vi.fn(async () => undefined)}
       announce={vi.fn()}
-    />,
+      createRequest={request}
+    />
   );
-  return { saveCalendar };
+  const { rerender } = render(element(createRequest));
+  return { saveCalendar, rerenderWithRequest: (request: number) => rerender(element(request)) };
 }
 
 describe('calendar screen', () => {
@@ -77,6 +79,14 @@ describe('calendar screen', () => {
     expect(saved).toHaveLength(1);
     expect(saved[0].title).toBe('Team sync');
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+  });
+
+  it('opens the New appointment dialog when createRequest increments', async () => {
+    const { rerenderWithRequest } = setup([]);
+    await screen.findByText('No appointments in this period.');
+    expect(screen.queryByRole('dialog')).toBeNull();
+    rerenderWithRequest(1);
+    expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 
   it('saves a reminder offset chosen in the dialog', async () => {

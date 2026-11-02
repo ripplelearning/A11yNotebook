@@ -72,6 +72,7 @@ export default function CalendarScreen({
   isCurrent,
   onOpenEntry,
   announce,
+  createRequest = 0,
 }: {
   title?: string;
   vaultPath: string;
@@ -80,6 +81,8 @@ export default function CalendarScreen({
   isCurrent: () => boolean;
   onOpenEntry: (path: string) => Promise<void>;
   announce: (message: string) => void;
+  /** Increment to open the New appointment dialog (for example, from Ctrl+N). */
+  createRequest?: number;
 }) {
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
@@ -122,6 +125,10 @@ export default function CalendarScreen({
       if (current() && version === request.current) setLoading(false);
     }
   }, [bridge, current]);
+
+  useEffect(() => {
+    if (createRequest > 0) setDialog((current) => current ?? {});
+  }, [createRequest]);
 
   useEffect(() => {
     alive.current = true;

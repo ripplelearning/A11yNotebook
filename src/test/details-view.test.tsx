@@ -121,12 +121,13 @@ function expectResearchContext() {
 }
 
 describe('accessible details view', () => {
-  it('exposes a labelled grid and supports arrow, Home/End, and Ctrl+Home/Ctrl+End navigation', () => {
+  it('exposes a labelled grid and supports arrow navigation and Home/End jumps to the first/last row', () => {
     renderDetails();
     const grid = screen.getByRole('grid', { name: 'Notebook items' });
     const alpha = within(grid).getByRole('gridcell', { name: 'Alpha.md' });
     const beta = within(grid).getByRole('gridcell', { name: 'Beta.md' });
     const betaType = within(screen.getByRole('row', { name: /Beta\.md/ })).getByRole('gridcell', { name: 'note' });
+    const alphaType = within(screen.getAllByRole('row')[1]).getByRole('gridcell', { name: 'note' });
     const reportType = within(grid).getByRole('gridcell', { name: 'attachment' });
 
     alpha.focus();
@@ -135,12 +136,12 @@ describe('accessible details view', () => {
     fireEvent.keyDown(beta, { key: 'ArrowRight' });
     expect(betaType).toHaveFocus();
     fireEvent.keyDown(betaType, { key: 'Home' });
-    expect(beta).toHaveFocus();
-    fireEvent.keyDown(beta, { key: 'End' });
-    expect(betaType).toHaveFocus();
-    fireEvent.keyDown(betaType, { key: 'Home', ctrlKey: true });
-    expect(alpha).toHaveFocus();
-    fireEvent.keyDown(alpha, { key: 'End', ctrlKey: true });
+    expect(alphaType).toHaveFocus();
+    fireEvent.keyDown(alphaType, { key: 'End' });
+    expect(reportType).toHaveFocus();
+    fireEvent.keyDown(reportType, { key: 'Home', ctrlKey: true });
+    expect(alphaType).toHaveFocus();
+    fireEvent.keyDown(alphaType, { key: 'End', ctrlKey: true });
     expect(reportType).toHaveFocus();
   });
 

@@ -705,13 +705,15 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'bookmark-heading-at-cursor',
     label: 'Bookmark heading at cursor',
-    description: 'Bookmark the heading at or before the cursor in the active note.',
+    description:
+      'Save the heading at or before the cursor as a bookmark. To jump back to it, activate the bookmark in the Bookmarks list.',
     shortcut: 'Ctrl+Alt+H',
   },
   {
     id: 'bookmark-position-at-cursor',
     label: 'Bookmark position at cursor',
-    description: 'Bookmark the cursor position in the active note.',
+    description:
+      'Save the exact cursor position as a bookmark, not just its heading. To jump back to it, activate the bookmark in the Bookmarks list.',
     shortcut: 'Ctrl+Alt+J',
   },
   {
