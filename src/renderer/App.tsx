@@ -49,6 +49,7 @@ import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, FeedbackDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
 import FindDialog from './components/FindDialog';
+import { findGridFocusTarget } from './grid-focus';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
@@ -1482,6 +1483,27 @@ export default function App() {
     }
     setPendingLibraryGridFocus(false);
   }, [pendingLibraryGridFocus, selectedTab]);
+
+  // Auto-focus on grids: when the setting is on, switching to a grid
+  // view lands keyboard focus in the grid itself, so screen reader
+  // users do not have to find and enter it by hand. The first render
+  // is not a switch, so opening the app never steals focus, and
+  // toggling the setting on while already in a grid view does not
+  // yank focus either. Dialogs block the move.
+  const previousTabForGridFocusRef = useRef(selectedTab);
+  useEffect(() => {
+    const previousTab = previousTabForGridFocusRef.current;
+    previousTabForGridFocusRef.current = selectedTab;
+    if (previousTab === selectedTab) return;
+    if (!settings.autoFocusGridsOnViewSwitch) return;
+    if (selectedTab !== 'libraries' && selectedTab !== 'notebooks' && selectedTab !== 'notes-files') return;
+    if (activeDialog || itemDialog) return;
+    const target = findGridFocusTarget(tabPanelRef.current);
+    if (target) {
+      target.focus();
+      setActiveRegion('main');
+    }
+  }, [selectedTab, settings.autoFocusGridsOnViewSwitch, activeDialog, itemDialog]);
 
   // Keep the highlighted region in sync when focus moves by mouse or Tab.
   useEffect(() => {
@@ -4697,7 +4719,7 @@ export default function App() {
 
   return (
     <div
-      className={`${showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}${focusMode ? ' focus-mode' : ''}`}
+      className={`${showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}${focusMode ? ' focus-mode' : ''}${focusMode && settings.immersiveFocusMode ? ' immersive-focus-mode' : ''}`}
       aria-label="A11y Notebook application shell"
     >
       {contextMenu ? (

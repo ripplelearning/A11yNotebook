@@ -44,6 +44,10 @@ export interface NotebookSettings {
   lastAutoBackupAt?: string;
   /** Keep the calendar offline: hide provider sync setup and never run a sync. */
   calendarOffline?: boolean;
+  /** Immersive Focus mode: in Focus mode, also hide the search box and search scope. Off by default. */
+  immersiveFocusMode?: boolean;
+  /** Put keyboard focus in the grid when switching to a grid view. Off by default. */
+  autoFocusGridsOnViewSwitch?: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -73,6 +77,8 @@ export const DEFAULT_SETTINGS: NotebookSettings = {
   autoBackupFolder: '',
   lastAutoBackupAt: '',
   calendarOffline: false,
+  immersiveFocusMode: false,
+  autoFocusGridsOnViewSwitch: false,
 };
 
 /**
@@ -316,6 +322,9 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
   const autoBackupFolder = settings.autoBackupFolder === undefined ? '' : settings.autoBackupFolder;
   const lastAutoBackupAt = settings.lastAutoBackupAt === undefined ? '' : settings.lastAutoBackupAt;
   const calendarOffline = settings.calendarOffline === undefined ? false : settings.calendarOffline;
+  const immersiveFocusMode = settings.immersiveFocusMode === undefined ? false : settings.immersiveFocusMode;
+  const autoFocusGridsOnViewSwitch =
+    settings.autoFocusGridsOnViewSwitch === undefined ? false : settings.autoFocusGridsOnViewSwitch;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -357,6 +366,8 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     typeof autoBackupFolder !== 'string' ||
     typeof lastAutoBackupAt !== 'string' ||
     typeof calendarOffline !== 'boolean' ||
+    typeof immersiveFocusMode !== 'boolean' ||
+    typeof autoFocusGridsOnViewSwitch !== 'boolean' ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -420,6 +431,8 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     autoBackupFolder,
     lastAutoBackupAt,
     calendarOffline,
+    immersiveFocusMode,
+    autoFocusGridsOnViewSwitch,
   };
 }
 

@@ -1433,3 +1433,11 @@ a:focus-visible,
 .app-shell.focus-mode .status-bar {
   display: none;
 }
+
+/* Immersive Focus mode hides the search box and search scope as well,
+   leaving only the title bar, menu bar, and document. The header's
+   title block stays, since it names the current item. */
+.app-shell.immersive-focus-mode .global-search,
+.app-shell.immersive-focus-mode .global-search-scope {
+  display: none;
+}
