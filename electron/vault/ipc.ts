@@ -3331,6 +3331,10 @@ export function setupVaultIpc(
           extensions: IMPORT_EXTENSIONS.filter((extension) => extension !== 'json'),
         },
         { name: 'Mind maps (.mindmap.json only)', extensions: ['json'] },
+        // A .gdoc file is a link pointer, not an importable document:
+        // picking it reaches the guidance error, which explains how to
+        // export the document from Google Docs instead.
+        { name: 'Google Docs link (.gdoc)', extensions: ['gdoc'] },
       ],
     });
     if (result.canceled || !result.filePaths[0]) return null;

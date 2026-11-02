@@ -3,22 +3,47 @@ import { imageUrl } from '../../../shared/attachments';
 
 const SAFE_IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
 
+/** The one inline style a note may carry: the bibliography hanging indent. */
+export const BIBLIOGRAPHY_HANGING_INDENT = 'padding-left: 0.5in; text-indent: -0.5in;';
+
+function normalizeStyle(value: string): string {
+  return value.replace(/\s*:\s*/g, ': ').replace(/\s*;\s*/g, '; ').trim().replace(/;$/, '');
+}
+
+/**
+ * DOMPurify drops every other inline style: only the bibliography hanging
+ * indent survives, so a pasted style cannot hide content or restyle a
+ * note. The hook is registered for this one call only, so other previews
+ * that sanitize with their own configs are unaffected.
+ */
+function dropNonHangingStyles(
+  _node: Element,
+  data: { attrName: string; attrValue: string; keepAttr: boolean },
+): void {
+  if (data.attrName === 'style' && normalizeStyle(data.attrValue) !== normalizeStyle(BIBLIOGRAPHY_HANGING_INDENT)) {
+    data.keepAttr = false;
+  }
+}
+
 export function sanitizeNoteHtml(content: string, notePath = '') {
-  const clean = DOMPurify.sanitize(content, {
-    ADD_ATTR: [
-      'data-a11y-task-id',
-      'data-a11y-task-complete',
-      'data-a11y-task-due',
-      'data-a11y-task-due-time',
-      'data-a11y-task-priority',
-      'data-a11y-task-remind',
-      // MathML: keep the ASCII source so math survives editing and export.
-      'alttext',
-      'display',
-    ],
-    ADD_URI_SAFE_ATTR: [],
-    ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
-    FORBID_ATTR: ['style', 'srcset', 'action', 'poster', 'background'],
+  DOMPurify.addHook('uponSanitizeAttribute', dropNonHangingStyles);
+  let clean: string;
+  try {
+    clean = DOMPurify.sanitize(content, {
+      ADD_ATTR: [
+        'data-a11y-task-id',
+        'data-a11y-task-complete',
+        'data-a11y-task-due',
+        'data-a11y-task-due-time',
+        'data-a11y-task-priority',
+        'data-a11y-task-remind',
+        // MathML: keep the ASCII source so math survives editing and export.
+        'alttext',
+        'display',
+      ],
+      ADD_URI_SAFE_ATTR: [],
+      ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+    FORBID_ATTR: ['srcset', 'action', 'poster', 'background'],
     FORBID_TAGS: [
       'script',
       'style',
@@ -37,7 +62,10 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
       'base',
       'svg',
     ],
-  });
+    });
+  } finally {
+    DOMPurify.removeHooks('uponSanitizeAttribute');
+  }
   const documentFragment = document.createElement('template');
   documentFragment.innerHTML = clean;
   documentFragment.content.querySelectorAll('img').forEach((image) => {
