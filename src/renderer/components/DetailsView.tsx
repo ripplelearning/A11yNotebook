@@ -146,8 +146,8 @@ export default function DetailsView<T extends DetailsViewItem>({
       case 'End':
         event.preventDefault();
         focusCell(
-          event.ctrlKey ? (event.key === 'Home' ? 0 : sortedItems.length - 1) : index,
-          event.key === 'Home' ? (columns[0] ?? 'name') : (columns[columns.length - 1] ?? 'kind'),
+          event.key === 'Home' ? 0 : sortedItems.length - 1,
+          focusedColumn,
         );
         return;
       case 'Enter':

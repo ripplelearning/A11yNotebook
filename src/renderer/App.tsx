@@ -1742,6 +1742,7 @@ export default function App() {
   };
 
   const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
+  const [calendarCreateRequest, setCalendarCreateRequest] = useState(0);
   const openCreateReminder = () => {
     if (!vault || securityLocked) {
       setStatusMessage('Open and unlock a library before creating a reminder.');
@@ -3741,6 +3742,8 @@ export default function App() {
       setAssetCreationVersion((version) => version + 1);
     } else if (selectedTab === 'reminders') {
       openCreateReminder();
+    } else if (selectedTab === 'calendar') {
+      setCalendarCreateRequest((request) => request + 1);
     } else {
       void createNote();
     }
@@ -3811,7 +3814,11 @@ export default function App() {
     )
       return;
     if (commandId === 'open-citation-generator' || commandId === 'open-bibliography') {
-      if (mode !== 'edit' || !currentNote || !citationNotebookPath) {
+      if (!currentNote || !citationNotebookPath) {
+        setStatusMessage('Open a note in a notebook first.');
+        return;
+      }
+      if (commandId === 'open-citation-generator' && mode !== 'edit') {
         setStatusMessage('Open a note in a notebook in edit mode first.');
         return;
       }
@@ -4541,8 +4548,9 @@ export default function App() {
       return !currentNote || mode !== 'edit' || currentNoteEditLocked;
     if (id === 'check-spelling-grammar') return !currentNote || mode !== 'edit' || currentNoteEditLocked;
     if (id === 'open-thesaurus') return !currentNote;
-    if (id === 'open-citation-generator' || id === 'open-bibliography')
+    if (id === 'open-citation-generator')
       return !currentNote || mode !== 'edit' || currentNoteEditLocked || !citationNotebookPath;
+    if (id === 'open-bibliography') return !currentNote || !citationNotebookPath;
     if (id === 'new-contextual') return isCommandDisabled(contextualNewCommand);
     if (id === 'create-reminder') return !vault || securityLocked;
     if (['context-open-with', 'context-open-with-default'].includes(id)) return true;
@@ -4728,6 +4736,7 @@ export default function App() {
           initialView={citationDialog}
           onInsertInText={insertCitationText}
           onInsertBibliography={insertBibliography}
+          canInsert={mode === 'edit' && !currentNoteEditLocked}
           onClose={() => setCitationDialog(null)}
         />
       ) : null}
@@ -5136,6 +5145,7 @@ export default function App() {
                     vaultGenerationRef.current === calendarGeneration
                   }
                   announce={setStatusMessage}
+                  createRequest={calendarCreateRequest}
                   onOpenEntry={async (relative) => {
                     const entry = findEntry(vault.entries, relative);
                     if (!entry) throw new Error('The linked item is no longer available.');

@@ -565,6 +565,7 @@ describe('extended vault IPC integration', () => {
   });
 
   it('preserves imported origin through rename repair, encryption, protection and rollback', async () => {
+    mock.confirm = 0;
     mock.openSelection = path.join(temporary, 'Original.md');
     await writeFile(mock.openSelection, '# Original');
     await invoke(IPC_CHANNELS.vaultImport, 'Folder');
@@ -885,6 +886,7 @@ describe('extended vault IPC integration', () => {
     ).not.toContain('Never expose this native title');
   });
   it('keeps cognitive checkpoints encrypted, retires saves, follows moves and rejects stale tokens', async () => {
+    mock.confirm = 0;
     const relative = 'Plan.outline.md';
     await writeFile(path.join(mock.root, relative), '- Baseline\n');
     expect(await invoke(IPC_CHANNELS.vaultAssetDraftRead, relative)).toMatchObject({ enabled: false, draft: null });
@@ -1368,6 +1370,7 @@ describe('extended vault IPC integration', () => {
   });
 
   it('preserves the original repaired note if a replacement write fails partially', async () => {
+    mock.confirm = 0;
     mock.partialRepairWrite = true;
     await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('disk full');
     expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toBe('[[Topic|subject]] [Topic](Topic.md)');
@@ -1395,6 +1398,7 @@ describe('extended vault IPC integration', () => {
       mock.disableWatcher = false;
     });
     it.each([1, 2, 3])('rolls back committed disk mutations when index update %i fails', async (failure) => {
+      mock.confirm = 0;
       mock.refreshCount = 0;
       mock.failIndexRefreshAt = failure;
       await expect(invoke(IPC_CHANNELS.vaultMove, 'Topic.md', 'Folder/New.md')).rejects.toThrow('Index write failed');
@@ -1418,6 +1422,7 @@ describe('extended vault IPC integration', () => {
     });
   });
   it('restarts scheduling after migration fails and rollback restores paths', async () => {
+    mock.confirm = 0;
     await invoke(IPC_CHANNELS.vaultReminderCreate, {
       title: 'Future',
       path: 'Topic.md',
@@ -1433,6 +1438,7 @@ describe('extended vault IPC integration', () => {
     ).resolves.toHaveLength(2);
   });
   it('opens the migrated note when an already displayed notification is clicked', async () => {
+    mock.confirm = 0;
     mock.notificationsSupported = true;
     await invoke(IPC_CHANNELS.vaultReminderCreate, {
       title: 'Past',
@@ -1896,6 +1902,8 @@ describe('extended vault IPC integration', () => {
     for (const handler of mock.handlers.values()) await expect(handler({})).rejects.toThrow('Untrusted');
   });
   it('repairs links and migrates annotation paths on a confirmed move', async () => {
+    // Move is the first button in the repair dialog.
+    mock.confirm = 0;
     const annotation = (await invoke(IPC_CHANNELS.vaultAnnotationAdd, {
       path: 'Topic.md',
       anchor: { quote: 'Topic', prefix: '', suffix: '', start: 0, end: 5 },
@@ -1915,7 +1923,8 @@ describe('extended vault IPC integration', () => {
     ]);
   });
   it('leaves source notes untouched when the repair confirmation is cancelled', async () => {
-    mock.confirm = 0;
+    // Cancel is the second button in the repair dialog.
+    mock.confirm = 1;
     await invoke(IPC_CHANNELS.vaultRename, 'Topic.md', 'New.md');
     expect(await readFile(path.join(mock.root, 'Reference.md'), 'utf8')).toContain('[[Topic|subject]]');
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toContain('alpha');

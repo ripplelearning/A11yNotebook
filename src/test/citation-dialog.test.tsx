@@ -65,4 +65,51 @@ describe('CitationDialog', () => {
     await waitFor(() => expect(screen.getByText(/Filled from the DOI record/)).toBeInTheDocument());
     expect((screen.getByLabelText(/^Title$/) as HTMLInputElement).value).toBe('Accessible Design');
   });
+
+  it('shows a lookup failure without the Electron remote-method wrapper', async () => {
+    const bridge = {
+      vault: {
+        getBibliography: vi.fn(async () => []),
+        saveBibliography: vi.fn(async () => []),
+        fetchCitationMetadata: vi.fn(async () => {
+          throw new Error(
+            "Error invoking remote method 'vault:fetch-citation-metadata': Error: That page returned 404.",
+          );
+        }),
+      },
+    };
+    window.a11yNotebook = bridge as unknown as NotebookBridge;
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/DOI, ISBN, or web address/), {
+      target: { value: 'https://example.com/missing' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Fill in from source' }));
+    await waitFor(() => expect(screen.getByText('That page returned 404.')).toBeInTheDocument());
+    expect(screen.queryByText(/Error invoking remote method/)).toBeNull();
+  });
+
+  it('disables insert buttons when inserting is not allowed', async () => {
+    installBridge();
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+        canInsert={false}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
+    expect(screen.getByRole('button', { name: 'Insert in-text citation' })).toBeDisabled();
+    expect(screen.getByText(/Inserting is disabled/)).toBeInTheDocument();
+  });
 });
