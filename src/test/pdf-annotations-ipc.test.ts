@@ -21,7 +21,7 @@ vi.mock('electron', () => ({
   },
   dialog: {
     showOpenDialog: async () => ({ canceled: false, filePaths: [mock.root] }),
-    showMessageBox: async () => ({ response: 1 }),
+    showMessageBox: async () => ({ response: 0 }),
   },
   protocol: { handle: vi.fn() },
   shell: { openPath: vi.fn(), trashItem: vi.fn(), showItemInFolder: vi.fn() },
