@@ -47,4 +47,13 @@ describe('main-process standalone HTML sanitization', () => {
     expect(output).toContain('<title>Research &lt;note&gt;</title>');
     expect(output).toContain('<p>Safe</p>');
   });
+
+  it('keeps only the bibliography hanging indent and drops every other inline style', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p style="padding-left: 0.5in; text-indent: -0.5in;">Hanging</p><p style="color: red;">Red</p><p style="display: none;">Hidden</p>',
+    );
+    expect(safe).toContain('padding-left: 0.5in; text-indent: -0.5in;');
+    expect(safe).not.toContain('color: red');
+    expect(safe).not.toContain('display: none');
+  });
 });

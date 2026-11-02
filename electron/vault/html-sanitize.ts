@@ -232,6 +232,15 @@ export function sanitizeHtmlFragment(
       else if (name === 'href' || name === 'src') {
         const safe = validUrl(tag, name, value, options);
         if (safe) safeAttributes.set(name, safe);
+      } else if (
+        // The one inline style a note may carry: the bibliography hanging
+        // indent. Every other inline style is dropped, so exported HTML
+        // cannot hide content or restyle a note.
+        name === 'style' &&
+        value.replace(/\s*:\s*/g, ': ').replace(/\s*;\s*/g, '; ').trim().replace(/;$/, '') ===
+          'padding-left: 0.5in; text-indent: -0.5in'
+      ) {
+        safeAttributes.set(name, value);
       } else if (TASK_ATTRIBUTES.has(name)) {
         if (
           name === 'data-a11y-task-remind'

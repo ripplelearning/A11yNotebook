@@ -52,7 +52,7 @@ import FindDialog from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
-import { sanitizeNoteHtml } from './features/vault/sanitize-html';
+import { BIBLIOGRAPHY_HANGING_INDENT, sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { findAllMatches } from '../shared/find-text';
@@ -3812,8 +3812,13 @@ export default function App() {
         ? 'markdown'
         : 'plain';
     const formatted = entries.map((entry) => formatBibliography(entry, style, markup));
+    // APA, MLA, and Chicago all require a hanging indent. Markdown cannot
+    // express one, so only HTML notes get it (the note sanitizer keeps
+    // exactly this declaration and drops every other inline style).
     const text =
-      markup === 'html' ? formatted.map((entry) => `<p>${entry}</p>`).join('\n') : formatted.join('\n\n');
+      markup === 'html'
+        ? formatted.map((entry) => `<p style="${BIBLIOGRAPHY_HANGING_INDENT}">${entry}</p>`).join('\n')
+        : formatted.join('\n\n');
     insertTextIntoNote(text);
     setCitationDialog(null);
     setStatusMessage('Bibliography inserted.');
@@ -5159,7 +5164,10 @@ export default function App() {
                   title={viewTitles.calendar}
                   key={`${vault.path}:${vaultGenerationRef.current}`}
                   vaultPath={vault.path}
-                  notePaths={notePaths}
+                  // Appointment links only open the note, like reminders:
+                  // they never write into it, so notes without a managed
+                  // provenance record are linkable here too.
+                  notePaths={reminderNotePaths}
                   filePaths={filePaths}
                   isCurrent={() =>
                     !switchingRef.current &&
