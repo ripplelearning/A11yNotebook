@@ -77,6 +77,31 @@ describe('settings and shortcut validation', () => {
       'Invalid settings values.',
     );
   });
+  it('defaults interaction settings off and persists them when on', () => {
+    expect(DEFAULT_SETTINGS.immersiveFocusMode).toBe(false);
+    expect(DEFAULT_SETTINGS.autoFocusGridsOnViewSwitch).toBe(false);
+    const validated = validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} });
+    expect(validated.immersiveFocusMode).toBe(false);
+    expect(validated.autoFocusGridsOnViewSwitch).toBe(false);
+    const enabled = validateSettings({
+      ...DEFAULT_SETTINGS,
+      immersiveFocusMode: true,
+      autoFocusGridsOnViewSwitch: true,
+    });
+    expect(enabled.immersiveFocusMode).toBe(true);
+    expect(enabled.autoFocusGridsOnViewSwitch).toBe(true);
+  });
+  it.each([null, 0, 1, 'true', {}, []])(
+    'rejects non-boolean interaction preference %j',
+    (value) => {
+      expect(() => validateSettings({ ...DEFAULT_SETTINGS, immersiveFocusMode: value })).toThrow(
+        'Invalid settings values.',
+      );
+      expect(() => validateSettings({ ...DEFAULT_SETTINGS, autoFocusGridsOnViewSwitch: value })).toThrow(
+        'Invalid settings values.',
+      );
+    },
+  );
   it('defaults legacy note-open preferences to read-only', () => {
     expect(DEFAULT_SETTINGS.defaultNoteOpenMode).toBe('read-only');
     expect(

@@ -313,6 +313,31 @@ export default function SettingsDialog({
           />
           Reduce motion (turn off interface animations and transitions)
         </label>
+        <h3>Interaction</h3>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.immersiveFocusMode ?? false}
+            onChange={(event) => setDraft({ ...draft, immersiveFocusMode: event.target.checked })}
+          />
+          Immersive Focus mode
+        </label>
+        <p>
+          When Focus mode is on, also hide the search box and search scope, so only the title bar, menu bar,
+          and document remain.
+        </p>
+        <label>
+          <input
+            type="checkbox"
+            checked={draft.autoFocusGridsOnViewSwitch ?? false}
+            onChange={(event) => setDraft({ ...draft, autoFocusGridsOnViewSwitch: event.target.checked })}
+          />
+          Auto-focus on grids when switching views
+        </label>
+        <p>
+          When switching to the Libraries, Notebooks, or Notes and Files view, put keyboard focus in the grid
+          automatically, without needing to enter forms mode first.
+        </p>
         <h3>Automatic backups</h3>
         <label>
           <input
