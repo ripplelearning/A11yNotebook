@@ -48,6 +48,8 @@ export interface NotebookSettings {
   immersiveFocusMode?: boolean;
   /** Put keyboard focus in the grid when switching to a grid view. Off by default. */
   autoFocusGridsOnViewSwitch?: boolean;
+  /** Last notebook open in this library, restored on reopen. Not a user setting; recorded as notebooks are selected. */
+  lastNotebookPath?: string;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -325,6 +327,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
   const immersiveFocusMode = settings.immersiveFocusMode === undefined ? false : settings.immersiveFocusMode;
   const autoFocusGridsOnViewSwitch =
     settings.autoFocusGridsOnViewSwitch === undefined ? false : settings.autoFocusGridsOnViewSwitch;
+  const lastNotebookPath = settings.lastNotebookPath === undefined ? undefined : settings.lastNotebookPath;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -368,6 +371,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     typeof calendarOffline !== 'boolean' ||
     typeof immersiveFocusMode !== 'boolean' ||
     typeof autoFocusGridsOnViewSwitch !== 'boolean' ||
+    (lastNotebookPath !== undefined && typeof lastNotebookPath !== 'string') ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -433,6 +437,7 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
     calendarOffline,
     immersiveFocusMode,
     autoFocusGridsOnViewSwitch,
+    lastNotebookPath,
   };
 }
 
