@@ -308,6 +308,15 @@ export default function App() {
   usePdfReadingPreferences();
   const [activeRegion, setActiveRegion] = useState<FocusRegion>('navigation');
   const [mode, setMode] = useState<AppMode>('read-only');
+  // The mode each still-open note was last in. Cycling tabs must not
+  // reset a note to the default open mode: an edited note stays edited
+  // when tabbed away from and back to. Entries are pruned when the
+  // note closes, so reopening it applies the default again.
+  const noteModeRef = useRef<Partial<Record<string, AppMode>>>({});
+  // The caret each still-open note was last at, same lifetime as the
+  // mode memory: tabbing away and back restores it, closing forgets it.
+  const noteCaretRef = useRef<Partial<Record<string, { start: number; end: number }>>>({});
+  const currentNoteIdRef = useRef<string | undefined>(undefined);
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
   const [focusAnnouncement, setFocusAnnouncement] = useState('');
@@ -819,6 +828,7 @@ export default function App() {
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
   const currentNoteId = currentNote?.id;
+  currentNoteIdRef.current = currentNoteId;
   const contextualNewCommand: CommandId =
     selectedTab === 'libraries'
       ? 'new-library'
@@ -842,11 +852,27 @@ export default function App() {
         return;
       }
     }
-    setMode(
-      currentNoteId && settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked
-        ? 'edit'
-        : 'read-only',
-    );
+    // Switching to a view tab never resets a note's mode; the mode is
+    // restored when that note becomes current again.
+    if (!currentNoteId) return;
+    // A locked note (or a security lock) always shows read-only, and the
+    // forced mode is never recorded as the note's remembered mode. The
+    // remembered entry is forgotten so that unlocking returns to the
+    // default mode, exactly as before mode memory existed.
+    if (securityLocked || currentNoteEditLocked) {
+      delete noteModeRef.current[currentNoteId];
+      setMode('read-only');
+      return;
+    }
+    const remembered = noteModeRef.current[currentNoteId];
+    if (remembered) {
+      setMode(remembered);
+      return;
+    }
+    const next =
+      settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked ? 'edit' : 'read-only';
+    noteModeRef.current[currentNoteId] = next;
+    setMode(next);
   }, [
     selectedTab,
     currentNoteId,
@@ -855,6 +881,50 @@ export default function App() {
     securityLocked,
     currentNoteEditLocked,
   ]);
+  useEffect(() => {
+    if (currentNoteId && !securityLocked && !currentNoteEditLocked)
+      noteModeRef.current[currentNoteId] = mode;
+  }, [mode, currentNoteId, securityLocked, currentNoteEditLocked]);
+  useEffect(() => {
+    const open = new Set(openNotes.map((note) => note.id));
+    for (const id of Object.keys(noteModeRef.current)) {
+      if (!open.has(id)) delete noteModeRef.current[id];
+    }
+    for (const id of Object.keys(noteCaretRef.current)) {
+      if (!open.has(id)) delete noteCaretRef.current[id];
+    }
+  }, [openNotes]);
+  /**
+   * Remember the edit caret on every user caret move, so returning to
+   * the note restores it. Capture phase: the select event's bubbling
+   * is unreliable, and programmatic caret sets (Find, jumps) record
+   * separately because they fire no select event.
+   */
+  useEffect(() => {
+    const saveCaret = (event: Event) => {
+      const target = event.target;
+      if (!(target instanceof HTMLTextAreaElement) || target !== editorRef.current) return;
+      const id = currentNoteIdRef.current;
+      if (!id) return;
+      noteCaretRef.current[id] = { start: target.selectionStart ?? 0, end: target.selectionEnd ?? 0 };
+    };
+    document.addEventListener('select', saveCaret, true);
+    return () => document.removeEventListener('select', saveCaret, true);
+  }, []);
+  /**
+   * Restore the remembered caret when a note tab becomes current in
+   * edit mode. Focus is deliberately not moved: Ctrl+Tab announces
+   * only, and the caret is in place when focus enters the editor.
+   * A pending editor-focus jump runs after this effect and wins.
+   */
+  useEffect(() => {
+    if (mode !== 'edit' || !currentNoteId) return;
+    const caret = noteCaretRef.current[currentNoteId];
+    const textarea = editorRef.current;
+    if (!caret || !textarea) return;
+    const length = textarea.value.length;
+    textarea.setSelectionRange(Math.min(caret.start, length), Math.min(caret.end, length));
+  }, [selectedTab, currentNoteId, mode]);
   const clearEditLock = (path: string) => {
     const key = `${vault?.path ?? ''}\0${path}`;
     setLockedEditPaths((paths) => {
@@ -965,6 +1035,27 @@ export default function App() {
   };
   const activeViewTitle =
     viewTitles[selectedTab] ?? currentNote?.title ?? tabs.find((tab) => tab.id === selectedTab)?.label ?? 'Welcome';
+  /**
+   * The Ctrl+Tab cycle: open view tabs, the selected notebook's Notes
+   * and Files stop, the attachment, and open notes — in tab-strip
+   * order. The generic navigation screens, settings, and dialogs are
+   * never stops; a notebook stop exists only while that notebook is
+   * selected. Built from live state, so a closed item leaves the
+   * cycle at once. Switching tabs only changes selectedTab, so an
+   * open note keeps its content, unsaved state, and mode.
+   */
+  const cycleTabs = [
+    ...(selectedNotebookPath ? [{ id: 'notes-files', label: viewTitles['notes-files'] }] : []),
+    ...(taskTabOpen ? [{ id: 'tasks', label: 'Tasks' }] : []),
+    ...(reminderTabOpen ? [{ id: 'reminders', label: 'Reminders' }] : []),
+    ...(calendarTabOpen ? [{ id: 'calendar', label: 'Calendar' }] : []),
+    ...(assetTabOpen ? [{ id: 'assets', label: 'Cognitive tools' }] : []),
+    ...(attachment ? [{ id: 'attachment', label: attachment.path.split('/').at(-1) ?? attachment.path }] : []),
+    ...openNotes.map((note) => ({
+      id: note.id,
+      label: `${note.title}${note.content !== note.saved ? ' (unsaved)' : ''}`,
+    })),
+  ];
   const calendarGeneration = vaultGenerationRef.current;
   const reminderState = useReminders(
     securityLocked ? undefined : vault?.path,
@@ -1449,7 +1540,10 @@ export default function App() {
     }
     if (mode !== 'edit' || !editorRef.current) return;
     editorRef.current.focus();
-    if (pending.cursor !== undefined) editorRef.current.setSelectionRange(pending.cursor, pending.cursor);
+    if (pending.cursor !== undefined) {
+      editorRef.current.setSelectionRange(pending.cursor, pending.cursor);
+      noteCaretRef.current[pending.path] = { start: pending.cursor, end: pending.cursor };
+    }
     if (!itemDialog && !activeDialog) pendingEditorFocusRef.current = null;
   }, [mode, currentNoteId, itemDialog, activeDialog]);
 
@@ -1703,11 +1797,9 @@ export default function App() {
     const existingNote = openNotes.find((item) => item.id === entry.path);
     if (existingNote) {
       onOpened?.();
-      setMode(
-        settings.defaultNoteOpenMode === 'edit' && !lockedEditPaths.has(`${root ?? ''}\0${entry.path}`)
-          ? 'edit'
-          : 'read-only',
-      );
+      // Selecting an already-open note keeps its mode, like switching to
+      // its tab: the mode effect restores the remembered mode (or the
+      // default when there is none) and enforces read-only for locks.
       setSelectedTab(existingNote.id);
       setPendingFocus('main');
       return;
@@ -1998,6 +2090,33 @@ export default function App() {
   const findQueryRef = useRef<{ query: string; caseSensitive: boolean } | null>(null);
   // The match position is per document: a new document starts fresh.
   const findPositionRef = useRef<{ docKey: string; position: number } | null>(null);
+  // The element Find last made focusable to land on a match, so its
+  // temporary tab stop can be removed when the next match takes over.
+  const findFocusElRef = useRef<HTMLElement | null>(null);
+  const findFocusSetRef = useRef(false);
+  /**
+   * Focus a rendered match's containing element. A DOM selection alone
+   * does not move a screen reader's reading position, so the element
+   * itself takes focus (gaining a temporary tab stop only when it has
+   * none). Returns false when there is no element to focus.
+   */
+  const focusDomMatch = (matches: readonly { node: Text }[], position: number): boolean => {
+    const match = matches[position];
+    const element = match?.node.parentElement;
+    if (!element) return false;
+    const previous = findFocusElRef.current;
+    if (previous && previous !== element && previous.isConnected && findFocusSetRef.current) {
+      previous.removeAttribute('tabindex');
+    }
+    findFocusElRef.current = element;
+    findFocusSetRef.current = false;
+    if (!element.hasAttribute('tabindex')) {
+      element.tabIndex = -1;
+      findFocusSetRef.current = true;
+    }
+    element.focus();
+    return true;
+  };
   const attachmentRef = useRef<HTMLDivElement>(null);
 
   const isReaderAttachment = (path: string) => /\.(?:pdf|epub|docx)$/i.test(path);
@@ -2034,11 +2153,18 @@ export default function App() {
     selectDomMatch(matches, position);
     findPositionRef.current = { docKey, position };
     // Edit mode focuses the textarea itself; the rendered document needs
-    // the same treatment, or F3 selects a match the keyboard focus never
-    // follows. Only the dialog-closed repeat path moves focus: while the
-    // Find dialog is open, its focus trap owns focus.
+    // the same treatment, or a repeat selects a match the keyboard focus
+    // never follows. So the repeat path focuses the match's own element,
+    // not just the panel around it. Only the dialog-closed repeat path
+    // moves focus: while the Find dialog is open, its focus trap owns it.
     if (moveFocus) {
-      tabPanelRef.current?.focus();
+      if (focusDomMatch(matches, position)) {
+        // Focusing an element can drop the selection, so re-select the
+        // match after focus lands: both must be true at once.
+        selectDomMatch(matches, position);
+      } else {
+        tabPanelRef.current?.focus();
+      }
       setActiveRegion('main');
     }
     return `Match ${position + 1} of ${matches.length} for "${query}".`;
@@ -2107,6 +2233,7 @@ export default function App() {
       if (textarea) {
         textarea.focus();
         textarea.setSelectionRange(match.index, match.index + match.length);
+        noteCaretRef.current[currentNote.id] = { start: match.index, end: match.index + match.length };
       }
       findPositionRef.current = { docKey, position };
       return `Match ${position + 1} of ${matches.length} for "${query}".`;
@@ -2159,6 +2286,41 @@ export default function App() {
     }
     return searchDocument(stored.query, direction, stored.caseSensitive, true);
   };
+
+  /**
+   * Closing Find leaves focus in the document at the match, so the
+   * context around it can be read and repeats start from there. The
+   * dialog's own focus restore stands when no match is selected. This
+   * runs after the dialog unmounts, so it wins over that restore.
+   */
+  useEffect(() => {
+    if (findOpen) return;
+    const stored = findPositionRef.current;
+    const query = findQueryRef.current;
+    if (!stored || !query) return;
+    if (selectedTab === 'attachment' && attachment) {
+      if (stored.docKey !== `attachment:${attachment.path}`) return;
+      const root = attachmentRef.current;
+      if (!root) return;
+      const matches = findDomMatches(root, query.query, query.caseSensitive);
+      if (focusDomMatch(matches, stored.position)) selectDomMatch(matches, stored.position);
+      else tabPanelRef.current?.focus();
+      return;
+    }
+    if (!currentNote || stored.docKey !== `note:${currentNote.id}:${mode}`) return;
+    if (mode === 'edit') {
+      editorRef.current?.focus();
+      return;
+    }
+    const root = annotationTools.documentRef.current;
+    if (!root) return;
+    const matches = findDomMatches(root, query.query, query.caseSensitive);
+    if (focusDomMatch(matches, stored.position)) selectDomMatch(matches, stored.position);
+    else tabPanelRef.current?.focus();
+    // Runs only on the open/close transition; the values above are from
+    // the close render, which is what the focus target must reflect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [findOpen]);
   type ThesaurusSelection =
     | { kind: 'plain'; start: number; end: number }
     | { kind: 'rich'; range: Range; element: HTMLElement };
@@ -4348,12 +4510,21 @@ export default function App() {
     }
     if (event.key === 'Tab' && event.ctrlKey) {
       event.preventDefault();
-      const currentIndex = tabs.findIndex((tab) => tab.id === selectedTab);
-      const nextIndex = (currentIndex + (event.shiftKey ? -1 : 1) + tabs.length) % tabs.length;
-      setSelectedTab(tabs[nextIndex].id);
+      if (!cycleTabs.length) {
+        setStatusMessage('No open tabs to cycle to.');
+        return;
+      }
+      const currentIndex = cycleTabs.findIndex((tab) => tab.id === selectedTab);
+      const nextIndex =
+        currentIndex < 0
+          ? event.shiftKey
+            ? cycleTabs.length - 1
+            : 0
+          : (currentIndex + (event.shiftKey ? -1 : 1) + cycleTabs.length) % cycleTabs.length;
+      setSelectedTab(cycleTabs[nextIndex].id);
       // Switching tabs leaves focus where it was, so the landed-on
       // note or file would otherwise pass silently: announce its title.
-      setStatusMessage(tabs[nextIndex].label);
+      setStatusMessage(cycleTabs[nextIndex].label);
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;

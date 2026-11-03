@@ -2,8 +2,9 @@ import { useEffect, useId, useState, type FormEvent } from 'react';
 import Modal from '../../components/Modal';
 import DatePickerField from '../../components/DatePickerField';
 import {
-  normalizeTimeText,
+  composeDialogTime,
   parseReminderDate,
+  splitStoredTime,
   type CreateReminderInput,
   type SnoozeDuration,
 } from '../../../shared/reminders';
@@ -33,7 +34,8 @@ export default function CreateReminderDialog({
   const [title, setTitle] = useState('');
   const [path, setPath] = useState(notePaths[0] ?? '');
   const [date, setDate] = useState(localDate);
-  const [time, setTime] = useState(defaults.time);
+  const [time, setTime] = useState(() => splitStoredTime(defaults.time).time);
+  const [meridiem, setMeridiem] = useState(() => splitStoredTime(defaults.time).meridiem);
   const [snooze, setSnooze] = useState(defaults.snooze);
   const [privacy, setPrivacy] = useState(defaults.privacy);
   const [notifications, setNotifications] = useState(defaults.notification.reminders);
@@ -42,7 +44,9 @@ export default function CreateReminderDialog({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   useEffect(() => {
-    setTime(defaults.time);
+    const split = splitStoredTime(defaults.time);
+    setTime(split.time);
+    setMeridiem(split.meridiem);
     setSnooze(defaults.snooze);
     setPrivacy(defaults.privacy);
     setNotifications(defaults.notification.reminders);
@@ -51,7 +55,7 @@ export default function CreateReminderDialog({
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (busy) return;
-    const normalizedTime = normalizeTimeText(time);
+    const normalizedTime = composeDialogTime(time, meridiem);
     if (!normalizedTime) {
       setError('Enter a title, note, and valid date and time.');
       return;
@@ -120,6 +124,15 @@ export default function CreateReminderDialog({
           onChange={(event) => setTime(event.target.value)}
           required
         />
+        <label htmlFor={`${id}-meridiem`}>AM or PM</label>
+        <select
+          id={`${id}-meridiem`}
+          value={meridiem}
+          onChange={(event) => setMeridiem(event.target.value === 'PM' ? 'PM' : 'AM')}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
         <label htmlFor={`${id}-snooze`}>Default snooze duration</label>
         <select
           id={`${id}-snooze`}
@@ -166,7 +179,10 @@ export default function CreateReminderDialog({
             Use these choices as future defaults
           </label>
         )}
-        <p>Times use your local timezone. Type 24-hour time (14:30) or 12-hour time with AM or PM (2:30 PM).</p>
+        <p>
+          Times use your local timezone. The AM or PM choice applies unless the time you type already includes AM or
+          PM or is 24-hour (14:30).
+        </p>
         {error && <p role="alert">{error}</p>}
         <button type="submit" disabled={busy || notePaths.length === 0}>
           {busy ? 'Creating…' : 'Create reminder'}

@@ -572,7 +572,7 @@ describe('contextual shell document workflows', () => {
     expect(bridge.vault.createAsset).not.toHaveBeenCalled();
   });
 
-  it('reapplies the reading preference on tab activation without discarding unsaved note edits', async () => {
+  it('restores the note\'s edit mode on tab return without discarding unsaved note edits', async () => {
     const { bridge } = setup({ mode: 'read', settings: { autosaveDelay: 0 } });
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
@@ -582,30 +582,35 @@ describe('contextual shell document workflows', () => {
     fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), { target: { value: '# Unsaved work' } });
     shortcut('3');
     fireEvent.click(screen.getByRole('tab', { name: 'Plan (unsaved)' }));
+    // Returning to an open note restores its mode instead of resetting to the default.
+    expect(screen.getByRole('textbox', { name: 'Markdown source' })).toHaveValue('# Unsaved work');
+    shortcut('e');
     expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
     expect(within(screen.getByRole('tabpanel')).getByRole('heading', { name: 'Unsaved work' })).toBeInTheDocument();
-    shortcut('e');
-    expect(screen.getByRole('textbox', { name: 'Markdown source' })).toHaveValue('# Unsaved work');
     expect(bridge.vault.saveNote).not.toHaveBeenCalled();
   });
 
-  it.each(['read', 'edit'] as const)('uses the %s preference on open, tab switch and repeated open', async (mode) => {
-    const { bridge } = setup({ mode });
-    await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-    const entry = screen.getByRole('treeitem', { name: /Plan\.md/ });
-    fireEvent.click(entry);
-    await screen.findByRole('heading', { name: 'Plan', level: 2 });
-    const check = () => expect(!!screen.queryByRole('textbox', { name: 'Markdown source' })).toBe(mode === 'edit');
-    await waitFor(check);
-    shortcut('e');
-    shortcut('3');
-    fireEvent.click(within(screen.getByRole('tablist')).getByRole('tab', { name: 'Plan' }));
-    await waitFor(check);
-    await act(async () => {
+  it.each(['read', 'edit'] as const)(
+    'uses the %s preference on open and reopen after close, and retains the note\'s mode on tab switch and repeated open',
+    async (mode) => {
+      const { bridge } = setup({ mode });
+      await screen.findByRole('heading', { name: 'Study' });
+      fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+      const entry = screen.getByRole('treeitem', { name: /Plan\.md/ });
       fireEvent.click(entry);
-    });
-    await waitFor(check);
+      await screen.findByRole('heading', { name: 'Plan', level: 2 });
+      const check = () => expect(!!screen.queryByRole('textbox', { name: 'Markdown source' })).toBe(mode === 'edit');
+      const flippedCheck = () =>
+        expect(!!screen.queryByRole('textbox', { name: 'Markdown source' })).toBe(mode !== 'edit');
+      await waitFor(check);
+      shortcut('e');
+      shortcut('3');
+      fireEvent.click(within(screen.getByRole('tablist')).getByRole('tab', { name: 'Plan' }));
+      await waitFor(flippedCheck);
+      await act(async () => {
+        fireEvent.click(entry);
+      });
+      await waitFor(flippedCheck);
     expect(bridge.vault.readNote).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole('button', { name: 'Close Plan' }));
     // Closing the open note returns to the Notes and Files grid, focused on

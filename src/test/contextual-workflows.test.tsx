@@ -284,7 +284,7 @@ describe('contextual navigation and creation', () => {
 });
 
 describe('default note opening mode', () => {
-  it.each(['read', 'edit'] as const)('applies %s on open, switch, and reopening an existing tab', async (mode) => {
+  it.each(['read', 'edit'] as const)('applies %s on open and retains the note\'s mode on tab switch', async (mode) => {
     setup(mode);
     await expandResearch();
     const first = await screen.findByRole('treeitem', { name: /Idea.md/ });
@@ -298,7 +298,8 @@ describe('default note opening mode', () => {
     await screen.findByRole('heading', { name: 'Other', level: 2 });
     expect(!!editor()).toBe(mode === 'edit');
     fireEvent.click(screen.getByRole('tab', { name: 'Idea' }));
-    expect(!!editor()).toBe(mode === 'edit');
+    // Returning to an open note restores its toggled mode instead of resetting to the default.
+    expect(!!editor()).toBe(mode !== 'edit');
     shortcut('e');
     fireEvent.click(screen.getByRole('treeitem', { name: /Idea.md/ }));
     await waitFor(() => expect(!!editor()).toBe(mode === 'edit'));

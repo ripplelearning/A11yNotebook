@@ -85,9 +85,15 @@ describe('notes grid with an open note', () => {
     const asideGrid = screen.getByRole('grid', { name: 'Notes and files' });
     fireEvent.keyDown(within(asideGrid).getByRole('gridcell', { name: 'Second.md' }), { key: 'Enter' });
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Second' })).toHaveAttribute('aria-selected', 'true'));
+    // The cycle is the notebook stop, then open notes: from Second it
+    // wraps to the Research notebook stop, then to Idea. The generic
+    // navigation screens are never stops.
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Notes & Files' })).toHaveAttribute('aria-selected', 'true'));
+    const statusBar = screen.getByRole('contentinfo', { name: 'Status bar' });
+    expect(within(statusBar).getByRole('status')).toHaveTextContent('Notes and Files in Research');
     fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
     await waitFor(() => expect(screen.getByRole('tab', { name: 'Idea' })).toHaveAttribute('aria-selected', 'true'));
-    const statusBar = screen.getByRole('contentinfo', { name: 'Status bar' });
     expect(within(statusBar).getByRole('status')).toHaveTextContent('Idea');
   });
 });

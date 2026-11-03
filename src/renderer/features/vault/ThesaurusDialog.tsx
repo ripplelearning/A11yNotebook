@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import Modal from '../../components/Modal';
-import type { ThesaurusGroup } from '../../../shared/thesaurus';
+import type { DictionaryMeaning, ThesaurusGroup } from '../../../shared/thesaurus';
 import { suggestWords } from '../../../shared/spelling';
 
 interface ThesaurusDialogProps {
@@ -13,10 +13,24 @@ interface ThesaurusDialogProps {
   onClose: () => void;
 }
 
+type DefinitionState =
+  | { state: 'loading' }
+  | { state: 'ready'; meanings: DictionaryMeaning[] }
+  | { state: 'error'; message: string };
+
+function slug(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]+/g, '-');
+}
+
 /**
  * Word-style thesaurus. Results are synonyms grouped by part of speech.
  * The bundled data has no antonyms, and the dialog says so rather than
- * inventing them. Everything runs on the device.
+ * inventing them. Each synonym is itself a button: it replaces the
+ * selected word in edit mode, and looks up that synonym's synonyms in
+ * read mode. A per-synonym Lookup button shows definitions from a
+ * free online dictionary — ask-only, like citation lookup: nothing
+ * is sent anywhere until a Lookup button is pressed, and only the
+ * word itself is sent.
  */
 export default function ThesaurusDialog({ initialWord, canReplace, onReplace, onClose }: ThesaurusDialogProps) {
   const [query, setQuery] = useState(initialWord);
@@ -24,6 +38,8 @@ export default function ThesaurusDialog({ initialWord, canReplace, onReplace, on
   const [loading, setLoading] = useState(false);
   const [didYouMean, setDidYouMean] = useState<string[]>([]);
   const [status, setStatus] = useState('');
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [definitions, setDefinitions] = useState<Record<string, DefinitionState>>({});
 
   const search = async (word: string) => {
     const trimmed = word.trim();
@@ -31,6 +47,8 @@ export default function ThesaurusDialog({ initialWord, canReplace, onReplace, on
     setLoading(true);
     setStatus('');
     setDidYouMean([]);
+    setExpanded(new Set());
+    setDefinitions({});
     const lookup = window.a11yNotebook?.vault.lookupThesaurus;
     const found = lookup ? await lookup(trimmed) : [];
     setGroups(found);
@@ -49,6 +67,37 @@ export default function ThesaurusDialog({ initialWord, canReplace, onReplace, on
   const handleSubmit = (event: React.FormEvent) => {
     event.preventDefault();
     void search(query);
+  };
+
+  const toggleDefinitions = async (synonym: string) => {
+    if (expanded.has(synonym)) {
+      setExpanded((current) => {
+        const next = new Set(current);
+        next.delete(synonym);
+        return next;
+      });
+      return;
+    }
+    setExpanded((current) => new Set(current).add(synonym));
+    if (definitions[synonym]) return;
+    const fetchDefinitions = window.a11yNotebook?.vault.fetchDictionaryDefinitions;
+    if (!fetchDefinitions) {
+      setDefinitions((current) => ({ ...current, [synonym]: { state: 'error', message: 'Definitions are unavailable right now.' } }));
+      return;
+    }
+    setDefinitions((current) => ({ ...current, [synonym]: { state: 'loading' } }));
+    try {
+      const meanings = await fetchDefinitions(synonym);
+      setDefinitions((current) => ({ ...current, [synonym]: { state: 'ready', meanings } }));
+    } catch (reason) {
+      setDefinitions((current) => ({
+        ...current,
+        [synonym]: {
+          state: 'error',
+          message: reason instanceof Error ? reason.message : 'The dictionary lookup failed. Try again.',
+        },
+      }));
+    }
   };
 
   return (
@@ -95,35 +144,70 @@ export default function ThesaurusDialog({ initialWord, canReplace, onReplace, on
       {groups && groups.length > 0 ? (
         <div>
           <p>Synonyms for “{query}”. This thesaurus has synonyms only, no antonyms.</p>
+          <p>
+            Each synonym is a button: it replaces the selected word in edit mode, or looks up that synonym in read
+            mode. Definitions come from a free online dictionary; nothing is sent anywhere until you press a Lookup
+            button, and only the word itself is sent.
+          </p>
           {groups.map((group) => (
             <section key={group.partOfSpeech} aria-labelledby={`thesaurus-${group.partOfSpeech}`}>
               <h3 id={`thesaurus-${group.partOfSpeech}`}>{group.partOfSpeech}</h3>
               <ul>
-                {group.synonyms.map((synonym) => (
-                  <li key={synonym}>
-                    {synonym}{' '}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setQuery(synonym);
-                        void search(synonym);
-                      }}
-                    >
-                      Look up
-                    </button>
-                    {canReplace ? (
+                {group.synonyms.map((synonym) => {
+                  const regionId = `thesaurus-def-${slug(group.partOfSpeech)}-${slug(synonym)}`;
+                  const isExpanded = expanded.has(synonym);
+                  const definition = definitions[synonym];
+                  return (
+                    <li key={synonym}>
                       <button
                         type="button"
                         onClick={() => {
-                          setStatus(`Replaced with “${synonym}”.`);
-                          onReplace(synonym);
+                          if (canReplace) {
+                            setStatus(`Replaced with “${synonym}”.`);
+                            onReplace(synonym);
+                          } else {
+                            setQuery(synonym);
+                            void search(synonym);
+                          }
                         }}
                       >
-                        Replace with this word
+                        {synonym}
+                      </button>{' '}
+                      <button
+                        type="button"
+                        aria-expanded={isExpanded}
+                        aria-controls={regionId}
+                        onClick={() => void toggleDefinitions(synonym)}
+                      >
+                        Lookup {synonym}
                       </button>
-                    ) : null}
-                  </li>
-                ))}
+                      {isExpanded ? (
+                        <div id={regionId}>
+                          {definition?.state === 'loading' ? <p role="status">Looking up definitions…</p> : null}
+                          {definition?.state === 'error' ? <p role="status">{definition.message}</p> : null}
+                          {definition?.state === 'ready' ? (
+                            <div>
+                              <h4>Definitions for {synonym}</h4>
+                              {definition.meanings.map((meaning) => (
+                                <div key={meaning.partOfSpeech}>
+                                  <h5>{meaning.partOfSpeech}</h5>
+                                  <ol>
+                                    {meaning.definitions.map((item) => (
+                                      <li key={item.definition}>
+                                        {item.definition}
+                                        {item.example ? <p>Example: {item.example}</p> : null}
+                                      </li>
+                                    ))}
+                                  </ol>
+                                </div>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           ))}

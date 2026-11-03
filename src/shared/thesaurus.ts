@@ -9,3 +9,9 @@ export interface ThesaurusGroup {
   partOfSpeech: string;
   synonyms: string[];
 }
+
+/** One dictionary meaning: a part of speech with its definitions. */
+export interface DictionaryMeaning {
+  partOfSpeech: string;
+  definitions: { definition: string; example?: string }[];
+}
