@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
-import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
+import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, splitStoredTime, composeDialogTime, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
@@ -653,5 +653,39 @@ describe('migrateReminderStorePaths', () => {
 
   it('rejects an invalid migration path', () => {
     expect(() => migrateReminderStorePaths(store, '', 'New.md')).toThrow();
+  });
+});
+
+describe('reminder dialog AM/PM time helpers', () => {
+  it('splits stored 24-hour times into 12-hour text plus a meridiem', () => {
+    expect(splitStoredTime('09:00')).toEqual({ time: '09:00', meridiem: 'AM' });
+    expect(splitStoredTime('00:30')).toEqual({ time: '12:30', meridiem: 'AM' });
+    expect(splitStoredTime('12:30')).toEqual({ time: '12:30', meridiem: 'PM' });
+    expect(splitStoredTime('14:30')).toEqual({ time: '02:30', meridiem: 'PM' });
+    expect(splitStoredTime('23:59')).toEqual({ time: '11:59', meridiem: 'PM' });
+  });
+
+  it('lets a typed AM/PM marker win over the combobox', () => {
+    expect(composeDialogTime('9:30 PM', 'AM')).toBe('21:30');
+    expect(composeDialogTime('9:30 am', 'PM')).toBe('09:30');
+  });
+
+  it('lets an unambiguous 24-hour value win as 24-hour', () => {
+    expect(composeDialogTime('14:30', 'AM')).toBe('14:30');
+    expect(composeDialogTime('00:30', 'PM')).toBe('00:30');
+  });
+
+  it('applies the combobox meridiem to a bare 12-hour time', () => {
+    expect(composeDialogTime('9:30', 'PM')).toBe('21:30');
+    expect(composeDialogTime('09:30', 'AM')).toBe('09:30');
+    expect(composeDialogTime('12:30', 'AM')).toBe('00:30');
+    expect(composeDialogTime('12:30', 'PM')).toBe('12:30');
+  });
+
+  it('rejects invalid times', () => {
+    expect(composeDialogTime('25:00', 'AM')).toBeNull();
+    expect(composeDialogTime('9:60', 'PM')).toBeNull();
+    expect(composeDialogTime('nope', 'AM')).toBeNull();
+    expect(composeDialogTime('', 'AM')).toBeNull();
   });
 });

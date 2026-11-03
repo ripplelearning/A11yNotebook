@@ -1,13 +1,16 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
+import CalendarGrid from './CalendarGrid';
 
 /**
  * A typed date field with a "Show Date Picker" button. Typing stays in a
- * plain text field (YYYY-MM-DD), which screen readers handle reliably;
- * the button opens the browser's native calendar picker and writes the
- * chosen date back into the text field. The native input is kept out of
- * the tab order and off-screen (never display:none, which would disable
- * its picker), and focus returns to the text field after a pick so the
- * user lands back where they were typing.
+ * plain text field (YYYY-MM-DD), which screen readers handle reliably.
+ * The button opens an in-dialog calendar grid (never the browser's
+ * native date popup: that popup is browser UI outside the dialog, so
+ * Tab cycles inside it instead of moving to the next dialog control,
+ * and its date segments announce poorly). The grid uses roving
+ * tabIndex, so it costs one Tab stop and arrow keys move between days;
+ * picking a date writes it back into the text field and returns focus
+ * there, and closing the grid returns focus to the button.
  */
 export default function DatePickerField({
   id,
@@ -24,17 +27,10 @@ export default function DatePickerField({
   disabled?: boolean;
   required?: boolean;
 }) {
+  const [showCalendar, setShowCalendar] = useState(false);
   const textRef = useRef<HTMLInputElement>(null);
-  const pickerRef = useRef<HTMLInputElement>(null);
-  const nativeValue = /^\d{4}-\d{2}-\d{2}$/.test(value) ? value : '';
-
-  function showPicker() {
-    const picker = pickerRef.current;
-    if (!picker) return;
-    const withPicker = picker as HTMLInputElement & { showPicker?: () => void };
-    if (typeof withPicker.showPicker === 'function') withPicker.showPicker();
-    else picker.focus();
-  }
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const calendarId = `${id}-calendar`;
 
   return (
     <>
@@ -49,22 +45,32 @@ export default function DatePickerField({
         onChange={(event) => onChange(event.target.value)}
         required={required}
       />
-      <button type="button" disabled={disabled} onClick={showPicker} aria-label={`Show date picker for ${label}`}>
+      <button
+        ref={buttonRef}
+        type="button"
+        disabled={disabled}
+        aria-expanded={showCalendar}
+        aria-controls={showCalendar ? calendarId : undefined}
+        onClick={() => setShowCalendar((current) => !current)}
+      >
         Show Date Picker
       </button>
-      <input
-        ref={pickerRef}
-        type="date"
-        tabIndex={-1}
-        aria-label={`${label} calendar picker`}
-        disabled={disabled}
-        value={nativeValue}
-        onChange={(event) => {
-          if (event.target.value) onChange(event.target.value);
-          textRef.current?.focus();
-        }}
-        style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}
-      />
+      {showCalendar && !disabled && (
+        <CalendarGrid
+          id={calendarId}
+          label={label}
+          value={value}
+          onSelect={(date) => {
+            onChange(date);
+            setShowCalendar(false);
+            textRef.current?.focus();
+          }}
+          onClose={() => {
+            setShowCalendar(false);
+            buttonRef.current?.focus();
+          }}
+        />
+      )}
     </>
   );
 }

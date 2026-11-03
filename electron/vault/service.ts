@@ -824,6 +824,14 @@ export function createVaultService(
     });
   }
 
+  /** File-safe base name for a dialog-created task note, taken from the task text itself. */
+  function taskNoteBaseName(text: string): string {
+    let base = text.replace(/[<>:"/\\|?*]/g, '-').trim();
+    base = base.replace(/^\.+/, '').trim();
+    base = base.slice(0, 100).replace(/[. ]+$/, '');
+    return base;
+  }
+
   async function createTask(input: unknown, assertCurrent: () => void = () => undefined) {
     if (!input || typeof input !== 'object') throw new Error('Invalid task creation request.');
     const {
@@ -850,12 +858,16 @@ export function createVaultService(
     assertCurrent();
     const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
     if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
-    await createNote(
-      path.posix.join(notebookPath, `Tasks-${randomUUID()}.md`),
-      `- [ ] ${text.trim()}${due ? ` due:${due}` : ''} priority:${priority}${reminder ? ` remind:${reminder}` : ''}\n`,
-      'created',
-      assertCurrent,
-    );
+    const content = `- [ ] ${text.trim()}${due ? ` due:${due}` : ''} priority:${priority}${reminder ? ` remind:${reminder}` : ''}\n`;
+    const baseName = taskNoteBaseName(text.trim()) || `Tasks-${randomUUID()}`;
+    let relative = path.posix.join(notebookPath, `${baseName}.md`);
+    try {
+      await createNote(relative, content, 'created', assertCurrent);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+      relative = path.posix.join(notebookPath, `${baseName}-${randomUUID()}.md`);
+      await createNote(relative, content, 'created', assertCurrent);
+    }
     assertCurrent();
     const tasks = await getTasks();
     assertCurrent();

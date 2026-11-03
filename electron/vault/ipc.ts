@@ -26,6 +26,7 @@ import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, rea
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
 import { lookupThesaurus } from './thesaurus';
+import { fetchDictionaryDefinitions } from './dictionary';
 import { fetchCitationMetadata } from './citation-metadata';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
@@ -3668,6 +3669,11 @@ export function setupVaultIpc(
     assertTrusted(event, isTrustedSender);
     if (typeof word !== 'string') throw new Error('Word must be text.');
     return lookupThesaurus(word);
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultFetchDictionaryDefinitions, async (event, word: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof word !== 'string') throw new Error('Word must be text.');
+    return fetchDictionaryDefinitions(word);
   });
   ipcMain.handle(IPC_CHANNELS.vaultGetBibliography, async (event, notebookPath: unknown) => {
     assertTrusted(event, isTrustedSender);

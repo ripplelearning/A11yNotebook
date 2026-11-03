@@ -49,7 +49,8 @@ describe('accessible reminders UI', () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByLabelText('Time, HH:MM')).toHaveValue('14:30');
+    expect(screen.getByLabelText('Time, HH:MM')).toHaveValue('02:30');
+    expect(screen.getByLabelText('AM or PM')).toHaveValue('PM');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Private meeting' } });
     fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
@@ -77,6 +78,31 @@ describe('accessible reminders UI', () => {
     fireEvent.click(screen.getByLabelText('Use these choices as future defaults'));
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() => expect(onSaveDefaults).toHaveBeenCalledWith(defaults));
+  });
+
+  it('applies the AM/PM combobox to a bare 12-hour time', async () => {
+    const onCreate = vi.fn();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Evening review' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '9:30' } });
+    fireEvent.change(screen.getByLabelText('AM or PM'), { target: { value: 'PM' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        title: 'Evening review',
+        path: 'Study.md',
+        scheduledAt: '2026-10-05 21:30',
+        privacy: 'show-title',
+        notification: true,
+      }),
+    );
   });
 
   it('announces due flashcard events only for the active vault', async () => {
@@ -238,6 +264,7 @@ describe('accessible reminders UI', () => {
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
     fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
     fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '12:30' } });
+    fireEvent.change(screen.getByLabelText('AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({

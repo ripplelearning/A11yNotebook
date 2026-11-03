@@ -25,11 +25,23 @@ describe('trusted creation and import workflows', () => {
     await service.createFolder('Work');
     const first = await service.createTask({ notebookPath: 'Work', text: '  Plan accessibility review  ' });
     expect(first).toEqual([expect.objectContaining({ text: 'Plan accessibility review', complete: false })]);
-    expect(first[0].path).toMatch(/^Work\/Tasks-[\w-]+\.md$/);
+    expect(first[0].path).toBe('Work/Plan accessibility review.md');
     const all = await service.createTask({ text: 'Second task' });
     expect(all).toHaveLength(2);
     expect(await service.search({ text: 'accessibility' })).toHaveLength(1);
     expect(await service.getProvenance(first[0].path)).toBe('app-created');
+  });
+
+  it('names task notes after their task text, sanitizing and disambiguating', async () => {
+    await service.createTask({ text: 'Plan: review/Q&A' });
+    await service.createTask({ text: 'Plan: review/Q&A' });
+    await service.createTask({ text: '...' });
+    await service.createTask({ text: 'x'.repeat(200) });
+    const paths = (await service.getVault()).entries.map((entry) => entry.path);
+    expect(paths).toContain('Plan- review-Q&A.md');
+    expect(paths.some((entry) => /^Plan- review-Q&A-[\w-]+\.md$/.test(entry))).toBe(true);
+    expect(paths.some((entry) => /^Tasks-[\w-]+\.md$/.test(entry))).toBe(true);
+    expect(paths).toContain(`${'x'.repeat(100)}.md`);
   });
 
   it('stores due date, reminder time, and priority on a created task note', async () => {

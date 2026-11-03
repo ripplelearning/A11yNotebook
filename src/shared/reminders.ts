@@ -145,6 +145,44 @@ export function normalizeTimeText(value: string): string | null {
   return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
 
+export type Meridiem = 'AM' | 'PM';
+
+/**
+ * Split a stored 24-hour time (HH:MM) into 12-hour text plus a meridiem
+ * for the reminder dialog's AM/PM combobox. Invalid input falls back
+ * to the text as-is with AM; stored values are validated 24-hour
+ * times, so this is only a safety net.
+ */
+export function splitStoredTime(stored: string): { time: string; meridiem: Meridiem } {
+  const match = /^(\d{2}):(\d{2})$/.exec(stored.trim());
+  if (!match) return { time: stored, meridiem: 'AM' };
+  const hour = Number(match[1]);
+  const minute = match[2];
+  if (hour === 0) return { time: `12:${minute}`, meridiem: 'AM' };
+  if (hour === 12) return { time: `12:${minute}`, meridiem: 'PM' };
+  if (hour > 12) return { time: `${String(hour - 12).padStart(2, '0')}:${minute}`, meridiem: 'PM' };
+  return { time: `${String(hour).padStart(2, '0')}:${minute}`, meridiem: 'AM' };
+}
+
+/**
+ * Compose the reminder dialog's time text plus its AM/PM combobox into
+ * a normalized 24-hour time. Precedence, stated in the dialog so the
+ * user can predict it: a typed AM/PM marker wins; an unambiguous
+ * 24-hour value (hour above 12, or 00) wins as 24-hour; otherwise the
+ * combobox supplies the meridiem.
+ */
+export function composeDialogTime(text: string, meridiem: Meridiem): string | null {
+  const trimmed = text.trim();
+  if (/\s*[aA][mM]\s*$/.test(trimmed) || /\s*[pP][mM]\s*$/.test(trimmed)) {
+    return normalizeTimeText(trimmed);
+  }
+  const day = /^(\d{2}):(\d{2})$/.exec(trimmed);
+  if (day && (Number(day[1]) > 12 || Number(day[1]) === 0)) return normalizeTimeText(trimmed);
+  const twelve = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
+  if (!twelve) return null;
+  return normalizeTimeText(`${twelve[1]}:${twelve[2]} ${meridiem}`);
+}
+
 export function parseReminderDate(value: string): Date | null {
   if (typeof value !== 'string') return null;
   const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);

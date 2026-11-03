@@ -129,12 +129,12 @@ describe('find in document', () => {
     expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
     menu('find-next');
     expect((await screen.findAllByText('Match 2 of 2 for "Idea".')).length).toBeGreaterThan(0);
-    // The repeat path moves keyboard focus into the document, matching
-    // edit mode, instead of leaving it wherever the dialog closed from.
-    expect(screen.getByRole('tabpanel')).toHaveFocus();
+    // The repeat path moves keyboard focus to the match's own element,
+    // not just the panel around it, so a screen reader reads from there.
+    expect(document.activeElement?.textContent).toBe('Idea again');
     menu('find-previous');
     expect((await screen.findAllByText('Match 1 of 2 for "Idea".')).length).toBeGreaterThan(0);
-    expect(screen.getByRole('tabpanel')).toHaveFocus();
+    expect(document.activeElement?.textContent).toBe('Idea');
   });
 
   it('F3 with no previous search reports it', async () => {
@@ -142,6 +142,64 @@ describe('find in document', () => {
     await screen.findByRole('heading', { name: 'Study', level: 2 });
     menu('find-next');
     expect((await screen.findAllByText('No previous search. Open Find first.')).length).toBeGreaterThan(0);
+  });
+
+  it('closing Find leaves focus at the match in the reading view', async () => {
+    const { menu } = renderLibrary();
+    await openNote();
+    menu('find-in-document');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Idea' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
+    expect(within(screen.getByRole('dialog', { name: 'Find in document' })).getByRole('status')).toHaveTextContent('Match 1 of 2 for "Idea".');
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Find in document' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
+    expect(document.activeElement?.textContent).toBe('Idea');
+  });
+
+  it('closing Find leaves focus in the editor at the match', async () => {
+    const { menu } = renderLibrary();
+    await openNote();
+    menu('toggle-read-only-mode');
+    const editor = (await screen.findByRole('textbox', { name: 'Markdown source' })) as HTMLTextAreaElement;
+    menu('find-in-document');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Idea' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Find in document' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
+    expect(document.activeElement).toBe(editor);
+    expect(editor.selectionStart).toBe(2);
+    expect(editor.selectionEnd).toBe(6);
+  });
+
+  it('Escape then F3 finds the next match in the reading view', async () => {
+    const { menu } = renderLibrary();
+    await openNote();
+    menu('find-in-document');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Idea' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
+    expect(within(screen.getByRole('dialog', { name: 'Find in document' })).getByRole('status')).toHaveTextContent('Match 1 of 2 for "Idea".');
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Find in document' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect((await screen.findAllByText('Match 2 of 2 for "Idea".')).length).toBeGreaterThan(0);
+    expect(window.getSelection()?.toString()).toBe('Idea');
+  });
+
+  it('Escape then F3 finds the next match in the editor', async () => {
+    const { menu } = renderLibrary();
+    await openNote();
+    menu('toggle-read-only-mode');
+    const editor = (await screen.findByRole('textbox', { name: 'Markdown source' })) as HTMLTextAreaElement;
+    menu('find-in-document');
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Idea' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
+    expect(within(screen.getByRole('dialog', { name: 'Find in document' })).getByRole('status')).toHaveTextContent('Match 1 of 2 for "Idea".');
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'Find in document' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Find in document' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F3' });
+    expect((await screen.findAllByText('Match 2 of 2 for "Idea".')).length).toBeGreaterThan(0);
+    expect(editor.selectionStart).toBe(8);
+    expect(editor.selectionEnd).toBe(12);
   });
 
   it('finds matches in a text attachment preview', async () => {
