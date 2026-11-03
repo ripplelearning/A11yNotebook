@@ -11,6 +11,15 @@ interface VaultTreeProps {
   onDelete: (path: string) => void;
   /** Shift+Delete handler; without it, Shift+Delete falls back to onDelete. */
   onDeletePermanent?: (path: string) => void;
+  /** Organize dialog moves: into the previous / next notebook in tree order. */
+  onMovePrevious?: (entry: VaultEntry) => void;
+  onMoveNext?: (entry: VaultEntry) => void;
+  /** Organize dialog move: out one level, toward the library root. */
+  onMoveOut?: (entry: VaultEntry) => void;
+  /** Organize dialog node clipboard. */
+  onCut?: (entry: VaultEntry) => void;
+  onCopy?: (entry: VaultEntry) => void;
+  onPaste?: (entry: VaultEntry) => void;
 }
 
 interface VisibleEntry {
@@ -29,7 +38,21 @@ function visibleEntries(entries: VaultEntry[], expanded: Set<string>, level = 1,
 }
 
 /** Provides treeview focus, expansion, selection, and the core APG keyboard model. */
-export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onRename, onDelete, onDeletePermanent }: VaultTreeProps) {
+export default function VaultTree({
+  entries,
+  selectedPath,
+  onSelect,
+  onOpen,
+  onRename,
+  onDelete,
+  onDeletePermanent,
+  onMovePrevious,
+  onMoveNext,
+  onMoveOut,
+  onCut,
+  onCopy,
+  onPaste,
+}: VaultTreeProps) {
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
   const [focusedPath, setFocusedPath] = useState<string | null>(null);
   const itemRefs = useMemo(() => new Map<string, HTMLDivElement>(), []);
@@ -65,6 +88,44 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
     const parentIndex = entry.path.includes('/')
       ? visible.findIndex(({ entry: item }) => item.path === entry.path.slice(0, entry.path.lastIndexOf('/')))
       : -1;
+    // Organize dialog moves and node clipboard. These modifier keys are
+    // tree-context only: they never fire while editing text, because this
+    // handler runs only for treeitem focus.
+    if (event.altKey && !event.ctrlKey && !event.metaKey) {
+      if (event.key === 'ArrowUp' && !event.shiftKey && onMovePrevious) {
+        event.preventDefault();
+        onMovePrevious(entry);
+        return;
+      }
+      if (event.key === 'ArrowDown' && !event.shiftKey && onMoveNext) {
+        event.preventDefault();
+        onMoveNext(entry);
+        return;
+      }
+      if ((event.key === 'ArrowUp' || event.key === 'ArrowDown') && event.shiftKey && onMoveOut) {
+        event.preventDefault();
+        onMoveOut(entry);
+        return;
+      }
+    }
+    if ((event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      const key = event.key.toLowerCase();
+      if (key === 'x' && onCut) {
+        event.preventDefault();
+        onCut(entry);
+        return;
+      }
+      if (key === 'c' && onCopy) {
+        event.preventDefault();
+        onCopy(entry);
+        return;
+      }
+      if (key === 'v' && onPaste) {
+        event.preventDefault();
+        onPaste(entry);
+        return;
+      }
+    }
     let target: string | undefined;
     switch (event.key) {
       case 'ArrowDown':
@@ -182,7 +243,10 @@ export default function VaultTree({ entries, selectedPath, onSelect, onOpen, onR
           >
             {entry.children?.length ? (isExpanded ? '▾ ' : '▸ ') : '　'}
             {entry.name}
-            <span className="sr-only">, {entry.kind}</span>
+            <span className="sr-only">
+              , {entry.kind}
+              {entry.protected ? ', protected' : ''}
+            </span>
           </div>
           {entry.children?.length && isExpanded ? <div role="group">{render(entry.children, level + 1)}</div> : null}
         </div>

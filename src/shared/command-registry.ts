@@ -7,6 +7,7 @@ export type CommandId =
   | 'show-libraries'
   | 'show-notebooks'
   | 'show-notes-files'
+  | 'organize-library'
   | 'open-vault'
   | 'new-contextual'
   | 'new-notebook'
@@ -82,6 +83,9 @@ export type CommandId =
   | 'context-reveal'
   | 'context-bookmark'
   | 'context-new-note'
+  | 'context-protect'
+  | 'context-properties'
+  | 'context-email-item'
   | 'context-close-tab'
   | 'context-close-other-tabs'
   | 'context-pin-tab'
@@ -245,6 +249,13 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
+    id: 'organize-library',
+    label: 'Organize library',
+    description: 'Open the Organize Library dialog to arrange notebooks, notes, and files.',
+    shortcut: 'Ctrl+Shift+V',
+    contexts: ['general'],
+  },
+  {
     id: 'navigate-back',
     label: 'Back in history',
     description: 'Go back to the previous view in browsing history.',
@@ -328,6 +339,24 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'New note in this notebook',
     description: 'Create a note in this notebook.',
     contexts: ['tree-folder'],
+  },
+  {
+    id: 'context-protect',
+    label: 'Protect selected item',
+    description: 'Prevent renaming, moving, deleting, or editing this item until it is unprotected.',
+    contexts: ['tree-note', 'tree-folder', 'attachment'],
+  },
+  {
+    id: 'context-properties',
+    label: 'Properties',
+    description: 'Show details and counts for the selected item.',
+    contexts: ['tree-note', 'tree-folder', 'attachment'],
+  },
+  {
+    id: 'context-email-item',
+    label: 'Send to email',
+    description: 'Open a new email in the default mail app with this file attached.',
+    contexts: ['tree-note', 'attachment'],
   },
   { id: 'context-close-tab', label: 'Close tab', description: 'Close this tab.', contexts: ['tab'] },
   {

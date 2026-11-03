@@ -7,6 +7,7 @@ import type { NotebookBridge } from '../shared/bridge';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { VaultInfo, VaultTask } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   cleanup();
@@ -71,7 +72,7 @@ const shortcut = (key: string) => fireEvent.keyDown(document, { key, ctrlKey: tr
 const status = () => within(screen.getByLabelText('Status bar')).getByRole('status');
 
 async function selectResearch() {
-  await screen.findByRole('treeitem', { name: /Research/ });
+  await screen.findByRole('heading', { name: 'Study library' });
   shortcut('2');
   const cell = screen.getByRole('gridcell', { name: 'Research' });
   fireEvent.click(cell);
@@ -79,9 +80,10 @@ async function selectResearch() {
   await screen.findByText('Items in Research');
 }
 
-async function expandResearch() {
-  const notebook = await screen.findByRole('treeitem', { name: /Research/ });
-  fireEvent.keyDown(notebook, { key: 'ArrowRight' });
+/** Opens a note from the notes grid that stays in the navigation pane while a note is open. */
+function openNavGridNote(name: string) {
+  const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
+  fireEvent.keyDown(within(navigation).getByRole('gridcell', { name }), { key: 'Enter' });
 }
 
 describe('contextual navigation and creation', () => {
@@ -134,7 +136,7 @@ describe('contextual navigation and creation', () => {
 
   it('creates a library from Libraries and keeps explicit notebook creation separate', async () => {
     const { bridge } = setup();
-    await screen.findByRole('treeitem', { name: /Research/ });
+    await screen.findByRole('heading', { name: 'Study library' });
     shortcut('1');
     shortcut('n');
     await waitFor(() => expect(bridge.vault.createLibrary).toHaveBeenCalledOnce());
@@ -148,7 +150,7 @@ describe('contextual navigation and creation', () => {
   it('creates notes in the selected notebook rather than the last grid selection', async () => {
     const { bridge } = setup();
     await selectResearch();
-    fireEvent.click(screen.getByRole('treeitem', { name: /Root.md/ }));
+    await openTreeLeaf(/Root\.md/);
     await screen.findByRole('heading', { name: 'Root', level: 2 });
     shortcut('3');
     shortcut('n');
@@ -160,7 +162,8 @@ describe('contextual navigation and creation', () => {
 
   it('blocks contextual library creation while a note has unsaved changes', async () => {
     const { bridge } = setup('edit');
-    fireEvent.click(await screen.findByRole('treeitem', { name: /Root.md/ }));
+    await screen.findByRole('heading', { name: 'Study library' });
+    await openTreeLeaf(/Root\.md/);
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     fireEvent.change(editor, { target: { value: 'Do not discard' } });
     shortcut('1');
@@ -202,7 +205,7 @@ describe('contextual navigation and creation', () => {
   it('keeps a failed task dialog open with its text and allows Escape cancellation', async () => {
     const { bridge } = setup();
     bridge.vault.createTask.mockRejectedValueOnce(new Error('Task could not be saved.'));
-    await screen.findByRole('treeitem', { name: /Research/ });
+    await screen.findByRole('heading', { name: 'Study library' });
     shortcut('4');
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New task' });
@@ -253,7 +256,7 @@ describe('contextual navigation and creation', () => {
 
   it('focuses the full existing cognitive asset type chooser on every Ctrl+N', async () => {
     setup();
-    await screen.findByRole('treeitem', { name: /Research/ });
+    await screen.findByRole('heading', { name: 'Study library' });
     shortcut('5');
     shortcut('n');
     const chooser = screen.getByRole('combobox', { name: 'New asset type' });
@@ -286,22 +289,22 @@ describe('contextual navigation and creation', () => {
 describe('default note opening mode', () => {
   it.each(['read', 'edit'] as const)('applies %s on open and retains the note\'s mode on tab switch', async (mode) => {
     setup(mode);
-    await expandResearch();
-    const first = await screen.findByRole('treeitem', { name: /Idea.md/ });
-    fireEvent.click(first);
+    await selectResearch();
+    const panel = screen.getByRole('tabpanel');
+    fireEvent.keyDown(within(panel).getByRole('gridcell', { name: 'Idea.md' }), { key: 'Enter' });
     await screen.findByRole('heading', { name: 'Idea', level: 2 });
     const editor = () => screen.queryByRole('textbox', { name: 'Markdown source' });
     await waitFor(() => expect(!!editor()).toBe(mode === 'edit'));
     shortcut('e');
     expect(!!editor()).toBe(mode !== 'edit');
-    fireEvent.click(screen.getByRole('treeitem', { name: /Other.md/ }));
+    openNavGridNote('Other.md');
     await screen.findByRole('heading', { name: 'Other', level: 2 });
     expect(!!editor()).toBe(mode === 'edit');
     fireEvent.click(screen.getByRole('tab', { name: 'Idea' }));
     // Returning to an open note restores its toggled mode instead of resetting to the default.
     expect(!!editor()).toBe(mode !== 'edit');
     shortcut('e');
-    fireEvent.click(screen.getByRole('treeitem', { name: /Idea.md/ }));
+    openNavGridNote('Idea.md');
     await waitFor(() => expect(!!editor()).toBe(mode === 'edit'));
   });
 
@@ -314,14 +317,15 @@ describe('default note opening mode', () => {
       defaultNoteOpenMode: 'edit',
       noteEditLockMinutes: 1,
     });
-    await expandResearch();
-    fireEvent.click(await screen.findByRole('treeitem', { name: /Idea.md/ }));
+    await selectResearch();
+    const panel = screen.getByRole('tabpanel');
+    fireEvent.keyDown(within(panel).getByRole('gridcell', { name: 'Idea.md' }), { key: 'Enter' });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });
     vi.useFakeTimers();
     fireEvent.change(editor, { target: { value: 'Unsaved' } });
     await act(async () => vi.advanceTimersByTime(60_000));
     expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('treeitem', { name: /Other.md/ }));
+    openNavGridNote('Other.md');
     await act(async () => Promise.resolve());
     fireEvent.click(screen.getByRole('tab', { name: /Idea/ }));
     expect(screen.queryByRole('textbox', { name: 'Markdown source' })).not.toBeInTheDocument();

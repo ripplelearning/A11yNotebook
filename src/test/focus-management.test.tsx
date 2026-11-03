@@ -5,6 +5,7 @@ import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
 import type { VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -194,12 +195,10 @@ describe('tabs', () => {
 
     const tablist = screen.getByRole('tablist', { name: 'Open tabs' });
     const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
-    await within(navigation).findByRole('tree');
+    await within(navigation).findByRole('heading', { name: 'Study' });
     act(() => menuListener?.('show-tasks'));
-    const noteItem = await screen.findByRole('treeitem', { name: /Note\.md/ });
-    await act(async () => {
-      fireEvent.click(noteItem);
-    });
+    await openTreeLeaf(/Note\.md/);
+    await screen.findByRole('tab', { name: 'Note' });
 
     const tabs = within(tablist).getAllByRole('tab');
     expect(tabs.map((tab) => tab.getAttribute('aria-label'))).toEqual(['Tasks', 'Note']);

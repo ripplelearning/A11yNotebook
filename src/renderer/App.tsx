@@ -77,7 +77,15 @@ import {
   takeTimelineUndo,
 } from '../shared/undo-timeline';
 import { convertNoteContent, formatConversionWarning } from './features/vault/format-conversion';
-import VaultTree from './features/vault/VaultTree';
+import OrganizeLibraryDialog from './features/vault/OrganizeLibraryDialog';
+import ItemPropertiesDialog from './features/vault/ItemPropertiesDialog';
+import ProtectedItemDialog, { type ProtectedAction } from './features/vault/ProtectedItemDialog';
+import {
+  findEntryInTree,
+  findProtectionBlockInTree,
+  remapPathAfterOps,
+  type StagedOp,
+} from './features/vault/organize-library';
 import { useUpdater } from './hooks/useUpdater';
 import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
@@ -294,6 +302,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'show-libraries',
       'show-notebooks',
       'show-notes-files',
+      'organize-library',
       'toggle-right-pane',
       'toggle-read-only-mode',
       'enable-reading-mode',
@@ -794,6 +803,28 @@ export default function App() {
     entry: VaultEntry;
   } | null>(null);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
+  const [organizeOpen, setOrganizeOpen] = useState(false);
+  // Opening an item from the Organize dialog closes the dialog, and the
+  // dialog's focus restore re-focuses the pre-dialog grid cell — which
+  // re-selects that cell's item, overwriting the opened item's selection.
+  // Remember the opened path and re-assert it once the dialog has closed.
+  const organizeOpenedPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!organizeOpen && organizeOpenedPathRef.current) {
+      const path = organizeOpenedPathRef.current;
+      organizeOpenedPathRef.current = null;
+      setTreeSelection(path);
+    }
+  }, [organizeOpen]);
+  const [propertiesPath, setPropertiesPath] = useState<string | null>(null);
+  const [protectedRequest, setProtectedRequest] = useState<{
+    targetPath: string;
+    targetName: string;
+    blockingPath: string;
+    blockingName: string;
+    blockingIsTarget: boolean;
+    action: ProtectedAction;
+  } | null>(null);
   const [attachment, setAttachment] = useState<AttachmentPreview | null>(null);
   const [externalFile, setExternalFile] = useState<VaultEntry | null>(null);
   const externalOperationGeneration = useRef(0);
@@ -843,11 +874,26 @@ export default function App() {
               : 'new-note';
   const currentEditLockKey = currentNote && vault ? `${vault.path}\0${currentNote.path}` : null;
   const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
+  const currentNoteProtected =
+    !!currentNote && !!findEntryInTree(vault?.entries ?? [], currentNote.path)?.protected;
+  const openProtectedRequest = (path: string, action: ProtectedAction) => {
+    const entries = vault?.entries ?? [];
+    const block = findProtectionBlockInTree(entries, path);
+    const entry = findEntryInTree(entries, path);
+    setProtectedRequest({
+      targetPath: path,
+      targetName: entry?.name ?? path.split('/').at(-1) ?? path,
+      blockingPath: block?.path ?? path,
+      blockingName: block?.name ?? entry?.name ?? path,
+      blockingIsTarget: !block || block.path === path,
+      action,
+    });
+  };
   useEffect(() => {
     const forced = forceEditNoteRef.current;
     if (forced) {
       forceEditNoteRef.current = null;
-      if (forced === currentNoteId && !securityLocked && !currentNoteEditLocked) {
+      if (forced === currentNoteId && !securityLocked && !currentNoteEditLocked && !currentNoteProtected) {
         setMode('edit');
         return;
       }
@@ -858,8 +904,9 @@ export default function App() {
     // A locked note (or a security lock) always shows read-only, and the
     // forced mode is never recorded as the note's remembered mode. The
     // remembered entry is forgotten so that unlocking returns to the
-    // default mode, exactly as before mode memory existed.
-    if (securityLocked || currentNoteEditLocked) {
+    // default mode, exactly as before mode memory existed. A protected
+    // note behaves the same way: read-only until it is unprotected.
+    if (securityLocked || currentNoteEditLocked || currentNoteProtected) {
       delete noteModeRef.current[currentNoteId];
       setMode('read-only');
       return;
@@ -870,7 +917,9 @@ export default function App() {
       return;
     }
     const next =
-      settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked ? 'edit' : 'read-only';
+      settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked && !currentNoteProtected
+        ? 'edit'
+        : 'read-only';
     noteModeRef.current[currentNoteId] = next;
     setMode(next);
   }, [
@@ -880,11 +929,12 @@ export default function App() {
     settingsVaultPath,
     securityLocked,
     currentNoteEditLocked,
+    currentNoteProtected,
   ]);
   useEffect(() => {
-    if (currentNoteId && !securityLocked && !currentNoteEditLocked)
+    if (currentNoteId && !securityLocked && !currentNoteEditLocked && !currentNoteProtected)
       noteModeRef.current[currentNoteId] = mode;
-  }, [mode, currentNoteId, securityLocked, currentNoteEditLocked]);
+  }, [mode, currentNoteId, securityLocked, currentNoteEditLocked, currentNoteProtected]);
   useEffect(() => {
     const open = new Set(openNotes.map((note) => note.id));
     for (const id of Object.keys(noteModeRef.current)) {
@@ -2914,7 +2964,88 @@ export default function App() {
     }
   }, [openNotes]);
 
-  const deleteEntry = async (entryPath: string) => {
+  const handleProtectedUnprotect = async () => {
+    if (!protectedRequest) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.setProtection) throw new Error('Protection is unavailable.');
+    const updated = await bridge.setProtection(protectedRequest.blockingPath, false);
+    setVault(updated);
+    const request = protectedRequest;
+    setProtectedRequest(null);
+    if (request.action === 'edit') {
+      setMode('edit');
+    } else if (request.action === 'rename') {
+      renameEntry(request.targetPath, true);
+    } else if (request.action === 'move') {
+      setItemDialog({ action: 'move', path: request.targetPath });
+    } else if (request.action === 'delete') {
+      void deleteEntry(request.targetPath, true);
+    } else if (request.action === 'delete-permanent') {
+      void deleteEntryPermanently(request.targetPath, true);
+    }
+  };
+
+  /**
+   * After staged Organize Library changes are applied, remap open notes,
+   * the selected tab, the tree selection, and the selected notebook to
+   * their new paths, and close tabs whose path is gone. Only notes whose
+   * path changed are re-read, so dirty notes are never clobbered; a
+   * move or rename commit already refuses to run while any note is dirty.
+   */
+  const applyOrganizeResult = (ops: StagedOp[], finalVault: VaultInfo, partial: boolean) => {
+    setVault(finalVault);
+    setStatusMessage(
+      partial
+        ? 'Some staged changes applied. The remaining changes are still staged in the Organize Library dialog.'
+        : 'Staged changes applied.',
+    );
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge) return;
+    void (async () => {
+      const refreshed = await Promise.all(
+        openNotes.map(async (note) => {
+          const nextPath = remapPathAfterOps(note.path, ops);
+          if (nextPath === null) return null;
+          if (nextPath === note.path) return note;
+          try {
+            const content = await bridge.readNote(nextPath);
+            return {
+              ...note,
+              id: nextPath,
+              path: nextPath,
+              title: nextPath
+                .split('/')
+                .at(-1)!
+                .replace(/\.(?:md|html|htm|txt)$/i, ''),
+              content,
+              saved: content,
+            };
+          } catch {
+            return {
+              ...note,
+              id: nextPath,
+              path: nextPath,
+              title: nextPath.split('/').at(-1) ?? note.title,
+            };
+          }
+        }),
+      );
+      setOpenNotes(refreshed.filter((note): note is OpenNote => note !== null));
+      setSelectedTab((current) => {
+        if (!openNotes.some((note) => note.id === current)) return current;
+        return remapPathAfterOps(current, ops) ?? 'notes-files';
+      });
+      setTreeSelection((current) => (current ? remapPathAfterOps(current, ops) : current));
+      setSelectedNotebookPath((current) => (current ? (remapPathAfterOps(current, ops) ?? undefined) : current));
+      for (const note of openNotes) synchronization.clearConflict(note.path);
+    })();
+  };
+
+  const deleteEntry = async (entryPath: string, bypassProtection = false) => {
+    if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
+      openProtectedRequest(entryPath, 'delete');
+      return;
+    }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     if (
       affectedNotes.some((item) => item.content !== item.saved) &&
@@ -2936,7 +3067,11 @@ export default function App() {
     }
   };
 
-  const deleteEntryPermanently = async (entryPath: string) => {
+  const deleteEntryPermanently = async (entryPath: string, bypassProtection = false) => {
+    if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
+      openProtectedRequest(entryPath, 'delete-permanent');
+      return;
+    }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     const hasUnsavedChanges = affectedNotes.some((item) => item.content !== item.saved);
     try {
@@ -2954,7 +3089,11 @@ export default function App() {
     }
   };
 
-  const renameEntry = (entryPath: string) => {
+  const renameEntry = (entryPath: string, bypassProtection = false) => {
+    if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
+      openProtectedRequest(entryPath, 'rename');
+      return;
+    }
     setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
   };
 
@@ -3041,7 +3180,10 @@ export default function App() {
     if (action === 'new-note') setItemDialog({ action: 'new-note' });
     else if (action === 'new-template') handleCommand('new-from-template');
     else if (action === 'rename') renameEntry(entry.path);
-    else if (action === 'move') setItemDialog({ action: 'move', path: entry.path });
+    else if (action === 'move') {
+      if (findProtectionBlockInTree(vault?.entries ?? [], entry.path)) openProtectedRequest(entry.path, 'move');
+      else setItemDialog({ action: 'move', path: entry.path });
+    }
     else if (action === 'delete') void deleteEntry(entry.path);
     else if (action === 'bookmark')
       void window.a11yNotebook?.vault
@@ -3368,6 +3510,37 @@ export default function App() {
           ?.catch(() => setStatusMessage('Could not open the selected item.'));
       } else {
         setStatusMessage('Open a note before revealing it.');
+      }
+    } else if (commandId === 'context-protect' && entry) {
+      const bridge = window.a11yNotebook?.vault;
+      if (!bridge?.setProtection) {
+        setStatusMessage('Protection is unavailable.');
+        return;
+      }
+      try {
+        const updated = await bridge.setProtection(entry.path, !entry.protected);
+        setVault(updated);
+        setStatusMessage(entry.protected ? `Unprotected ${entry.name}.` : `Protected ${entry.name}.`);
+      } catch {
+        setStatusMessage('Could not change protection for this item.');
+      }
+    } else if (commandId === 'context-properties' && entry) {
+      setPropertiesPath(entry.path);
+    } else if (commandId === 'context-email-item' && entry) {
+      if (entry.kind === 'notebook') {
+        setStatusMessage('A notebook cannot be attached. Choose a note or file.');
+        return;
+      }
+      const bridge = window.a11yNotebook?.vault;
+      if (!bridge?.emailItem) {
+        setStatusMessage('Sending by email is unavailable.');
+        return;
+      }
+      try {
+        await bridge.emailItem(entry.path);
+        setStatusMessage(`Opened a new email with ${entry.name} attached.`);
+      } catch {
+        setStatusMessage('Could not open the mail app.');
       }
     } else if (
       entry &&
@@ -3992,6 +4165,7 @@ export default function App() {
     if (
       (activeDialog && activeDialog !== 'palette') ||
       itemDialog ||
+      organizeOpen ||
       taskDialogOpen ||
       spellingOpen ||
       thesaurusRequest ||
@@ -4410,12 +4584,24 @@ export default function App() {
       }
       return;
     }
+    if (commandId === 'organize-library') {
+      if (!vault) {
+        setStatusMessage('Open a library before organizing it.');
+        return;
+      }
+      setOrganizeOpen(true);
+      return;
+    }
     const result = dispatchCommand(commandId, {
       mode,
       rightPaneOpen,
       setMode: (nextMode) => {
         if (nextMode === 'edit' && currentNoteEditLocked) {
           setStatusMessage('Save this note before editing it again.');
+          return;
+        }
+        if (nextMode === 'edit' && currentNoteProtected && currentNote) {
+          openProtectedRequest(currentNote.path, 'edit');
           return;
         }
         setMode(nextMode);
@@ -4692,6 +4878,7 @@ export default function App() {
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
     }
     if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'organize-library') return !vault;
     if (id === 'enable-reading-mode') return !currentNote;
     if (id === 'find-in-document')
       return !currentNote && !(selectedTab === 'attachment' && attachment);
@@ -4784,6 +4971,7 @@ export default function App() {
     ? searchResults
     : searchResults.filter((result) => !hiddenPaths.has(result.path));
   const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
+  const propertiesEntry = propertiesPath ? findEntryInTree(vault?.entries ?? [], propertiesPath) : undefined;
   const contextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection))
         .filter((command, index, commands) => commands.findIndex((item) => item.id === command.id) === index)
@@ -4798,7 +4986,9 @@ export default function App() {
             ? { ...command, label: 'Add note' }
             : command.id === 'context-pin-tab' && contextMenu.tabId && pinnedTabs.has(contextMenu.tabId)
               ? { ...command, label: 'Unpin tab' }
-              : command,
+              : command.id === 'context-protect' && contextEntry?.protected
+                ? { ...command, label: 'Unprotect selected item' }
+                : command,
         )
     : [];
   const disabledContextCommands = new Set<CommandId>();
@@ -5113,21 +5303,9 @@ export default function App() {
               </button>
             </div>
           )}
-          {vault ? (
-            <VaultTree
-              entries={displayEntries}
-              selectedPath={treeSelection}
-              onSelect={selectEntry}
-              onOpen={(entry) =>
-                void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'))
-              }
-              onRename={renameEntry}
-              onDelete={(entryPath) => void deleteEntry(entryPath)}
-              onDeletePermanent={(entryPath) => void deleteEntryPermanently(entryPath)}
-            />
-          ) : (
+          {!vault ? (
             <p>Open a folder as a local library from the File menu.</p>
-          )}
+          ) : null}
           {/* The notes grid stays available while a note or file is open:
           it is the way to open several notes at once without leaving the
           document to go back to the Notes and Files screen. It renders
@@ -6161,6 +6339,53 @@ export default function App() {
           notebooks={notebooks}
           onClose={() => setItemDialog(null)}
           onSubmit={submitItem}
+        />
+      ) : null}
+      {!securityLocked && organizeOpen && vault ? (
+        <OrganizeLibraryDialog
+          initialEntries={vault.entries}
+          liveEntries={vault.entries}
+          tasks={tasks}
+          bookmarks={bookmarks}
+          reminders={reminderState.reminders}
+          links={links}
+          hasUnsavedChanges={(path) =>
+            openNotes.some(
+              (note) =>
+                (note.path === path || note.path.startsWith(`${path}/`)) && note.content !== note.saved,
+            )
+          }
+          anyUnsavedChanges={() => openNotes.some((note) => note.content !== note.saved)}
+          onClose={() => setOrganizeOpen(false)}
+          onOpenEntry={(entry) => {
+            organizeOpenedPathRef.current = entry.path;
+            void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'));
+          }}
+          onApplied={(ops, finalVault) => applyOrganizeResult(ops, finalVault, false)}
+          onPartiallyApplied={(ops, finalVault) => applyOrganizeResult(ops, finalVault, true)}
+          onVaultUpdated={setVault}
+        />
+      ) : null}
+      {!securityLocked && propertiesPath && propertiesEntry ? (
+        <ItemPropertiesDialog
+          entry={propertiesEntry}
+          livePath={propertiesPath}
+          liveEntries={vault?.entries ?? []}
+          tasks={tasks}
+          bookmarks={bookmarks}
+          reminders={reminderState.reminders}
+          links={links}
+          onClose={() => setPropertiesPath(null)}
+        />
+      ) : null}
+      {!securityLocked && protectedRequest ? (
+        <ProtectedItemDialog
+          itemName={protectedRequest.targetName}
+          blockingName={protectedRequest.blockingName}
+          blockingIsTarget={protectedRequest.blockingIsTarget}
+          action={protectedRequest.action}
+          onUnprotect={handleProtectedUnprotect}
+          onCancel={() => setProtectedRequest(null)}
         />
       ) : null}
       {switchingVault ? (

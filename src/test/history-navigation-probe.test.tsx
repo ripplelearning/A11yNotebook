@@ -74,22 +74,9 @@ describe('history navigation probe', () => {
     await waitFor(() => expect(screen.getByText('Items in Research')).toBeInTheDocument());
   });
 
-  it('does not need a second Alt+Left after retargeting the tree while a note is open', async () => {
-    renderLibrary();
-    await screen.findByRole('heading', { name: 'Study', level: 2 });
-    fireEvent.keyDown(document, { key: '2', ctrlKey: true });
-    fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
-    await screen.findByText('Items in Research');
-    const grid = screen.getByRole('grid', { name: 'Notes and files' });
-    fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Idea.md' }), { key: 'Enter' });
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Idea' })).toHaveAttribute('aria-selected', 'true'));
-    // Retargeting the tree to another notebook while the note stays open
-    // changes only the notebook context, not the visible note. One
-    // Alt+Left must return to the notes grid, not step through that
-    // invisible context change first.
-    fireEvent.click(screen.getByRole('treeitem', { name: /Archive/ }));
-    await waitFor(() => expect(screen.getByRole('tab', { name: 'Idea' })).toHaveAttribute('aria-selected', 'true'));
-    fireEvent.keyDown(document, { key: 'ArrowLeft', altKey: true });
-    await waitFor(() => expect(screen.getByText('Items in Research')).toBeInTheDocument());
-  });
+  // NOTE: the tree-retarget probe was removed with the main-view tree.
+  // Retargeting the notebook context while a note is open used to happen
+  // through an invisible tree click; the only notebook selector now is
+  // the Notebooks screen, which is itself a history step. The in-place
+  // history rule itself is still unit-tested in navigation-history.test.ts.
 });

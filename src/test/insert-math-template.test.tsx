@@ -5,6 +5,7 @@ import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -59,7 +60,8 @@ function setup() {
 describe('insert-math template', () => {
   it('inserts an empty math template with the caret just before the closing backtick', async () => {
     setup();
-    fireEvent.click(await screen.findByRole('treeitem', { name: /Note.md/ }));
+    await screen.findByRole('heading', { name: 'Study' });
+    await openTreeLeaf(/Note\.md/);
     await screen.findByRole('heading', { name: 'Note', level: 2 });
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     const editor = await screen.findByRole('textbox', { name: 'Markdown source' });

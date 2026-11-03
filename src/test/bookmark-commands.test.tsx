@@ -54,6 +54,11 @@ describe('bookmark commands', () => {
     };
     window.a11yNotebook = bridge as unknown as NotebookBridge;
     render(<App />);
+    // The library tree now lives in the Organize Library dialog: wait for
+    // the library to load, open the dialog, and click the leaf note,
+    // which opens it and closes the dialog.
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.keyDown(document.body, { key: 'V', ctrlKey: true, shiftKey: true });
     fireEvent.click(await screen.findByRole('treeitem', { name: /Note\.md/ }));
     await screen.findByRole('heading', { name: 'Note', level: 2 });
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });

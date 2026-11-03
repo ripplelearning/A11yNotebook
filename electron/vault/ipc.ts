@@ -1,6 +1,7 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
 import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvokeEvent } from 'electron';
 import { IPC_CHANNELS } from '../../src/shared/ipc';
@@ -1265,6 +1266,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
   const currentReminders = reminderService;
   const currentProtected = protectedMetadata;
   assertCurrent();
+  await vault.assertNotProtected(relative);
   const sourceStat = await lstat(await vault.resolveEntry(relative));
   await vault.resolveEntry(destination, true);
   const sourceExtension = path.posix.extname(relative).toLowerCase();
@@ -2907,6 +2909,77 @@ export function setupVaultIpc(
     assetDraftGeneration += 1;
     return serializeVaultOperation(() => relocate(relative, destination, access.assertCurrent));
   });
+  ipcMain.handle(IPC_CHANNELS.vaultSetProtection, async (event, relativePath: unknown, value: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string' || typeof value !== 'boolean')
+      throw new Error('Invalid protection request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(() => requireService().setProtection(relativePath, value, access.assertCurrent));
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultGetItemStats, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Path must be text.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      return requireService().getItemStats(relativePath);
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultCopyEntry, async (event, relative: unknown, destination: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || typeof destination !== 'string') throw new Error('Invalid copy request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    assetDraftGeneration += 1;
+    return serializeVaultOperation(() => requireService().copyEntry(relative, destination, access.assertCurrent));
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultEmailItem, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Path must be text.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const { name, bytes } = await requireService().readItemBytes(relativePath);
+      access.assertCurrent();
+      // Mailto cannot carry an attachment, so the app writes a MIME
+      // message with the file embedded and opens it in the default mail
+      // app, where the user presses Send. The temp file stays behind for
+      // the mail app to read; the operating system cleans its temp folder.
+      const boundary = `a11y-notebook-${randomUUID()}`;
+      const safeName = name.replace(/["\r\n]/g, '-');
+      const encodedName = encodeURIComponent(name).replace(/[!()*']/g, (character) =>
+        `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      );
+      const subject = /^[\x20-\x7e]*$/.test(name) ? name : `=?UTF-8?B?${Buffer.from(name, 'utf8').toString('base64')}?=`;
+      const base64 = bytes.toString('base64');
+      const wrapped: string[] = [];
+      for (let offset = 0; offset < base64.length; offset += 76) wrapped.push(base64.slice(offset, offset + 76));
+      const message = [
+        `Subject: ${subject}`,
+        'MIME-Version: 1.0',
+        `Content-Type: multipart/mixed; boundary="${boundary}"`,
+        '',
+        `--${boundary}`,
+        'Content-Type: text/plain; charset=UTF-8',
+        'Content-Transfer-Encoding: 7bit',
+        '',
+        `Attached: ${name}`,
+        '',
+        `--${boundary}`,
+        'Content-Type: application/octet-stream',
+        'Content-Transfer-Encoding: base64',
+        `Content-Disposition: attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
+        '',
+        ...wrapped,
+        `--${boundary}--`,
+        '',
+      ].join('\r\n');
+      const emlPath = path.join(tmpdir(), `a11y-notebook-email-${randomUUID()}.eml`);
+      await writeFile(emlPath, message, { flag: 'wx', mode: 0o600 });
+      const failure = await shell.openPath(emlPath);
+      if (failure) throw new Error('The default mail app could not be opened.');
+    });
+  });
   ipcMain.handle(IPC_CHANNELS.vaultSearch, async (event, query: unknown) => {
     assertTrusted(event, isTrustedSender);
     return requireService().search(query);
@@ -3467,6 +3540,7 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     const target = await vault.resolveEntry(relativePath);
     if (target === vaultPathOf(await vault.getVault())) throw new Error('The library itself cannot be deleted here.');
+    await vault.assertNotProtected(relativePath);
     const answer = await dialog.showMessageBox({
       type: 'warning',
       title: 'Delete item',
@@ -3492,6 +3566,7 @@ export function setupVaultIpc(
         const kept = dropLinksForDeletedPath(links, relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
+        await vault.pruneProtection(access.assertCurrent);
         await vault.refreshSearchIndex();
         return vault.getVault();
       } catch {
@@ -3508,6 +3583,7 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     const target = await vault.resolveEntry(relativePath);
     if (target === vaultPathOf(await vault.getVault())) throw new Error('The library itself cannot be deleted here.');
+    await vault.assertNotProtected(relativePath);
     const answer = await dialog.showMessageBox({
       type: 'warning',
       title: 'Delete item permanently',
@@ -3535,6 +3611,7 @@ export function setupVaultIpc(
         const kept = dropLinksForDeletedPath(links, relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
+        await vault.pruneProtection(access.assertCurrent);
         await vault.refreshSearchIndex();
         return vault.getVault();
       } catch {
