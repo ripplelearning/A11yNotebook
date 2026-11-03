@@ -1,6 +1,7 @@
 import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
 import type {
+  ItemStats,
   ReadingPosition,
   ReadingPositionInput,
   RecentLibrary,
@@ -55,6 +56,14 @@ export interface VaultBridge {
   createNote(path: string, content?: string): Promise<VaultInfo>;
   rename(path: string, name: string): Promise<VaultInfo>;
   move(path: string, destination: string): Promise<VaultInfo>;
+  /** Protection flag for an item; absent on older bridges. */
+  setProtection?(path: string, value: boolean): Promise<VaultInfo>;
+  /** File details for the properties dialog; absent on older bridges. */
+  getItemStats?(path: string): Promise<ItemStats>;
+  /** Duplicate an item, recursively for notebooks; absent on older bridges. */
+  copyEntry?(path: string, destination: string): Promise<VaultInfo>;
+  /** Open a new email with the file attached; absent on older bridges. */
+  emailItem?(path: string): Promise<void>;
   search(query: VaultSearchQuery): Promise<VaultSearchResult[]>;
   getTags(): Promise<string[]>;
   /** Library front-matter field names with their values; absent on older bridges. */

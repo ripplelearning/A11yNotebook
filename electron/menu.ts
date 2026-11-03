@@ -29,6 +29,7 @@ export function buildApplicationMenu(
     commandItem('show-assets'),
     commandItem('show-reminders'),
     commandItem('show-calendar'),
+    commandItem('organize-library'),
     { type: 'separator' },
     commandItem('toggle-right-pane', 'checkbox'),
     commandItem('toggle-read-only-mode', 'checkbox'),

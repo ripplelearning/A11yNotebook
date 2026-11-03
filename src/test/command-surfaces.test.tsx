@@ -8,6 +8,7 @@ import type { MenuCommand } from '../shared/ipc';
 import type { VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 function installBridge(showCommandButtons?: boolean) {
   let listener: ((command: MenuCommand) => void) | undefined;
@@ -70,7 +71,7 @@ describe('command surface visibility', () => {
       await screen.findByRole('heading', { name: 'Study library' });
       if (surface !== 'sidebar') expect(container.querySelector('.vault-actions')).toBeNull();
       for (const path of ['Idea.md', 'Page.html']) {
-        fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(path.replace('.', '\\.')) }));
+        await openTreeLeaf(new RegExp(path.replace('.', '\\.')));
         if (surface === 'menu') menu('open-selected-external');
         else if (surface === 'palette') {
           menu('command-search');
@@ -92,14 +93,15 @@ describe('command surface visibility', () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Study library' });
     for (const selectNotebook of [false, true]) {
-      if (selectNotebook) fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+      if (selectNotebook)
+        fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
       menu('command-search');
       expect(screen.getByRole('button', { name: 'Open in external app' })).toBeDisabled();
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
       menu('open-selected-external');
       expect(bridge.vault.openExternal).not.toHaveBeenCalled();
     }
-    fireEvent.click(screen.getByRole('treeitem', { name: /Idea\.md/ }));
+    await openTreeLeaf(/Idea\.md/);
     menu('show-about');
     menu('open-selected-external');
     expect(bridge.vault.openExternal).not.toHaveBeenCalled();
@@ -109,13 +111,13 @@ describe('command surface visibility', () => {
     const { menu, bridge } = installBridge(false);
     render(<App />);
     await screen.findByRole('heading', { name: 'Study library' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     bridge.vault.importFile.mockRejectedValueOnce(new Error('Import denied'));
     menu('import-file');
     await waitFor(() =>
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('Could not import the selected file.'),
     );
-    fireEvent.click(screen.getByRole('treeitem', { name: /Idea\.md/ }));
+    await openTreeLeaf(/Idea\.md/);
     bridge.vault.openExternal.mockRejectedValueOnce(new Error('Encrypted note'));
     menu('open-selected-external');
     await waitFor(() =>
@@ -130,7 +132,7 @@ describe('command surface visibility', () => {
       const { container } = render(<App />);
       await screen.findByRole('heading', { name: 'Study library' });
       if (surface !== 'sidebar') expect(container.querySelector('.vault-actions')).toBeNull();
-      fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+      fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
       bridge.vault.importFile.mockResolvedValueOnce({
         ...vault,
         entries: [
@@ -156,15 +158,12 @@ describe('command surface visibility', () => {
       };
       runImport();
       await waitFor(() => expect(bridge.vault.importFile).toHaveBeenCalledExactlyOnceWith('Research'));
-      await waitFor(() =>
-        expect(screen.getByRole('treeitem', { name: /Research/ })).toHaveAttribute('aria-expanded', 'false'),
-      );
-      fireEvent.keyDown(screen.getByRole('treeitem', { name: /Research/ }), { key: 'ArrowRight' });
-      expect(await screen.findByRole('treeitem', { name: /External\.pdf/ })).toBeInTheDocument();
+      menu('show-notes-files');
+      expect(await screen.findByRole('gridcell', { name: 'External.pdf' })).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
       runImport();
       await waitFor(() => expect(bridge.vault.importFile).toHaveBeenCalledTimes(2));
-      expect(screen.getByRole('treeitem', { name: /External\.pdf/ })).toBeInTheDocument();
+      expect(screen.getByRole('gridcell', { name: 'External.pdf' })).toBeInTheDocument();
     },
   );
 
@@ -173,7 +172,7 @@ describe('command surface visibility', () => {
     render(<App />);
     await screen.findByRole('heading', { name: 'Study library' });
     for (const selectNote of [false, true]) {
-      if (selectNote) fireEvent.click(screen.getByRole('treeitem', { name: /Idea\.md/ }));
+      if (selectNote) await openTreeLeaf(/Idea\.md/);
       menu('command-search');
       expect(screen.getByRole('button', { name: 'Import file' })).toBeDisabled();
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
@@ -181,7 +180,8 @@ describe('command surface visibility', () => {
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('Select a notebook before importing a file.');
       expect(bridge.vault.importFile).not.toHaveBeenCalled();
     }
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    menu('show-notebooks');
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     menu('show-about');
     menu('import-file');
     expect(bridge.vault.importFile).not.toHaveBeenCalled();
@@ -198,7 +198,7 @@ describe('command surface visibility', () => {
       expect(container.querySelector('.vault-actions')).toBeNull();
       expect(screen.getByRole('searchbox', { name: 'Global search' })).toBeInTheDocument();
       expect(screen.getByRole('tablist', { name: 'Open tabs' })).toBeInTheDocument();
-      expect(screen.getByRole('treeitem', { name: /Idea\.md/ })).toBeInTheDocument();
+      expect(screen.getByRole('gridcell', { name: 'Research' })).toBeInTheDocument();
 
       menu('show-libraries');
       expect(screen.queryByRole('button', { name: 'New library' })).not.toBeInTheDocument();
@@ -210,8 +210,7 @@ describe('command surface visibility', () => {
       menu('show-about');
       expect(screen.getByRole('dialog', { name: 'About A11y Notebook' })).toBeInTheDocument();
       fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
-      const note = screen.getByRole('treeitem', { name: /Idea\.md/ });
-      fireEvent.keyDown(note, { key: 'Enter' });
+      await openTreeLeaf(/Idea\.md/);
       await screen.findByRole('heading', { name: 'Idea', level: 2 });
       menu('toggle-read-only-mode');
       expect(screen.queryByRole('toolbar', { name: 'Markdown formatting' })).not.toBeInTheDocument();

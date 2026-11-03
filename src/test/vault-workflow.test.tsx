@@ -99,9 +99,10 @@ describe('local vault workflow', () => {
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Study' });
-    const folder = screen.getByRole('treeitem', { name: /Class notes/ });
-    fireEvent.click(folder);
-    fireEvent.click(screen.getByRole('treeitem', { name: /Week 1.md/ }));
+    fireEvent.keyDown(await screen.findByRole('gridcell', { name: 'Class notes' }), { key: 'Enter' });
+    await screen.findByText('Items in Class notes');
+    const grid = screen.getByRole('grid', { name: 'Notes and files' });
+    fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Week 1.md' }), { key: 'Enter' });
     expect(await screen.findByRole('heading', { name: 'Week 1', level: 2 })).toBeInTheDocument();
 
     act(() => menuListener?.('toggle-bookmark'));

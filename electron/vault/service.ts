@@ -1,10 +1,10 @@
 // Filesystem-backed vault operations. This module stays in Electron's main process
 // so untrusted renderer content never receives direct filesystem access.
-import { link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, link, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash, randomUUID } from 'node:crypto';
 import path from 'node:path';
-import type { BookmarkAnchor, ReadingPosition, ReadingPositionInput, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
+import type { BookmarkAnchor, ItemStats, ReadingPosition, ReadingPositionInput, VaultBookmark, VaultEntry, VaultInfo, VaultLinkIndex } from '../../src/shared/types';
 import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
@@ -45,6 +45,7 @@ import {
 import { createVaultWatcher } from './watcher';
 import { readImport } from './import';
 import { createProvenanceStore, type Provenance } from './provenance';
+import { createProtectionStore } from './protection';
 import { createSupersededStore } from './superseded';
 import {
   decryptLibraryFile,
@@ -119,6 +120,7 @@ export function createVaultService(
   let initialization: Promise<VaultInfo> | undefined;
   let noteWrites: Promise<unknown> = Promise.resolve();
   const provenance = createProvenanceStore({ resolveMetadata }, liveProvenanceIdentities);
+  const protection = createProtectionStore({ resolveMetadata }, liveProtectionIdentities);
   const superseded = createSupersededStore({ resolveMetadata }, (absolute) => provenance.identity(absolute));
   let libraryManifest: LibraryEncryptionManifest | null = libraryEncryption?.manifest() ?? null;
 
@@ -187,6 +189,26 @@ export function createVaultService(
             const identity = await provenance.identity(absolute);
             if (identity) identities.add(identity);
           }
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+        }
+      }
+    }
+    await collect(root);
+    return identities;
+  }
+
+  async function liveProtectionIdentities() {
+    const identities = new Set<string>();
+    async function collect(directory: string, prefix = '') {
+      for (const entry of await readdir(directory, { withFileTypes: true })) {
+        if (entry.isSymbolicLink() || entry.name.startsWith('.')) continue;
+        const relative = prefix ? `${prefix}/${entry.name}` : entry.name;
+        try {
+          const absolute = await resolveEntry(relative);
+          const identity = await protection.identity(absolute);
+          if (identity) identities.add(identity);
+          if (entry.isDirectory()) await collect(absolute, relative);
         } catch (error) {
           if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         }
@@ -457,6 +479,7 @@ export function createVaultService(
     origins: Awaited<ReturnType<typeof provenance.snapshot>>,
     supersededRecords: Awaited<ReturnType<typeof superseded.snapshot>>,
     live: Set<string>,
+    protectionRecords: Awaited<ReturnType<typeof protection.snapshot>>,
   ): Promise<VaultEntry[]> {
     const entries = await readdir(absolutePath, { withFileTypes: true });
     const result: VaultEntry[] = [];
@@ -466,11 +489,13 @@ export function createVaultService(
       if (entry.isSymbolicLink()) continue;
       const childPath = await resolveEntry(childRelative);
       if (entry.isDirectory()) {
+        const dirIdentity = await protection.identity(childPath);
         result.push({
           name: entry.name,
           path: childRelative,
           kind: 'notebook',
-          children: await scanDirectory(childPath, childRelative, origins, supersededRecords, live),
+          ...(dirIdentity && dirIdentity in protectionRecords ? { protected: true } : {}),
+          children: await scanDirectory(childPath, childRelative, origins, supersededRecords, live, protectionRecords),
         });
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
@@ -483,6 +508,7 @@ export function createVaultService(
           kind: isNote ? 'note' : 'attachment',
           ...(origin ? { provenance: origin } : {}),
           ...(fileIdentity && fileIdentity in supersededRecords ? { superseded: true } : {}),
+          ...(fileIdentity && fileIdentity in protectionRecords ? { protected: true } : {}),
         });
       }
     }
@@ -499,6 +525,7 @@ export function createVaultService(
       await provenance.snapshot(),
       records,
       live,
+      await protection.snapshot(),
     );
     // Pruning here is what restores an original after its copy is deleted,
     // in the app or outside it: a record whose copy is gone no longer hides.
@@ -514,7 +541,7 @@ export function createVaultService(
     }
     if (pruned) {
       records = await superseded.snapshot();
-      entries = await scanDirectory(root, '', await provenance.snapshot(), records, new Set<string>());
+      entries = await scanDirectory(root, '', await provenance.snapshot(), records, new Set<string>(), await protection.snapshot());
     }
     return {
       name: path.basename(root),
@@ -1029,7 +1056,159 @@ export function createVaultService(
     return moveEntry(relativePath, path.posix.join(path.posix.dirname(relativePath), newName));
   }
 
+  /**
+   * The first protected item at or below a path: the item itself, or the
+   * first protected descendant when a notebook contains one. Moving,
+   * renaming, or deleting a notebook would move, rename, or delete the
+   * protected item inside it, so the whole operation is blocked.
+   */
+  async function findProtectionBlock(
+    relativePath: string,
+    records?: Awaited<ReturnType<typeof protection.snapshot>>,
+  ): Promise<{ path: string; name: string } | null> {
+    const snapshotRecords = records ?? (await protection.snapshot());
+    async function check(absolutePath: string, relative: string): Promise<{ path: string; name: string } | null> {
+      const key = await protection.identity(absolutePath);
+      if (key && snapshotRecords[key]) return { path: relative, name: relative.split('/').at(-1)! };
+      const stat = await lstat(absolutePath);
+      if (!stat.isDirectory() || stat.isSymbolicLink()) return null;
+      for (const child of await readdir(absolutePath, { withFileTypes: true })) {
+        if (child.name.startsWith('.') || child.isSymbolicLink()) continue;
+        const childRelative = relative ? `${relative}/${child.name}` : child.name;
+        const found = await check(await resolveEntry(childRelative), childRelative);
+        if (found) return found;
+      }
+      return null;
+    }
+    const absolute = await resolveEntry(relativePath);
+    if ((await lstat(absolute)).isSymbolicLink()) return null;
+    return check(absolute, relativePath);
+  }
+
+  /** Refuse a rename, move, or delete that would change a protected item. */
+  async function assertNotProtected(relativePath: string): Promise<void> {
+    const block = await findProtectionBlock(relativePath);
+    if (!block) return;
+    if (block.path === relativePath)
+      throw new Error('This item is protected. Unprotect it first to rename, move, or delete it.');
+    throw new Error('An item inside this notebook is protected. Unprotect it first to rename, move, or delete the notebook.');
+  }
+
+  async function setProtection(
+    relativePath: string,
+    value: boolean,
+    assertCurrent?: () => void,
+  ): Promise<VaultInfo> {
+    const absolute = await resolveEntry(relativePath);
+    if (!(await protection.identity(absolute)))
+      throw new Error('This item cannot be protected on this filesystem.');
+    await protection.set(absolute, value, assertCurrent);
+    return getVault();
+  }
+
+  async function copyEntry(
+    sourceRelative: string,
+    destinationRelative: string,
+    assertCurrent?: () => void,
+  ): Promise<VaultInfo> {
+    assertVisibleCreationPath(destinationRelative);
+    if (destinationRelative === sourceRelative || destinationRelative.startsWith(`${sourceRelative}/`))
+      throw new Error('A copy cannot be placed inside itself.');
+    const source = await resolveEntry(sourceRelative);
+    const destination = await resolveEntry(destinationRelative, true);
+    const parent = await lstat(path.dirname(destination));
+    if (!parent.isDirectory() || parent.isSymbolicLink()) throw new Error('The destination notebook must be a folder.');
+    try {
+      await lstat(destination);
+      throw new Error('An item with that name already exists.');
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+    }
+    async function copyRecursive(
+      sourceAbsolute: string,
+      destinationAbsolute: string,
+      sourceRel: string,
+      destinationRel: string,
+    ): Promise<void> {
+      const stat = await lstat(sourceAbsolute);
+      if (stat.isSymbolicLink()) throw new Error('Symbolic links cannot be copied.');
+      if (stat.isDirectory()) {
+        await mkdir(destinationAbsolute);
+        for (const child of await readdir(sourceAbsolute, { withFileTypes: true })) {
+          if (child.name.startsWith('.')) continue;
+          await copyRecursive(
+            path.join(sourceAbsolute, child.name),
+            path.join(destinationAbsolute, child.name),
+            `${sourceRel}/${child.name}`,
+            `${destinationRel}/${child.name}`,
+          );
+        }
+      } else if (stat.isFile()) {
+        await copyFile(sourceAbsolute, destinationAbsolute, constants.COPYFILE_EXCL);
+        // A copied container decrypts with its source file id, since the
+        // bytes are identical; the manifest entry is copied with it.
+        if (libraryManifest?.files[sourceRel]) recordManifestEntry(destinationRel, { ...libraryManifest.files[sourceRel] });
+        // The app created the copy, whatever the source's origin was.
+        await provenance.record(destinationAbsolute, 'created', assertCurrent);
+      }
+    }
+    try {
+      await copyRecursive(source, destination, sourceRelative, destinationRelative);
+    } catch (error) {
+      await rm(destination, { recursive: true, force: true }).catch(() => undefined);
+      throw error;
+    }
+    await refreshSearchIndex();
+    return getVault();
+  }
+
+  async function getItemStats(relativePath: string): Promise<ItemStats> {
+    const absolute = await resolveEntry(relativePath);
+    const stat = await lstat(absolute);
+    if (stat.isSymbolicLink()) throw new Error('Symbolic links have no properties here.');
+    let size = 0;
+    if (stat.isDirectory()) {
+      async function sum(directory: string): Promise<void> {
+        for (const child of await readdir(directory, { withFileTypes: true })) {
+          if (child.isSymbolicLink()) continue;
+          const childAbsolute = path.join(directory, child.name);
+          if (child.isDirectory()) await sum(childAbsolute);
+          else if (child.isFile()) {
+            try {
+              size += (await lstat(childAbsolute)).size;
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+            }
+          }
+        }
+      }
+      await sum(absolute);
+    } else if (stat.isFile()) {
+      size = stat.size;
+    } else {
+      throw new Error('Only files and notebooks have properties.');
+    }
+    return {
+      name: relativePath.split('/').at(-1)!,
+      path: relativePath,
+      absolutePath: absolute,
+      isDirectory: stat.isDirectory(),
+      createdMs: stat.birthtimeMs > 0 ? stat.birthtimeMs : null,
+      modifiedMs: stat.mtimeMs,
+      size,
+    };
+  }
+
+  /** File bytes with whole-library decryption applied, for sending by email. */
+  async function readItemBytes(relativePath: string): Promise<{ name: string; bytes: Buffer }> {
+    const absolute = await resolveEntry(relativePath);
+    const stat = await lstat(absolute);
+    if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Only files can be sent by email.');
+    return { name: relativePath.split('/').at(-1)!, bytes: decodeFileBytes(relativePath, await readFile(absolute)) };
+  }
+
   async function moveEntry(relativePath: string, destinationRelative: string): Promise<VaultInfo> {
+    await assertNotProtected(relativePath);
     assertVisibleCreationPath(destinationRelative);
     const source = await resolveEntry(relativePath);
     const destination = await resolveEntry(destinationRelative, true);
@@ -1874,6 +2053,12 @@ export function createVaultService(
     preserveProvenance,
     adoptEncryptedNote,
     pruneProvenance: (assertCurrent?: () => void) => provenance.prune(assertCurrent),
+    setProtection,
+    copyEntry,
+    getItemStats,
+    readItemBytes,
+    assertNotProtected,
+    pruneProtection: (assertCurrent?: () => void) => protection.prune(assertCurrent),
     renameEntry,
     moveEntry,
     migrateMoveMetadata,

@@ -40,6 +40,21 @@ export interface VaultEntry {
   provenance?: 'created' | 'imported' | 'unknown';
   /** True when a managed copy was made from this file; views hide it unless the user shows originals. */
   superseded?: boolean;
+  /** True when the item is protected: renaming, moving, deleting, and editing are blocked until it is unprotected. */
+  protected?: boolean;
+}
+
+/** File details for the properties dialog, measured by the main process. */
+export interface ItemStats {
+  name: string;
+  path: string;
+  absolutePath: string;
+  isDirectory: boolean;
+  /** Creation time in milliseconds, or null when the filesystem does not report one. */
+  createdMs: number | null;
+  modifiedMs: number;
+  /** Size in bytes; for notebooks, the sum of contained files. */
+  size: number;
 }
 
 /** A library the user has opened before, offered in the recent-library picker. */

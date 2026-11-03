@@ -7,6 +7,7 @@ import type { VaultEntry, VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
 import { parseHtmlTasks, parseMarkdownTasks } from '../../electron/vault/tasks';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -94,6 +95,17 @@ function shortcut(key: string, extra = {}) {
   fireEvent.keyDown(document.body, { key, ctrlKey: true, ...extra });
 }
 
+async function openNotebookNote(notebook: string, note: string) {
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: notebook }), { key: 'Enter' });
+  await within(screen.getByRole('tabpanel')).findByText(`Items in ${notebook}`);
+  fireEvent.keyDown(within(screen.getByRole('tabpanel')).getByRole('gridcell', { name: note }), { key: 'Enter' });
+}
+
+function openNavGridNote(name: string) {
+  const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
+  fireEvent.keyDown(within(navigation).getByRole('gridcell', { name }), { key: 'Enter' });
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -169,7 +181,7 @@ describe('contextual shell document workflows', () => {
   it('preserves explicit New notebook shortcut semantics while contextual New uses its customized binding', async () => {
     setup({ settings: { shortcuts: { 'new-contextual': 'Ctrl+Alt+N', 'new-notebook': 'Ctrl+N' } } });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     shortcut('3');
     expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
     shortcut('n');
@@ -180,7 +192,7 @@ describe('contextual shell document workflows', () => {
   });
 
   it.each([false, true] as const)(
-    'shows a superseded original in the tree only when Show original files is %s',
+    'shows a superseded original in Notes and Files only when Show original files is %s',
     async (showOriginalFiles) => {
       setup({
         entries: [
@@ -197,12 +209,13 @@ describe('contextual shell document workflows', () => {
         settings: { showOriginalFiles },
       });
       await screen.findByRole('heading', { name: 'Study' });
-      fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-      expect(screen.getByRole('treeitem', { name: /Copy\.md/ })).toBeInTheDocument();
+      fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+      shortcut('3');
+      expect(screen.getByRole('gridcell', { name: 'Copy.md' })).toBeInTheDocument();
       if (showOriginalFiles) {
-        expect(screen.getByRole('treeitem', { name: /Original\.md/ })).toBeInTheDocument();
+        expect(screen.getByRole('gridcell', { name: 'Original.md' })).toBeInTheDocument();
       } else {
-        expect(screen.queryByRole('treeitem', { name: /Original\.md/ })).not.toBeInTheDocument();
+        expect(screen.queryByRole('gridcell', { name: 'Original.md' })).not.toBeInTheDocument();
       }
     },
   );
@@ -226,7 +239,7 @@ describe('contextual shell document workflows', () => {
   it('closes a selected notebook with Ctrl+W and keeps the library open', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     shortcut('3');
     await within(screen.getByRole('tabpanel')).findByRole('heading', {
       name: 'Notes and Files in Research',
@@ -238,7 +251,9 @@ describe('contextual shell document workflows', () => {
     await within(screen.getByRole('tabpanel')).findByRole('heading', {
       name: 'Notes and Files in Study',
     });
-    expect(screen.getByRole('treeitem', { name: /Research/ })).toBeInTheDocument();
+    // The library stays open: the notebook is still listed on the Notebooks screen.
+    shortcut('2');
+    expect(await screen.findByRole('gridcell', { name: 'Research' })).toBeInTheDocument();
   });
 
   it('opens a library on the Notebooks view', async () => {
@@ -305,10 +320,10 @@ describe('contextual shell document workflows', () => {
         loadSettings: () => (++settingsCalls === 1 ? initialSettings.promise : librarySettings.promise),
         getSecurityStatus: () => security.promise,
       });
-      expect(screen.queryByRole('treeitem')).not.toBeInTheDocument();
+      expect(screen.queryByRole('gridcell', { name: 'Research' })).not.toBeInTheDocument();
       if (ordering === 'settings-first') await act(async () => initialSettings.resolve(customized));
       await act(async () => library.resolve());
-      const notebook = screen.getByRole('treeitem', { name: /Research/ });
+      const notebook = await screen.findByRole('gridcell', { name: 'Research' });
       fireEvent.click(notebook);
       shortcut('3');
       expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
@@ -317,7 +332,7 @@ describe('contextual shell document workflows', () => {
         security.resolve({ enabled: false, locked: false, recoveryAvailable: false });
       });
       if (ordering === 'library-first') await act(async () => initialSettings.resolve(DEFAULT_SETTINGS));
-      expect(notebook).toHaveAttribute('aria-selected', 'true');
+      expect(notebook.closest('[role="row"]')).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
       const search = screen.getByRole('searchbox', { name: 'Global search' });
       search.focus();
@@ -340,7 +355,7 @@ describe('contextual shell document workflows', () => {
     setup({
       settings: { shortcuts: { 'new-contextual': 'Ctrl+Alt+N', 'new-notebook': 'Ctrl+N' } },
       onRender: () => {
-        const notebook = screen.queryByRole('treeitem', { name: /Research/ });
+        const notebook = screen.queryByRole('gridcell', { name: 'Research' });
         if (notebook && !selected) {
           selected = true;
           // Model interaction after commit but before passive library-reset effects.
@@ -350,7 +365,9 @@ describe('contextual shell document workflows', () => {
     });
     await screen.findByRole('heading', { name: 'Study' });
     expect(selected).toBe(true);
-    expect(screen.getByRole('treeitem', { name: /Research/ })).toHaveAttribute('aria-selected', 'true');
+    expect(
+      screen.getByRole('gridcell', { name: 'Research' }).closest('[role="row"]'),
+    ).toHaveAttribute('aria-selected', 'true');
     shortcut('3');
     expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
     shortcut('n');
@@ -389,7 +406,7 @@ describe('contextual shell document workflows', () => {
   it('uses notebook context for New note independently of the current file selection', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     shortcut('3');
     fireEvent.click(screen.getByRole('gridcell', { name: 'Plan.md' }));
     shortcut('n');
@@ -434,8 +451,7 @@ describe('contextual shell document workflows', () => {
   it('never overwrites an unsaved associated note when creating a task', async () => {
     const { bridge } = setup({ mode: 'edit' });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-    fireEvent.click(screen.getByRole('treeitem', { name: /Plan\.md/ }));
+    await openNotebookNote('Research', 'Plan.md');
     fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown source' }), {
       target: { value: '# Unsaved' },
     });
@@ -501,8 +517,7 @@ describe('contextual shell document workflows', () => {
           resolveRead = resolve;
         }),
     );
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-    fireEvent.click(screen.getByRole('treeitem', { name: /Plan\.md/ }));
+    await openNotebookNote('Research', 'Plan.md');
     await act(async () => {
       bridge.vault.onSecurityLocked.mock.calls[0][0]();
       resolveRead('# Must not appear');
@@ -553,7 +568,7 @@ describe('contextual shell document workflows', () => {
     });
     bridge.vault.readAsset.mockResolvedValue({ path: 'Map.outline.md', type: 'outline', content: '- First item\n' });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Map\.outline\.md/ }));
+    await openTreeLeaf(/Map\.outline\.md/);
     const input = await screen.findByRole('textbox', { name: /Item text/ });
     fireEvent.change(input, { target: { value: 'Unsaved idea' } });
     const panel = screen.getByRole('tabpanel');
@@ -575,8 +590,7 @@ describe('contextual shell document workflows', () => {
   it('restores the note\'s edit mode on tab return without discarding unsaved note edits', async () => {
     const { bridge } = setup({ mode: 'read', settings: { autosaveDelay: 0 } });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-    fireEvent.click(screen.getByRole('treeitem', { name: /Plan\.md/ }));
+    await openNotebookNote('Research', 'Plan.md');
     await screen.findByRole('heading', { name: 'Plan', level: 2 });
     shortcut('e');
     fireEvent.change(screen.getByRole('textbox', { name: 'Markdown source' }), { target: { value: '# Unsaved work' } });
@@ -595,9 +609,7 @@ describe('contextual shell document workflows', () => {
     async (mode) => {
       const { bridge } = setup({ mode });
       await screen.findByRole('heading', { name: 'Study' });
-      fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-      const entry = screen.getByRole('treeitem', { name: /Plan\.md/ });
-      fireEvent.click(entry);
+      await openNotebookNote('Research', 'Plan.md');
       await screen.findByRole('heading', { name: 'Plan', level: 2 });
       const check = () => expect(!!screen.queryByRole('textbox', { name: 'Markdown source' })).toBe(mode === 'edit');
       const flippedCheck = () =>
@@ -608,7 +620,7 @@ describe('contextual shell document workflows', () => {
       fireEvent.click(within(screen.getByRole('tablist')).getByRole('tab', { name: 'Plan' }));
       await waitFor(flippedCheck);
       await act(async () => {
-        fireEvent.click(entry);
+        openNavGridNote('Plan.md');
       });
       await waitFor(flippedCheck);
     expect(bridge.vault.readNote).toHaveBeenCalledOnce();
@@ -620,7 +632,10 @@ describe('contextual shell document workflows', () => {
         within(screen.getByRole('grid', { name: 'Notes and files' })).getByRole('gridcell', { name: 'Plan.md' }),
       ).toHaveFocus(),
     );
-    fireEvent.click(entry);
+    fireEvent.keyDown(
+      within(screen.getByRole('grid', { name: 'Notes and files' })).getByRole('gridcell', { name: 'Plan.md' }),
+      { key: 'Enter' },
+    );
     await screen.findByRole('heading', { name: 'Plan', level: 2 });
     await waitFor(check);
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledTimes(2));
@@ -635,15 +650,15 @@ describe('contextual shell document workflows', () => {
       ],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.md/ }));
+    await openTreeLeaf(/^External\.md/);
     await screen.findByRole('tab', { name: 'External' });
     expect(bridge.vault.readNote).toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
     bridge.vault.readAsset.mockResolvedValue({ path: 'External.outline.md', type: 'outline', content: '- First item\n' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /^External\.outline\.md/ }));
+    await openTreeLeaf(/^External\.outline\.md/);
     await waitFor(() => expect(bridge.vault.readAsset).toHaveBeenCalledWith('External.outline.md'));
     expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('treeitem', { name: /^Archive\.zip/ }));
+    await openTreeLeaf(/^Archive\.zip/);
     const dialog = await screen.findByRole('dialog', { name: 'Open external file' });
     fireEvent.click(within(dialog).getByRole('button', { name: /Open with/i }));
     await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('Archive.zip'));
@@ -662,7 +677,7 @@ describe('contextual shell document workflows', () => {
         }),
     );
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    await openTreeLeaf(/Legacy\.md/);
     await waitFor(() => expect(bridge.vault.adoptEncrypted).toHaveBeenCalledWith(path, undefined));
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
@@ -680,9 +695,7 @@ describe('contextual shell document workflows', () => {
     bridge.vault.isNoteEncrypted.mockResolvedValue(true);
     bridge.vault.adoptEncrypted.mockResolvedValue(null);
     await screen.findByRole('heading', { name: 'Study' });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
-    });
+    await openTreeLeaf(/Legacy\.md/);
     expect(bridge.vault.adoptEncrypted).toHaveBeenCalledOnce();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
@@ -699,7 +712,7 @@ describe('contextual shell document workflows', () => {
       entries: [{ name: path, path, kind: 'note', provenance: 'imported' }],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    await openTreeLeaf(/Legacy\.md/);
     const dialog = await screen.findByRole('dialog', { name: 'Unlock encrypted note' });
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     fireEvent.change(within(dialog).getByLabelText('Note password'), { target: { value: 'local-test-password' } });
@@ -714,9 +727,7 @@ describe('contextual shell document workflows', () => {
     bridge.vault.isNoteEncrypted.mockResolvedValue(true);
     bridge.vault.adoptEncrypted.mockResolvedValue(vault);
     await screen.findByRole('heading', { name: 'Study' });
-    await act(async () => {
-      fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
-    });
+    await openTreeLeaf(/Legacy\.md/);
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(screen.queryByRole('tab', { name: 'Legacy' })).not.toBeInTheDocument();
   });
@@ -733,7 +744,7 @@ describe('contextual shell document workflows', () => {
         }),
     );
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Legacy\.md/ }));
+    await openTreeLeaf(/Legacy\.md/);
     await waitFor(() => expect(bridge.vault.adoptEncrypted).toHaveBeenCalledOnce());
     await act(async () => {
       bridge.vault.onSecurityLocked.mock.calls[0][0]();
@@ -745,16 +756,29 @@ describe('contextual shell document workflows', () => {
 
   it('offers explicit Open With and Windows default application context actions', async () => {
     const { bridge } = setup({
-      entries: [{ name: 'External.md', path: 'External.md', kind: 'attachment', provenance: 'unknown' }],
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [{ name: 'External.md', path: 'Research/External.md', kind: 'attachment', provenance: 'unknown' }],
+        },
+      ],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    const entry = screen.getByRole('treeitem', { name: /External\.md/ });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    const entry = screen.getByRole('gridcell', { name: 'External.md' });
     fireEvent.contextMenu(entry);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Open With…' }));
-    await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('External.md', { makeDefault: false }));
+    await waitFor(() =>
+      expect(bridge.vault.openWith).toHaveBeenCalledWith('Research/External.md', { makeDefault: false }),
+    );
     fireEvent.contextMenu(entry);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Choose default application…' }));
-    await waitFor(() => expect(bridge.vault.openWith).toHaveBeenCalledWith('External.md', { makeDefault: true }));
+    await waitFor(() =>
+      expect(bridge.vault.openWith).toHaveBeenCalledWith('Research/External.md', { makeDefault: true }),
+    );
   });
 
   it('keeps non-note views read-only even when the default note preference is Edit', async () => {
@@ -783,7 +807,7 @@ describe('contextual shell document workflows', () => {
       });
       bridge.vault.readAttachment.mockResolvedValue({ path, kind: `.${extension}`, text: 'Read-only preview' });
       await screen.findByRole('heading', { name: 'Study' });
-      fireEvent.click(screen.getByRole('treeitem', { name: new RegExp(`Guide\\.${extension}`) }));
+      await openTreeLeaf(new RegExp(`Guide\\.${extension}`));
       await screen.findByRole('tab', { name: path });
       expect(screen.getByLabelText('Status bar')).toHaveTextContent('Mode: read-only');
       shortcut('e');
@@ -796,14 +820,21 @@ describe('contextual shell document workflows', () => {
   it('keeps the tab panel labelled when note paths contain spaces and punctuation', async () => {
     setup({ entries: [{ name: 'A plan #1.md', path: 'A plan #1.md', kind: 'note', provenance: 'created' }] });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /A plan #1\.md/ }));
+    await openTreeLeaf(/A plan #1\.md/);
     const panel = await screen.findByRole('tabpanel', { name: 'A plan #1' });
     expect(screen.getByRole('tab', { name: 'A plan #1' })).toHaveAttribute('aria-controls', panel.id);
   });
 
   it('imports a compatible selected document before opening its managed copy', async () => {
     const { bridge, vault } = setup({
-      entries: [{ name: 'External.md', path: 'External.md', kind: 'attachment', provenance: 'unknown' }],
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [{ name: 'External.md', path: 'Research/External.md', kind: 'attachment', provenance: 'unknown' }],
+        },
+      ],
     });
     bridge.vault.importEntry.mockResolvedValue({
       vault: {
@@ -813,20 +844,32 @@ describe('contextual shell document workflows', () => {
       path: 'Imported.md',
     });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.contextMenu(screen.getByRole('treeitem', { name: /External\.md/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'External.md' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Import file' }));
-    await waitFor(() => expect(bridge.vault.importEntry).toHaveBeenCalledWith('External.md'));
+    await waitFor(() => expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/External.md'));
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledWith('Imported.md', undefined));
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
-    expect(screen.getByRole('treeitem', { name: /External\.md/ })).toBeInTheDocument();
+    const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
+    expect(within(navigation).getByRole('gridcell', { name: 'External.md' })).toBeInTheDocument();
   });
 
   it('does not offer import for incompatible files or try to read their bytes', async () => {
     const { bridge } = setup({
-      entries: [{ name: 'Program.exe', path: 'Program.exe', kind: 'attachment', provenance: 'unknown' }],
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [{ name: 'Program.exe', path: 'Research/Program.exe', kind: 'attachment', provenance: 'unknown' }],
+        },
+      ],
     });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.contextMenu(screen.getByRole('treeitem', { name: /Program\.exe/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Program.exe' }));
     expect(screen.queryByRole('menuitem', { name: 'Import file' })).not.toBeInTheDocument();
     expect(bridge.vault.importEntry).not.toHaveBeenCalled();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
@@ -835,7 +878,7 @@ describe('contextual shell document workflows', () => {
   it('opens a just-created note in Editing mode with the editor focused, even when the default open mode is read', async () => {
     setup({ mode: 'read' });
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
     shortcut('3');
     await screen.findByText('Items in Research');
     fireEvent.click(within(screen.getByRole('tabpanel')).getByRole('button', { name: 'New note' }));

@@ -8,6 +8,7 @@ import type { VaultChangedEvent } from '../shared/search';
 import type { VaultReminderEvent } from '../shared/reminders';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
+import { openOrganizeDialog, openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -162,7 +163,8 @@ function setup(
 }
 
 async function editNote() {
-  fireEvent.click(await screen.findByRole('treeitem', { name: /Note.md/ }));
+  await screen.findByRole('heading', { name: 'Study' });
+  await openTreeLeaf(/Note\.md/);
   await screen.findByRole('heading', { name: 'Note', level: 2 });
   fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
   return screen.findByRole('textbox', { name: 'Markdown source' });
@@ -244,7 +246,8 @@ describe('feature wiring in the application shell', () => {
       unsupportedFeatures: [],
       truncated: false,
     }));
-    fireEvent.click(await screen.findByRole('treeitem', { name: /Guide\.docx/ }));
+    await screen.findByRole('heading', { name: 'Study' });
+    await openTreeLeaf(/Guide\.docx/);
     expect(await screen.findByRole('region', { name: 'DOCX document reader' })).toBeInTheDocument();
     expect(await screen.findByText('Document content')).toBeInTheDocument();
     expect(bridge.vault.readAttachment).toHaveBeenCalledWith('Guide.docx');
@@ -344,7 +347,8 @@ describe('feature wiring in the application shell', () => {
         '<h1>Note</h1><ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false">Read chapter</li></ul>',
       tasks: [task],
     });
-    fireEvent.click(await screen.findByRole('treeitem', { name: /Note\.html/ }));
+    await screen.findByRole('heading', { name: 'Study' });
+    await openTreeLeaf(/Note\.html/);
     const checkbox = await screen.findByRole('checkbox', { name: 'Mark complete: Read chapter' });
     expect(checkbox).toHaveAttribute('aria-checked', 'false');
     fireEvent.click(checkbox);
@@ -401,8 +405,9 @@ describe('feature wiring in the application shell', () => {
     fireEvent.keyDown(editor, { key: 's', ctrlKey: true });
     await waitFor(() => expect(bridge.vault.get).toHaveBeenCalledTimes(2));
     menu('open-vault');
-    await screen.findByRole('treeitem', { name: /Other.md/ });
+    await screen.findByRole('heading', { name: 'Next' });
     await act(async () => finish(vault));
+    await openOrganizeDialog();
     expect(screen.getByRole('treeitem', { name: /Other.md/ })).toBeInTheDocument();
     expect(screen.queryByRole('treeitem', { name: /Note.md/ })).not.toBeInTheDocument();
   });
@@ -472,13 +477,15 @@ describe('feature wiring in the application shell', () => {
   });
   it('opens and dismisses the keyboard tree menu without moving to another item', async () => {
     setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    await openOrganizeDialog();
     const item = await screen.findByRole('treeitem', { name: /Note.md/ });
     item.focus();
     fireEvent.keyDown(item, { key: 'F10', shiftKey: true });
     const menu = screen.getByRole('menu', { name: 'Actions for Note.md' });
-    expect(within(menu).getByRole('menuitem', { name: 'Open selected item' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Open' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'End' });
-    expect(within(menu).getByRole('menuitem', { name: 'Export note…' })).toHaveFocus();
+    expect(within(menu).getByRole('menuitem', { name: 'Send to email' })).toHaveFocus();
     fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
     expect(item).toHaveFocus();
     expect(menu).not.toBeInTheDocument();

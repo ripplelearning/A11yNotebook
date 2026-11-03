@@ -7,6 +7,7 @@ import type { NotebookBridge } from '../shared/bridge';
 import type { VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
+import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
@@ -69,7 +70,8 @@ function setup() {
 }
 
 async function openNote() {
-  fireEvent.click(await screen.findByRole('treeitem', { name: /Note.md/ }));
+  await screen.findByRole('heading', { name: 'Study' });
+  await openTreeLeaf(/Note.md/);
   await screen.findByRole('heading', { name: 'Note', level: 2 });
 }
 
@@ -118,7 +120,7 @@ describe('Focus Mode (F11)', () => {
 
   it('does nothing when no note is open', async () => {
     setup();
-    await screen.findByRole('treeitem', { name: /Note.md/ });
+    await screen.findByRole('heading', { name: 'Study' });
     pressF11();
     expect(shell().classList.contains('focus-mode')).toBe(false);
   });

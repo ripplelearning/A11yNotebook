@@ -68,7 +68,7 @@ function installBridge() {
 
 async function showFiles() {
   await screen.findByRole('heading', { name: 'Study' });
-  fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
   fireEvent.keyDown(document.body, { ctrlKey: true, key: '3' });
   return screen.findByRole('grid', { name: 'Notes and files' });
 }

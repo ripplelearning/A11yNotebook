@@ -66,8 +66,10 @@ function renderLibrary() {
 
 async function openNote() {
   await screen.findByRole('heading', { name: 'Study', level: 2 });
-  fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-  fireEvent.click(screen.getByRole('treeitem', { name: /Idea\.md/ }));
+  fireEvent.keyDown(await screen.findByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+  await screen.findByText('Items in Research');
+  const grid = screen.getByRole('grid', { name: 'Notes and files' });
+  fireEvent.keyDown(within(grid).getByRole('gridcell', { name: 'Idea.md' }), { key: 'Enter' });
   await screen.findByText('Idea again');
 }
 
@@ -210,8 +212,10 @@ describe('find in document', () => {
       kind: '.txt',
     });
     await screen.findByRole('heading', { name: 'Study', level: 2 });
-    fireEvent.click(screen.getByRole('treeitem', { name: /Research/ }));
-    fireEvent.click(screen.getByRole('treeitem', { name: /Notes\.txt/ }));
+    fireEvent.keyDown(await screen.findByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    await screen.findByText('Items in Research');
+    const attachmentGrid = screen.getByRole('grid', { name: 'Notes and files' });
+    fireEvent.keyDown(within(attachmentGrid).getByRole('gridcell', { name: 'Notes.txt' }), { key: 'Enter' });
     await screen.findByText('Alpha again');
     menu('find-in-document');
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in document' }), { target: { value: 'Alpha' } });

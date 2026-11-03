@@ -13,6 +13,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+1         | Libraries                               |
 | Ctrl+2         | Notebooks                               |
 | Ctrl+3         | Notes & Files                           |
+| Ctrl+Shift+V   | Organize library                        |
 | Alt+ArrowLeft  | Back in history                         |
 | Alt+ArrowRight | Forward in history                      |
 | Ctrl+Shift+I   | Import file                             |
@@ -83,6 +84,9 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Tab / Ctrl+Shift+Tab                                            | Switch open tabs                               |
 | In the library tree: Up/Down, Left/Right, Home/End                   | Move, expand, and collapse                     |
 | In the library tree: Enter, F2, Delete, `*`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
+| In the library tree: Alt+Up/Down                                     | Move into the previous / next notebook         |
+| In the library tree: Alt+Shift+Up/Down                               | Move out one level                             |
+| In the library tree: Ctrl+X / Ctrl+C / Ctrl+V                        | Cut / copy / paste                             |
 
 ## Feature navigation
 

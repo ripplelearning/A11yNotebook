@@ -96,6 +96,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultGetReadingPosition: 'vault:get-reading-position',
   vaultSetReadingPosition: 'vault:set-reading-position',
   vaultMove: 'vault:move',
+  vaultSetProtection: 'vault:set-protection',
+  vaultGetItemStats: 'vault:get-item-stats',
+  vaultCopyEntry: 'vault:copy-entry',
+  vaultEmailItem: 'vault:email-item',
   vaultSearch: 'vault:search',
   vaultTags: 'vault:tags',
   vaultFrontMatterIndex: 'vault:front-matter-index',
@@ -232,6 +236,12 @@ const bridge: NotebookBridge = {
     createNote: (relativePath, content) => ipcRenderer.invoke(CHANNELS.vaultCreateNote, relativePath, content),
     rename: (relativePath, name) => ipcRenderer.invoke(CHANNELS.vaultRename, relativePath, name),
     move: (relativePath, destination) => ipcRenderer.invoke(CHANNELS.vaultMove, relativePath, destination),
+    setProtection: (relativePath, value) =>
+      ipcRenderer.invoke(CHANNELS.vaultSetProtection, relativePath, value),
+    getItemStats: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultGetItemStats, relativePath),
+    copyEntry: (relativePath, destination) =>
+      ipcRenderer.invoke(CHANNELS.vaultCopyEntry, relativePath, destination),
+    emailItem: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultEmailItem, relativePath),
     search: (query) => ipcRenderer.invoke(CHANNELS.vaultSearch, query),
     getTags: () => ipcRenderer.invoke(CHANNELS.vaultTags),
     getFrontMatterIndex: () => ipcRenderer.invoke(CHANNELS.vaultFrontMatterIndex),
