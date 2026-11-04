@@ -3,8 +3,8 @@
 ## Open a library
 
 Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
-as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time, on the Notebooks view. Closing a library forgets it, so a closed library stays closed on the next launch.
-Opening a library lands on the Notebooks view. **Ctrl+W** closes whatever is current: a tab, a selected notebook, or
+as notebooks, managed `.md` and `.html` files as notes, and other files as attachments. The last opened library is restored next time, on the notebook you last had open. Closing a library forgets it, so a closed library stays closed on the next launch.
+Reopening a library shows that notebook's Notes and Files view; when no notebook was recorded, or the notebook is gone, it lands on the Notebooks view instead. **Ctrl+W** closes whatever is current: a tab, a selected notebook, or
 the open library; closing a library closes everything inside it and returns to the Libraries view. To delete a library,
 focus it in the Libraries grid and press **Delete**, or choose **Delete library** from its context menu; the confirmation
 warns that everything inside the library goes too, and confirming moves the whole folder to the Recycle Bin.
@@ -37,15 +37,46 @@ that prerequisite rather than silently creating a different kind of item.
 
 ## Navigate files
 
-Use the **Library files** tree. Up and Down move between visible items; Right expands a notebook or enters its first
-child; Left collapses or moves to its parent. Home and End move to the first and last visible item. Enter opens a
-managed note or a supported managed preview. External or unknown-origin documents use Open With rather than being
-silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving it
-to the Recycle Bin. Type a letter to find the next item beginning with that letter; `*` expands sibling notebooks.
+In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Enter opens the selected item: a managed note, or a supported managed preview. External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently. Space selects a row. To arrange notebooks, notes, and files in the library tree, use the Organize Library dialog below.
 
 Use **File → New note**, **File → New notebook**, or **Tools → Import file**. Imported files are copied into the
-selected notebook. Select a tree item before using **Tools → Reveal selected item in Explorer** or **Open selected item
+selected notebook. Select an item before using **Tools → Reveal selected item in Explorer** or **Open selected item
 in external app**. These commands use the current selection, not a previously selected item.
+
+### Organize library
+
+Choose **View → Organize library** (Ctrl+Shift+V). The dialog holds the library tree as its primary content; there is
+no tree pane in the main view anymore. Items at the library root are reached through this dialog tree and through
+global search. In the dialog tree, Up and Down move between visible items; Right expands a notebook or enters its first
+child; Left collapses or moves to its parent. Home and End move to the first and last visible item. Type a letter to
+find the next item beginning with that letter; `*` expands sibling notebooks.
+
+Changes inside the dialog are staged: **OK** applies them all, **Cancel** discards them, and **Escape** closes the
+dialog and returns focus to where it was before. F2 renames, or use the context menu. Enter opens the selected item
+and closes the dialog without applying staged changes. Delete moves an item to the Recycle Bin, or use the context
+menu; Shift+Delete deletes permanently. Cut, copy, and paste with Ctrl+X, Ctrl+C, and Ctrl+V, or from the context
+menu: cut and paste moves an item, with links repaired as a move repairs them; copy and paste duplicates an item,
+recursively for a notebook, under a non-colliding name.
+
+Move an item with Alt+Up or Alt+Down to put it into the previous or next notebook in tree order, or with
+Alt+Shift+Up or Alt+Shift+Down to move it out one level, into its grandparent notebook or to the library root.
+Repeat the out-one-level move to walk an item up to the root. For any other destination, use **Move** from the
+context menu and choose the destination notebook. A notebook can never move into itself or one of its descendants,
+and notebooks are never reordered among their siblings.
+
+**Protect** is in the context menu. A protected item cannot be edited, moved, deleted, or renamed. Trying any of
+those opens a dialog saying the item is protected, with **Unprotect** and **Cancel**. Unprotect removes the
+protection and immediately carries out the action; Cancel leaves the item protected and does nothing. Protection
+lasts until removed, and also blocks operating on a notebook that contains a protected item inside it.
+
+**Send to email** is in the context menu. It creates a mail file with the selected note or file attached and opens
+it in the default mail app, where you press Send; a mailto link cannot carry an attachment, so the app uses this
+file instead. Only files can be sent by email, so a notebook folder cannot be emailed this way.
+
+**Properties** is in the context menu. It shows the item's name and kind, its saved location, the date it was
+created, the date and time it was last updated, its size on disk, and whether it is protected, plus counts of its
+tasks, reminders, bookmarks, annotations, and cognitive tools where applicable, its contained notes and files, and
+its linked items.
 
 The Windows/Electron build has a native menu bar with **File**, **Edit**, **View**, **Insert**, **Format**, **Tools**, and
 **Help**. Use Alt and the underlined mnemonic, then the arrow keys, Enter, or Escape. Menu commands have no hard-coded
@@ -90,8 +121,8 @@ confirmation to use the existing unlock workflow. Content is shown only after au
 this does not silently classify other legacy files as app-created. Cancel leaves the encrypted file unchanged.
 
 For a compatible external file, use **Import into A11y Notebook** from its context menu to create a managed copy.
-The original is preserved, but once its managed copy exists the original is hidden from the tree, the grid, and
-search results. Turn on **Show original files** in Settings to see it again; deleting the managed copy brings it
+The original is preserved, but once its managed copy exists the original is hidden from the Notes and Files grid and
+search results. It still appears in the Organize Library dialog tree, which shows every item. Turn on **Show original files** in Settings to see it again; deleting the managed copy brings it
 back on its own. Markdown and HTML notes support reading and editing; supported text, image, PDF, ePub
 and DOCX previews are read-only unless a dedicated tool editor is provided (for example, a CSV grid).
 Unsupported or invalid formats are not offered as editable imports; oversized, unsafe, or malformed input is
@@ -341,13 +372,15 @@ Completed tasks do not notify. **Open Reminders** (Ctrl+Shift+R) also creates st
 Switch between the labelled table and Overdue/Today/This week lists. Snooze for 5/15/30/60 minutes, 1 day, or until the
 same local clock time tomorrow; Dismiss removes an item from active views. Clicking a native notification opens
 its note when the library is still open. Windows notification settings may suppress delivery.
-The scheduler runs only while the application is running; missed pending reminders fire on next launch, and
-already-fired reminders remain visible until dismissed. Reminder state persists in `.a11ynotebook/reminders.json`.
+While the app is running, the scheduler delivers reminders in the app; missed pending reminders fire on next launch, and
+already-fired reminders remain visible until dismissed. When the app is closed and the machine is awake, due reminders
+still fire through a scheduled background task: the app shows the notification and opens the window focused on the
+due reminder. If several reminders are due, the earliest-due reminder takes focus. A sleeping machine is never woken:
+a missed fire comes late on the next wake instead. Reminder state persists in `.a11ynotebook/reminders.json`.
 The creation dialog can save time, snooze, title privacy, and notification choices as future defaults in
 `.a11ynotebook/reminder-defaults.json`; existing standalone reminders retain their choices. Task notifications
 use the current privacy/notification preferences. Due flashcard notifications are opt-in and share the same
-scheduler and persisted delivery tracking. Closing the last window exits the app on Windows; no notifications
-are delivered after process exit.
+scheduler and persisted delivery tracking. Closing the last window exits the app on Windows; scheduled background delivery still fires while the machine is awake, as described above.
 
 ### In-app reminder alerts
 
@@ -377,8 +410,7 @@ No titles are exposed, but reminders due while locked do not sound or produce th
 Unlocking restarts scheduling and catches up missed reminders. A generic privacy-safe locked-delivery snapshot
 on the same scheduler remains open; do not rely on reminder delivery until the library is unlocked.
 
-This is not exited-process delivery: **nothing fires after A11y Notebook exits**. Actual Windows background/minimized
-sound and focus, and JAWS/NVDA/Narrator announcements, still need manual verification.
+Actual Windows scheduled delivery, background sound and focus, and JAWS/NVDA/Narrator announcements still need manual verification.
 Tasks also show per-notebook completion counts and native progress elements.
 
 The **Calendar** is one calendar for the whole library, opened with **Ctrl+6**, **Tools → Calendar** in the
@@ -670,13 +702,16 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+S                                                       | Save the current note                          |
 | Ctrl+D                                                       | Bookmark or unbookmark the current note        |
 | F1                                                           | Show keyboard shortcuts                        |
-| F5                                                           | Refresh the library tree                       |
+| F5                                                           | Refresh library and links                      |
 | F6 / Shift+F6                                                | Move focus to next / previous pane             |
 | Alt+Left / Alt+Right                                         | Go back / forward in browsing history          |
 | F9                                                           | Show or hide the right pane                    |
 | Shift+F10 / Applications key / right-click                   | Open the context-aware command menu            |
-| In the tree: Up/Down, Left/Right, Home/End                   | Navigate and expand/collapse                   |
-| In the tree: Enter, F2, Delete, `*`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
+| Ctrl+Shift+V                                                 | Open the Organize Library dialog               |
+| In the Organize Library dialog tree: Up/Down, Left/Right, Home/End                   | Navigate and expand/collapse                   |
+| In the Organize Library dialog tree: Enter, F2, Delete, `*`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
+| In the Organize Library dialog: Alt+Up/Down, Alt+Shift+Up/Down | Move into the previous/next notebook, or out one level |
+| In the Organize Library dialog: Ctrl+X, Ctrl+C, Ctrl+V       | Cut, copy, paste                               |
 
 ## Accessibility notes
 
@@ -689,8 +724,6 @@ Narrator testing is still needed; see the [testing strategy](accessibility/testi
 Whole-library encryption and encryption of excluded indexes/metadata are not available. Cognitive checkpoints require
 explicit scoped protection consent; save important edits explicitly, including while persistent recovery is disabled.
 DOCX local reading is implemented; DOCX annotations and legacy `.doc` local reading remain unavailable.
-Reminders require the app process to be running: no opt-in Task Scheduler/helper integration ships here, and closing
-a window must not be assumed to preserve notifications after process exit.
 Format conversion creates a warned sibling copy and keeps the original; complete loss analysis and in-place conversion
 remain open. PDF sidebar/export/lifecycle workflows, ePub annotations, and broader document lifecycle features are open implementation
 work, not externally blocked. See the [reader and annotation follow-up plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
