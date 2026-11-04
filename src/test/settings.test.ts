@@ -64,6 +64,17 @@ describe('settings and shortcut validation', () => {
   ])('rejects invalid appearance or backup preference %j', (overrides) => {
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, ...overrides })).toThrow('Invalid settings values.');
   });
+  it('keeps the last notebook path and rejects a non-string one', () => {
+    expect(
+      validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} }).lastNotebookPath,
+    ).toBeUndefined();
+    expect(validateSettings({ ...DEFAULT_SETTINGS, lastNotebookPath: 'Research' }).lastNotebookPath).toBe(
+      'Research',
+    );
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, lastNotebookPath: 42 })).toThrow(
+      'Invalid settings values.',
+    );
+  });
   it('defaults the calendar to online and persists the offline choice', () => {
     expect(DEFAULT_SETTINGS.calendarOffline).toBe(false);
     expect(

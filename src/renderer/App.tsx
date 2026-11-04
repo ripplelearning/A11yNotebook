@@ -683,10 +683,36 @@ export default function App() {
     });
   }, [vault, openNotes, selectedTab, selectedNotebookPath, taskTabOpen, reminderTabOpen, calendarTabOpen, pinnedTabs]);
 
-  const restoreLibraryUiState = async (opened: VaultInfo) => {
+  // Cross-restart reopen landing: when no in-session snapshot exists,
+  // restore the last notebook recorded in this library's settings, so
+  // reopening lands on that notebook's Notes and Files. Returns true
+  // when a notebook was restored. Anything missing, deleted, or renamed
+  // falls through to the caller's landing, unchanged.
+  const restorePersistedNotebook = useCallback(async (opened: VaultInfo, generation: number): Promise<boolean> => {
+    let lastNotebookPath: string | undefined;
+    try {
+      lastNotebookPath = (await window.a11yNotebook?.vault.getSettings?.())?.lastNotebookPath;
+    } catch {
+      return false;
+    }
+    if (!lastNotebookPath) return false;
+    const notebook = findEntry(opened.entries, lastNotebookPath);
+    if (notebook?.kind !== 'notebook') return false;
+    // A second switch mid-read must not apply stale state to the new library.
+    if (generation !== vaultGenerationRef.current || vaultPathRef.current !== opened.path) return false;
+    setTreeSelection(lastNotebookPath);
+    setSelectedNotebookPath(lastNotebookPath);
+    setSelectedTab('notes-files');
+    return true;
+  }, []);
+
+  const restoreLibraryUiState = useCallback(async (opened: VaultInfo) => {
     const snapshot = libraryUiStatesRef.current.get(opened.path);
-    if (!snapshot) return;
     const generation = vaultGenerationRef.current;
+    if (!snapshot) {
+      await restorePersistedNotebook(opened, generation);
+      return;
+    }
     const bridge = window.a11yNotebook?.vault;
     const restored: OpenNote[] = [];
     if (bridge?.readNote) {
@@ -736,7 +762,7 @@ export default function App() {
       const notebook = findEntry(opened.entries, snapshot.selectedNotebookPath);
       if (notebook?.kind === 'notebook') setSelectedNotebookPath(snapshot.selectedNotebookPath);
     }
-  };
+  }, [restorePersistedNotebook]);
 
   // Save settings only when the last load succeeded: after a failed load
   // the in-memory settings are defaults, and persisting them would
@@ -753,6 +779,20 @@ export default function App() {
     },
     [settingsLoadFailed],
   );
+
+  // Record the last notebook in this library's settings as notebooks are
+  // selected, so reopening the library after a restart restores it. The
+  // write only runs once settings have loaded for this library, so a
+  // stale in-memory copy can never overwrite another library's file;
+  // navigating back to the Notebooks landing never clears the record,
+  // matching the in-session snapshot, which keeps the last notebook too.
+  useEffect(() => {
+    if (!vault || !selectedNotebookPath || selectedTab === 'libraries') return;
+    if (settingsLoadFailed || settingsVaultPath !== vault.path) return;
+    if (switchingRef.current) return;
+    if (settings.lastNotebookPath === selectedNotebookPath) return;
+    void persistSettings({ ...settings, lastNotebookPath: selectedNotebookPath });
+  }, [vault, selectedNotebookPath, selectedTab, settings, settingsVaultPath, settingsLoadFailed, persistSettings]);
 
   const applyHistoryLocation = (location: NavigationLocation) => {
     if (location.notebookPath) {
@@ -1293,6 +1333,26 @@ export default function App() {
         })
         .catch(() => undefined);
   }, []);
+
+  // Fresh-launch reopen landing, first mount only: in-app switches are
+  // restored by openLibrary, so this must not run again. A passive
+  // effect runs after the vault-change layout effect clears any stale
+  // notebook for the new library, so the restored notebook survives;
+  // restoring inside the mount promise above would batch with the
+  // vault change and be wiped on that render.
+  const mountRestoreAppliedRef = useRef(false);
+  useEffect(() => {
+    if (!vault || mountRestoreAppliedRef.current) return;
+    mountRestoreAppliedRef.current = true;
+    // Fresh launch only, consulting the persisted value directly: any
+    // snapshot for this library at this point is the landing snapshot
+    // the snapshot effect just wrote for this same mount, not real
+    // navigation state, so going through restoreLibraryUiState would
+    // restore the landing and never reach the persisted notebook.
+    // In-app switches keep using restoreLibraryUiState, where the
+    // lookup happens before the landing snapshot is written.
+    void restorePersistedNotebook(vault, vaultGenerationRef.current);
+  }, [vault, restorePersistedNotebook]);
 
   useEffect(() => {
     let cancelled = false;
