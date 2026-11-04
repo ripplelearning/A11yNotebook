@@ -1,4 +1,4 @@
-import { COMMANDS, effectiveShortcutAliases, type CommandId } from './command-registry';
+import { COMMANDS, defaultShortcut, effectiveShortcutAliases, type CommandId } from './command-registry';
 
 export interface NotebookSettings {
   autosaveDelay: number;
@@ -200,6 +200,7 @@ export function normalizeShortcut(shortcut: string): string {
 export function shortcutConflicts(
   shortcuts: NotebookSettings['shortcuts'],
   aliasShortcuts: NotebookSettings['shortcutAliases'] = {},
+  isMac = false,
 ): string[] {
   const used = new Map<string, { id: string; label: string }>(
     RESERVED_SHORTCUTS.map((shortcut) => [shortcut.toLowerCase(), { id: 'reserved', label: 'Pane/tab navigation' }]),
@@ -219,7 +220,7 @@ export function shortcutConflicts(
     }
   }
   for (const command of COMMANDS) {
-    const shortcut = normalizeShortcut(shortcuts[command.id] ?? command.shortcut ?? '');
+    const shortcut = normalizeShortcut(shortcuts[command.id] ?? defaultShortcut(command, isMac) ?? '');
     if (!shortcut) continue;
     claim(shortcut, command);
   }
@@ -244,6 +245,7 @@ export function shortcutConflicts(
 function resolveShortcutConflicts(
   shortcuts: Partial<Record<CommandId, string>>,
   aliasShortcuts: Partial<Record<CommandId, string>>,
+  isMac = false,
 ): void {
   const claimed = new Map<string, CommandId | 'reserved'>();
   for (const reserved of RESERVED_SHORTCUTS) claimed.set(reserved.toLowerCase(), 'reserved');
@@ -285,7 +287,7 @@ function resolveShortcutConflicts(
   }
   for (const command of COMMANDS) {
     if (!Object.prototype.hasOwnProperty.call(shortcuts, command.id)) {
-      const fallback = normalizeShortcut(command.shortcut ?? '');
+      const fallback = normalizeShortcut(defaultShortcut(command, isMac) ?? '');
       if (tryClaim(command.id, fallback) === 'collided') {
         shortcuts[command.id] = '';
       }
@@ -293,7 +295,10 @@ function resolveShortcutConflicts(
   }
 }
 
-export function validateSettings(value: unknown, options?: { resolveConflictingShortcuts?: boolean }): NotebookSettings {
+export function validateSettings(
+  value: unknown,
+  options?: { resolveConflictingShortcuts?: boolean; isMac?: boolean },
+): NotebookSettings {
   if (!value || typeof value !== 'object') throw new Error('Invalid settings.');
   const settings = value as NotebookSettings;
   const vaultLockMinutes = settings.vaultLockMinutes ?? DEFAULT_SETTINGS.vaultLockMinutes!;
@@ -399,10 +404,10 @@ export function validateSettings(value: unknown, options?: { resolveConflictingS
       aliasShortcuts[id as CommandId] = normalizeShortcut(shortcut);
     }
   }
-  const conflicts = shortcutConflicts(shortcuts, aliasShortcuts);
+  const conflicts = shortcutConflicts(shortcuts, aliasShortcuts, options?.isMac ?? false);
   if (conflicts.length) {
     if (options?.resolveConflictingShortcuts) {
-      resolveShortcutConflicts(shortcuts, aliasShortcuts);
+      resolveShortcutConflicts(shortcuts, aliasShortcuts, options?.isMac ?? false);
     } else {
       throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
     }

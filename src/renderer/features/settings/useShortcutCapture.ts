@@ -75,7 +75,7 @@ export function useShortcutCapture(
           ].join('+'),
         );
         if (!shortcut) throw new Error('Choose a supported key combination.');
-        const conflicts = shortcutConflicts({ ...shortcuts, [id]: shortcut });
+        const conflicts = shortcutConflicts({ ...shortcuts, [id]: shortcut }, {}, isMac);
         if (conflicts.length) throw new Error(`Shortcut conflicts: ${conflicts.join('; ')}`);
         onCapture(id, shortcut);
         stop();

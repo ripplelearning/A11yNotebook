@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { COMMANDS } from '../../../shared/command-registry';
+import { COMMANDS, defaultShortcut } from '../../../shared/command-registry';
 import { DEFAULT_SETTINGS, validateSettings, type NotebookSettings } from '../../../shared/settings';
 import Modal from '../../components/Modal';
 import {
@@ -553,7 +553,7 @@ export default function SettingsDialog({
                 <label htmlFor={`shortcut-${command.id}`}>{command.label}</label>
                 <input
                   id={`shortcut-${command.id}`}
-                  value={draft.shortcuts[command.id] ?? command.shortcut ?? ''}
+                  value={draft.shortcuts[command.id] ?? defaultShortcut(command, isMac) ?? ''}
                   onFocus={() => {
                     if (capture.capturing) capture.stop();
                   }}

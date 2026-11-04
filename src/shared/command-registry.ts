@@ -17,6 +17,7 @@ export type CommandId =
   | 'import-file'
   | 'open-selected-external'
   | 'new-task'
+  | 'quick-task'
   | 'new-asset'
   | 'context-open-with'
   | 'context-open-with-default'
@@ -173,6 +174,14 @@ export type CommandDefinition = {
   aliases?: readonly string[];
   description: string;
   shortcut?: string;
+  /**
+   * macOS-only default: when defined, it replaces `shortcut` on macOS.
+   * An empty string means unassigned on macOS (the user can still assign
+   * a binding in Settings). When undefined, `shortcut` applies everywhere.
+   * Defaults are resolved at read time, never persisted, so a Mac-only
+   * empty default can never disable the binding on another platform.
+   */
+  macShortcut?: string;
   shortcutAliases?: readonly string[];
   contexts?: readonly MenuContext[];
   requiresSelection?: boolean;
@@ -212,6 +221,14 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'new-task',
     label: 'New task',
     description: 'Add a persisted task to an associated note.',
+    contexts: ['general'],
+  },
+  {
+    id: 'quick-task',
+    label: 'Quick Task',
+    description: 'Open a Quick Task dialog to add a task to the current library and notebook.',
+    shortcut: 'Ctrl+Q',
+    macShortcut: '',
     contexts: ['general'],
   },
   {
@@ -883,13 +900,26 @@ export function effectiveShortcutAliases(
   return [...(command.shortcutAliases ?? [])];
 }
 
+/**
+ * A command's default primary shortcut on a platform: the macOS-only
+ * default when defined, otherwise the shared default. Returns undefined
+ * when the command has no default binding on that platform.
+ */
+export function defaultShortcut(command: CommandDefinition, isMac = false): string | undefined {
+  if (isMac && command.macShortcut !== undefined) {
+    return command.macShortcut || undefined;
+  }
+  return command.shortcut;
+}
+
 /** Every binding in effect for a command: its primary shortcut plus its alternates. */
 export function effectiveCommandShortcuts(
   command: CommandDefinition,
   shortcuts: Partial<Record<CommandId, string>> = {},
   aliasShortcuts: Partial<Record<CommandId, string>> = {},
+  isMac = false,
 ): string[] {
-  const primary = shortcuts[command.id] ?? command.shortcut;
+  const primary = shortcuts[command.id] ?? defaultShortcut(command, isMac);
   const aliases = effectiveShortcutAliases(command, aliasShortcuts).filter((alias) => alias !== primary);
   return primary ? [primary, ...aliases] : aliases;
 }
@@ -897,9 +927,10 @@ export function effectiveCommandShortcuts(
 export function getKeyboardShortcuts(
   shortcuts: Partial<Record<CommandId, string>> = {},
   aliasShortcuts: Partial<Record<CommandId, string>> = {},
+  isMac = false,
 ): KeyboardShortcutDefinition[] {
   return COMMANDS.flatMap((command) => {
-    const shortcut = shortcuts[command.id] ?? command.shortcut;
+    const shortcut = shortcuts[command.id] ?? defaultShortcut(command, isMac);
     if (!shortcut) return [];
     return [
       { commandId: command.id, label: command.label, shortcut },

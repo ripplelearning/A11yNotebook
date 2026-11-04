@@ -17,11 +17,13 @@ export function KeyboardShortcutsDialog({
   onClose,
   shortcuts = {},
   aliasShortcuts = {},
+  isMac = false,
 }: DialogProps & {
   shortcuts?: NotebookSettings['shortcuts'];
   aliasShortcuts?: NotebookSettings['shortcutAliases'];
+  isMac?: boolean;
 }) {
-  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts(shortcuts, aliasShortcuts)];
+  const rows = [...NAVIGATION_SHORTCUTS, ...getKeyboardShortcuts(shortcuts, aliasShortcuts, isMac)];
   return (
     <Modal titleId="shortcuts-dialog-title" title="Keyboard Shortcuts" onClose={onClose} className="wide-modal">
       <div className="modal-body table-scroll">
