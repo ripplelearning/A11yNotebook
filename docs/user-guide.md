@@ -619,6 +619,8 @@ offers a high-visibility option with thicker, more offset outlines, and **Reduce
 animations and transitions. **Show command/action buttons in the UI** restores the button-rich application
 layout. It is off by default, including for older settings files, to favor the native-menu-first design.
 
+**Interaction**, in the same section, offers two options, both off by default. **Immersive Focus mode** hides the search box and search scope as well while Focus mode is on, so only the title bar, menu bar, and document remain. **Auto-focus on grids when switching views** puts keyboard focus in the grid automatically when switching to the Libraries, Notebooks, or Notes and Files view, without needing to enter forms mode first. It only fires on an actual view switch, never while a dialog is open.
+
 **Automatic backups**, in the same section, copies the whole library folder on a schedule you choose: every 1 to
 30 days, keeping the newest 1 to 50 copies and deleting older ones. A backup runs when the library is opened and
 at most once per interval while the app runs, and only the saved content is copied, so save first if it matters.
