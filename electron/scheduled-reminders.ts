@@ -21,7 +21,8 @@ import type { DueSnapshotEntry } from './vault/locked-due';
  * due time across the open library's privacy-safe snapshot (ids and
  * times only). When it fires, the app launches with
  * --a11y-reminder-wake, shows generic alerts for whatever is due
- * from the persisted snapshot, and re-registers for the next time.
+ * from the persisted snapshot, opens the app window when anything
+ * is due, and re-registers for the next time.
  */
 export const REMINDER_TASK_NAME = 'A11yNotebook Reminders';
 export const REMINDER_WAKE_ARG = '--a11y-reminder-wake';
@@ -48,7 +49,7 @@ export function buildReminderTaskXml(input: { execute: string; args: string[]; s
   return `<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>A11y Notebook background reminder alerts. Contains no reminder content; the app shows a generic alert and re-registers for the next due time.</Description>
+    <Description>A11y Notebook background reminder alerts. Contains no reminder content; the app shows a generic alert, opens the app window when a reminder is due, and re-registers for the next due time.</Description>
   </RegistrationInfo>
   <Triggers>
     <TimeTrigger>

@@ -215,17 +215,19 @@ function syncScheduledReminderTask() {
  * library's persisted due snapshot, show generic alerts for anything
  * due, drop the fired entries, persist the rest, and re-register the
  * task for the next due time. No library is opened and no content is
- * read — the snapshot holds ids and times only.
+ * read — the snapshot holds ids and times only. Returns true when at
+ * least one entry was due, so the caller can open the app window
+ * alongside the notification; false when nothing was due.
  */
-async function runReminderWake(): Promise<void> {
+async function runReminderWake(): Promise<boolean> {
   const { lastOpened } = await readRecentVaultFile();
-  if (!lastOpened) return;
+  if (!lastOpened) return false;
   const file = path.join(lastOpened, '.a11ynotebook', LOCKED_DUE_SNAPSHOT_FILE);
   let entries: DueSnapshotEntry[] = [];
   try {
     entries = validateDueSnapshot(JSON.parse(await readFile(file, 'utf8')));
   } catch {
-    return;
+    return false;
   }
   const { due, remaining } = planWake(entries, new Date());
   if (due.length && Notification.isSupported()) {
@@ -266,6 +268,7 @@ async function runReminderWake(): Promise<void> {
   } catch {
     // Re-registration is best-effort; the next app run re-syncs.
   }
+  return due.length > 0;
 }
 
 const notifications = new Set<Notification>();
