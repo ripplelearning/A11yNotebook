@@ -274,6 +274,11 @@ stale note revisions or duplicate/missing IDs fail safely. Markdown optional dat
 list (displayed as Critical, High, Medium, Low, and Optional by default). Legacy `low`, `normal`, `high`, and
 `urgent` values still parse.
 
+Press Ctrl+Q anywhere to open the Quick Task dialog: type the task, press Enter or OK, and it
+becomes a new task in the Tasks list, saved as a task file in the current library and notebook.
+If no library is open, Quick Task first asks for a library, then for a notebook in that library.
+On macOS, Quick Task has no default shortcut; assign one under Settings → Keyboard Shortcuts.
+
 Open the context menu on a task row (Shift+F10, the Applications key, or right-click) for **Set due date**,
 which opens a dialog with due date, due time, and an optional reminder, and **Set priority**, which opens a
 dialog with the library's priority options and lets you add, rename, or delete options. At least one priority
@@ -691,6 +696,7 @@ editing are not logged. See the security documentation for exact limits.
 | ------------------------------------------------------------ | ---------------------------------------------- |
 | Ctrl+O                                                       | Open library                                   |
 | Ctrl+N                                                       | New item in the current view                   |
+| Ctrl+Q                                                       | Quick Task                                     |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
 | Ctrl+R                                                       | Enable reading mode                            |

@@ -9,6 +9,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+N         | New in current view                     |
 | Ctrl+Shift+B   | Back up library                         |
 | Ctrl+Shift+O   | Open in external app                    |
+| Ctrl+Q         | Quick Task                              |
 | Ctrl+0         | Contents view                           |
 | Ctrl+1         | Libraries                               |
 | Ctrl+2         | Notebooks                               |
@@ -75,6 +76,8 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | F1             | Keyboard Shortcuts                      |
 | Ctrl+Shift+U   | Check for Updates                       |
 | Ctrl+Shift+H   | About A11y Notebook                     |
+
+Quick Task has no default shortcut on macOS; assign one in Settings.
 
 ## Navigation keys
 

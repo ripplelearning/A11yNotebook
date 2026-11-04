@@ -9,7 +9,7 @@ const source = await readFile(registryPath, 'utf8');
 const commandList = source.match(/export const COMMANDS:[\s\S]*?=\s*\[([\s\S]*?)\n\];/)?.[1];
 if (!commandList) throw new Error('Could not find COMMANDS in the shared registry.');
 
-const rows = [...commandList.matchAll(/\{([^{}]*)\}/g)]
+const commands = [...commandList.matchAll(/\{([^{}]*)\}/g)]
   .map(([, item]) => ({
     label: item.match(/\blabel:\s*'([^']+)'/)?.[1],
     shortcuts: [
@@ -18,11 +18,22 @@ const rows = [...commandList.matchAll(/\{([^{}]*)\}/g)]
         ([, shortcut]) => shortcut,
       ),
     ].filter(Boolean),
+    macUnassigned: /\bmacShortcut:\s*''/.test(item),
   }))
-  .filter((item) => item.label)
-  .flatMap((item) => item.shortcuts.map((shortcut) => `| ${shortcut} | ${item.label} |`));
+  .filter((item) => item.label);
+const rows = commands.flatMap((item) => item.shortcuts.map((shortcut) => `| ${shortcut} | ${item.label} |`));
+// Commands with an empty macOS default still list their shared shortcut
+// above (Help on other platforms shows it), but macOS users need to know
+// the binding is unassigned there until they set one in Settings.
+const macUnassignedLabels = commands.filter((item) => item.macUnassigned).map((item) => item.label);
+const macNote =
+  macUnassignedLabels.length === 1
+    ? `\n\n${macUnassignedLabels[0]} has no default shortcut on macOS; assign one in Settings.`
+    : macUnassignedLabels.length > 1
+      ? `\n\n${macUnassignedLabels.join(', ')} have no default shortcut on macOS; assign one in Settings.`
+      : '';
 
-const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\nOn macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the library tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the library tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
+const document = `# Keyboard shortcuts\n\nGenerated from \`src/shared/command-registry.ts\` by \`npm run docs:shortcuts\`.\n\nOn macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.\n\n| Shortcut | Command |\n| --- | --- |\n${rows.join('\n')}${macNote}\n\n## Navigation keys\n\n| Shortcut | Action |\n| --- | --- |\n| F6 / Shift+F6 | Move to the next / previous pane |\n| Ctrl+Tab / Ctrl+Shift+Tab | Switch open tabs |\n| In the library tree: Up/Down, Left/Right, Home/End | Move, expand, and collapse |\n| In the library tree: Enter, F2, Delete, \`*\`, first-letter type-ahead | Open, rename, delete, expand siblings, or find |
 | In the library tree: Alt+Up/Down | Move into the previous / next notebook |
 | In the library tree: Alt+Shift+Up/Down | Move out one level |
 | In the library tree: Ctrl+X / Ctrl+C / Ctrl+V | Cut / copy / paste |\n`;

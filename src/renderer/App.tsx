@@ -11,6 +11,7 @@ import {
 import {
   COMMANDS,
   cycleFocusRegions,
+  defaultShortcut,
   dispatchCommand,
   effectiveCommandShortcuts,
   FOCUS_REGION_ORDER,
@@ -121,6 +122,11 @@ import RemindersView from './features/reminders/RemindersView';
 import CalendarScreen from './features/calendar/CalendarScreen';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
+import {
+  QuickTaskDialog,
+  QuickTaskLibraryPicker,
+  QuickTaskNotebookPicker,
+} from './features/reminders/QuickTaskDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
 import {
@@ -444,6 +450,8 @@ export default function App() {
   const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
+  const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'notebook' | 'task' | null>(null);
+  const [quickTaskNotebookPath, setQuickTaskNotebookPath] = useState<string | undefined>();
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskCreateError, setTaskCreateError] = useState('');
   const [taskCreating, setTaskCreating] = useState(false);
@@ -4136,6 +4144,14 @@ export default function App() {
       });
   };
 
+  // When a Quick Task library is picked, the library opens first and the
+  // notebook picker follows once the open library is in state.
+  useEffect(() => {
+    if (quickTaskStep === 'library' && vault) {
+      setQuickTaskStep('notebook');
+    }
+  }, [quickTaskStep, vault]);
+
   const openLibraryRef = useRef(openLibrary);
   openLibraryRef.current = openLibrary;
   const navigateScreenRef = useRef(navigateScreen);
@@ -4305,6 +4321,7 @@ export default function App() {
       itemDialog ||
       organizeOpen ||
       taskDialogOpen ||
+      quickTaskStep ||
       spellingOpen ||
       thesaurusRequest ||
       citationDialog ||
@@ -4730,6 +4747,16 @@ export default function App() {
       setOrganizeOpen(true);
       return;
     }
+    if (commandId === 'quick-task') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      if (vault) {
+        setQuickTaskNotebookPath(selectedNotebookPath);
+        setQuickTaskStep('task');
+      } else {
+        setQuickTaskStep('library');
+      }
+      return;
+    }
     const result = dispatchCommand(commandId, {
       mode,
       rightPaneOpen,
@@ -4853,7 +4880,7 @@ export default function App() {
     }
     if (event.defaultPrevented || event.isComposing) return;
     const command = COMMANDS.find((item) =>
-      effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases).some((shortcut) =>
+      effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases, isMac).some((shortcut) =>
         matchesShortcut(event, shortcut, isMac),
       ),
     );
@@ -5382,7 +5409,7 @@ export default function App() {
                       disabled={isCommandDisabled(command.id)}
                       onClick={() => handleCommand(command.id)}
                       aria-keyshortcuts={
-                        [settings.shortcuts[command.id] ?? command.shortcut, ...(command.shortcutAliases ?? [])]
+                        [settings.shortcuts[command.id] ?? defaultShortcut(command, isMac), ...(command.shortcutAliases ?? [])]
                           .filter((shortcut): shortcut is string => Boolean(shortcut))
                           .map((shortcut) => (isMac ? toMacAriaKeyShortcut(shortcut) : toAriaKeyShortcut(shortcut)))
                           .join(' ') || undefined
@@ -6130,6 +6157,7 @@ export default function App() {
       {activeDialog === 'palette' ? (
         <CommandPalette
           shortcuts={settings.shortcuts}
+          isMac={isMac}
           isDisabled={isCommandDisabled}
           onRun={handleCommand}
           onClose={closeDialog}
@@ -6139,6 +6167,7 @@ export default function App() {
         <KeyboardShortcutsDialog
           shortcuts={settings.shortcuts}
           aliasShortcuts={settings.shortcutAliases}
+          isMac={isMac}
           onClose={closeDialog}
         />
       ) : null}
@@ -6435,6 +6464,43 @@ export default function App() {
             await refreshVault();
             setStatusMessage('Task created.');
           }}
+        />
+      ) : null}
+      {quickTaskStep === 'library' && !securityLocked ? (
+        <QuickTaskLibraryPicker
+          libraries={recentLibraries}
+          onPick={(path) => openLibrary(false, path)}
+          onOpenLibrary={() => openLibrary(false)}
+          onClose={() => setQuickTaskStep(null)}
+        />
+      ) : null}
+      {quickTaskStep === 'notebook' && vault && !securityLocked ? (
+        <QuickTaskNotebookPicker
+          notebooks={flattenEntries(vault.entries)
+            .filter((entry) => entry.kind === 'notebook')
+            .map((entry) => entry.path)}
+          onPick={(notebookPath) => {
+            setQuickTaskNotebookPath(notebookPath);
+            setQuickTaskStep('task');
+          }}
+          onClose={() => setQuickTaskStep(null)}
+        />
+      ) : null}
+      {quickTaskStep === 'task' && !securityLocked ? (
+        <QuickTaskDialog
+          onCreate={async (text) => {
+            const bridge = window.a11yNotebook?.vault;
+            if (!bridge?.createTask || switchingRef.current) throw new Error('Task creation is unavailable.');
+            setTasks(
+              await bridge.createTask({
+                notebookPath: quickTaskNotebookPath,
+                text,
+              }),
+            );
+            await refreshVault();
+            setStatusMessage('Task created.');
+          }}
+          onClose={() => setQuickTaskStep(null)}
         />
       ) : null}
       {exportRequest ? (

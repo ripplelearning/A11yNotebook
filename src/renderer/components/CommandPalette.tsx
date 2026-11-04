@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { COMMANDS, type CommandId } from '../../shared/command-registry';
+import { COMMANDS, defaultShortcut, type CommandId } from '../../shared/command-registry';
 import Modal from './Modal';
 import type { NotebookSettings } from '../../shared/settings';
 
@@ -7,10 +7,11 @@ type CommandPaletteProps = {
   onRun: (commandId: CommandId) => void;
   onClose: () => void;
   shortcuts?: NotebookSettings['shortcuts'];
+  isMac?: boolean;
   isDisabled?: (commandId: CommandId) => boolean;
 };
 
-export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisabled }: CommandPaletteProps) {
+export default function CommandPalette({ onRun, onClose, shortcuts = {}, isMac = false, isDisabled }: CommandPaletteProps) {
   const [query, setQuery] = useState('');
 
   const filteredCommands = useMemo(() => {
@@ -58,8 +59,8 @@ export default function CommandPalette({ onRun, onClose, shortcuts = {}, isDisab
             </button>
             <small id={`command-${command.id}-description`}>
               {command.description}
-              {(shortcuts[command.id] ?? command.shortcut)
-                ? ` Shortcut: ${shortcuts[command.id] ?? command.shortcut}.`
+              {(shortcuts[command.id] ?? defaultShortcut(command, isMac))
+                ? ` Shortcut: ${shortcuts[command.id] ?? defaultShortcut(command, isMac)}.`
                 : ''}
             </small>
           </li>
