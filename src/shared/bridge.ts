@@ -100,6 +100,7 @@ export interface VaultBridge {
   setReminderDefaults?(defaults: ReminderDefaults): Promise<ReminderDefaults>;
   onReminder(callback: (event: VaultReminderEvent) => void): () => void;
   reminderAlertsReady?(): Promise<VaultReminderEvent[]>;
+  reminderWakeFocus?(): Promise<{ libraryPath: string; reminderId: string } | null>;
   readAsset(path: string): Promise<VaultAsset>;
   readAssetDraft?(path: string): Promise<AssetDraftRecovery>;
   checkpointAssetDraft?(input: AssetDraftInput, token: string): Promise<AssetDraft>;

@@ -9,12 +9,14 @@ export function useReminders(
 ) {
   const [reminders, setReminders] = useState<Reminder[]>([]);
   const [defaults, setDefaults] = useState<ReminderDefaults>(DEFAULT_REMINDER_DEFAULTS);
+  const [loaded, setLoaded] = useState(false);
   const openRef = useRef(onOpen);
   openRef.current = onOpen;
   useEffect(() => {
     const bridge = window.a11yNotebook?.vault;
     setReminders([]);
     setDefaults(DEFAULT_REMINDER_DEFAULTS);
+    setLoaded(false);
     if (!vaultPath || !bridge?.getReminders) return;
     let cancelled = false;
     if (typeof bridge.getReminderDefaults === 'function') {
@@ -32,11 +34,15 @@ export function useReminders(
       .then((items) => {
         if (cancelled) return;
         setReminders(items);
+        setLoaded(true);
         const missed = items.filter((item) => item.status === 'fired' && Date.parse(item.scheduledAt) <= Date.now());
         if (missed.length) announce(`${missed.length} fired or missed reminders are available in Reminders.`);
       })
       .catch(() => {
-        if (!cancelled) announce('Could not load reminders.');
+        if (!cancelled) {
+          setLoaded(true);
+          announce('Could not load reminders.');
+        }
       });
     const unsubscribe = bridge.onReminder((event) => {
       if (cancelled || event.vaultPath !== vaultPath) return;
@@ -57,5 +63,5 @@ export function useReminders(
     const saved = await save(value);
     setDefaults(saved);
   };
-  return { reminders, setReminders, defaults, saveDefaults };
+  return { reminders, setReminders, defaults, saveDefaults, loaded };
 }

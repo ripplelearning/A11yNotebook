@@ -42,6 +42,7 @@ let shortcutCaptureActive = false;
 let applicationMenu: Menu | null = null;
 let nativeMenuState: NativeMenuState | null = null;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
+let pendingWakeFocus: { libraryPath: string; reminderId: string } | null = null;
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
 function isAppUrl(url: string) {
@@ -213,7 +214,7 @@ if (!app.requestSingleInstanceLock()) {
     }
   });
 
-  app.whenReady().then(() => {
+  app.whenReady().then(async () => {
     if (process.platform === 'win32') app.setAppUserModelId('com.ripplelearning.a11ynotebook');
     // Renderer permissions stay blocked; native reminders are created in the main process.
     session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
@@ -234,6 +235,14 @@ if (!app.requestSingleInstanceLock()) {
       const pending = pendingReminderAlerts;
       pendingReminderAlerts = [];
       return pending;
+    });
+    ipcMain.handle(IPC_CHANNELS.reminderWakeFocus, (event) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted reminder wake focus request.');
+      // One-shot, like the pending alerts above: the renderer reads the
+      // wake target once on launch, and a later read must not resurrect it.
+      const focus = pendingWakeFocus;
+      pendingWakeFocus = null;
+      return focus;
     });
     const wakeLaunch = process.argv.includes('--a11y-reminder-wake');
     const vaultIpc = setupVaultIpc(
@@ -287,14 +296,23 @@ if (!app.requestSingleInstanceLock()) {
     setupZoomFactorIpc(isTrustedSender);
     setupAuthIpc(isTrustedSender);
     if (wakeLaunch) {
-      // Task Scheduler wake: show generic due alerts from the
-      // persisted snapshot, re-register the next trigger, and exit
-      // without ever opening a window or the library.
-      void vaultIpc
-        .runReminderWake()
-        .catch(() => undefined)
-        .then(() => setTimeout(() => app.quit(), 1500));
-      return;
+      // Task Scheduler wake: show due alerts from the persisted
+      // snapshot and re-register the next trigger. When a reminder
+      // came due while the app was closed and the machine is awake,
+      // also open the app window alongside the notification instead
+      // of exiting. When nothing is due, exit as before. The task
+      // itself never wakes a sleeping machine (the task XML carries
+      // no WakeToRun); a late fire on next wake behaves like any
+      // other awake launch. No library is opened by the wake path.
+      const hadDue = await vaultIpc.runReminderWake().catch(() => false);
+      if (!hadDue) {
+        setTimeout(() => app.quit(), 1500);
+        return;
+      }
+      // Record the wake focus target (if any) for the renderer to read
+      // once on launch. A null target means the window opens normally.
+      pendingWakeFocus = vaultIpc.getReminderWakeFocus();
+      // Fall through: rebuild the menu and open the window below.
     }
     rebuildApplicationMenu();
     ipcMain.on(IPC_CHANNELS.menuState, (event, value: unknown) => {
@@ -305,7 +323,7 @@ if (!app.requestSingleInstanceLock()) {
       }
     });
 
-    if (!wakeLaunch) createWindow();
+    createWindow();
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) {
