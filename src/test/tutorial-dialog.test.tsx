@@ -40,7 +40,7 @@ describe('Tutorial dialog', () => {
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument();
-    expect(screen.getByText(/Dialogs now carry their own window titles/)).toBeInTheDocument();
+    expect(screen.getByText(/Organize Library dialog/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });
