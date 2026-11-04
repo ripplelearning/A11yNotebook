@@ -215,11 +215,29 @@ function syncScheduledReminderTask() {
  * library's persisted due snapshot, show generic alerts for anything
  * due, drop the fired entries, persist the rest, and re-register the
  * task for the next due time. No library is opened and no content is
- * read — the snapshot holds ids and times only. Returns true when at
- * least one entry was due, so the caller can open the app window
- * alongside the notification; false when nothing was due.
+ * read by the wake path itself — the snapshot holds ids and times
+ * only. Returns true when at least one entry was due, so the caller
+ * can open the app window alongside the notification; false when
+ * nothing was due. When a reminder is due, the earliest-due
+ * reminder is also recorded as the wake focus target, so the opened
+ * window can open that reminder's library and focus the reminder.
+ * The focus target is one-shot: reading it via getReminderWakeFocus
+ * is the renderer's job, and every run resets it first so a stale
+ * target can never survive into a later wake.
  */
+export interface ReminderWakeFocus {
+  libraryPath: string;
+  reminderId: string;
+}
+
+let pendingWakeFocus: ReminderWakeFocus | null = null;
+
+function getReminderWakeFocus(): ReminderWakeFocus | null {
+  return pendingWakeFocus;
+}
+
 async function runReminderWake(): Promise<boolean> {
+  pendingWakeFocus = null;
   const { lastOpened } = await readRecentVaultFile();
   if (!lastOpened) return false;
   const file = path.join(lastOpened, '.a11ynotebook', LOCKED_DUE_SNAPSHOT_FILE);
@@ -230,6 +248,14 @@ async function runReminderWake(): Promise<boolean> {
     return false;
   }
   const { due, remaining } = planWake(entries, new Date());
+  // Earliest-due reminder wins; flashcards never become the focus
+  // target. Ties keep snapshot order (the first entry wins).
+  let earliest: DueSnapshotEntry | null = null;
+  for (const entry of due) {
+    if (entry.kind !== 'reminder') continue;
+    if (!earliest || Date.parse(entry.scheduledAt) < Date.parse(earliest.scheduledAt)) earliest = entry;
+  }
+  if (earliest) pendingWakeFocus = { libraryPath: lastOpened, reminderId: earliest.id };
   if (due.length && Notification.isSupported()) {
     const kinds: LockedDueKind[] = [];
     for (const entry of due) if (!kinds.includes(entry.kind)) kinds.push(entry.kind);
@@ -3844,7 +3870,7 @@ export function setupVaultIpc(
     const candidate = position as ReadingPositionInput;
     return requireService().setReadingPosition(relativePath, candidate);
   });
-  return { runReminderWake };
+  return { runReminderWake, getReminderWakeFocus };
 }
 
 function vaultPathOf(vault: { path: string }) {

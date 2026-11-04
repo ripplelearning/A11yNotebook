@@ -92,6 +92,17 @@ describe('reminder wake launch', () => {
     return runReminderWake();
   }
 
+  async function runWakeWithFocus() {
+    const { setupVaultIpc } = await import('../../electron/vault/ipc');
+    const { runReminderWake, getReminderWakeFocus } = setupVaultIpc(
+      () => true,
+      () => undefined,
+      () => undefined,
+    );
+    const hadDue = await runReminderWake();
+    return { hadDue, focus: getReminderWakeFocus() };
+  }
+
   it('reports due reminders, shows a notification, and drops fired entries', async () => {
     await writeSnapshot([
       { id: 'reminder-1', scheduledAt: DUE, kind: 'reminder' },
@@ -131,5 +142,38 @@ describe('reminder wake launch', () => {
     await writeFile(snapshotFile, 'not json', 'utf8');
     expect(await runWake()).toBe(false);
     expect(mock.notifications).toHaveLength(0);
+  });
+
+  it('records the earliest-due reminder as the wake focus target', async () => {
+    await writeSnapshot([
+      { id: 'reminder-late', scheduledAt: '2000-06-01T00:00:00.000Z', kind: 'reminder' },
+      { id: 'reminder-early', scheduledAt: '2000-01-01T00:00:00.000Z', kind: 'reminder' },
+      { id: 'card-early', scheduledAt: '1999-01-01T00:00:00.000Z', kind: 'flashcard' },
+    ]);
+    const { hadDue, focus } = await runWakeWithFocus();
+    expect(hadDue).toBe(true);
+    expect(focus).toEqual({ libraryPath: library, reminderId: 'reminder-early' });
+  });
+
+  it('records no focus target when only flashcards are due', async () => {
+    await writeSnapshot([{ id: 'card-1', scheduledAt: DUE, kind: 'flashcard' }]);
+    const { hadDue, focus } = await runWakeWithFocus();
+    expect(hadDue).toBe(true);
+    expect(focus).toBeNull();
+  });
+
+  it('records no focus target when nothing is due', async () => {
+    await writeSnapshot([{ id: 'reminder-2', scheduledAt: FUTURE, kind: 'reminder' }]);
+    const { hadDue, focus } = await runWakeWithFocus();
+    expect(hadDue).toBe(false);
+    expect(focus).toBeNull();
+  });
+
+  it('records no focus target when the snapshot is corrupt', async () => {
+    await mkdir(path.join(library, '.a11ynotebook'), { recursive: true });
+    await writeFile(snapshotFile, 'not json', 'utf8');
+    const { hadDue, focus } = await runWakeWithFocus();
+    expect(hadDue).toBe(false);
+    expect(focus).toBeNull();
   });
 });

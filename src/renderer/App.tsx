@@ -431,6 +431,11 @@ export default function App() {
   const [, setHistoryVersion] = useState(0);
   const [taskTabOpen, setTaskTabOpen] = useState(false);
   const [reminderTabOpen, setReminderTabOpen] = useState(false);
+  // Closed-app reminder wake focus: the main process records the
+  // earliest-due reminder when a wake launch fires, and the renderer
+  // reads it once on launch (see the wake focus effects below).
+  const [wakeFocus, setWakeFocus] = useState<{ libraryPath: string; reminderId: string } | null>(null);
+  const [pendingWakeFocusId, setPendingWakeFocusId] = useState<string | null>(null);
   const [calendarTabOpen, setCalendarTabOpen] = useState(false);
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
@@ -4130,6 +4135,79 @@ export default function App() {
         setSwitchingVault(false);
       });
   };
+
+  const openLibraryRef = useRef(openLibrary);
+  openLibraryRef.current = openLibrary;
+  const navigateScreenRef = useRef(navigateScreen);
+  navigateScreenRef.current = navigateScreen;
+
+  // Read the wake focus target once on launch. The main process serves
+  // it one-shot, so a second read returns null; the ref guard also
+  // protects against double-invocation in development.
+  const wakeFocusReadRef = useRef(false);
+  useEffect(() => {
+    if (wakeFocusReadRef.current) return;
+    wakeFocusReadRef.current = true;
+    const bridge = window.a11yNotebook?.vault;
+    if (typeof bridge?.reminderWakeFocus !== 'function') return;
+    void bridge
+      .reminderWakeFocus()
+      .then((focus) => {
+        if (focus) setWakeFocus(focus);
+      })
+      .catch(() => undefined);
+  }, []);
+
+  // Open the wake target's library when it is not already open. On a
+  // fresh wake launch no library is open, so this runs immediately;
+  // if the open fails, the target simply stays pending and the user
+  // lands on the normal startup view, as before.
+  const wakeFocusOpenAttemptedRef = useRef(false);
+  useEffect(() => {
+    if (!wakeFocus || wakeFocusOpenAttemptedRef.current) return;
+    if (vault?.path === wakeFocus.libraryPath) return;
+    if (switchingRef.current) return;
+    wakeFocusOpenAttemptedRef.current = true;
+    openLibraryRef.current(false, wakeFocus.libraryPath);
+  }, [wakeFocus, vault]);
+
+  // Once the target library is open, unlocked, and its reminders have
+  // loaded, show the Reminders view and queue the row focus. A missing
+  // reminder is announced and the target cleared instead of focusing
+  // nothing; a locked library simply waits for unlock, and focusing
+  // after unlock still works because the target stays pending.
+  useEffect(() => {
+    if (!wakeFocus || vault?.path !== wakeFocus.libraryPath || securityLocked || !reminderState.loaded) return;
+    const target = reminderState.reminders.find((item) => item.id === wakeFocus.reminderId);
+    if (!target) {
+      setStatusMessage('The due reminder is no longer available.');
+      setWakeFocus(null);
+      return;
+    }
+    setReminderTabOpen(true);
+    navigateScreenRef.current('reminders');
+    setPendingWakeFocusId(wakeFocus.reminderId);
+    setWakeFocus(null);
+  }, [wakeFocus, vault, securityLocked, reminderState.loaded, reminderState.reminders]);
+
+  // Focus the due reminder's row once the Reminders view has rendered.
+  // Rows already carry data-reminder-id and tabIndex -1 in both the
+  // agenda and table views. When an alert dialog is already showing
+  // the due reminder, it keeps focus instead: focusing a row behind
+  // a modal would fight the dialog.
+  useEffect(() => {
+    if (!pendingWakeFocusId || selectedTab !== 'reminders') return;
+    const id = pendingWakeFocusId;
+    setPendingWakeFocusId(null);
+    if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+    const row = Array.from(document.querySelectorAll('[data-reminder-id]')).find(
+      (element) => element.getAttribute('data-reminder-id') === id,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    row.focus();
+    const item = reminderState.reminders.find((entry) => entry.id === id);
+    if (item) setStatusMessage(`Due reminder: ${item.title}, ${new Date(item.scheduledAt).toLocaleString()}`);
+  }, [pendingWakeFocusId, selectedTab, reminderState.reminders]);
 
   const createContextual = () => {
     if (selectedTab === 'libraries') {

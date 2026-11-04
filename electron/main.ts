@@ -42,6 +42,7 @@ let shortcutCaptureActive = false;
 let applicationMenu: Menu | null = null;
 let nativeMenuState: NativeMenuState | null = null;
 let pendingReminderAlerts: VaultReminderEvent[] = [];
+let pendingWakeFocus: { libraryPath: string; reminderId: string } | null = null;
 const MAX_PENDING_REMINDER_ALERTS = 100;
 
 function isAppUrl(url: string) {
@@ -235,6 +236,14 @@ if (!app.requestSingleInstanceLock()) {
       pendingReminderAlerts = [];
       return pending;
     });
+    ipcMain.handle(IPC_CHANNELS.reminderWakeFocus, (event) => {
+      if (!isTrustedSender(event)) throw new Error('Untrusted reminder wake focus request.');
+      // One-shot, like the pending alerts above: the renderer reads the
+      // wake target once on launch, and a later read must not resurrect it.
+      const focus = pendingWakeFocus;
+      pendingWakeFocus = null;
+      return focus;
+    });
     const wakeLaunch = process.argv.includes('--a11y-reminder-wake');
     const vaultIpc = setupVaultIpc(
       isTrustedSender,
@@ -300,6 +309,9 @@ if (!app.requestSingleInstanceLock()) {
         setTimeout(() => app.quit(), 1500);
         return;
       }
+      // Record the wake focus target (if any) for the renderer to read
+      // once on launch. A null target means the window opens normally.
+      pendingWakeFocus = vaultIpc.getReminderWakeFocus();
       // Fall through: rebuild the menu and open the window below.
     }
     rebuildApplicationMenu();
