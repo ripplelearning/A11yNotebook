@@ -333,7 +333,18 @@ export default function OrganizeLibraryDialog({
     }
     setDraftList(relocateNode(draftRef.current, from, to));
     setStagedList([...stagedRef.current, { type, from, to }]);
-    setStatus(`${type === 'rename' ? 'Renamed' : 'Moved'} ${baseName(from)} (staged). Press OK to apply.`);
+    if (type === 'move') {
+      // Name the destination notebook: the status line is the screen
+      // reader's confirmation of where the item went, and the bare
+      // "Moved X" never said. Library root is the destination when the
+      // move leaves the item at the top level.
+      const destination = parentPath(to);
+      setStatus(
+        `Moved ${baseName(from)} into ${destination ? baseName(destination) : 'Library root'} (staged). Press OK to apply.`,
+      );
+    } else {
+      setStatus(`Renamed ${baseName(from)} (staged). Press OK to apply.`);
+    }
   };
 
   const stageDelete = (path: string, permanent: boolean) => {
@@ -394,7 +405,9 @@ export default function OrganizeLibraryDialog({
       setDraftList(relocateNode(draftRef.current, from, to));
       setStagedList([...stagedRef.current, { type: 'move', from, to }]);
       setClipboard(null);
-      setStatus(`Moved ${baseName(from)} (staged). Press OK to apply.`);
+      setStatus(
+        `Moved ${baseName(from)} into ${target ? baseName(target) : 'Library root'} (staged). Press OK to apply.`,
+      );
     } else {
       const from = clipboard.path;
       const source = findEntryInTree(draftRef.current, from);

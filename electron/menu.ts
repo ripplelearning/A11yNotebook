@@ -57,6 +57,7 @@ export function buildApplicationMenu(
         commandItem('new-contextual'),
         commandItem('new-notebook'),
         commandItem('new-note'),
+        commandItem('record-audio-note'),
         commandItem('new-from-template'),
         { type: 'separator' },
         commandItem('save-current-note'),
@@ -76,6 +77,8 @@ export function buildApplicationMenu(
         { role: 'copy' },
         { role: 'paste' },
         { role: 'selectAll' },
+        { type: 'separator' },
+        commandItem('dictate'),
       ],
     },
     {

@@ -21,7 +21,9 @@ describe('DatePickerField', () => {
       <DatePickerField id="test-date" label="Start date" value={value} onChange={(next) => (value = next)} />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show Date Picker' }));
-    fireEvent.click(screen.getByRole('button', { name: 'November 5, 2026' }));
+    // November 5 is today on 2026-11-05, so the grid names it
+    // "November 5, 2026, today"; a regex matches either name.
+    fireEvent.click(screen.getByRole('button', { name: /November 5, 2026/ }));
     expect(value).toBe('2026-11-05');
     rerender(<DatePickerField id="test-date" label="Start date" value={value} onChange={(next) => (value = next)} />);
     expect(document.activeElement).toBe(screen.getByLabelText('Start date'));

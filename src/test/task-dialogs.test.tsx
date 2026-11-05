@@ -28,6 +28,21 @@ describe('task schedule dialog', () => {
     expect(onSave).toHaveBeenCalledWith({ dueDate: '2026-10-05', dueTime: '09:30', remindAt: '2026-10-04 08:00' });
   });
 
+  it('applies the AM/PM combobox to a typed 12-hour time, so no picker is needed', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <TaskScheduleDialog
+        task={{ ...task, dueDate: '2026-10-05', dueTime: undefined, remindAt: undefined }}
+        onSave={onSave}
+        onClose={() => {}}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText('Due time, HH:MM'), { target: { value: '2:30' } });
+    fireEvent.change(screen.getByLabelText('Due AM or PM'), { target: { value: 'PM' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save due date' }));
+    expect(onSave).toHaveBeenCalledWith({ dueDate: '2026-10-05', dueTime: '14:30', remindAt: '' });
+  });
+
   it('refuses a reminder date without a reminder time instead of silently dropping it', () => {
     const onSave = vi.fn();
     render(

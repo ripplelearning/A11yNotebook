@@ -48,6 +48,12 @@ export interface NotebookSettings {
   immersiveFocusMode?: boolean;
   /** Put keyboard focus in the grid when switching to a grid view. Off by default. */
   autoFocusGridsOnViewSwitch?: boolean;
+  /**
+   * Transcription model chosen in the first-use dialog ('smaller' =
+   * Whisper Base, about 150 MB; 'larger' = Whisper Small, about
+   * 500 MB). Undefined until the user chooses; the dialog asks.
+   */
+  transcriptionModel?: 'smaller' | 'larger';
   /** Last notebook open in this library, restored on reopen. Not a user setting; recorded as notebooks are selected. */
   lastNotebookPath?: string;
 }
@@ -332,6 +338,8 @@ export function validateSettings(
   const immersiveFocusMode = settings.immersiveFocusMode === undefined ? false : settings.immersiveFocusMode;
   const autoFocusGridsOnViewSwitch =
     settings.autoFocusGridsOnViewSwitch === undefined ? false : settings.autoFocusGridsOnViewSwitch;
+  const transcriptionModel =
+    settings.transcriptionModel === undefined ? undefined : settings.transcriptionModel;
   const lastNotebookPath = settings.lastNotebookPath === undefined ? undefined : settings.lastNotebookPath;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
@@ -376,6 +384,7 @@ export function validateSettings(
     typeof calendarOffline !== 'boolean' ||
     typeof immersiveFocusMode !== 'boolean' ||
     typeof autoFocusGridsOnViewSwitch !== 'boolean' ||
+    (transcriptionModel !== undefined && transcriptionModel !== 'smaller' && transcriptionModel !== 'larger') ||
     (lastNotebookPath !== undefined && typeof lastNotebookPath !== 'string') ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
@@ -442,6 +451,7 @@ export function validateSettings(
     calendarOffline,
     immersiveFocusMode,
     autoFocusGridsOnViewSwitch,
+    transcriptionModel,
     lastNotebookPath,
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from '../../components/Modal';
 import {
   authorsToText,
@@ -100,6 +100,16 @@ export default function CitationDialog({
   const [savedMessage, setSavedMessage] = useState('');
   const [page, setPage] = useState('');
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  const [contextEntryId, setContextEntryId] = useState<string | null>(null);
+  const contextMenuItemRef = useRef<HTMLButtonElement | null>(null);
+  const entryInsertRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  useEffect(() => {
+    if (contextEntryId) contextMenuItemRef.current?.focus();
+  }, [contextEntryId]);
+  const closeContextMenu = (entryId: string) => {
+    setContextEntryId(null);
+    entryInsertRefs.current[entryId]?.focus();
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -250,7 +260,11 @@ export default function CitationDialog({
   const sorted = sortBibliography(entries);
 
   return (
-    <Modal title="Citations" titleId="citation-dialog-title" onClose={onClose}>
+    <Modal
+      title={view === 'bibliography' ? 'Bibliography' : 'Citations'}
+      titleId="citation-dialog-title"
+      onClose={onClose}
+    >
       <div role="group" aria-label="Citation view">
         <button type="button" aria-pressed={view === 'generator'} onClick={() => setView('generator')}>
           Citation generator
@@ -328,7 +342,12 @@ export default function CitationDialog({
             ) : key === 'accessed' ? (
               <label key={key}>
                 {FIELD_LABELS[key]}
-                <input type="date" value={form[key] ?? ''} onChange={(event) => setField(key, event.target.value)} />
+                <input
+                  type="text"
+                  placeholder="YYYY-MM-DD"
+                  value={form[key] ?? ''}
+                  onChange={(event) => setField(key, event.target.value)}
+                />
               </label>
             ) : (
               <label key={key}>
@@ -365,7 +384,7 @@ export default function CitationDialog({
             onClick={() => onInsertInText(formatInText(previewEntry, style))}
             disabled={!canInsert || !previewEntry.title}
           >
-            Insert in-text citation
+            Insert In-Text Citation
           </button>
         </form>
       ) : (
@@ -388,15 +407,58 @@ export default function CitationDialog({
           </button>
           <ul>
             {sorted.map((entry) => (
-              <li key={entry.id}>
+              <li
+                key={entry.id}
+                onContextMenu={(event) => {
+                  event.preventDefault();
+                  setContextEntryId(entry.id);
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')) {
+                    event.preventDefault();
+                    setContextEntryId(entry.id);
+                  }
+                }}
+              >
                 <p>{formatBibliography(entry, style, 'plain')}</p>
                 <button
                   type="button"
+                  ref={(element) => {
+                    entryInsertRefs.current[entry.id] = element;
+                  }}
                   disabled={!canInsert}
                   onClick={() => onInsertInText(formatInText(entry, style, page))}
                 >
-                  Insert in-text citation
+                  Insert In-Text Citation
                 </button>
+                {contextEntryId === entry.id ? (
+                  <div
+                    role="menu"
+                    aria-label={`Actions for ${entry.title}`}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Escape') {
+                        event.preventDefault();
+                        closeContextMenu(entry.id);
+                      }
+                    }}
+                  >
+                    <button
+                      type="button"
+                      role="menuitem"
+                      ref={contextMenuItemRef}
+                      disabled={!canInsert}
+                      onClick={() => {
+                        onInsertInText(formatInText(entry, style, page));
+                        setContextEntryId(null);
+                      }}
+                    >
+                      Insert In-Text Citation
+                    </button>
+                    <button type="button" role="menuitem" onClick={() => closeContextMenu(entry.id)}>
+                      Close menu
+                    </button>
+                  </div>
+                ) : null}
                 <button type="button" onClick={() => loadIntoForm(entry)}>
                   Edit
                 </button>

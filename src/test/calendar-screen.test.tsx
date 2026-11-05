@@ -89,6 +89,15 @@ describe('calendar screen', () => {
     expect(await screen.findByRole('dialog')).toBeTruthy();
   });
 
+  it('does not reopen a cancelled dialog when remounting with a stale createRequest', async () => {
+    // Mounting with a request already set (the remount case after
+    // Ctrl+Tab returns to calendar) must not open the dialog: only a
+    // request that increments while mounted does.
+    setup([], 1);
+    await screen.findByText('No appointments in this period.');
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+
   it('saves a reminder offset chosen in the dialog', async () => {
     const { saveCalendar } = setup([]);
     await screen.findByText('No appointments in this period.');

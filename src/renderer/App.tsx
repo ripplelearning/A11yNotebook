@@ -49,14 +49,14 @@ import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, FeedbackDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
-import FindDialog from './components/FindDialog';
+import FindDialog, { type FindMatchJump } from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { BIBLIOGRAPHY_HANGING_INDENT, sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
-import { findAllMatches } from '../shared/find-text';
+import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
 import {
   createEditHistory,
@@ -113,6 +113,17 @@ import {
 } from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
 import type { AttachmentPreview } from '../shared/attachments';
+import { AudioRecorder, type FinishedRecording } from './features/audio/recorder';
+import { LocalTranscriber } from './features/audio/transcription';
+import { TranscriptionModelDialog } from './features/audio/TranscriptionModelDialog';
+import { saveRecording } from './features/audio/save-recording';
+import {
+  audioMimeType,
+  isAudioPath,
+  transcriptNoteContent,
+  transcriptPathForAudio,
+  type TranscriptionModelOption,
+} from '../shared/audio';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
 import type { NoteTemplate } from '../shared/templates';
@@ -452,6 +463,15 @@ export default function App() {
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
   const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'notebook' | 'task' | null>(null);
   const [quickTaskNotebookPath, setQuickTaskNotebookPath] = useState<string | undefined>();
+  const [dictationActive, setDictationActive] = useState(false);
+  const [transcriptionModelChoiceOpen, setTranscriptionModelChoiceOpen] = useState(false);
+  const [audioNoteRecording, setAudioNoteRecording] = useState(false);
+  const [transcribingAudio, setTranscribingAudio] = useState(false);
+  const dictationRecorderRef = useRef<AudioRecorder | null>(null);
+  const dictationTranscriberRef = useRef<LocalTranscriber | null>(null);
+  const dictationStartPendingRef = useRef(false);
+  const audioNoteRecorderRef = useRef<AudioRecorder | null>(null);
+  const transcribePendingRef = useRef<string | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
   const [taskCreateError, setTaskCreateError] = useState('');
   const [taskCreating, setTaskCreating] = useState(false);
@@ -895,6 +915,8 @@ export default function App() {
   const [pendingGridFocusPath, setPendingGridFocusPath] = useState<string | null | undefined>(undefined);
   // Set when a closed library should hand focus to the Libraries grid.
   const [pendingLibraryGridFocus, setPendingLibraryGridFocus] = useState(false);
+  // Set when an opened library should hand focus to the Notebooks grid.
+  const [pendingNotebooksGridFocus, setPendingNotebooksGridFocus] = useState(false);
   const updater = useUpdater();
   const synchronization = useVaultChanges(vault, openNotes, setOpenNotes, setVault, setStatusMessage, (replacedPath) =>
     invalidateEditHistory(replacedPath),
@@ -1701,6 +1723,35 @@ export default function App() {
     setPendingLibraryGridFocus(false);
   }, [pendingLibraryGridFocus, selectedTab]);
 
+  // After opening a library, focus lands in the Notebooks grid of the
+  // opened library. The target is the grid's first column header, not a
+  // body cell: DetailsView selects a notebook when its cell receives
+  // focus, which would undo the cleared notebook context a library open
+  // is supposed to leave behind, while header focus never selects
+  // anything and ArrowDown from the header enters the first row. If the
+  // open lands anywhere else (for example the restored last notebook's
+  // view), the request does not apply and the flag is dropped instead
+  // of yanking focus later. While the library is still switching, the
+  // "Opening library" dialog is mounted and its focus trap would yank
+  // focus back into the dialog, after which closing the dialog drops
+  // focus to the body; so the request waits, without being dropped,
+  // until the switch (and the dialog) is finished.
+  useEffect(() => {
+    if (!pendingNotebooksGridFocus) return;
+    if (switchingVault) return;
+    if (selectedTab !== 'notebooks') {
+      setPendingNotebooksGridFocus(false);
+      return;
+    }
+    const panel = tabPanelRef.current;
+    const target = panel?.querySelector<HTMLElement>('[role="grid"] [role="columnheader"]') ?? panel;
+    if (target) {
+      target.focus();
+      setActiveRegion('main');
+    }
+    setPendingNotebooksGridFocus(false);
+  }, [pendingNotebooksGridFocus, selectedTab, switchingVault]);
+
   // Auto-focus on grids: when the setting is on, switching to a grid
   // view lands keyboard focus in the grid itself, so screen reader
   // users do not have to find and enter it by hand. The first render
@@ -1910,6 +1961,14 @@ export default function App() {
         setImageAlt(alt);
         setAttachment({ path: entry.path, text: '', kind: 'image' });
         setSelectedTab('attachment');
+      } else if (isAudioPath(entry.path)) {
+        if (!canOpen()) return;
+        setAttachment({
+          path: entry.path,
+          text: '',
+          kind: entry.path.slice(entry.path.lastIndexOf('.')).toLowerCase(),
+        });
+        setSelectedTab('attachment');
       } else {
         setStatusMessage('This attachment has no in-app preview yet. Opening in the external app.');
         await bridge.vault.openExternal(entry.path);
@@ -1980,6 +2039,17 @@ export default function App() {
 
   const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
   const [calendarCreateRequest, setCalendarCreateRequest] = useState(0);
+  // A stale create request must not reopen a cancelled dialog when its
+  // view remounts: leaving the calendar or reminders view consumes the
+  // request, so returning later starts clean. (Opening a create dialog
+  // from elsewhere sets the tab and increments in the same render, so
+  // the effect below never clears a request that was just issued.)
+  useEffect(() => {
+    if (selectedTab !== 'calendar') setCalendarCreateRequest(0);
+  }, [selectedTab]);
+  useEffect(() => {
+    if (selectedTab !== 'reminders') setReminderCreateRequest(0);
+  }, [selectedTab]);
   const openCreateReminder = () => {
     if (!vault || securityLocked) {
       setStatusMessage('Open and unlock a library before creating a reminder.');
@@ -2391,6 +2461,102 @@ export default function App() {
       return;
     }
     setStatusMessage('Open a note or document to search within it.');
+  };
+
+  /**
+   * All matches of a query as context snippets, for the Find dialog's
+   * match list. Notes in edit mode search the editor text; notes in
+   * reading mode and text attachments search the rendered document's
+   * text nodes, with the snippet taken from the match's own node (a
+   * paragraph is normally one node, so the surrounding words are
+   * there). HTML attachments search the extracted text only, since
+   * their preview frame cannot be selected inside; reader documents
+   * have their own search box and are not listed here.
+   */
+  const listFindMatches = (query: string, caseSensitive: boolean): string[] => {
+    if (!query) return [];
+    if (selectedTab === 'attachment' && attachment) {
+      if (isImageAttachment(attachment.path) || isReaderAttachment(attachment.path)) return [];
+      if (/\.html?$/i.test(attachment.path)) {
+        const template = document.createElement('template');
+        template.innerHTML = attachment.text;
+        return findMatchSnippets(template.content.textContent ?? '', query, caseSensitive);
+      }
+      const root = attachmentRef.current;
+      if (!root) return [];
+      return findDomMatches(root, query, caseSensitive).map((match) =>
+        matchSnippet(match.node.data, { index: match.start, length: match.length }),
+      );
+    }
+    if (!currentNote) return [];
+    if (mode === 'edit') {
+      const text = editorRef.current?.value ?? currentNote.content;
+      return findMatchSnippets(text, query, caseSensitive);
+    }
+    const root = annotationTools.documentRef.current;
+    if (!root) return [];
+    return findDomMatches(root, query, caseSensitive).map((match) =>
+      matchSnippet(match.node.data, { index: match.start, length: match.length }),
+    );
+  };
+
+  /**
+   * Move to one listed match by position. The dialog closes after this
+   * (the caller handles that when moved is true), and the existing
+   * Find-close effect then puts focus in the document at the stored
+   * match; edit mode also selects the match text before closing, so
+   * focus lands on it. Returns moved false, keeping the dialog open,
+   * when the match cannot be moved to from here.
+   */
+  const jumpToFindMatch = (position: number): FindMatchJump => {
+    const storedQuery = findQueryRef.current;
+    if (!storedQuery) return { status: 'No previous search. Open Find first.', moved: false };
+    const { query, caseSensitive } = storedQuery;
+    if (selectedTab === 'attachment' && attachment) {
+      if (isImageAttachment(attachment.path)) {
+        return { status: 'This image has no text to search.', moved: false };
+      }
+      if (isReaderAttachment(attachment.path)) {
+        return { status: 'This document has its own search box.', moved: false };
+      }
+      if (/\.html?$/i.test(attachment.path)) {
+        return { status: 'This preview cannot be moved to from here.', moved: false };
+      }
+      const root = attachmentRef.current;
+      if (!root) return { status: 'The document is not displayed.', moved: false };
+      const matches = findDomMatches(root, query, caseSensitive);
+      if (position < 0 || position >= matches.length) {
+        return { status: `No matches for "${query}".`, moved: false };
+      }
+      selectDomMatch(matches, position);
+      findPositionRef.current = { docKey: `attachment:${attachment.path}`, position };
+      return { status: `Match ${position + 1} of ${matches.length} for "${query}".`, moved: true };
+    }
+    if (!currentNote) {
+      return { status: 'Open a note or document to search within it.', moved: false };
+    }
+    if (mode === 'edit') {
+      const textarea = editorRef.current;
+      const text = textarea?.value ?? currentNote.content;
+      const matches = findAllMatches(text, query, caseSensitive);
+      const match = matches[position];
+      if (!match) return { status: `No matches for "${query}".`, moved: false };
+      if (textarea) {
+        textarea.setSelectionRange(match.index, match.index + match.length);
+        noteCaretRef.current[currentNote.id] = { start: match.index, end: match.index + match.length };
+      }
+      findPositionRef.current = { docKey: `note:${currentNote.id}:${mode}`, position };
+      return { status: `Match ${position + 1} of ${matches.length} for "${query}".`, moved: true };
+    }
+    const root = annotationTools.documentRef.current;
+    if (!root) return { status: 'The note is not displayed.', moved: false };
+    const matches = findDomMatches(root, query, caseSensitive);
+    if (position < 0 || position >= matches.length) {
+      return { status: `No matches for "${query}".`, moved: false };
+    }
+    selectDomMatch(matches, position);
+    findPositionRef.current = { docKey: `note:${currentNote.id}:${mode}`, position };
+    return { status: `Match ${position + 1} of ${matches.length} for "${query}".`, moved: true };
   };
 
   /**
@@ -3459,6 +3625,7 @@ export default function App() {
       setOpenNotes((current) => current.filter((item) => item.id !== tabId));
     } else if (tabId === 'tasks') setTaskTabOpen(false);
     else if (tabId === 'reminders') setReminderTabOpen(false);
+    else if (tabId === 'calendar') setCalendarTabOpen(false);
     else if (tabId === 'assets') {
       if (assetBusy) {
         setStatusMessage('Wait for the cognitive asset operation to finish.');
@@ -4132,6 +4299,7 @@ export default function App() {
           setAssetInitialPath(undefined);
           setAssetDirty(false);
           setSelectedTab(create ? 'libraries' : 'notebooks');
+          if (!create) setPendingNotebooksGridFocus(true);
           setStatusMessage(`${create ? 'Created' : 'Opened'} library ${opened.name}.`);
           refreshRecentLibraries();
           void restoreLibraryUiState(opened);
@@ -4313,6 +4481,242 @@ export default function App() {
     setStatusMessage('Bibliography inserted.');
   };
 
+  /** Insert text at the editor caret, with a space when it would otherwise run into the previous word. */
+  const insertTextAtCaret = (text: string) => {
+    const note = currentNote;
+    if (!note) return;
+    const textarea = editorRef.current;
+    const caret = textarea ? (textarea.selectionStart ?? note.content.length) : note.content.length;
+    const before = note.content.slice(0, caret);
+    const after = note.content.slice(caret);
+    const separator = before && !/\s$/.test(before) && text ? ' ' : '';
+    const inserted = `${separator}${text}`;
+    const end = caret + inserted.length;
+    noteCaretRef.current[note.id] = { start: end, end };
+    updateNoteContent(note.id, `${before}${inserted}${after}`, 'edit');
+    requestAnimationFrame(() => {
+      const editor = editorRef.current;
+      if (editor) {
+        editor.focus();
+        editor.setSelectionRange(end, end);
+      }
+    });
+  };
+
+  const transcribeRecording = async (
+    recording: FinishedRecording,
+    modelId: TranscriptionModelOption['id'],
+  ) => {
+    const transcriber = dictationTranscriberRef.current ?? new LocalTranscriber();
+    dictationTranscriberRef.current = transcriber;
+    if (transcriber.loadedModelId !== modelId) {
+      setStatusMessage('Downloading the transcription model. This happens once.');
+    } else {
+      setStatusMessage('Transcribing your dictation. This runs on your machine.');
+    }
+    try {
+      const text = await transcriber.transcribe(recording.blob, modelId);
+      if (!text) {
+        setStatusMessage('Nothing was transcribed. Try speaking closer to the microphone.');
+        return;
+      }
+      insertTextAtCaret(text);
+      setStatusMessage('Dictation inserted.');
+    } catch {
+      setStatusMessage('Dictation could not be transcribed. Your recording was not saved.');
+    }
+  };
+
+  /** An AudioRecorder wired to the real microphone and MediaRecorder. */
+  const createRealRecorder = (
+    onFinished: (recording: FinishedRecording) => void,
+    onError: (message: string) => void,
+  ) =>
+    new AudioRecorder(
+      {
+        getUserMedia: (constraints) => navigator.mediaDevices.getUserMedia(constraints),
+        createRecorder: (stream, options) => {
+          const mediaRecorder = new MediaRecorder(
+            stream as MediaStream,
+            options.mimeType ? { mimeType: options.mimeType } : undefined,
+          );
+          const wrapped: {
+            mimeType: string;
+            ondataavailable: ((event: { data: Blob }) => void) | null;
+            onstop: (() => void) | null;
+            onerror: ((event: { error?: { message?: string } }) => void) | null;
+            start: () => void;
+            stop: () => void;
+          } = {
+            mimeType: mediaRecorder.mimeType,
+            ondataavailable: null,
+            onstop: null,
+            onerror: null,
+            start: () => mediaRecorder.start(),
+            stop: () => mediaRecorder.stop(),
+          };
+          mediaRecorder.ondataavailable = (event) => wrapped.ondataavailable?.({ data: event.data });
+          mediaRecorder.onstop = () => wrapped.onstop?.();
+          mediaRecorder.onerror = (event) =>
+            wrapped.onerror?.({ error: { message: event.error?.message ?? 'Recording failed.' } });
+          return wrapped;
+        },
+        isTypeSupported: (mimeType) => MediaRecorder.isTypeSupported(mimeType),
+      },
+      onFinished,
+      onError,
+    );
+
+  const startDictation = async (modelId: TranscriptionModelOption['id']) => {
+    const recorder = createRealRecorder(
+      (recording) => {
+        void transcribeRecording(recording, modelId);
+      },
+      (message) => {
+        setDictationActive(false);
+        setStatusMessage(`Dictation stopped: ${message}`);
+      },
+    );
+    dictationRecorderRef.current = recorder;
+    await recorder.start();
+    if (recorder.status === 'recording') {
+      setDictationActive(true);
+      setStatusMessage('Dictating. Press Ctrl+Alt+D again to stop.');
+    }
+  };
+
+  const toggleDictation = () => {
+    if (dictationActive) {
+      dictationRecorderRef.current?.stop();
+      setDictationActive(false);
+      setStatusMessage('Stopping dictation.');
+      return;
+    }
+    if (!currentNote || mode !== 'edit') {
+      setStatusMessage('Open a note in edit mode to dictate.');
+      return;
+    }
+    if (currentNoteProtected || currentNoteEditLocked) {
+      setStatusMessage('This note cannot be edited, so dictation is unavailable here.');
+      return;
+    }
+    if (!settings.transcriptionModel) {
+      dictationStartPendingRef.current = true;
+      setTranscriptionModelChoiceOpen(true);
+      return;
+    }
+    void startDictation(settings.transcriptionModel);
+  };
+
+  const chooseTranscriptionModel = async (optionId: TranscriptionModelOption['id']) => {
+    setTranscriptionModelChoiceOpen(false);
+    const saved = await persistSettings({ ...settings, transcriptionModel: optionId });
+    if (!saved) return;
+    if (dictationStartPendingRef.current) {
+      dictationStartPendingRef.current = false;
+      if (currentNote && mode === 'edit') void startDictation(optionId);
+    }
+    const pendingAudio = transcribePendingRef.current;
+    if (pendingAudio) {
+      transcribePendingRef.current = null;
+      void transcribeAudio(pendingAudio);
+    }
+  };
+
+  const saveAudioNote = async (recording: FinishedRecording, notebookPath: string) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.saveAudioRecording) {
+      setStatusMessage('Saving audio notes is unavailable in this build.');
+      return;
+    }
+    try {
+      const savedPath = await saveRecording(bridge, notebookPath, recording);
+      await refreshVault();
+      setAttachment({ path: savedPath, text: '', kind: recording.extension });
+      setSelectedTab('attachment');
+      setStatusMessage('Audio note saved.');
+    } catch {
+      setStatusMessage('Could not save the audio note.');
+    }
+  };
+
+  const toggleRecordAudioNote = () => {
+    if (audioNoteRecording) {
+      audioNoteRecorderRef.current?.stop();
+      setAudioNoteRecording(false);
+      setStatusMessage('Stopping the recording.');
+      return;
+    }
+    if (!vault) {
+      setStatusMessage('Open a library before recording an audio note.');
+      return;
+    }
+    const notebookPath = selectedNotebookPath ?? '';
+    const recorder = createRealRecorder(
+      (recording) => {
+        void saveAudioNote(recording, notebookPath);
+      },
+      (message) => {
+        setAudioNoteRecording(false);
+        setStatusMessage(`Recording stopped: ${message}`);
+      },
+    );
+    audioNoteRecorderRef.current = recorder;
+    void recorder.start().then(() => {
+      if (recorder.status === 'recording') {
+        setAudioNoteRecording(true);
+        setStatusMessage('Recording audio note. Use the Record audio note command again to stop.');
+      }
+    });
+  };
+
+  /** Path of the transcript note for an audio file, or null when none exists yet. */
+  const transcriptForAudio = (audioPath: string): string | null => {
+    const candidate = transcriptPathForAudio(audioPath);
+    return flattenEntries(vault?.entries ?? []).some((entry) => entry.path === candidate) ? candidate : null;
+  };
+
+  const transcribeAudio = async (audioPath: string) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.readAudioData || !bridge.createNote || !bridge.saveNote) {
+      setStatusMessage('Transcription is unavailable in this build.');
+      return;
+    }
+    const modelId = settings.transcriptionModel;
+    if (!modelId) {
+      transcribePendingRef.current = audioPath;
+      setTranscriptionModelChoiceOpen(true);
+      return;
+    }
+    setTranscribingAudio(true);
+    setStatusMessage('Transcribing this audio file. This runs on your machine.');
+    try {
+      const { data } = await bridge.readAudioData(audioPath);
+      const transcriber = dictationTranscriberRef.current ?? new LocalTranscriber();
+      dictationTranscriberRef.current = transcriber;
+      const bytes = new Uint8Array(data);
+      const blob = new Blob([bytes.buffer], { type: audioMimeType(audioPath) || 'audio/webm' });
+      const text = await transcriber.transcribe(blob, modelId);
+      if (!text) {
+        setStatusMessage('Nothing was transcribed from this audio file.');
+        return;
+      }
+      const transcriptPath = transcriptPathForAudio(audioPath);
+      const content = transcriptNoteContent(audioPath.split('/').at(-1) ?? audioPath, text);
+      if (transcriptForAudio(audioPath)) {
+        await bridge.saveNote(transcriptPath, content);
+      } else {
+        await bridge.createNote(transcriptPath, content);
+      }
+      await refreshVault();
+      setStatusMessage(`Transcript saved as ${transcriptPath.split('/').at(-1)}.`);
+    } catch {
+      setStatusMessage('Could not transcribe this audio file.');
+    } finally {
+      setTranscribingAudio(false);
+    }
+  };
+
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current || securityLockedRef.current) return;
     clearTimeout(navigationAnnouncementTimer.current);
@@ -4461,7 +4865,19 @@ export default function App() {
         void window.a11yNotebook.vault
           .importFile(targetNotebook)
           .then((updated) => updated && setVault(updated))
-          .catch(() => setStatusMessage('Could not import the selected file.'));
+          .catch((failure) => {
+            // Surface the .gdoc guidance, not a generic message: the
+            // main process throws it for Google Docs link files, and
+            // a generic message hides it. Other import failures keep
+            // the generic message, so internal error text is never
+            // shown to the user. Strip the Electron IPC wrapper
+            // first, as in the updater's error cleaning.
+            const raw = failure instanceof Error ? failure.message : '';
+            const cleaned = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
+            setStatusMessage(
+              cleaned.includes('.gdoc') ? cleaned : 'Could not import the selected file.',
+            );
+          });
       else setStatusMessage('Select a notebook before importing a file.');
       return;
     }
@@ -4755,6 +5171,16 @@ export default function App() {
       } else {
         setQuickTaskStep('library');
       }
+      return;
+    }
+    if (commandId === 'dictate') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      toggleDictation();
+      return;
+    }
+    if (commandId === 'record-audio-note') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      toggleRecordAudioNote();
       return;
     }
     const result = dispatchCommand(commandId, {
@@ -5225,7 +5651,7 @@ export default function App() {
         : selectedTab === 'notebooks'
           ? 'Notebooks'
           : selectedTab === 'notes-files'
-            ? 'Files'
+            ? 'Notes & Files'
             : selectedTab === 'tasks'
               ? 'Tasks'
               : selectedTab === 'assets'
@@ -5237,14 +5663,21 @@ export default function App() {
                     : selectedTab === 'calendar'
                         ? 'Calendar'
                         : activeViewTitle;
+  // While a dialog is open, the dialog's own Modal owns document.title
+  // (it names the dialog, so JAWS Insert+T reads the dialog title).
+  // This effect runs after the Modal's effect, so setting a title here
+  // would overwrite the dialog title with the view behind it — the
+  // Settings-title bug. Yield while any dialog is open; when it closes,
+  // this effect reruns (activeDialog changed) and restores the view title.
   useEffect(() => {
+    if (activeDialog) return;
     document.title =
       currentNote && vault && selectedTab === currentNote.id
         ? `${currentNote.title} | ${vault.name} | A11y Notebook`
         : vault
           ? `${titleView} | ${vault.name} | A11y Notebook`
           : `${titleView} | A11y Notebook`;
-  }, [titleView, currentNote, vault, selectedTab]);
+  }, [titleView, currentNote, vault, selectedTab, activeDialog]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 
@@ -5730,18 +6163,33 @@ export default function App() {
                 <AttachmentView
                   key={attachment.path}
                   preview={attachment}
-                alt={imageAlt}
-                announce={setStatusMessage}
-                onExternal={() =>
-                  void window.a11yNotebook?.vault
-                    .openExternal(attachment.path)
-                    .catch(() => setStatusMessage('Could not open attachment externally.'))
-                }
-                onSaveAlt={async (alt) => {
-                  await window.a11yNotebook!.vault.saveImageAlt(attachment.path, alt);
-                  setImageAlt(alt);
-                }}
-              />
+                  alt={imageAlt}
+                  announce={setStatusMessage}
+                  onExternal={() =>
+                    void window.a11yNotebook?.vault
+                      .openExternal(attachment.path)
+                      .catch(() => setStatusMessage('Could not open attachment externally.'))
+                  }
+                  onSaveAlt={async (alt) => {
+                    await window.a11yNotebook!.vault.saveImageAlt(attachment.path, alt);
+                    setImageAlt(alt);
+                  }}
+                  onTranscribe={
+                    isAudioPath(attachment.path)
+                      ? () => void transcribeAudio(attachment.path)
+                      : undefined
+                  }
+                  transcribing={transcribingAudio}
+                  transcriptPath={
+                    isAudioPath(attachment.path) ? transcriptForAudio(attachment.path) : null
+                  }
+                  onOpenTranscript={() => {
+                    const transcriptPath = transcriptForAudio(attachment.path);
+                    if (!transcriptPath) return;
+                    const entry = findEntry(vault?.entries ?? [], transcriptPath);
+                    if (entry) void openEntry(entry);
+                  }}
+                />
               </div>
             ) : selectedTab === 'tasks' ? (
               <section aria-labelledby="tasks-heading">
@@ -5974,12 +6422,15 @@ export default function App() {
                         <button type="button" onClick={() => void addAnchoredBookmark('position')}>
                           Bookmark position at cursor
                         </button>
+                        <button type="button" aria-pressed={dictationActive} onClick={() => toggleDictation()}>
+                          {dictationActive ? 'Stop dictation' : 'Dictate'}
+                        </button>
                       </>
                     ) : null}
                   </>
-                ) : (
+                ) : !focusMode ? (
                   annotationTools.toolbar
-                )}
+                ) : null}
                 <div ref={annotationTools.documentRef}>
                   <MarkdownDocument
                     disabled={switchingVault}
@@ -6007,6 +6458,16 @@ export default function App() {
                       );
                       if (task) void toggleTask(task);
                     }}
+                    onToggleMarkdownTask={
+                      mode === 'read-only' && !currentNoteProtected && !currentNoteEditLocked && !switchingVault
+                        ? (line) => {
+                            const task = tasks.find(
+                              (item) => item.path === currentNote.path && !item.htmlTask && item.line === line,
+                            );
+                            if (task) void toggleTask(task);
+                          }
+                        : undefined
+                    }
                   />
                 </div>
               </>
@@ -6288,6 +6749,8 @@ export default function App() {
         <FindDialog
           onClose={() => setFindOpen(false)}
           onSearch={searchDocument}
+          onListMatches={listFindMatches}
+          onJumpToMatch={jumpToFindMatch}
         />
       ) : null}
       {thesaurusRequest && currentNote ? (
@@ -6501,6 +6964,15 @@ export default function App() {
             setStatusMessage('Task created.');
           }}
           onClose={() => setQuickTaskStep(null)}
+        />
+      ) : null}
+      {transcriptionModelChoiceOpen ? (
+        <TranscriptionModelDialog
+          onDownload={(optionId) => void chooseTranscriptionModel(optionId)}
+          onCancel={() => {
+            dictationStartPendingRef.current = false;
+            setTranscriptionModelChoiceOpen(false);
+          }}
         />
       ) : null}
       {exportRequest ? (

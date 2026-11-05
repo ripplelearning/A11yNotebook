@@ -15,13 +15,44 @@ import { continueMarkdownList } from './smart-formatting';
  * Reading view renders Markdown task items as real checkboxes. markdown-it
  * core has no task-list support, so without this step `- [ ] do this`
  * renders as the literal text "[ ] do this" instead of a checkbox.
- * The checkbox is display-only (reading view never edits); toggling stays
- * in edit mode and Tasks view. The aria-label matches the disabled
+ * When a toggle handler is provided, the checkboxes are enabled: each one
+ * carries the 1-based source line of its task, so activating it toggles
+ * that task (and the Tasks view) through the same path as Tasks view.
+ * Without a handler (editors, locked or protected notes) they stay
+ * disabled and display-only. The aria-label matches the disabled
  * checklist inputs the HTML sanitizer already emits for HTML notes.
+ *
+ * Task lines come from the markdown-it token stream, not a source scan,
+ * so fenced code and other non-list content can never shift the mapping:
+ * list items render in token order, and so do these lines.
  */
-function renderMarkdownTaskCheckboxes(html: string): string {
+function markdownTaskLines(markdown: InstanceType<typeof MarkdownIt>, content: string): number[] {
+  const lines: number[] = [];
+  let tokens: ReturnType<InstanceType<typeof MarkdownIt>['parse']> = [];
+  try {
+    tokens = markdown.parse(content, {});
+  } catch {
+    return lines;
+  }
+  for (let index = 0; index < tokens.length; index += 1) {
+    const token = tokens[index];
+    if (token.type !== 'list_item_open' || !token.map) continue;
+    for (let inner = index + 1; inner < tokens.length; inner += 1) {
+      const item = tokens[inner];
+      if (item.type === 'inline') {
+        if (/^\[([ xX])\]\s*/.test(item.content)) lines.push(token.map[0] + 1);
+        break;
+      }
+      if (item.type === 'list_item_close') break;
+    }
+  }
+  return lines;
+}
+
+function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable: boolean): string {
   const template = document.createElement('template');
   template.innerHTML = html;
+  let taskIndex = 0;
   template.content.querySelectorAll('li').forEach((item) => {
     // The marker lives in the item's own first content: a direct text child
     // for tight lists, or the first text inside a leading <p> for loose
@@ -46,9 +77,18 @@ function renderMarkdownTaskCheckboxes(html: string): string {
     markerNode.textContent = (markerNode.textContent ?? '').replace(/^\s*\[[ xX]\]\s*/, '');
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.disabled = true;
-    checkbox.setAttribute('aria-label', 'Checklist item');
-    if (match[1].toLowerCase() === 'x') {
+    const line = lines[taskIndex];
+    taskIndex += 1;
+    const checked = match[1].toLowerCase() === 'x';
+    if (toggleable && line !== undefined) {
+      checkbox.dataset.markdownTaskLine = String(line);
+      const label = item.textContent?.trim();
+      checkbox.setAttribute('aria-label', label ? `Mark ${checked ? 'incomplete' : 'complete'}: ${label}` : 'Checklist item');
+    } else {
+      checkbox.disabled = true;
+      checkbox.setAttribute('aria-label', 'Checklist item');
+    }
+    if (checked) {
       // Set the attribute, not just the property: the property does not
       // survive serializing the template back to an HTML string.
       checkbox.setAttribute('checked', '');
@@ -120,6 +160,8 @@ interface MarkdownDocumentProps {
   disabled?: boolean;
   htmlTasks?: VaultTask[];
   onToggleHtmlTask?: (taskId: string) => void;
+  /** Reading-view Markdown task toggle: called with the 1-based source line. Absent keeps checkboxes disabled. */
+  onToggleMarkdownTask?: (line: number) => void;
   /** Status announcements for automatic edits, such as list continuation. */
   announce?: (message: string) => void;
   /** Focus Mode shows only the document: hide the editing-mode toggle. */
@@ -140,6 +182,7 @@ export default function MarkdownDocument({
   disabled,
   htmlTasks = [],
   onToggleHtmlTask,
+  onToggleMarkdownTask,
   announce,
   hideModeToggle = false,
 }: MarkdownDocumentProps) {
@@ -266,12 +309,28 @@ export default function MarkdownDocument({
           return template.innerHTML;
         })()
       : format === 'markdown' && mode === 'read-only'
-        ? renderMarkdownTaskCheckboxes(html)
+        ? renderMarkdownTaskCheckboxes(
+            html,
+            markdownTaskLines(createMarkdown(links, notePath), content),
+            onToggleMarkdownTask !== undefined,
+          )
         : html;
   return (
     <div
       className="document-body markdown-body"
       onClick={(event) => {
+        const markdownCheckbox = (event.target as HTMLElement).closest<HTMLInputElement>(
+          'input[data-markdown-task-line]',
+        );
+        if (markdownCheckbox) {
+          // Let state drive the visual state: the re-render after a
+          // successful toggle flips the marker, and a failed toggle
+          // leaves the checkbox exactly as it was.
+          event.preventDefault();
+          const line = Number(markdownCheckbox.dataset.markdownTaskLine);
+          if (line) onToggleMarkdownTask?.(line);
+          return;
+        }
         const taskToggle = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-html-task-id]');
         if (taskToggle) {
           event.preventDefault();

@@ -29,4 +29,25 @@ describe('Settings interaction options', () => {
       ),
     );
   });
+
+  it('defaults to the smaller transcription model and saves the larger one when chosen', async () => {
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    render(
+      <SettingsDialog
+        settings={DEFAULT_SETTINGS}
+        onSave={onSave}
+        onClose={vi.fn()}
+        onShortcutCaptureChange={vi.fn()}
+      />,
+    );
+    const smaller = screen.getByLabelText(/Smaller model/) as HTMLInputElement;
+    const larger = screen.getByLabelText(/Larger model/) as HTMLInputElement;
+    expect(smaller.checked).toBe(true);
+    expect(larger.checked).toBe(false);
+    fireEvent.click(larger);
+    fireEvent.click(screen.getByRole('button', { name: 'Save settings' }));
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith(expect.objectContaining({ transcriptionModel: 'larger' })),
+    );
+  });
 });

@@ -1,8 +1,8 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 
-function renderReading(content: string) {
+function renderReading(content: string, onToggleMarkdownTask?: (line: number) => void) {
   render(
     <MarkdownDocument
       content={content}
@@ -11,6 +11,7 @@ function renderReading(content: string) {
       links={[]}
       onChange={vi.fn()}
       onNavigate={() => undefined}
+      onToggleMarkdownTask={onToggleMarkdownTask}
     />,
   );
 }
@@ -64,5 +65,37 @@ describe('markdown task checkboxes in reading view', () => {
   it('renders ordered task items as checkboxes', () => {
     renderReading('1. [ ] done');
     expect(screen.getByRole('checkbox')).not.toBeChecked();
+  });
+
+  it('enables checkboxes with their source lines when a toggle handler is provided', () => {
+    const onToggle = vi.fn();
+    renderReading('- [ ] do this\n- [x] done', onToggle);
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes).toHaveLength(2);
+    expect(boxes[0].disabled).toBe(false);
+    expect(boxes[0]).toHaveAccessibleName('Mark complete: do this');
+    expect(boxes[1]).toHaveAccessibleName('Mark incomplete: done');
+    fireEvent.click(boxes[0]);
+    expect(onToggle).toHaveBeenCalledWith(1);
+    fireEvent.click(boxes[1]);
+    expect(onToggle).toHaveBeenCalledWith(2);
+  });
+
+  it('maps fenced task-like lines out: only real list items carry lines', () => {
+    const onToggle = vi.fn();
+    renderReading('```\n- [ ] fenced\n```\n- [ ] real', onToggle);
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes).toHaveLength(1);
+    fireEvent.click(boxes[0]);
+    expect(onToggle).toHaveBeenCalledWith(4);
+  });
+
+  it('keeps nested items mapped in document order', () => {
+    const onToggle = vi.fn();
+    renderReading('- [ ] outer\n  - [ ] inner', onToggle);
+    const boxes = screen.getAllByRole('checkbox') as HTMLInputElement[];
+    expect(boxes).toHaveLength(2);
+    fireEvent.click(boxes[1]);
+    expect(onToggle).toHaveBeenCalledWith(2);
   });
 });

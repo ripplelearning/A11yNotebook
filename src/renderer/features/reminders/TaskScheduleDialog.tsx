@@ -1,6 +1,11 @@
-import { useState } from 'react';
+import { useId, useState } from 'react';
 import Modal from '../../components/Modal';
-import { isValidDateText, isValidTimeText, normalizeTimeText } from '../../../shared/reminders';
+import DatePickerField from '../../components/DatePickerField';
+import {
+  composeDialogTime,
+  isValidDateText,
+  splitStoredTime,
+} from '../../../shared/reminders';
 import type { VaultTask } from '../../../shared/types';
 
 export interface TaskSchedule {
@@ -23,10 +28,15 @@ function splitReminder(value: string | undefined): [string, string] {
 }
 
 export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
+  const id = useId();
   const [dueDate, setDueDate] = useState(task.dueDate ?? '');
-  const [dueTime, setDueTime] = useState(task.dueTime ?? '');
+  const [dueTime, setDueTime] = useState(() => splitStoredTime(task.dueTime ?? '').time);
+  const [dueMeridiem, setDueMeridiem] = useState(() => splitStoredTime(task.dueTime ?? '').meridiem);
   const [reminderDate, setReminderDate] = useState(splitReminder(task.remindAt)[0]);
-  const [reminderTime, setReminderTime] = useState(splitReminder(task.remindAt)[1]);
+  const [reminderTime, setReminderTime] = useState(() => splitStoredTime(splitReminder(task.remindAt)[1]).time);
+  const [reminderMeridiem, setReminderMeridiem] = useState(
+    () => splitStoredTime(splitReminder(task.remindAt)[1]).meridiem,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const close = () => {
@@ -50,7 +60,12 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             setError('Enter a due date as YYYY-MM-DD.');
             return;
           }
-          if (dueTime && !isValidTimeText(dueTime)) {
+          // The AM/PM combobox supplies the meridiem when the typed time
+          // has none, exactly as in the Create reminder dialog, so a typed
+          // "2:30" plus PM saves as 14:30. A typed AM/PM marker or an
+          // unambiguous 24-hour value still wins, per composeDialogTime.
+          const normalizedDueTime = dueTime ? composeDialogTime(dueTime, dueMeridiem) : '';
+          if (dueTime && !normalizedDueTime) {
             setError('Enter a due time as HH:MM or H:MM AM/PM.');
             return;
           }
@@ -58,18 +73,20 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             setError('Enter a reminder date as YYYY-MM-DD.');
             return;
           }
-          if (reminderTime && !isValidTimeText(reminderTime)) {
+          const normalizedReminderTime = reminderTime
+            ? composeDialogTime(reminderTime, reminderMeridiem)
+            : '';
+          if (reminderTime && !normalizedReminderTime) {
             setError('Enter a reminder time as HH:MM or H:MM AM/PM.');
             return;
           }
           setBusy(true);
           setError('');
-          const normalizedDueTime = dueTime ? (normalizeTimeText(dueTime) ?? '') : '';
-          const normalizedReminderTime = reminderTime ? (normalizeTimeText(reminderTime) ?? '') : '';
           void onSave({
             dueDate,
-            dueTime: normalizedDueTime,
-            remindAt: reminderDate && normalizedReminderTime ? `${reminderDate} ${normalizedReminderTime}` : '',
+            dueTime: normalizedDueTime ?? '',
+            remindAt:
+              reminderDate && normalizedReminderTime ? `${reminderDate} ${normalizedReminderTime}` : '',
           })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
@@ -77,41 +94,62 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
         }}
       >
         <p>Set when this task is due, and optionally when to be reminded about it.</p>
-        <label>
-          Due date, YYYY-MM-DD
-          <input
-            data-autofocus
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={dueDate}
-            disabled={busy}
-            onChange={(event) => setDueDate(event.target.value)}
-          />
-        </label>
-        <label>
-          Due time, HH:MM
-          <input type="text" placeholder="HH:MM or 9:30 AM" value={dueTime} disabled={busy} onChange={(event) => setDueTime(event.target.value)} />
-        </label>
-        <label>
-          Reminder date, YYYY-MM-DD
-          <input
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={reminderDate}
-            disabled={busy}
-            onChange={(event) => setReminderDate(event.target.value)}
-          />
-        </label>
-        <label>
-          Reminder time, HH:MM
-          <input
-            type="text"
-            placeholder="HH:MM or 9:30 AM"
-            value={reminderTime}
-            disabled={busy}
-            onChange={(event) => setReminderTime(event.target.value)}
-          />
-        </label>
+        <p>
+          Dates and times are plain text fields you can type in directly — opening the date picker is
+          optional, never required. Times use your local timezone.
+        </p>
+        <DatePickerField
+          id={`${id}-due-date`}
+          label="Due date, YYYY-MM-DD"
+          value={dueDate}
+          onChange={setDueDate}
+          disabled={busy}
+        />
+        <label htmlFor={`${id}-due-time`}>Due time, HH:MM</label>
+        <input
+          id={`${id}-due-time`}
+          type="text"
+          placeholder="HH:MM or 9:30 AM"
+          value={dueTime}
+          disabled={busy}
+          onChange={(event) => setDueTime(event.target.value)}
+        />
+        <label htmlFor={`${id}-due-meridiem`}>Due AM or PM</label>
+        <select
+          id={`${id}-due-meridiem`}
+          value={dueMeridiem}
+          disabled={busy}
+          onChange={(event) => setDueMeridiem(event.target.value === 'PM' ? 'PM' : 'AM')}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
+        <DatePickerField
+          id={`${id}-reminder-date`}
+          label="Reminder date, YYYY-MM-DD"
+          value={reminderDate}
+          onChange={setReminderDate}
+          disabled={busy}
+        />
+        <label htmlFor={`${id}-reminder-time`}>Reminder time, HH:MM</label>
+        <input
+          id={`${id}-reminder-time`}
+          type="text"
+          placeholder="HH:MM or 9:30 AM"
+          value={reminderTime}
+          disabled={busy}
+          onChange={(event) => setReminderTime(event.target.value)}
+        />
+        <label htmlFor={`${id}-reminder-meridiem`}>Reminder AM or PM</label>
+        <select
+          id={`${id}-reminder-meridiem`}
+          value={reminderMeridiem}
+          disabled={busy}
+          onChange={(event) => setReminderMeridiem(event.target.value === 'PM' ? 'PM' : 'AM')}
+        >
+          <option value="AM">AM</option>
+          <option value="PM">PM</option>
+        </select>
         {error ? <p role="alert">{error}</p> : null}
         <button type="submit" disabled={busy}>
           Save due date

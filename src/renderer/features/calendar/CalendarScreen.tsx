@@ -126,8 +126,22 @@ export default function CalendarScreen({
     }
   }, [bridge, current]);
 
+  // A create request only opens the dialog when it changes while this
+  // screen is mounted (Ctrl+N in calendar view). The first value seen on
+  // mount is recorded without opening: a cancelled dialog must not
+  // reopen when the calendar view remounts after Ctrl+Tab returns to it,
+  // and Ctrl+N is only issued while the calendar is already open, so
+  // no legitimate flow opens the dialog on mount.
+  const lastCreateRequestRef = useRef<number | null>(null);
   useEffect(() => {
-    if (createRequest > 0) setDialog((current) => current ?? {});
+    if (lastCreateRequestRef.current === null) {
+      lastCreateRequestRef.current = createRequest;
+      return;
+    }
+    if (createRequest > 0 && createRequest !== lastCreateRequestRef.current) {
+      setDialog((current) => current ?? {});
+    }
+    lastCreateRequestRef.current = createRequest;
   }, [createRequest]);
 
   useEffect(() => {

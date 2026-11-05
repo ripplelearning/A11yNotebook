@@ -177,6 +177,24 @@ describe('Focus Mode (F11)', () => {
     expect(screen.getByRole('group', { name: 'Editing mode' })).toBeInTheDocument();
   });
 
+  it('hides the Annotate selection button in Focus Mode', async () => {
+    setup();
+    await openNote();
+    // The menu bar keeps its own Annotate item in Focus Mode by design;
+    // only the reading-view toolbar button must go.
+    const toolbarAnnotate = () =>
+      screen
+        .getAllByRole('button', { name: 'Annotate selection' })
+        .filter((button) => !button.classList.contains('menu-item'));
+    expect(toolbarAnnotate()).toHaveLength(1);
+    pressF11();
+    expect(shell().classList.contains('focus-mode')).toBe(true);
+    expect(toolbarAnnotate()).toHaveLength(0);
+    pressF11();
+    expect(shell().classList.contains('focus-mode')).toBe(false);
+    expect(toolbarAnnotate()).toHaveLength(1);
+  });
+
   it('keeps the Focus announcement region empty while Focus Mode is not active', async () => {
     // The announcement region stays mounted even when empty: a region
     // that mounts already carrying text is announced only sometimes,

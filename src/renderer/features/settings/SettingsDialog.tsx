@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { COMMANDS, defaultShortcut } from '../../../shared/command-registry';
 import { DEFAULT_SETTINGS, validateSettings, type NotebookSettings } from '../../../shared/settings';
+import { TRANSCRIPTION_MODELS } from '../../../shared/audio';
 import Modal from '../../components/Modal';
 import {
   refreshPdfReadingPreferences,
@@ -338,6 +339,26 @@ export default function SettingsDialog({
           When switching to the Libraries, Notebooks, or Notes and Files view, put keyboard focus in the grid
           automatically, without needing to enter forms mode first.
         </p>
+        <fieldset>
+          <legend>
+            <h3>Transcription model</h3>
+          </legend>
+          <p>
+            The model used when dictating or transcribing audio. Transcription runs on your machine, so the
+            audio never leaves it. Changing the model downloads the new one once, the next time you transcribe.
+          </p>
+          {TRANSCRIPTION_MODELS.map((option) => (
+            <label key={option.id}>
+              <input
+                type="radio"
+                name="transcription-model"
+                checked={(draft.transcriptionModel ?? 'smaller') === option.id}
+                onChange={() => setDraft({ ...draft, transcriptionModel: option.id })}
+              />
+              {option.label} ({option.size}): {option.summary}
+            </label>
+          ))}
+        </fieldset>
         <h3>Automatic backups</h3>
         <label>
           <input

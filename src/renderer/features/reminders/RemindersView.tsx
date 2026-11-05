@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import {
   groupReminders,
   type CreateReminderInput,
@@ -43,8 +43,14 @@ export default function RemindersView({
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+  const lastCreateRequestRef = useRef(0);
   useEffect(() => {
-    if (createRequest > 0) setCreating(true);
+    // Only a NEW request opens the dialog, for the same reason as the
+    // calendar's: a cancelled create must not reopen on remount.
+    if (createRequest > 0 && createRequest !== lastCreateRequestRef.current) {
+      setCreating(true);
+    }
+    lastCreateRequestRef.current = createRequest;
   }, [createRequest]);
   const visible = reminders
     .filter((item) => item.status !== 'dismissed' && item.status !== 'completed')
