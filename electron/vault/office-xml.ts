@@ -102,12 +102,17 @@ export function parseXml(
   const text = decodeXml(entry.bytes, name, label);
   validateXmlNesting(text, name, label);
   let parseError = false;
-  const document = new DOMParser({
-    onError: () => {
-      parseError = true;
-    },
-  }).parseFromString(text, 'application/xml');
-  if (parseError || !document.documentElement || document.documentElement.nodeName === 'parsererror') {
+  let document: XmlDocument | undefined;
+  try {
+    document = new DOMParser({
+      onError: () => {
+        parseError = true;
+      },
+    }).parseFromString(text, 'application/xml');
+  } catch {
+    parseError = true;
+  }
+  if (parseError || !document || !document.documentElement || document.documentElement.nodeName === 'parsererror') {
     invalid(`The ${label} XML part ${name} is malformed.`);
   }
   return document;
