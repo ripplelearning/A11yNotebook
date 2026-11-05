@@ -708,6 +708,38 @@ PowerPoint (`.ppt`) files cannot be read directly: export them from their app as
 import that file. Google Sheets (`.gsheet`) and Google Slides (`.gslides`) files are only links: open them
 in Google Sheets or Slides, download as `.xlsx`, `.csv`, or `.pptx`, and import that file.
 
+## Links
+
+A link is a standalone item in the Notes and Files grid — a shortcut to a web page that lives in a
+notebook alongside your notes. It is not a link inside a note: adding a link never writes into the open
+note. A link shows its page title as its name and **Link** as its Type.
+
+**Add a link.** File menu, then **Add link** (or the **Add link** button, or **Ctrl+Alt+L**). Type the
+title yourself and the web address, then press **Add link**. The address must start with `http://`,
+`https://`, or `mailto:`. The link is saved as a `.url` file in the current notebook, so it also opens in
+a browser when double-clicked outside the app. If a link with that title already exists, the new one gets
+a number added to its name.
+
+**Open a link.** Press Enter on it in the grid, or double-click it, and the page opens in the default
+browser. The link itself never opens inside the app.
+
+**Edit a link.** Open the context menu on it (Shift+F10, Applications key, or right-click) and choose
+**Edit link**. Change the title, the address, or both, then press **Save changes**. Changing the title
+renames the file; the address is stored in the file.
+
+**Delete a link.** Delete it like a note: select it in the grid and press Delete, or choose **Delete
+selected item** from its context menu. A protected link must be unprotected first, like any protected
+item.
+
+**Find a link.** Link titles and addresses are searchable like note titles: search the library for the
+title or part of the address.
+
+**Add a Google Docs, Sheets, or Slides link.** A `.gdoc`, `.gsheet`, or `.gslides` file is only a link
+to an online document, not the document itself. When you import one, a dialog offers **Add as link**
+alongside the usual guidance: type a title and press **Add link** to keep the live document as a link
+item in the notebook, or follow the guidance to download the document and import the downloaded file
+instead.
+
 ## Settings
 
 Settings sections have visible semantic headings for screen-reader heading navigation: **General editing and autosave**,
@@ -797,6 +829,7 @@ editing are not logged. See the security documentation for exact limits.
 | Ctrl+O                                                       | Open library                                   |
 | Ctrl+N                                                       | New item in the current view                   |
 | Ctrl+Q                                                       | Quick Task                                     |
+| Ctrl+Alt+L                                                   | Add link                                       |
 | Ctrl+W                                                       | Close current note tab                         |
 | Ctrl+E                                                       | Toggle read/edit mode                          |
 | Ctrl+R                                                       | Enable reading mode                            |

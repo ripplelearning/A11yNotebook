@@ -4,7 +4,7 @@ import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { VaultInfo } from '../shared/types';
+import type { PointerImport, VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
 import { gridNameCell } from './library-navigation';
 
@@ -55,7 +55,7 @@ function installBridge() {
       saveLink: vi.fn(async () => ({ path: 'Research/Example Site.url', vault })),
       readAttachment: vi.fn(async () => ({ path: 'Research/Example Site.url', text: LINK_FILE_TEXT, kind: '.url' })),
       openUrl: vi.fn(async () => undefined),
-      importFile: vi.fn(async (): Promise<VaultInfo | null> => null),
+      importFile: vi.fn(async (): Promise<VaultInfo | { pointer: PointerImport } | null> => null),
       getTasks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
