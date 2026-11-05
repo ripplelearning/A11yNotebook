@@ -597,7 +597,7 @@ the captured note is opened and indexed.
 
 ## Attachment previews
 
-Text and CSV have a text view/table. Raster images use a library-validated custom protocol and have an editable
+Text has a text view. Raster images use a library-validated custom protocol and have an editable
 description saved in metadata. Image references require local raster files. PDF uses a bundled local pdf.js worker
 for a bounded canvas page, selectable text, zoom/rotation, separate semantic page text,
 page navigation, in-document search, and persisted PDF notes. ePub uses local epub.js paginated spine rendering,
@@ -637,6 +637,32 @@ you transcribe.
 note next to the audio file — for example, "Interview transcript.md" for "Interview.webm" — with a link
 back to the audio file. When a transcript exists, the audio preview offers an **Open transcript** button.
 Transcribing again replaces the existing transcript note instead of creating a duplicate.
+
+## Spreadsheets and slide decks
+
+Spreadsheets (`.xlsx`, `.ods`, `.csv`, up to 40 MB) can be imported like any attachment and open in an
+editable grid. Slide decks (`.pptx`, `.odp`, up to 40 MB) open as read-only text: a list of slides with
+titles, body text, and speaker notes.
+
+**Edit a spreadsheet.** Open the file to see its sheets as a table with row numbers and column letters.
+Each cell is a text box labelled with its row and column; type a new value and move on — numbers stay
+numbers, TRUE and FALSE stay true and false, and a date typed into a cell that already held a date stays a
+date. Cells that hold a formula show the formula's calculated value and are labelled as formulas; editing
+one replaces the formula with the value you type. Use **Add row** and **Add column** to grow the sheet at
+the end, and **Delete row** / **Delete column** to remove the row or column the focused cell is in. When a
+workbook has more than one sheet, pick the sheet from the **Sheet** list.
+
+**Save a spreadsheet.** Press **Ctrl+S**, or the **Save spreadsheet** button, to save back into the same
+file, like a note. Old binary `.xls` files are read-only in place: saving one creates a new `.xlsx` file
+next to it and leaves the original unchanged.
+
+**Read a slide deck.** Choose a slide from the list to read its text. Speaker notes appear under the slide
+text when the deck has them. Slides cannot be edited in this release.
+
+**Formats that need an export first.** Apple Numbers (`.numbers`), Apple Keynote (`.key`), and old
+PowerPoint (`.ppt`) files cannot be read directly: export them from their app as `.xlsx` or `.pptx` and
+import that file. Google Sheets (`.gsheet`) and Google Slides (`.gslides`) files are only links: open them
+in Google Sheets or Slides, download as `.xlsx`, `.csv`, or `.pptx`, and import that file.
 
 ## Settings
 

@@ -735,7 +735,7 @@ export const COMMANDS: CommandDefinition[] = [
   {
     id: 'save-current-note',
     label: 'Save note',
-    description: 'Save changes to the active Markdown note.',
+    description: 'Save changes to the active Markdown note or spreadsheet.',
     shortcut: 'Ctrl+S',
   },
   {
