@@ -33,6 +33,7 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={onInsertInText}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -55,6 +56,7 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -85,6 +87,7 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -104,6 +107,7 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
         canInsert={false}
       />,
@@ -138,6 +142,7 @@ describe('CitationDialog', () => {
         initialView="bibliography"
         onInsertInText={onInsertInText}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -148,5 +153,62 @@ describe('CitationDialog', () => {
     fireEvent.contextMenu(listItem!);
     fireEvent.click(screen.getByRole('menuitem', { name: 'Insert In-Text Citation' }));
     expect(onInsertInText).toHaveBeenCalledWith('(Rivera, 2024)');
+  });
+
+  it('inserts a footnote from an entry in Chicago notes-bibliography mode', async () => {
+    const bridge = {
+      vault: {
+        getBibliography: vi.fn(async () => [
+          {
+            id: 'book',
+            notebookPath: 'Research',
+            sourceType: 'book',
+            authors: [{ last: 'Rivera', first: 'Alex' }],
+            title: 'Accessible Design',
+            year: '2024',
+            publisher: 'Open Press',
+          },
+        ]),
+        saveBibliography: vi.fn(async (_notebook: string, entries: never[]) => entries),
+      },
+    };
+    window.a11yNotebook = bridge as unknown as NotebookBridge;
+    const onInsertFootnote = vi.fn();
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={onInsertFootnote}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Accessible Design/)).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Citation style'), { target: { value: 'chicago-notes' } });
+    fireEvent.change(screen.getByLabelText(/Cited page/), { target: { value: '42' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Insert Footnote' }));
+    expect(onInsertFootnote).toHaveBeenCalledWith(expect.objectContaining({ id: 'book' }), '42');
+  });
+
+  it('lists both Chicago systems and explains the Markdown limitation', () => {
+    render(
+      <CitationDialog
+        notebookPath="/notes"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    const options = Array.from(screen.getByLabelText('Citation style').querySelectorAll('option')).map((option) =>
+      option.textContent?.trim(),
+    );
+    expect(options).toContain('Chicago (Author-Date)');
+    expect(options).toContain('Chicago (Notes-Bibliography)');
+    fireEvent.change(screen.getByLabelText('Citation style'), { target: { value: 'apa' } });
+    expect(screen.getByText(/cannot be applied, so the inserted list follows the style only as far as plain text allows/i)).toBeInTheDocument();
+    expect(screen.queryByText(/uses footnotes: each in-text citation adds a numbered footnote/i)).not.toBeInTheDocument();
   });
 });

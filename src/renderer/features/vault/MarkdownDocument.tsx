@@ -1,6 +1,7 @@
 // Renders notes as sanitized semantic Markdown or a native textarea for editing.
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
+import footnote from 'markdown-it-footnote';
 import { useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
 import type { VaultTask } from '../../../shared/types';
@@ -101,6 +102,9 @@ function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable:
 
 function createMarkdown(links: VaultLink[], notePath?: string) {
   const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+  // Chicago notes-bibliography footnotes ([^1] markers with definitions)
+  // render as superscript links plus a notes section in reading view.
+  markdown.use(footnote);
   const renderImage = markdown.renderer.rules.image!;
   markdown.renderer.rules.image = (tokens, index, options, environment, renderer) => {
     const href = String(tokens[index].attrGet('src') ?? '');

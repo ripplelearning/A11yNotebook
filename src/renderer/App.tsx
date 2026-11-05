@@ -53,7 +53,7 @@ import FindDialog, { type FindMatchJump } from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
-import { BIBLIOGRAPHY_HANGING_INDENT, sanitizeNoteHtml } from './features/vault/sanitize-html';
+import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
@@ -141,10 +141,15 @@ import {
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
 import {
-  formatBibliography,
+  formatBibliographyBlock,
   type BibliographyEntry,
   type CitationStyle,
 } from '../shared/citations';
+import {
+  buildFootnote,
+  footnoteEditorHtml,
+  insertFootnoteAtCaret,
+} from '../shared/footnotes';
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
@@ -4477,17 +4482,42 @@ export default function App() {
       : /\.md$/i.test(currentNote.path)
         ? 'markdown'
         : 'plain';
-    const formatted = entries.map((entry) => formatBibliography(entry, style, markup));
-    // APA, MLA, and Chicago all require a hanging indent. Markdown cannot
-    // express one, so only HTML notes get it (the note sanitizer keeps
-    // exactly this declaration and drops every other inline style).
-    const text =
-      markup === 'html'
-        ? formatted.map((entry) => `<p style="${BIBLIOGRAPHY_HANGING_INDENT}">${entry}</p>`).join('\n')
-        : formatted.join('\n\n');
+    const text = formatBibliographyBlock(entries, style, markup);
+    // In Rich text mode an HTML bibliography must be inserted as HTML, not
+    // as text: the plain-text insert would show the paragraph tags on screen.
+    if (markup === 'html' && document.querySelector('.rich-text-editor')) {
+      window.dispatchEvent(new CustomEvent('a11y:insert-citation-html', { detail: { html: text } }));
+      setCitationDialog(null);
+      setStatusMessage('Bibliography inserted.');
+      return;
+    }
     insertTextIntoNote(text);
     setCitationDialog(null);
     setStatusMessage('Bibliography inserted.');
+  };
+
+  const insertFootnote = (entry: BibliographyEntry, page?: string) => {
+    if (!currentNote) return;
+    const markup = /\.html?$/i.test(currentNote.path)
+      ? 'html'
+      : /\.md$/i.test(currentNote.path)
+        ? 'markdown'
+        : 'plain';
+    if (document.querySelector('.rich-text-editor')) {
+      const built = buildFootnote(currentNote.content, markup, entry, page);
+      const editorHtml = footnoteEditorHtml(markup, entry, page, built.number, built.shortened);
+      window.dispatchEvent(new CustomEvent('a11y:insert-citation-footnote', { detail: editorHtml }));
+      setCitationDialog(null);
+      setStatusMessage(`Footnote ${built.number} inserted.`);
+      return;
+    }
+    const textarea = editorRef.current;
+    const caret = textarea ? (textarea.selectionStart ?? currentNote.content.length) : currentNote.content.length;
+    const result = insertFootnoteAtCaret(currentNote.content, markup, entry, page, caret);
+    noteCaretRef.current[currentNote.id] = { start: result.caret, end: result.caret };
+    updateNoteContent(currentNote.id, result.content, 'edit');
+    setCitationDialog(null);
+    setStatusMessage(`Footnote ${result.number} inserted.`);
   };
 
   /** Insert text at the editor caret, with a space when it would otherwise run into the previous word. */
@@ -5734,6 +5764,7 @@ export default function App() {
           initialView={citationDialog}
           onInsertInText={insertCitationText}
           onInsertBibliography={insertBibliography}
+          onInsertFootnote={insertFootnote}
           canInsert={mode === 'edit' && !currentNoteEditLocked}
           onClose={() => setCitationDialog(null)}
         />

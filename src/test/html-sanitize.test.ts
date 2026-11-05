@@ -56,4 +56,36 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).not.toContain('color: red');
     expect(safe).not.toContain('display: none');
   });
+
+  it('keeps bibliography heading and entry styles and drops every other inline style', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p style="text-align: center; font-weight: bold; font-family: \'Times New Roman\', serif; font-size: 12pt;">References</p>' +
+        '<p style="padding-left: 0.5in; text-indent: -0.5in; line-height: 1; margin: 0 0 12pt; font-family: \'Times New Roman\', serif; font-size: 12pt;">Entry</p>' +
+        '<p style="color: red;">Red</p><p style="padding-left: 0.5in; color: red;">Mixed</p>',
+    );
+    expect(safe).toContain('text-align: center');
+    expect(safe).toContain('font-weight: bold');
+    expect(safe).toContain('line-height: 1');
+    expect(safe).toContain('margin: 0 0 12pt');
+    // The main-process sanitizer escapes quotes in attribute values.
+    expect(safe).toContain('font-family: &#39;Times New Roman&#39;, serif');
+    expect(safe).not.toContain('color: red');
+  });
+
+  it('keeps footnote markers, ids, and classes but drops other ids and classes', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p>Text<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>' +
+        '<section class="footnotes"><ol class="footnotes-list">' +
+        '<li id="fn1" class="footnote-item"><p>Alex Rivera, <em>Accessible Design</em>. <a href="#fnref1" class="footnote-backref">↩</a></p></li>' +
+        '</ol></section>' +
+        '<p id="other" class="custom">Plain</p>',
+    );
+    expect(safe).toContain('<sup class="footnote-ref">');
+    expect(safe).toContain('id="fnref1"');
+    expect(safe).toContain('<section class="footnotes">');
+    expect(safe).toContain('<li id="fn1" class="footnote-item">');
+    expect(safe).toContain('class="footnote-backref"');
+    expect(safe).not.toContain('id="other"');
+    expect(safe).not.toContain('class="custom"');
+  });
 });

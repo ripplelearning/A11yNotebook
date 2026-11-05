@@ -231,6 +231,7 @@ describe('accessibility audit (axe, WCAG 2.2 AA)', () => {
         initialView: 'generator',
         onInsertInText: vi.fn(),
         onInsertBibliography: vi.fn(),
+        onInsertFootnote: vi.fn(),
         onClose: vi.fn(),
       }),
     );

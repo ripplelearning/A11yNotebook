@@ -337,12 +337,56 @@ Each notebook keeps its own bibliography. From the Insert menu, choose **Citatio
 (Ctrl+Shift+C) to create an entry: pick the source type (book, journal article, website, book chapter,
 conference paper, report, or thesis), then fill in the fields by hand or paste a DOI, ISBN, or web address
 and choose **Fill in from source** to fetch the public record (Crossref for DOIs, Open Library for ISBNs,
-the page's own metadata for URLs). Choose APA, MLA, or Chicago to preview the bibliography entry and the
+the page's own metadata for URLs). Choose a citation style to preview the bibliography entry and the
 in-text citation, then save it to the notebook's bibliography. Choose **Bibliography…** (Ctrl+Shift+J) to
 view, edit, or delete saved entries, insert an in-text citation for one of them (with an optional cited
 page), or insert the full bibliography into the current note. Entries are stored in the library's
 bibliography file, move with the notebook when it is renamed or moved, and stay encrypted when the
 library is encrypted.
+
+### Citation styles
+
+Four styles are available: APA, MLA, Chicago (Author-Date), and Chicago (Notes-Bibliography).
+
+- **APA** is common in the social sciences and education. In-text citations are parenthetical
+  (Author, Year, p. 23), and the list is headed **References**.
+- **MLA** is common in the humanities. In-text citations are parenthetical (Author 23), and the list
+  is headed **Works Cited**.
+- **Chicago (Author-Date)** is the Chicago style most used in the sciences and social sciences. Like
+  APA, it cites parenthetically with the year after the author, and its list is headed **References**.
+- **Chicago (Notes-Bibliography)** is the Chicago style most used in history and the humanities. It
+  cites with numbered footnotes instead of parenthetical citations, and its list is headed
+  **Bibliography**. The year appears at the end of each bibliography entry, not after the author.
+  Use it when your reader, publisher, or course asks for footnotes; use Author-Date when they ask
+  for parenthetical citations.
+
+### Footnotes (Chicago Notes-Bibliography)
+
+Inserting a citation in Notes-Bibliography mode adds a numbered footnote marker in the text and the
+citation itself in a notes section at the end of the note. The first time a source is cited the footnote
+gives the full citation; later mentions of the same source give a shortened form (author, shortened
+title, and page). In Markdown notes the marker looks like `[^1]` with the definition at the end of the
+note; in HTML notes it is a superscript numbered link. Either way, the marker is a link to its note and
+each note has a link back to the marker, so you can move between them with the keyboard: Tab to the
+marker and press Enter to jump to the note, then follow the backlink to return.
+
+### How the inserted list is formatted
+
+In HTML notes the inserted bibliography follows the style guide: a centered heading (**References**
+in bold for APA; **Works Cited** for MLA; **References** for Chicago Author-Date; **Bibliography** for
+Chicago Notes-Bibliography), a 0.5-inch hanging indent, and Times New Roman 12-point type. APA and MLA
+lists are double-spaced with no blank line between entries; Chicago lists are single-spaced within
+entries with a blank line between entries.
+
+In Markdown and plain-text notes the hanging indent, line spacing, and font cannot be applied, so the
+inserted list follows the style only as far as plain text allows: the heading is a Markdown heading and
+the entries are separated by blank lines. The citation dialog says so when you insert, rather than
+claiming the output is fully formatted.
+
+Titles are entered exactly as you type them. APA uses sentence case for titles (only the first word and
+proper nouns capitalized); the app does not convert your titles for you, so type them in sentence case
+for APA entries. For APA web pages with no publication date, the entry adds a retrieval date
+("Retrieved Month Day, Year, from …"); dated pages and other source types do not get one.
 
 ## Annotations
 

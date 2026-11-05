@@ -1,4 +1,6 @@
 import { decodeHtmlEntities } from './html-entities';
+import { isBibliographyStyle } from '../../src/shared/citations';
+import { isFootnoteClass, isFootnoteId } from '../../src/shared/footnotes';
 
 const ALLOWED_TAGS = new Set([
   'a',
@@ -43,6 +45,7 @@ const ALLOWED_TAGS = new Set([
   's',
   'section',
   'strong',
+  'sup',
   'table',
   'tbody',
   'td',
@@ -228,17 +231,19 @@ export function sanitizeHtmlFragment(
     const safeAttributes = new Map<string, string>();
     for (const [name, value] of attributes(raw)) {
       if (['title', 'alt', 'alttext', 'scope', 'lang', 'dir'].includes(name)) safeAttributes.set(name, value);
+      else if (name === 'id' && isFootnoteId(value)) safeAttributes.set(name, value);
+      else if (name === 'class' && isFootnoteClass(value)) safeAttributes.set(name, value);
       else if (name === 'display' && ['block', 'inline'].includes(value)) safeAttributes.set(name, value);
       else if (name === 'href' || name === 'src') {
         const safe = validUrl(tag, name, value, options);
         if (safe) safeAttributes.set(name, safe);
       } else if (
-        // The one inline style a note may carry: the bibliography hanging
-        // indent. Every other inline style is dropped, so exported HTML
-        // cannot hide content or restyle a note.
+        // Bibliography blocks may carry only their own inline styles
+        // (hanging indent, heading alignment, line spacing, Times New
+        // Roman 12pt). Every other inline style is dropped, so exported
+        // HTML cannot hide content or restyle a note.
         name === 'style' &&
-        value.replace(/\s*:\s*/g, ': ').replace(/\s*;\s*/g, '; ').trim().replace(/;$/, '') ===
-          'padding-left: 0.5in; text-indent: -0.5in'
+        isBibliographyStyle(value)
       ) {
         safeAttributes.set(name, value);
       } else if (TASK_ATTRIBUTES.has(name)) {

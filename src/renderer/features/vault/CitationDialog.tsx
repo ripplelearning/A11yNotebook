@@ -18,6 +18,7 @@ interface Props {
   initialView: 'generator' | 'bibliography';
   onInsertInText: (text: string) => void;
   onInsertBibliography: (entries: BibliographyEntry[], style: CitationStyle) => void;
+  onInsertFootnote: (entry: BibliographyEntry, page?: string) => void;
   onClose: () => void;
   /** False in reading view (or for a locked note): the dialog still views and generates, but cannot insert. */
   canInsert?: boolean;
@@ -83,6 +84,7 @@ export default function CitationDialog({
   initialView,
   onInsertInText,
   onInsertBibliography,
+  onInsertFootnote,
   onClose,
   canInsert = true,
 }: Props) {
@@ -257,7 +259,7 @@ export default function CitationDialog({
   };
 
   const previewEntry = formEntry();
-  const sorted = sortBibliography(entries);
+  const sorted = sortBibliography(entries, style);
 
   return (
     <Modal
@@ -365,7 +367,10 @@ export default function CitationDialog({
           <div>
             <h3>Preview</h3>
             <p>Bibliography: {previewEntry.title ? formatBibliography(previewEntry, style, 'plain') : 'Fill in a title.'}</p>
-            <p>In-text: {previewEntry.title ? formatInText(previewEntry, style) : '—'}</p>
+            <p>
+              {style === 'chicago-notes' ? 'Footnote' : 'In-text'}:{' '}
+              {previewEntry.title ? formatInText(previewEntry, style) : '—'}
+            </p>
           </div>
           <button type="submit">{editingId ? 'Update bibliography entry' : 'Save to bibliography'}</button>
           <button
@@ -381,10 +386,14 @@ export default function CitationDialog({
           </button>
           <button
             type="button"
-            onClick={() => onInsertInText(formatInText(previewEntry, style))}
+            onClick={() =>
+              style === 'chicago-notes'
+                ? onInsertFootnote(previewEntry)
+                : onInsertInText(formatInText(previewEntry, style))
+            }
             disabled={!canInsert || !previewEntry.title}
           >
-            Insert In-Text Citation
+            {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
           </button>
         </form>
       ) : (
@@ -395,7 +404,9 @@ export default function CitationDialog({
               : `${sorted.length} ${sorted.length === 1 ? 'entry' : 'entries'} in this notebook’s bibliography.`}
           </p>
           <label>
-            Cited page (optional, for in-text citations)
+            {style === 'chicago-notes'
+              ? 'Cited page (optional, for footnotes)'
+              : 'Cited page (optional, for in-text citations)'}
             <input value={page} onChange={(event) => setPage(event.target.value)} />
           </label>
           <button
@@ -405,6 +416,16 @@ export default function CitationDialog({
           >
             Insert full bibliography
           </button>
+          {style === 'chicago-notes' ? (
+            <p>
+              Chicago notes-bibliography uses footnotes: each in-text citation adds a numbered footnote, full the
+              first time a source is cited and shortened after that.
+            </p>
+          ) : null}
+          <p>
+            In Markdown and plain-text notes the hanging indent, line spacing, and font cannot be applied, so the
+            inserted list follows the style only as far as plain text allows. HTML notes get the full formatting.
+          </p>
           <ul>
             {sorted.map((entry) => (
               <li
@@ -427,9 +448,13 @@ export default function CitationDialog({
                     entryInsertRefs.current[entry.id] = element;
                   }}
                   disabled={!canInsert}
-                  onClick={() => onInsertInText(formatInText(entry, style, page))}
+                  onClick={() =>
+                    style === 'chicago-notes'
+                      ? onInsertFootnote(entry, page)
+                      : onInsertInText(formatInText(entry, style, page))
+                  }
                 >
-                  Insert In-Text Citation
+                  {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
                 </button>
                 {contextEntryId === entry.id ? (
                   <div
@@ -448,11 +473,12 @@ export default function CitationDialog({
                       ref={contextMenuItemRef}
                       disabled={!canInsert}
                       onClick={() => {
-                        onInsertInText(formatInText(entry, style, page));
+                        if (style === 'chicago-notes') onInsertFootnote(entry, page);
+                        else onInsertInText(formatInText(entry, style, page));
                         setContextEntryId(null);
                       }}
                     >
-                      Insert In-Text Citation
+                      {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
                     </button>
                     <button type="button" role="menuitem" onClick={() => closeContextMenu(entry.id)}>
                       Close menu
