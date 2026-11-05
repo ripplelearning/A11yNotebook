@@ -5,13 +5,8 @@ import { isSupportedDocument } from '../../electron/vault/import';
 
 describe('separate external application document formats', () => {
   it.each([
-    'xls',
-    'xlsx',
     'ppt',
-    'pptx',
     'odt',
-    'ods',
-    'odp',
     'pages',
     'numbers',
     'key',
@@ -22,7 +17,7 @@ describe('separate external application document formats', () => {
     expect(isExternalDocumentPath(`Folder/Original.${extension.toUpperCase()}`)).toBe(true);
     expect(isSupportedDocument(`Original.${extension}`)).toBe(false);
   });
-  it.each(['rtf', 'doc'])(
+  it.each(['rtf', 'doc', 'xls', 'xlsx', 'pptx', 'ods', 'odp'])(
     'offers %s originals to OS applications and also supports them internally',
     (extension) => {
       expect(isExternalDocumentPath(`Folder/Original.${extension}`)).toBe(true);

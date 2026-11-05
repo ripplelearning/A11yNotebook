@@ -633,13 +633,16 @@ describe('extended vault IPC integration', () => {
 
   it('hands external-only Office/text originals to OS applications without treating them as internally importable', async () => {
     const { shell } = await import('electron');
-    for (const extension of ['xls', 'xlsx', 'ppt', 'pptx', 'odt', 'ods', 'odp']) {
+    for (const [extension, expectedError] of [
+      ['ppt', 'cannot be read by this app'],
+      ['odt', 'no internal importer'],
+    ] as const) {
       const relative = `Original.${extension}`;
       const absolute = path.join(mock.root, relative);
       await writeFile(absolute, 'Original external document');
       await invoke(IPC_CHANNELS.vaultOpenExternal, relative);
       expect(shell.openPath).toHaveBeenLastCalledWith(absolute);
-      await expect(invoke(IPC_CHANNELS.vaultImportAsNote, relative)).rejects.toThrow('no internal importer');
+      await expect(invoke(IPC_CHANNELS.vaultImportAsNote, relative)).rejects.toThrow(expectedError);
       expect(await readFile(absolute, 'utf8')).toBe('Original external document');
     }
     for (const extension of ['exe', 'ps1', 'cmd', 'js', 'lnk', 'url', 'desktop']) {
