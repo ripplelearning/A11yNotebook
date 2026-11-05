@@ -1,5 +1,6 @@
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
+import footnote from 'markdown-it-footnote';
 import { asciiToMathML } from '../../../shared/ascii-math';
 import { sanitizeNoteHtml } from './sanitize-html';
 
@@ -165,6 +166,7 @@ export function convertNoteContent(
   if (from === to) return source;
   if (to === 'html') {
     const markdown = new MarkdownIt({ html: false, linkify: true, typographer: false });
+    markdown.use(footnote);
     markdown.inline.ruler.before('link', 'wiki_link', (state, silent) => {
       const match = /^\[\[([^\]\n|]+)(?:\|([^\]\n]*))?\]\]/.exec(state.src.slice(state.pos));
       if (!match) return false;

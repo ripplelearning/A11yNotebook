@@ -1,5 +1,6 @@
 import { decodeHtmlEntities } from './html-entities';
 import { isBibliographyStyle } from '../../src/shared/citations';
+import { isFootnoteClass, isFootnoteId } from '../../src/shared/footnotes';
 
 const ALLOWED_TAGS = new Set([
   'a',
@@ -44,6 +45,7 @@ const ALLOWED_TAGS = new Set([
   's',
   'section',
   'strong',
+  'sup',
   'table',
   'tbody',
   'td',
@@ -229,6 +231,8 @@ export function sanitizeHtmlFragment(
     const safeAttributes = new Map<string, string>();
     for (const [name, value] of attributes(raw)) {
       if (['title', 'alt', 'alttext', 'scope', 'lang', 'dir'].includes(name)) safeAttributes.set(name, value);
+      else if (name === 'id' && isFootnoteId(value)) safeAttributes.set(name, value);
+      else if (name === 'class' && isFootnoteClass(value)) safeAttributes.set(name, value);
       else if (name === 'display' && ['block', 'inline'].includes(value)) safeAttributes.set(name, value);
       else if (name === 'href' || name === 'src') {
         const safe = validUrl(tag, name, value, options);

@@ -16,6 +16,30 @@ export interface FootnoteDefinition {
 const MARKDOWN_FOOTNOTE = /^\[\^(\d+)\]:\s*(.*)$/;
 const HTML_FOOTNOTE_ITEM = /<li\b[^>]*\bid="fn-(\d+)"[^>]*>([\s\S]*?)<\/li>/gi;
 
+/**
+ * The class names the footnote markup uses: the marker, the notes section
+ * and list, the list item, and the backlink. The sanitizers keep exactly
+ * these classes on footnote elements and drop every other class.
+ */
+export const FOOTNOTE_CLASSES = [
+  'footnote-ref',
+  'footnote-backref',
+  'footnote-item',
+  'footnotes',
+  'footnotes-list',
+  'footnotes-sep',
+] as const;
+
+/** True when the value is a footnote anchor id (`fn1`, `fnref1`, or the hyphenated HTML-note forms). */
+export function isFootnoteId(value: string): boolean {
+  return /^fn-?\d+$/.test(value) || /^fnref-?\d+$/.test(value);
+}
+
+/** True when the value is one of the footnote class names. */
+export function isFootnoteClass(value: string): boolean {
+  return (FOOTNOTE_CLASSES as readonly string[]).includes(value);
+}
+
 /** Existing footnote definitions in note content, in order. */
 export function listFootnotes(content: string, markup: FootnoteMarkup): FootnoteDefinition[] {
   if (markup === 'html') {

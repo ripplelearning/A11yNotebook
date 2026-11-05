@@ -4,6 +4,8 @@ import {
   findFootnoteForEntry,
   footnoteEditorHtml,
   insertFootnoteAtCaret,
+  isFootnoteClass,
+  isFootnoteId,
   listFootnotes,
   nextFootnoteNumber,
   type FootnoteMarkup,
@@ -130,5 +132,23 @@ describe('footnotes', () => {
     const built = buildFootnote('Intro.', markup, book, '42');
     expect(built.marker).toBe('[^1]');
     expect(built.definition).toBe('[^1]: Alex Rivera, Accessible Design (Portland: Open Press, 2024), 42.');
+  });
+
+  it('recognizes only footnote ids and classes for the sanitizers', () => {
+    expect(isFootnoteId('fn1')).toBe(true);
+    expect(isFootnoteId('fnref1')).toBe(true);
+    expect(isFootnoteId('fn-1')).toBe(true);
+    expect(isFootnoteId('fnref-1')).toBe(true);
+    expect(isFootnoteId('fn')).toBe(false);
+    expect(isFootnoteId('other')).toBe(false);
+    expect(isFootnoteId('fn1x')).toBe(false);
+    expect(isFootnoteClass('footnote-ref')).toBe(true);
+    expect(isFootnoteClass('footnote-backref')).toBe(true);
+    expect(isFootnoteClass('footnotes')).toBe(true);
+    expect(isFootnoteClass('footnotes-list')).toBe(true);
+    expect(isFootnoteClass('footnotes-sep')).toBe(true);
+    expect(isFootnoteClass('footnote-item')).toBe(true);
+    expect(isFootnoteClass('custom')).toBe(false);
+    expect(isFootnoteClass('footnote-ref custom')).toBe(false);
   });
 });

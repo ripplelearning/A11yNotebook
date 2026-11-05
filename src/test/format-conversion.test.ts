@@ -104,4 +104,34 @@ describe('note format conversion', () => {
     expect(safe).toContain('data-a11y-task-complete="false"');
     expect(safe).not.toContain('onclick');
   });
+
+  it('renders Markdown footnotes as a superscript link plus a notes section', () => {
+    const html = convertNoteContent(
+      'A claim.[^1]\n\n[^1]: Alex Rivera, *Accessible Design* (Open Press, 2024).',
+      'markdown',
+      'html',
+      'Notes/Entry.html',
+    );
+    expect(html).toContain('footnote-ref');
+    expect(html).toContain('href="#fn1"');
+    expect(html).toContain('footnotes-list');
+    expect(html).toContain('Alex Rivera');
+    expect(html).not.toContain('[^1]');
+  });
+
+  it('round-trips rendered footnotes back to Markdown definitions', () => {
+    const html = convertNoteContent(
+      'A claim.[^1]\n\n[^1]: Alex Rivera, *Accessible Design* (Open Press, 2024).',
+      'markdown',
+      'html',
+      'Notes/Entry.html',
+    );
+    const markdown = convertNoteContent(html, 'html', 'markdown', 'Notes/Entry.md');
+    // The converter escapes punctuation in text, as it does for all HTML
+    // text; the escaped form renders identically and parses back as a
+    // footnote marker and definition.
+    expect(markdown).toContain('A claim\\.[^1]');
+    expect(markdown).toContain('[^1]: Alex Rivera, *Accessible Design* \\(Open Press, 2024\\)\\.');
+    expect(markdown).not.toContain('footnote-backref');
+  });
 });

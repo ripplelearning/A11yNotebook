@@ -71,4 +71,21 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).toContain('font-family: &#39;Times New Roman&#39;, serif');
     expect(safe).not.toContain('color: red');
   });
+
+  it('keeps footnote markers, ids, and classes but drops other ids and classes', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p>Text<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>' +
+        '<section class="footnotes"><ol class="footnotes-list">' +
+        '<li id="fn1" class="footnote-item"><p>Alex Rivera, <em>Accessible Design</em>. <a href="#fnref1" class="footnote-backref">↩</a></p></li>' +
+        '</ol></section>' +
+        '<p id="other" class="custom">Plain</p>',
+    );
+    expect(safe).toContain('<sup class="footnote-ref">');
+    expect(safe).toContain('id="fnref1"');
+    expect(safe).toContain('<section class="footnotes">');
+    expect(safe).toContain('<li id="fn1" class="footnote-item">');
+    expect(safe).toContain('class="footnote-backref"');
+    expect(safe).not.toContain('id="other"');
+    expect(safe).not.toContain('class="custom"');
+  });
 });
