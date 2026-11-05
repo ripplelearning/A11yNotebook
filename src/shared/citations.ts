@@ -1,8 +1,8 @@
 /**
  * Bibliography entries, one list per notebook, with APA (7th), MLA (9th),
- * and Chicago (17th, author-date) formatting, plus author-date /
- * author-page in-text citations. Chicago notes-bibliography is not
- * implemented: it needs footnotes, which the app does not have yet.
+ * and Chicago (17th) formatting in two systems — author-date and
+ * notes-bibliography — plus author-date / author-page in-text citations
+ * and Chicago footnote citations (full on first mention, shortened after).
  *
  * Entries are stored in the library's bibliography metadata file, keyed by
  * notebook path. The dialog renders italics as *Title* in Markdown, <i>
@@ -28,12 +28,13 @@ export const CITATION_SOURCE_TYPES: Array<{ id: CitationSourceType; label: strin
   { id: 'thesis', label: 'Thesis or dissertation' },
 ];
 
-export type CitationStyle = 'apa' | 'mla' | 'chicago';
+export type CitationStyle = 'apa' | 'mla' | 'chicago' | 'chicago-notes';
 
 export const CITATION_STYLES: Array<{ id: CitationStyle; label: string }> = [
   { id: 'apa', label: 'APA' },
   { id: 'mla', label: 'MLA' },
   { id: 'chicago', label: 'Chicago (Author-Date)' },
+  { id: 'chicago-notes', label: 'Chicago (Notes-Bibliography)' },
 ];
 
 export interface CitationAuthor {
@@ -399,18 +400,269 @@ function chicagoBibliography(entry: BibliographyEntry, markup: CitationMarkup): 
   }
 }
 
+/**
+ * Chicago notes-bibliography entries: the year goes at the END of the
+ * entry, not after the author. `repeatAuthor` renders the 3-em dash
+ * Chicago requires for successive entries by the same author.
+ */
+function chicagoNotesBibliography(
+  entry: BibliographyEntry,
+  markup: CitationMarkup,
+  repeatAuthor = false,
+): string {
+  const authors = chicagoAuthors(entry.authors);
+  const year = clean(entry.year);
+  const link = doiUrl(entry);
+  const head = repeatAuthor ? '———.' : authors ? `${authors}.` : '';
+  const placePublisher = [entry.place, entry.publisher].filter(Boolean).join(': ');
+  const published = [placePublisher, year].filter(Boolean).join(', ');
+  const publishedPart = published ? `${published}.` : '';
+  switch (entry.sourceType) {
+    case 'journal': {
+      const volume = entry.volume ? `${entry.volume}` : '';
+      const issue = entry.issue ? `, no. ${entry.issue}` : '';
+      const yearPart = year ? ` (${year})` : '';
+      const pages = entry.pages ? `: ${entry.pages}` : '';
+      return joinSentences([
+        head,
+        `"${entry.title}."`,
+        entry.journal ? `${italic(entry.journal, markup)} ${volume}${issue}${yearPart}${pages}.` : '',
+        link,
+      ]);
+    }
+    case 'website': {
+      const accessed = entry.accessed ? `Accessed ${formatDateLong(entry.accessed)}. ` : '';
+      return joinSentences([
+        head,
+        `"${entry.title}."`,
+        entry.publisher ? `${entry.publisher}. ` : '',
+        year ? `${year}. ` : '',
+        `${accessed}${link}`,
+      ]);
+    }
+    case 'chapter': {
+      const editors = entry.editors?.length
+        ? `edited by ${entry.editors.map((e) => (e.first ? `${e.first} ${e.last}` : e.last)).join(', ')}`
+        : '';
+      const pages = entry.pages ? `, ${entry.pages}` : '';
+      return joinSentences([
+        head,
+        `"${entry.title}."`,
+        entry.containerTitle
+          ? `In ${italic(entry.containerTitle, markup)}${editors ? `, ${editors}` : ''}${pages}.`
+          : '',
+        publishedPart,
+        link,
+      ]);
+    }
+    case 'conference':
+      return joinSentences([
+        head,
+        `"${entry.title}."`,
+        entry.conferenceName
+          ? `Paper presented at ${entry.conferenceName}${entry.place ? `, ${entry.place}` : ''}${
+              year ? `, ${year}` : ''
+            }.`
+          : '',
+        link,
+      ]);
+    case 'report':
+      return joinSentences([
+        head,
+        `${italic(entry.title, markup)}.`,
+        entry.institution ? `${entry.institution}${year ? `, ${year}` : ''}.` : year ? `${year}.` : '',
+        link,
+      ]);
+    case 'thesis': {
+      const level =
+        entry.thesisLevel === 'masters' ? "Master's thesis" : entry.thesisLevel === 'doctoral' ? 'PhD diss.' : '';
+      const details = [level, entry.institution, year].filter(Boolean).join(', ');
+      return joinSentences([head, `"${entry.title}."`, details ? `${details}.` : '', link]);
+    }
+    default: {
+      const edition = entry.edition ? `${entry.edition} ed.` : '';
+      return joinSentences([
+        head,
+        `${italic(entry.title, markup)}.`,
+        edition,
+        publishedPart,
+        link,
+      ]);
+    }
+  }
+}
+
+/** Authors as a Chicago note lists them: all three at most, "et al." beyond. */
+function noteAuthors(authors: CitationAuthor[]): string {
+  const names = authors.map((author) => (author.first ? `${author.first} ${author.last}` : author.last));
+  if (names.length === 0) return '';
+  if (names.length === 1) return names[0];
+  if (names.length === 2) return `${names[0]} and ${names[1]}`;
+  if (names.length === 3) return `${names[0]}, ${names[1]}, and ${names[2]}`;
+  return `${names[0]} et al.`;
+}
+
+/** Tidy a note citation: collapse spaces, fix spacing before punctuation, turn a trailing comma into a period. */
+function finishNote(text: string): string {
+  return text
+    .replace(/\s+/g, ' ')
+    .replace(/\s+([,.])/g, '$1')
+    .trim()
+    .replace(/,\s*$/, '.');
+}
+
+/**
+ * Shortened title for Chicago note citations: the subtitle is dropped and
+ * a long title is cut to its first four words.
+ */
+export function shortTitle(entry: BibliographyEntry): string {
+  const main = entry.title.split(':')[0].trim();
+  const words = main.split(/\s+/).filter(Boolean);
+  return words.length > 4 ? words.slice(0, 4).join(' ') : main;
+}
+
+/**
+ * Full Chicago note citation (first mention of a source): the author
+ * first-name first, publication details in parentheses, cited page last.
+ * When no page is cited, the entry's page range is used instead.
+ */
+export function formatNoteCitation(entry: BibliographyEntry, markup: CitationMarkup, page?: string): string {
+  const author = noteAuthors(entry.authors);
+  const year = clean(entry.year);
+  const link = doiUrl(entry);
+  const authorPart = author ? `${author},` : '';
+  const pagePart = clean(page);
+  const placePublisher = [entry.place, entry.publisher].filter(Boolean).join(': ');
+  switch (entry.sourceType) {
+    case 'journal': {
+      const journalPart = entry.journal
+        ? `${italic(entry.journal, markup)}${entry.volume ? ` ${entry.volume}` : ''}${
+            entry.issue ? `, no. ${entry.issue}` : ''
+          }${year ? ` (${year})` : ''}`
+        : '';
+      const pages = pagePart || entry.pages;
+      return finishNote(
+        joinSentences([
+          authorPart,
+          journalPart ? `"${entry.title},"` : `"${entry.title}."`,
+          journalPart ? `${journalPart}${pages ? `: ${pages}` : ''}.` : pages ? `${pages}.` : '',
+        ]),
+      );
+    }
+    case 'website': {
+      const body = [
+        `"${entry.title},"`,
+        entry.publisher ? `${entry.publisher},` : '',
+        year ? `${year},` : '',
+        entry.accessed ? `accessed ${formatDateLong(entry.accessed)},` : '',
+      ]
+        .filter(Boolean)
+        .join(' ');
+      return finishNote(`${authorPart ? `${authorPart} ` : ''}${body}${link ? ` ${link}` : ''}`);
+    }
+    case 'chapter': {
+      const editors = entry.editors?.length
+        ? `${entry.editors.length === 1 ? 'ed.' : 'eds.'} ${entry.editors
+            .map((e) => (e.first ? `${e.first} ${e.last}` : e.last))
+            .join(', ')}`
+        : '';
+      const published = [placePublisher, year].filter(Boolean).join(', ');
+      const pages = pagePart || entry.pages;
+      return finishNote(
+        joinSentences([
+          authorPart,
+          `"${entry.title},"`,
+          entry.containerTitle
+            ? `in ${italic(entry.containerTitle, markup)}${editors ? `, ${editors}` : ''}${
+                published ? ` (${published})` : ''
+              }${pages ? `, ${pages}` : ''}.`
+            : '',
+        ]),
+      );
+    }
+    case 'conference': {
+      const event = [entry.conferenceName, entry.place, year].filter(Boolean).join(', ');
+      return finishNote(
+        joinSentences([
+          authorPart,
+          `"${entry.title}"`,
+          event ? `(paper presented at ${event}).` : '',
+          link,
+        ]),
+      );
+    }
+    case 'report': {
+      const published = [entry.institution, year].filter(Boolean).join(', ');
+      return finishNote(
+        joinSentences([
+          authorPart,
+          `${italic(entry.title, markup)}`,
+          published ? `(${published})` : '',
+          pagePart ? `, ${pagePart}.` : '.',
+        ]),
+      );
+    }
+    case 'thesis': {
+      const level =
+        entry.thesisLevel === 'masters' ? "Master's thesis" : entry.thesisLevel === 'doctoral' ? 'PhD diss.' : '';
+      const published = [level, entry.institution, year].filter(Boolean).join(', ');
+      return finishNote(
+        joinSentences([
+          authorPart,
+          `"${entry.title}"`,
+          published ? `(${published})` : '',
+          pagePart ? `, ${pagePart}.` : '.',
+        ]),
+      );
+    }
+    default: {
+      const published = [placePublisher, year].filter(Boolean).join(', ');
+      const edition = entry.edition ? `${entry.edition} ed.` : '';
+      return finishNote(
+        joinSentences([
+          authorPart,
+          `${italic(entry.title, markup)}`,
+          edition,
+          published ? `(${published})` : '',
+          pagePart ? `, ${pagePart}.` : '.',
+        ]),
+      );
+    }
+  }
+}
+
+/**
+ * Shortened Chicago note citation (later mentions of a source): author
+ * last name, shortened title, cited page.
+ */
+export function formatShortNoteCitation(entry: BibliographyEntry, markup: CitationMarkup, page?: string): string {
+  const last = entry.authors[0]?.last;
+  const short = shortTitle(entry);
+  const pagePart = clean(page);
+  if (entry.sourceType === 'book' || entry.sourceType === 'report') {
+    const head = last ? `${last}, ${italic(short, markup)}` : italic(short, markup);
+    return finishNote(`${head}${pagePart ? `, ${pagePart}` : ''}.`);
+  }
+  const head = last ? `${last}, ` : '';
+  if (pagePart) return finishNote(`${head}"${short}," ${pagePart}.`);
+  return finishNote(`${head}"${short}."`);
+}
+
 /** Format one bibliography entry in the chosen style. */
 export function formatBibliography(
   entry: BibliographyEntry,
   style: CitationStyle,
   markup: CitationMarkup = 'markdown',
+  options?: { repeatAuthor?: boolean },
 ): string {
   const formatted =
     style === 'apa'
       ? apaBibliography(entry, markup)
       : style === 'mla'
         ? mlaBibliography(entry, markup)
-        : chicagoBibliography(entry, markup);
+        : style === 'chicago-notes'
+          ? chicagoNotesBibliography(entry, markup, options?.repeatAuthor)
+          : chicagoBibliography(entry, markup);
   return formatted.replace(/\s+/g, ' ').replace(/\s+([,.])/g, '$1').trim();
 }
 
@@ -428,6 +680,7 @@ export function formatInText(entry: BibliographyEntry, style: CitationStyle, pag
   const pagePart = clean(page);
   if (style === 'mla') return pagePart ? `(${last} ${pagePart})` : `(${last})`;
   if (style === 'chicago') return pagePart ? `(${last} ${year}, ${pagePart})` : `(${last} ${year})`;
+  if (style === 'chicago-notes') return formatNoteCitation(entry, 'plain', page);
   const pageSuffix = pagePart ? `, ${apaPageLabel(pagePart)}` : '';
   if (entry.authors.length >= 3) return `(${last} et al., ${year}${pageSuffix})`;
   if (entry.authors.length === 2) return `(${entry.authors[0].last} & ${entry.authors[1].last}, ${year}${pageSuffix})`;
@@ -442,8 +695,9 @@ function stripLeadingArticle(title: string): string {
 /**
  * Sort bibliography entries by first author's last name (or by title when
  * there is no author). Works by the same author are ordered by year,
- * earliest first, for APA and Chicago author-date; MLA orders them by
- * title. An entry with no year sorts before dated works by the same author.
+ * earliest first, for APA and Chicago author-date; MLA and Chicago
+ * notes-bibliography order them by title. An entry with no year sorts
+ * before dated works by the same author.
  */
 export function sortBibliography(entries: BibliographyEntry[], style: CitationStyle = 'apa'): BibliographyEntry[] {
   const sortKey = (entry: BibliographyEntry) =>
@@ -451,7 +705,7 @@ export function sortBibliography(entries: BibliographyEntry[], style: CitationSt
   return [...entries].sort((a, b) => {
     const keyOrder = sortKey(a).localeCompare(sortKey(b));
     if (keyOrder !== 0) return keyOrder;
-    if (a.authors.length > 0 && b.authors.length > 0 && style !== 'mla') {
+    if (a.authors.length > 0 && b.authors.length > 0 && (style === 'apa' || style === 'chicago')) {
       const yearOrder = (a.year ?? '').localeCompare(b.year ?? '');
       if (yearOrder !== 0) return yearOrder;
     }
@@ -504,13 +758,18 @@ function bibliographyHeadingStyle(style: CitationStyle): string {
 function bibliographyEntryStyle(style: CitationStyle): string {
   // APA and MLA are double-spaced with no blank line between entries;
   // Chicago is single-spaced within entries with a blank line between them.
-  const spacing = style === 'chicago' ? 'line-height: 1; margin: 0 0 12pt;' : 'line-height: 2; margin: 0;';
+  const spacing =
+    style === 'chicago' || style === 'chicago-notes'
+      ? 'line-height: 1; margin: 0 0 12pt;'
+      : 'line-height: 2; margin: 0;';
   return `${BIBLIOGRAPHY_HANGING_INDENT} ${spacing} ${BIBLIOGRAPHY_FONT_STYLE}`;
 }
 
 /** The list heading each style requires. */
 export function bibliographyHeading(style: CitationStyle): string {
-  return style === 'mla' ? 'Works Cited' : 'References';
+  if (style === 'mla') return 'Works Cited';
+  if (style === 'chicago-notes') return 'Bibliography';
+  return 'References';
 }
 
 /**
@@ -528,7 +787,14 @@ export function formatBibliographyBlock(
 ): string {
   const sorted = sortBibliography(entries, style);
   const heading = bibliographyHeading(style);
-  const formatted = sorted.map((entry) => formatBibliography(entry, style, markup));
+  const repeatAuthor = (index: number) =>
+    style === 'chicago-notes' &&
+    index > 0 &&
+    sorted[index - 1].authors.length > 0 &&
+    JSON.stringify(sorted[index - 1].authors) === JSON.stringify(sorted[index].authors);
+  const formatted = sorted.map((entry, index) =>
+    formatBibliography(entry, style, markup, { repeatAuthor: repeatAuthor(index) }),
+  );
   if (markup === 'html') {
     return [
       `<p style="${bibliographyHeadingStyle(style)}">${heading}</p>`,

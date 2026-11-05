@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  bibliographyHeading,
   formatBibliography,
   formatBibliographyBlock,
   formatInText,
+  formatNoteCitation,
+  formatShortNoteCitation,
   parseAuthors,
+  shortTitle,
   sortBibliography,
   type BibliographyEntry,
 } from '../shared/citations';
@@ -213,5 +217,124 @@ describe('citation formatting', () => {
     expect(formatBibliographyBlock([book], 'mla', 'plain')).toBe(
       'Works Cited\n\nRivera, Alex. Accessible Design. Open Press, 2024.',
     );
+  });
+
+  it('formats Chicago notes-bibliography entries with the year at the end', () => {
+    const notesBook: BibliographyEntry = { ...book, place: 'Portland' };
+    expect(formatBibliography(notesBook, 'chicago-notes')).toBe(
+      'Rivera, Alex. *Accessible Design*. Portland: Open Press, 2024.',
+    );
+    expect(formatBibliography(journal, 'chicago-notes')).toBe(
+      'Doe, Jane, Richard Roe, and Polly Poe. "Screen readers and math." *Access Quarterly* 12, no. 3 (2023): 45-67. https://doi.org/10.1000/xyz123',
+    );
+    const chapterEntry: BibliographyEntry = {
+      id: '11',
+      notebookPath: 'Research',
+      sourceType: 'chapter',
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      editors: [{ last: 'Chen', first: 'Bo' }],
+      title: 'Reading with a screen reader',
+      year: '2024',
+      containerTitle: 'Accessible Design Handbook',
+      pages: '10-25',
+      publisher: 'Open Press',
+      place: 'Portland',
+    };
+    expect(formatBibliography(chapterEntry, 'chicago-notes')).toBe(
+      'Rivera, Alex. "Reading with a screen reader." In *Accessible Design Handbook*, edited by Bo Chen, 10-25. Portland: Open Press, 2024.',
+    );
+    const conferenceEntry: BibliographyEntry = {
+      id: '5',
+      notebookPath: 'Research',
+      sourceType: 'conference',
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      title: 'Testing with screen readers',
+      year: '2024',
+      conferenceName: 'Access Conference',
+      place: 'Portland, OR',
+    };
+    expect(formatBibliography(conferenceEntry, 'chicago-notes')).toBe(
+      'Rivera, Alex. "Testing with screen readers." Paper presented at Access Conference, Portland, OR, 2024.',
+    );
+    const thesisEntry: BibliographyEntry = {
+      id: '12',
+      notebookPath: 'Research',
+      sourceType: 'thesis',
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      title: 'Accessible Design in Practice',
+      year: '2024',
+      institution: 'Open University',
+      thesisLevel: 'doctoral',
+    };
+    expect(formatBibliography(thesisEntry, 'chicago-notes')).toBe(
+      'Rivera, Alex. "Accessible Design in Practice." PhD diss., Open University, 2024.',
+    );
+    const reportEntry: BibliographyEntry = {
+      id: '13',
+      notebookPath: 'Research',
+      sourceType: 'report',
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      title: 'Annual Accessibility Report',
+      year: '2024',
+      institution: 'Open Institute',
+    };
+    expect(formatBibliography(reportEntry, 'chicago-notes')).toBe(
+      'Rivera, Alex. *Annual Accessibility Report*. Open Institute, 2024.',
+    );
+    const websiteEntry: BibliographyEntry = {
+      id: '4',
+      notebookPath: 'Research',
+      sourceType: 'website',
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      title: 'Accessible design today',
+      year: '2024',
+      url: 'https://example.org/design',
+      accessed: '2026-11-01',
+    };
+    expect(formatBibliography(websiteEntry, 'chicago-notes')).toBe(
+      'Rivera, Alex. "Accessible design today." 2024. Accessed November 1, 2026. https://example.org/design',
+    );
+  });
+
+  it('uses the 3-em dash for successive entries by the same author in notes-bibliography', () => {
+    const zebra: BibliographyEntry = { ...book, id: '6', title: 'Zebra patterns', year: '2020' };
+    expect(formatBibliographyBlock([zebra, book], 'chicago-notes', 'markdown')).toBe(
+      '## Bibliography\n\nRivera, Alex. *Accessible Design*. Open Press, 2024.\n\n———. *Zebra patterns*. Open Press, 2020.',
+    );
+    expect(bibliographyHeading('chicago-notes')).toBe('Bibliography');
+  });
+
+  it('sorts same-author works by title for Chicago notes-bibliography', () => {
+    const zebra: BibliographyEntry = { ...book, id: '6', title: 'Zebra patterns', year: '2020' };
+    const apple: BibliographyEntry = { ...book, id: '7', title: 'Apple picking', year: '2024' };
+    expect(sortBibliography([apple, zebra], 'chicago-notes').map((entry) => entry.id)).toEqual(['7', '6']);
+  });
+
+  it('formats full Chicago note citations with the cited page last', () => {
+    const notesBook: BibliographyEntry = { ...book, place: 'Portland' };
+    expect(formatNoteCitation(notesBook, 'markdown', '42')).toBe(
+      'Alex Rivera, *Accessible Design* (Portland: Open Press, 2024), 42.',
+    );
+    expect(formatNoteCitation(notesBook, 'markdown')).toBe(
+      'Alex Rivera, *Accessible Design* (Portland: Open Press, 2024).',
+    );
+    expect(formatNoteCitation(journal, 'markdown', '50')).toBe(
+      'Jane Doe, Richard Roe, and Polly Poe, "Screen readers and math," *Access Quarterly* 12, no. 3 (2023): 50.',
+    );
+    expect(formatNoteCitation(journal, 'markdown')).toBe(
+      'Jane Doe, Richard Roe, and Polly Poe, "Screen readers and math," *Access Quarterly* 12, no. 3 (2023): 45-67.',
+    );
+    expect(formatInText(notesBook, 'chicago-notes', '42')).toBe(
+      'Alex Rivera, Accessible Design (Portland: Open Press, 2024), 42.',
+    );
+  });
+
+  it('shortens Chicago note citations for later mentions', () => {
+    expect(shortTitle({ ...book, title: 'Reading with a screen reader: a practical guide' })).toBe(
+      'Reading with a screen',
+    );
+    expect(formatShortNoteCitation(book, 'markdown', '42')).toBe('Rivera, *Accessible Design*, 42.');
+    expect(formatShortNoteCitation(journal, 'markdown', '50')).toBe('Doe, "Screen readers and math," 50.');
+    expect(formatShortNoteCitation(book, 'markdown')).toBe('Rivera, *Accessible Design*.');
   });
 });
