@@ -34,7 +34,7 @@ export interface NoteItem {
 export interface VaultEntry {
   name: string;
   path: string;
-  kind: 'notebook' | 'note' | 'attachment';
+  kind: 'notebook' | 'note' | 'attachment' | 'link';
   children?: VaultEntry[];
   /** Missing metadata and externally replaced files are conservatively unknown. */
   provenance?: 'created' | 'imported' | 'task' | 'unknown';

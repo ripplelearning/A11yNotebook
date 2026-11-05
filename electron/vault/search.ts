@@ -13,7 +13,7 @@ const VERSION = 4;
 const MAX_FILE_BYTES = 4 * 1024 * 1024;
 const MAX_INDEXED_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_CACHE_BYTES = 64 * 1024 * 1024;
-const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.csv', '.html', '.htm']);
+const TEXT_EXTENSIONS = new Set(['.md', '.txt', '.csv', '.html', '.htm', '.url']);
 
 interface IndexedDocument {
   path: string;

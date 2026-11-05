@@ -68,7 +68,7 @@ export function parsePointerFileUrl(content: string): string | null {
   }
 }
 
-const ILLEGAL_FILE_NAME_CHARACTERS = /[<>:"/\\|?*\u0000-\u001f]/g;
+const ILLEGAL_FILE_NAME_CHARACTERS = /[<>:"/\\|?*\p{Cc}]/gu;
 
 /**
  * Turn a typed link title into a link file name. Illegal file-name

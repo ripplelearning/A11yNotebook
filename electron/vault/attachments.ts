@@ -43,8 +43,8 @@ export async function readTextAttachment(
   relative: string,
   decode: (relative: string, bytes: Buffer) => Buffer = (_relative, bytes) => bytes,
 ) {
-  if (typeof relative !== 'string' || !/\.(?:txt|csv|html?)$/i.test(relative)) {
-    throw new Error('Only text, CSV, and HTML previews are supported here.');
+  if (typeof relative !== 'string' || !/\.(?:txt|csv|html?|url)$/i.test(relative)) {
+    throw new Error('Only text, CSV, HTML, and link previews are supported here.');
   }
   const target = await resolve(relative);
   const stat = await lstat(target);

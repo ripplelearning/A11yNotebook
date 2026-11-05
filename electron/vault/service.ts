@@ -58,6 +58,7 @@ import { readImport } from './import';
 import { createProvenanceStore, type Provenance } from './provenance';
 import { createProtectionStore } from './protection';
 import { createSupersededStore } from './superseded';
+import { formatLinkFile, isAllowedLinkUrl, isLinkPath, linkFileName, parseLinkUrl } from '../../src/shared/links';
 import {
   decryptLibraryFile,
   encryptLibraryFile,
@@ -624,13 +625,14 @@ export function createVaultService(
         });
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
+        const isLink = isLinkPath(entry.name);
         const origin = await provenance.get(childPath, origins);
         const fileIdentity = await provenance.identity(childPath);
         if (fileIdentity) live.add(fileIdentity);
         result.push({
           name: entry.name,
           path: childRelative,
-          kind: isNote ? 'note' : 'attachment',
+          kind: isLink ? 'link' : isNote ? 'note' : 'attachment',
           ...(origin ? { provenance: origin } : {}),
           ...(fileIdentity && fileIdentity in supersededRecords ? { superseded: true } : {}),
           ...(fileIdentity && fileIdentity in protectionRecords ? { protected: true } : {}),
@@ -1024,6 +1026,113 @@ export function createVaultService(
     const tasks = await getTasks();
     assertCurrent();
     return tasks;
+  }
+
+  /**
+   * Create a standalone link: one `.url` file in a notebook, shown in the
+   * grid with Type "Link". The title becomes the file name; the URL is
+   * stored in the file, never in a note. A taken name gets a numbered
+   * suffix, like save-as for spreadsheets.
+   */
+  async function createLink(
+    input: unknown,
+    assertCurrent: () => void = () => undefined,
+  ): Promise<{ path: string; vault: VaultInfo }> {
+    return serializeNoteWrite(async () => {
+      if (!input || typeof input !== 'object') throw new Error('Invalid link request.');
+      const { title, url, notebookPath = '' } = input as {
+        title?: unknown;
+        url?: unknown;
+        notebookPath?: unknown;
+      };
+      if (
+        typeof title !== 'string' ||
+        !title.trim() ||
+        title.length > 200 ||
+        typeof url !== 'string' ||
+        !isAllowedLinkUrl(url) ||
+        typeof notebookPath !== 'string'
+      )
+        throw new Error('Enter a link title and a web address starting with http://, https://, or mailto:.');
+      assertCurrent();
+      const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
+      if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
+      const base = linkFileName(title.trim());
+      const stem = base.slice(0, -'.url'.length);
+      let candidate = path.posix.join(notebookPath, base);
+      for (let attempt = 2; attempt <= 100; attempt += 1) {
+        try {
+          await resolveEntry(candidate);
+          candidate = path.posix.join(notebookPath, `${stem} ${attempt}.url`);
+        } catch {
+          break;
+        }
+      }
+      const created = await createDocument(candidate, formatLinkFile(url), 'created', assertCurrent);
+      return { path: candidate, vault: created };
+    });
+  }
+
+  /**
+   * Edit a standalone link: change its title (renames the `.url` file),
+   * its URL (rewrites the `URL=` line, keeping any other lines in the
+   * file), or both. Returns the link's final path and the refreshed view.
+   */
+  async function saveLink(
+    input: unknown,
+    assertCurrent: () => void = () => undefined,
+  ): Promise<{ path: string; vault: VaultInfo }> {
+    return serializeNoteWrite(async () => {
+      if (!input || typeof input !== 'object') throw new Error('Invalid link request.');
+      const { path: relativePath, title, url } = input as {
+        path?: unknown;
+        title?: unknown;
+        url?: unknown;
+      };
+      if (
+        typeof relativePath !== 'string' ||
+        !isLinkPath(relativePath) ||
+        typeof title !== 'string' ||
+        !title.trim() ||
+        title.length > 200 ||
+        typeof url !== 'string' ||
+        !isAllowedLinkUrl(url)
+      )
+        throw new Error('Enter a link title and a web address starting with http://, https://, or mailto:.');
+      assertCurrent();
+      await assertNotProtected(relativePath);
+      const target = await resolveEntry(relativePath);
+      if (!(await lstat(target)).isFile()) throw new Error('Choose a link to edit.');
+      const trimmedUrl = url.trim();
+      let finalPath = relativePath;
+      const newName = linkFileName(title.trim());
+      const currentName = path.posix.basename(relativePath);
+      if (newName !== currentName) {
+        const directory = path.posix.dirname(relativePath);
+        const stem = newName.slice(0, -'.url'.length);
+        let candidate = path.posix.join(directory, newName);
+        for (let attempt = 2; attempt <= 100 && candidate !== relativePath; attempt += 1) {
+          try {
+            await resolveEntry(candidate);
+            candidate = path.posix.join(directory, `${stem} ${attempt}.url`);
+          } catch {
+            break;
+          }
+        }
+        await renameEntry(relativePath, path.posix.basename(candidate));
+        finalPath = candidate;
+      }
+      const current = (await readVaultFileBytes(finalPath, 'link')).toString('utf8');
+      const currentUrl = parseLinkUrl(current);
+      if (currentUrl !== trimmedUrl) {
+        const next = currentUrl
+          ? current.replace(/^(\s*URL\s*=).+?$/im, (_match, prefix: string) => `${prefix}${trimmedUrl}`)
+          : formatLinkFile(trimmedUrl);
+        await replaceNote(finalPath, next, undefined, assertCurrent);
+      }
+      await refreshSearchIndex();
+      return { path: finalPath, vault: await getVault() };
+    });
   }
 
   function importFileCopy(
@@ -2170,6 +2279,8 @@ export function createVaultService(
     saveNote,
     createFolder,
     createNote,
+    createLink,
+    saveLink,
     createTask,
     importFile,
     importEntry,
