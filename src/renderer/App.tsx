@@ -5215,11 +5215,17 @@ export default function App() {
     }
     if (commandId === 'quick-task') {
       if (activeDialog === 'palette') setActiveDialog(null);
-      if (vault) {
+      if (!vault) {
+        setQuickTaskStep('library');
+      } else if (selectedTab === 'notes-files' && selectedNotebookPath) {
+        // A notebook is visibly open: create the task there directly.
         setQuickTaskNotebookPath(selectedNotebookPath);
         setQuickTaskStep('task');
       } else {
-        setQuickTaskStep('library');
+        // On the landing grid (or any other tab) the remembered notebook
+        // path does not count as open: ask which notebook the task goes in.
+        setQuickTaskNotebookPath(undefined);
+        setQuickTaskStep('notebook');
       }
       return;
     }
