@@ -29,7 +29,19 @@ describe('trusted creation and import workflows', () => {
     const all = await service.createTask({ text: 'Second task' });
     expect(all).toHaveLength(2);
     expect(await service.search({ text: 'accessibility' })).toHaveLength(1);
-    expect(await service.getProvenance(first[0].path)).toBe('app-created');
+    expect(await service.getProvenance(first[0].path)).toBe('task');
+    const vault = await service.getVault();
+    const work = vault.entries.find((entry) => entry.path === 'Work');
+    expect(work?.children?.find((entry) => entry.path === 'Work/Plan accessibility review.md')?.provenance).toBe(
+      'task',
+    );
+  });
+
+  it('keeps a plain note containing a task line as created, not a task note', async () => {
+    await service.createNote('Research/Checklist.md', '# Checklist\n\n- [ ] Buy milk\n');
+    const vault = await service.getVault();
+    const research = vault.entries.find((entry) => entry.path === 'Research');
+    expect(research?.children?.find((entry) => entry.name === 'Checklist.md')?.provenance).toBe('created');
   });
 
   it('names task notes after their task text, sanitizing and disambiguating', async () => {

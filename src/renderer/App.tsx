@@ -216,7 +216,9 @@ function findEntry(entries: VaultEntry[], targetPath: string | null): VaultEntry
 }
 
 function isManagedEntry(entry: VaultEntry): boolean {
-  return entry.provenance === 'created' || entry.provenance === 'imported';
+  // 'task' notes are created by the app, so they stay managed: they can
+  // receive further tasks and show as managed entries elsewhere.
+  return entry.provenance === 'created' || entry.provenance === 'imported' || entry.provenance === 'task';
 }
 
 function notebookForTask(task: VaultTask) {

@@ -1014,11 +1014,11 @@ export function createVaultService(
     const baseName = taskNoteBaseName(text.trim()) || `Tasks-${randomUUID()}`;
     let relative = path.posix.join(notebookPath, `${baseName}.md`);
     try {
-      await createNote(relative, content, 'created', assertCurrent);
+      await createNote(relative, content, 'task', assertCurrent);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       relative = path.posix.join(notebookPath, `${baseName}-${randomUUID()}.md`);
-      await createNote(relative, content, 'created', assertCurrent);
+      await createNote(relative, content, 'task', assertCurrent);
     }
     assertCurrent();
     const tasks = await getTasks();

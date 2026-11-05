@@ -37,7 +37,7 @@ export interface VaultEntry {
   kind: 'notebook' | 'note' | 'attachment';
   children?: VaultEntry[];
   /** Missing metadata and externally replaced files are conservatively unknown. */
-  provenance?: 'created' | 'imported' | 'unknown';
+  provenance?: 'created' | 'imported' | 'task' | 'unknown';
   /** True when a managed copy was made from this file; views hide it unless the user shows originals. */
   superseded?: boolean;
   /** True when the item is protected: renaming, moving, deleting, and editing are blocked until it is unprotected. */

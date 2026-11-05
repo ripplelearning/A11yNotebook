@@ -3,7 +3,7 @@ import { lstat } from 'node:fs/promises';
 import { createMetadataStore, type MetadataResolver } from './metadata';
 import { readBoundedMetadata } from './metadata-protection';
 
-export type Provenance = 'created' | 'imported';
+export type Provenance = 'created' | 'imported' | 'task';
 const filename = 'provenance.json';
 type Records = Record<string, Provenance>;
 
@@ -67,7 +67,7 @@ export function createProvenanceStore(resolver: MetadataResolver, liveIdentities
       const entries = Object.entries(envelope.records);
       if (
         entries.length > 100_000 ||
-        entries.some(([key, value]) => !/^[a-f0-9]{64}$/.test(key) || !['created', 'imported'].includes(value))
+        entries.some(([key, value]) => !/^[a-f0-9]{64}$/.test(key) || !['created', 'imported', 'task'].includes(value))
       )
         throw new Error('Document origin metadata exceeds its limit or contains invalid records.');
       return Object.fromEntries(entries) as Records;
@@ -86,7 +86,8 @@ export function createProvenanceStore(resolver: MetadataResolver, liveIdentities
   }
   function record(absolute: string, origin: Provenance, assertCurrent?: () => void, expectedIdentity?: string) {
     return serialize(async () => {
-      if (origin !== 'created' && origin !== 'imported') throw new Error('Invalid document origin.');
+      if (origin !== 'created' && origin !== 'imported' && origin !== 'task')
+        throw new Error('Invalid document origin.');
       const key = await identity(absolute);
       if (expectedIdentity && key !== expectedIdentity)
         throw new Error('The selected file changed. Retry the operation.');
