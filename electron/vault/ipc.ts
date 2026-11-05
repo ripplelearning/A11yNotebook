@@ -3288,6 +3288,12 @@ export function setupVaultIpc(
       await requireService().resolveEntry(relative);
       return { path: relative, kind: '.docx', text: '' };
     }
+    if (/\.(?:xlsx|ods|csv|xls|pptx|odp)$/i.test(relative)) {
+      // Spreadsheets and slide decks load their own structured data;
+      // the preview carries no text.
+      await requireService().resolveEntry(relative);
+      return { path: relative, kind: path.extname(relative).toLowerCase(), text: '' };
+    }
     if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative, decode);
     if (/\.(?:webm|mp3|wav|m4a|ogg|flac)$/i.test(relative)) {
       await requireService().resolveEntry(relative);
@@ -3549,6 +3555,14 @@ export function setupVaultIpc(
         // picking it reaches the guidance error, which explains how to
         // export the document from Google Docs instead.
         { name: 'Google Docs link (.gdoc)', extensions: ['gdoc'] },
+        // The same guidance pattern for formats the app cannot read:
+        // picking one reaches the export guidance instead of a
+        // generic failure.
+        { name: 'Apple Numbers (.numbers)', extensions: ['numbers'] },
+        { name: 'Apple Keynote (.key)', extensions: ['key'] },
+        { name: 'Old PowerPoint (.ppt)', extensions: ['ppt'] },
+        { name: 'Google Sheets link (.gsheet)', extensions: ['gsheet'] },
+        { name: 'Google Slides link (.gslides)', extensions: ['gslides'] },
       ],
     });
     if (result.canceled || !result.filePaths[0]) return null;

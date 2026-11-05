@@ -4875,17 +4875,20 @@ export default function App() {
           .importFile(targetNotebook)
           .then((updated) => updated && setVault(updated))
           .catch((failure) => {
-            // Surface the .gdoc guidance, not a generic message: the
-            // main process throws it for Google Docs link files, and
-            // a generic message hides it. Other import failures keep
-            // the generic message, so internal error text is never
-            // shown to the user. Strip the Electron IPC wrapper
-            // first, as in the updater's error cleaning.
+            // Surface the .gdoc and export-guidance messages, not a
+            // generic message: the main process throws them for
+            // Google Docs link files and for formats the app cannot
+            // read, and a generic message hides them. Other import
+            // failures keep the generic message, so internal error
+            // text is never shown to the user. Strip the Electron
+            // IPC wrapper first, as in the updater's error cleaning.
             const raw = failure instanceof Error ? failure.message : '';
             const cleaned = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
-            setStatusMessage(
-              cleaned.includes('.gdoc') ? cleaned : 'Could not import the selected file.',
-            );
+            const isGuidance =
+              cleaned.includes('.gdoc') ||
+              cleaned.includes('cannot be read by this app') ||
+              cleaned.includes('only a link to an online');
+            setStatusMessage(isGuidance ? cleaned : 'Could not import the selected file.');
           });
       else setStatusMessage('Select a notebook before importing a file.');
       return;

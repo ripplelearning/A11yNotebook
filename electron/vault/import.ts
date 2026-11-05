@@ -5,6 +5,11 @@ import { IMAGE_TYPES } from './attachments';
 import { extractDocText, isDocSource } from './doc';
 import { parseDocxStructure } from './docx-parser';
 import { extractEpubPages, extractPdfPages } from './document-preview';
+import { parseXlsxWorkbook } from './xlsx-parser';
+import { parseOdsWorkbook } from './ods-parser';
+import { parseXlsWorkbook } from './xls-reader';
+import { parsePptxDeck } from './pptx-parser';
+import { parseOdpDeck } from './odp-parser';
 import { convertRtfToHtml, isRtfSource } from './rtf';
 import { createAssetRegistry, assetTypes } from '../../src/shared/assets';
 import { isAudioPath } from '../../src/shared/audio';
@@ -72,6 +77,11 @@ export const IMPORT_EXTENSIONS = [
   'docx',
   'rtf',
   'doc',
+  'xlsx',
+  'ods',
+  'xls',
+  'pptx',
+  'odp',
   'png',
   'jpg',
   'jpeg',
@@ -89,6 +99,25 @@ export const IMPORT_EXTENSIONS = [
 
 export const GDOC_GUIDANCE =
   'A Google Docs (.gdoc) file is only a link to an online document and contains no document text. Open it in Google Docs, download it as .docx, .pdf, .epub, .rtf, .txt, or .html, and import that downloaded file instead.';
+
+/** Formats the app cannot read, with the export path to a readable file. */
+export const FORMAT_GUIDANCE: Record<string, string> = {
+  '.numbers':
+    'An Apple Numbers (.numbers) file cannot be read by this app. Open it in Numbers, choose File, Export To, Excel, and import the exported .xlsx file instead.',
+  '.key':
+    'An Apple Keynote (.key) file cannot be read by this app. Open it in Keynote, choose File, Export To, PowerPoint, and import the exported .pptx file instead.',
+  '.ppt':
+    'An old PowerPoint (.ppt) file cannot be read by this app. Open it in PowerPoint or LibreOffice Impress, save it as .pptx, and import the .pptx file instead.',
+  '.gsheet':
+    'A Google Sheets (.gsheet) file is only a link to an online spreadsheet and contains no data. Open it in Google Sheets, download it as .xlsx or .csv, and import that downloaded file instead.',
+  '.gslides':
+    'A Google Slides (.gslides) file is only a link to an online presentation and contains no data. Open it in Google Slides, download it as .pptx, and import that downloaded file instead.',
+};
+
+export function guidanceForExtension(extension: string): string | undefined {
+  if (extension === '.gdoc') return GDOC_GUIDANCE;
+  return FORMAT_GUIDANCE[extension];
+}
 
 export function isSupportedDocument(filename: string) {
   const extension = path.extname(filename).toLowerCase();
@@ -114,7 +143,8 @@ export async function readImportSource(source: string, assertCurrent: () => void
   source = path.resolve(source);
   assertCurrent();
   await assertNoSymlinks(source);
-  if (path.extname(source).toLowerCase() === '.gdoc') throw new Error(GDOC_GUIDANCE);
+  const guidance = guidanceForExtension(path.extname(source).toLowerCase());
+  if (guidance) throw new Error(guidance);
   if (path.extname(source).toLowerCase() === '.json' && !source.toLowerCase().endsWith('.mindmap.json'))
     throw new Error('Only .mindmap.json JSON assets are supported. Other JSON files cannot be imported as notes.');
   if (!isSupportedDocument(source))
@@ -122,7 +152,7 @@ export async function readImportSource(source: string, assertCurrent: () => void
       'Choose a supported note, document, image, audio, or cognitive asset. There is no internal importer for this format; use Open With for supported external documents.',
     );
   const extension = path.extname(source).toLowerCase();
-  const limit = ['.pdf', '.epub', '.docx', '.doc', '.webm', '.mp3', '.wav', '.m4a', '.ogg', '.flac'].includes(extension)
+  const limit = ['.pdf', '.epub', '.docx', '.doc', '.xlsx', '.ods', '.xls', '.pptx', '.odp', '.webm', '.mp3', '.wav', '.m4a', '.ogg', '.flac'].includes(extension)
     ? 40 * 1024 * 1024
     : IMAGE_TYPES[extension] || extension === '.rtf'
       ? 20 * 1024 * 1024
@@ -172,6 +202,11 @@ export async function readImportSource(source: string, assertCurrent: () => void
   } else if (extension === '.docx') parseDocxStructure(bytes, { forImport: true });
   else if (extension === '.pdf') await validatePdfImport(bytes);
   else if (extension === '.epub') extractEpubPages(bytes, { forImport: true });
+  else if (extension === '.xlsx') parseXlsxWorkbook(bytes);
+  else if (extension === '.ods') parseOdsWorkbook(bytes);
+  else if (extension === '.xls') parseXlsWorkbook(bytes);
+  else if (extension === '.pptx') parsePptxDeck(bytes);
+  else if (extension === '.odp') parseOdpDeck(bytes);
   else if (IMAGE_TYPES[extension]) {
     const valid =
       extension === '.png'
@@ -226,7 +261,8 @@ export async function readImport(source: string, assertCurrent: () => void, allo
   const absolute = path.resolve(source);
   await assertNoSymlinks(absolute);
   const extension = path.extname(source).toLowerCase();
-  if (extension === '.gdoc') throw new Error(GDOC_GUIDANCE);
+  const guidance = guidanceForExtension(extension);
+  if (guidance) throw new Error(guidance);
   const asset = createAssetRegistry(assetTypes).resolve(source);
   const note = ['.md', '.html', '.htm'].includes(extension);
   const text = note || asset || extension === '.txt';
@@ -277,6 +313,11 @@ export async function readImport(source: string, assertCurrent: () => void, allo
     if (extension === '.docx') parseDocxStructure(content, { forImport: true });
     if (extension === '.pdf') await validatePdfImport(content);
     if (extension === '.epub') extractEpubPages(content, { forImport: true });
+    if (extension === '.xlsx') parseXlsxWorkbook(content);
+    if (extension === '.ods') parseOdsWorkbook(content);
+    if (extension === '.xls') parseXlsWorkbook(content);
+    if (extension === '.pptx') parsePptxDeck(content);
+    if (extension === '.odp') parseOdpDeck(content);
     assertCurrent();
     return { bytes: content, extension };
   } finally {
