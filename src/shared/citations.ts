@@ -1,7 +1,8 @@
 /**
  * Bibliography entries, one list per notebook, with APA (7th), MLA (9th),
- * and Chicago (17th, bibliography style) formatting, plus author-date /
- * author-page in-text citations.
+ * and Chicago (17th, author-date) formatting, plus author-date /
+ * author-page in-text citations. Chicago notes-bibliography is not
+ * implemented: it needs footnotes, which the app does not have yet.
  *
  * Entries are stored in the library's bibliography metadata file, keyed by
  * notebook path. The dialog renders italics as *Title* in Markdown, <i>
@@ -32,7 +33,7 @@ export type CitationStyle = 'apa' | 'mla' | 'chicago';
 export const CITATION_STYLES: Array<{ id: CitationStyle; label: string }> = [
   { id: 'apa', label: 'APA' },
   { id: 'mla', label: 'MLA' },
-  { id: 'chicago', label: 'Chicago' },
+  { id: 'chicago', label: 'Chicago (Author-Date)' },
 ];
 
 export interface CitationAuthor {
@@ -188,12 +189,18 @@ function apaBibliography(entry: BibliographyEntry, markup: CitationMarkup): stri
       ]);
     }
     case 'website': {
-      const retrieved = entry.accessed ? `Retrieved ${formatDateLong(entry.accessed)}, from ` : '';
+      // APA 7th gives a retrieval date only for content designed to change.
+      // A web page with a publication date is treated as fixed, so the date
+      // is shown only when the page has no year.
+      const retrieved =
+        entry.accessed && !clean(entry.year) ? `Retrieved ${formatDateLong(entry.accessed)}, from ` : '';
       return joinSentences([head, `${italic(entry.title, markup)}.`, `${retrieved}${link}`.trim()]);
     }
     case 'chapter': {
       const editors = entry.editors?.length
-        ? `In ${entry.editors.map((e) => `${initials(e.first)} ${e.last}`).join(', ')} (Eds.), `
+        ? `In ${entry.editors.map((e) => `${initials(e.first)} ${e.last}`).join(', ')} (${
+            entry.editors.length === 1 ? 'Ed.' : 'Eds.'
+          }), `
         : '';
       const book = entry.containerTitle ? italic(entry.containerTitle, markup) : '';
       const pages = entry.pages ? ` (pp. ${entry.pages})` : '';
@@ -209,7 +216,9 @@ function apaBibliography(entry: BibliographyEntry, markup: CitationMarkup): stri
       return joinSentences([
         head,
         `${italic(entry.title, markup)}.`,
-        entry.conferenceName ? `${entry.conferenceName}.` : '',
+        entry.conferenceName
+          ? `${entry.conferenceName}${entry.place ? `, ${entry.place}` : ''}.`
+          : '',
         link,
       ]);
     case 'report':
@@ -243,7 +252,9 @@ function apaBibliography(entry: BibliographyEntry, markup: CitationMarkup): stri
 function mlaBibliography(entry: BibliographyEntry, markup: CitationMarkup): string {
   const authors = mlaAuthors(entry.authors);
   const year = clean(entry.year);
-  const link = doiUrl(entry);
+  // MLA 9th strips the http:// or https:// prefix from URLs. DOIs keep
+  // their full https://doi.org/ form.
+  const link = clean(entry.doi) ? doiUrl(entry) : clean(entry.url).replace(/^https?:\/\//, '');
   const head = authors ? `${authors}.` : '';
   switch (entry.sourceType) {
     case 'journal': {
@@ -361,7 +372,9 @@ function chicagoBibliography(entry: BibliographyEntry, markup: CitationMarkup): 
         head,
         yearPart,
         `"${entry.title}."`,
-        entry.conferenceName ? `${entry.conferenceName}.` : '',
+        entry.conferenceName
+          ? `${entry.conferenceName}${entry.place ? `, ${entry.place}` : ''}.`
+          : '',
         link,
       ]);
     case 'report':
@@ -401,6 +414,12 @@ export function formatBibliography(
   return formatted.replace(/\s+/g, ' ').replace(/\s+([,.])/g, '$1').trim();
 }
 
+/** "p. 23" for one page, "pp. 23-25" for a range; a label the user already typed is kept as-is. */
+function apaPageLabel(page: string): string {
+  if (/^pp?\.\s/i.test(page)) return page;
+  return /[-–]/.test(page) ? `pp. ${page}` : `p. ${page}`;
+}
+
 /** Format an in-text citation; `page` is the specific cited page, when given. */
 export function formatInText(entry: BibliographyEntry, style: CitationStyle, page?: string): string {
   const year = clean(entry.year) || 'n.d.';
@@ -409,16 +428,115 @@ export function formatInText(entry: BibliographyEntry, style: CitationStyle, pag
   const pagePart = clean(page);
   if (style === 'mla') return pagePart ? `(${last} ${pagePart})` : `(${last})`;
   if (style === 'chicago') return pagePart ? `(${last} ${year}, ${pagePart})` : `(${last} ${year})`;
-  if (entry.authors.length >= 3) return `(${last} et al., ${year})`;
-  if (entry.authors.length === 2) return `(${entry.authors[0].last} & ${entry.authors[1].last}, ${year})`;
-  return `(${last}, ${year})`;
+  const pageSuffix = pagePart ? `, ${apaPageLabel(pagePart)}` : '';
+  if (entry.authors.length >= 3) return `(${last} et al., ${year}${pageSuffix})`;
+  if (entry.authors.length === 2) return `(${entry.authors[0].last} & ${entry.authors[1].last}, ${year}${pageSuffix})`;
+  return `(${last}, ${year}${pageSuffix})`;
 }
 
-/** Sort bibliography entries by first author's last name, then title. */
-export function sortBibliography(entries: BibliographyEntry[]): BibliographyEntry[] {
+/** The sort key ignores a leading A, An, or The, as the style guides require for titles. */
+function stripLeadingArticle(title: string): string {
+  return title.replace(/^(a|an|the)\s+/i, '');
+}
+
+/**
+ * Sort bibliography entries by first author's last name (or by title when
+ * there is no author). Works by the same author are ordered by year,
+ * earliest first, for APA and Chicago author-date; MLA orders them by
+ * title. An entry with no year sorts before dated works by the same author.
+ */
+export function sortBibliography(entries: BibliographyEntry[], style: CitationStyle = 'apa'): BibliographyEntry[] {
+  const sortKey = (entry: BibliographyEntry) =>
+    (entry.authors[0]?.last ?? stripLeadingArticle(entry.title)).toLowerCase();
   return [...entries].sort((a, b) => {
-    const aKey = (a.authors[0]?.last ?? a.title).toLowerCase();
-    const bKey = (b.authors[0]?.last ?? b.title).toLowerCase();
-    return aKey.localeCompare(bKey) || a.title.localeCompare(b.title);
+    const keyOrder = sortKey(a).localeCompare(sortKey(b));
+    if (keyOrder !== 0) return keyOrder;
+    if (a.authors.length > 0 && b.authors.length > 0 && style !== 'mla') {
+      const yearOrder = (a.year ?? '').localeCompare(b.year ?? '');
+      if (yearOrder !== 0) return yearOrder;
+    }
+    return stripLeadingArticle(a.title)
+      .toLowerCase()
+      .localeCompare(stripLeadingArticle(b.title).toLowerCase());
   });
+}
+
+/** The one hanging-indent declaration an HTML-note bibliography carries. */
+export const BIBLIOGRAPHY_HANGING_INDENT = 'padding-left: 0.5in; text-indent: -0.5in;';
+
+/**
+ * Every inline-style declaration a bibliography block may carry in an HTML
+ * note. The note sanitizers (renderer and main process) keep a style
+ * attribute only when every declaration is in this set, so a pasted style
+ * still cannot hide content or restyle a note.
+ */
+const BIBLIOGRAPHY_ALLOWED_STYLES = new Set([
+  'padding-left: 0.5in',
+  'text-indent: -0.5in',
+  'text-align: center',
+  'font-weight: bold',
+  "font-family: 'Times New Roman', serif",
+  'font-size: 12pt',
+  'line-height: 2',
+  'line-height: 1',
+  'margin: 0',
+  'margin: 0 0 12pt',
+]);
+
+/** True when a style attribute holds only bibliography declarations. */
+export function isBibliographyStyle(value: string): boolean {
+  const declarations = value
+    .split(';')
+    .map((part) => part.replace(/\s+/g, ' ').replace(/\s*:\s*/g, ': ').trim())
+    .filter(Boolean);
+  return declarations.length > 0 && declarations.every((declaration) => BIBLIOGRAPHY_ALLOWED_STYLES.has(declaration));
+}
+
+/** Times New Roman 12pt is the standard list font for APA, MLA, and Chicago. */
+const BIBLIOGRAPHY_FONT_STYLE = `font-family: 'Times New Roman', serif; font-size: 12pt;`;
+
+function bibliographyHeadingStyle(style: CitationStyle): string {
+  return style === 'apa'
+    ? `text-align: center; font-weight: bold; ${BIBLIOGRAPHY_FONT_STYLE}`
+    : `text-align: center; ${BIBLIOGRAPHY_FONT_STYLE}`;
+}
+
+function bibliographyEntryStyle(style: CitationStyle): string {
+  // APA and MLA are double-spaced with no blank line between entries;
+  // Chicago is single-spaced within entries with a blank line between them.
+  const spacing = style === 'chicago' ? 'line-height: 1; margin: 0 0 12pt;' : 'line-height: 2; margin: 0;';
+  return `${BIBLIOGRAPHY_HANGING_INDENT} ${spacing} ${BIBLIOGRAPHY_FONT_STYLE}`;
+}
+
+/** The list heading each style requires. */
+export function bibliographyHeading(style: CitationStyle): string {
+  return style === 'mla' ? 'Works Cited' : 'References';
+}
+
+/**
+ * Format a whole bibliography list — heading plus entries — for insertion
+ * into a note. HTML notes get the full list formatting (centered heading,
+ * hanging indent, per-style line spacing, Times New Roman 12pt). Markdown
+ * and plain-text notes get the heading and the entries only: neither format
+ * can express an indent, line spacing, or a font, so the text is the same
+ * and the layout follows the note.
+ */
+export function formatBibliographyBlock(
+  entries: BibliographyEntry[],
+  style: CitationStyle,
+  markup: CitationMarkup,
+): string {
+  const sorted = sortBibliography(entries, style);
+  const heading = bibliographyHeading(style);
+  const formatted = sorted.map((entry) => formatBibliography(entry, style, markup));
+  if (markup === 'html') {
+    return [
+      `<p style="${bibliographyHeadingStyle(style)}">${heading}</p>`,
+      ...formatted.map((entry) => `<p style="${bibliographyEntryStyle(style)}">${entry}</p>`),
+    ].join('\n');
+  }
+  if (markup === 'markdown') {
+    return [`## ${heading}`, ...formatted].join('\n\n');
+  }
+  return [heading, ...formatted].join('\n\n');
 }
