@@ -52,6 +52,14 @@ export interface VaultBridge {
   get(): Promise<VaultInfo | null>;
   readNote(path: string, password?: string): Promise<string>;
   saveNote(path: string, content: string, expectedContent?: string): Promise<void>;
+  /** Save a recorded audio Blob into a notebook folder; returns the saved path and updated vault view. */
+  saveAudioRecording?(
+    notebookPath: string,
+    fileName: string,
+    data: ArrayBuffer,
+  ): Promise<{ path: string; vault: VaultInfo }>;
+  /** Read an audio file's bytes for in-app transcription; 40 MB limit, same as saving a recording. */
+  readAudioData?(path: string): Promise<{ path: string; data: Uint8Array }>;
   createNotebook(path: string): Promise<VaultInfo>;
   createNote(path: string, content?: string): Promise<VaultInfo>;
   rename(path: string, name: string): Promise<VaultInfo>;

@@ -18,6 +18,16 @@ export const DOCUMENT_TYPES: Record<string, string> = {
   '.epub': 'application/epub+zip',
 };
 
+/** Audio formats served to the renderer for in-app playback. */
+export const AUDIO_TYPES: Record<string, string> = {
+  '.webm': 'audio/webm',
+  '.mp3': 'audio/mpeg',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.ogg': 'audio/ogg',
+  '.flac': 'audio/flac',
+};
+
 export function protocolPath(url: string): string {
   const match = /^vault-file:\/\/attachment\/([^?#]+)$/.exec(url);
   if (!match) throw new Error('Invalid attachment URL.');

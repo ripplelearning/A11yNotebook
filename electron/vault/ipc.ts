@@ -23,7 +23,7 @@ import {
   PROTECTED_STORE_NAMES,
 } from '../../src/shared/metadata-protection';
 import { DEFAULT_REMINDER_DEFAULTS, validateReminderDefaults } from '../../src/shared/reminder-defaults';
-import { DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
+import { AUDIO_TYPES, DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
 import { lookupThesaurus } from './thesaurus';
@@ -32,6 +32,7 @@ import { fetchCitationMetadata } from './citation-metadata';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
 import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
+import { isAudioPath } from '../../src/shared/audio';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import { dropLinksForDeletedPath } from '../../src/shared/task-links';
 import type { VaultChangedEvent } from '../../src/shared/search';
@@ -2555,7 +2556,7 @@ export function setupVaultIpc(
       const generation = securityGeneration;
       const relative = protocolPath(request.url);
       const extension = path.extname(relative).toLowerCase();
-      const mime = IMAGE_TYPES[extension] ?? DOCUMENT_TYPES[extension];
+      const mime = IMAGE_TYPES[extension] ?? AUDIO_TYPES[extension] ?? DOCUMENT_TYPES[extension];
       if (!mime) return new Response('Unsupported preview.', { status: 415 });
       const target = await vault.resolveEntry(relative);
       const stat = await lstat(target);
@@ -2904,6 +2905,58 @@ export function setupVaultIpc(
       });
     },
   );
+  ipcMain.handle(
+    IPC_CHANNELS.vaultSaveAudioRecording,
+    async (event, notebookPath: unknown, fileName: unknown, data: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof notebookPath !== 'string' || typeof fileName !== 'string')
+        throw new Error('Invalid audio recording data.');
+      if (fileName !== path.posix.basename(fileName) || !isAudioPath(fileName))
+        throw new Error('Recordings must be saved as a single audio file name.');
+      const bytes =
+        data instanceof Uint8Array
+          ? Buffer.from(data)
+          : data instanceof ArrayBuffer
+            ? Buffer.from(data)
+            : null;
+      if (!bytes || bytes.length === 0 || bytes.length > 40 * 1024 * 1024)
+        throw new Error('The recording is empty or too large to save (40 MB limit).');
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        if (notebookPath) {
+          const notebook = await access.vault.resolveEntry(notebookPath);
+          if (!(await lstat(notebook)).isDirectory())
+            throw new Error('Choose a notebook folder for the recording.');
+        }
+        const result = await copyImportedDocument(
+          access.vault,
+          path.posix.join(notebookPath, fileName),
+          bytes,
+          false,
+          access.assertCurrent,
+        );
+        access.assertCurrent();
+        return result;
+      });
+    },
+  );
+  ipcMain.handle(IPC_CHANNELS.vaultReadAudioData, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !isAudioPath(relative))
+      throw new Error('Audio data requests require an audio file path.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const target = await access.vault.resolveEntry(relative);
+      const stat = await lstat(target);
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024)
+        throw new Error('The audio file is missing or too large to transcribe (40 MB limit).');
+      const bytes = access.vault.decodeFileBytes(relative, await readFile(target));
+      access.assertCurrent();
+      return { path: relative, data: new Uint8Array(bytes) };
+    });
+  });
   ipcMain.handle(IPC_CHANNELS.vaultCreateNotebook, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Notebook path must be text.');
@@ -3236,6 +3289,10 @@ export function setupVaultIpc(
       return { path: relative, kind: '.docx', text: '' };
     }
     if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative, decode);
+    if (/\.(?:webm|mp3|wav|m4a|ogg|flac)$/i.test(relative)) {
+      await requireService().resolveEntry(relative);
+      return { path: relative, kind: path.extname(relative).toLowerCase(), text: '' };
+    }
     return readTextAttachment(requireService().resolveEntry, relative, decode);
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadDocxStructure, async (event, relative: unknown) => {

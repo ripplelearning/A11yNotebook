@@ -7,6 +7,7 @@ import { parseDocxStructure } from './docx-parser';
 import { extractEpubPages, extractPdfPages } from './document-preview';
 import { convertRtfToHtml, isRtfSource } from './rtf';
 import { createAssetRegistry, assetTypes } from '../../src/shared/assets';
+import { isAudioPath } from '../../src/shared/audio';
 import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 import { isInternallySupportedPath } from '../../src/shared/file-provenance';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
@@ -78,6 +79,12 @@ export const IMPORT_EXTENSIONS = [
   'webp',
   'bmp',
   'json',
+  'webm',
+  'mp3',
+  'wav',
+  'm4a',
+  'ogg',
+  'flac',
 ];
 
 export const GDOC_GUIDANCE =
@@ -112,10 +119,10 @@ export async function readImportSource(source: string, assertCurrent: () => void
     throw new Error('Only .mindmap.json JSON assets are supported. Other JSON files cannot be imported as notes.');
   if (!isSupportedDocument(source))
     throw new Error(
-      'Choose a supported note, document, image, or cognitive asset. There is no internal importer for this format; use Open With for supported external documents.',
+      'Choose a supported note, document, image, audio, or cognitive asset. There is no internal importer for this format; use Open With for supported external documents.',
     );
   const extension = path.extname(source).toLowerCase();
-  const limit = ['.pdf', '.epub', '.docx', '.doc'].includes(extension)
+  const limit = ['.pdf', '.epub', '.docx', '.doc', '.webm', '.mp3', '.wav', '.m4a', '.ogg', '.flac'].includes(extension)
     ? 40 * 1024 * 1024
     : IMAGE_TYPES[extension] || extension === '.rtf'
       ? 20 * 1024 * 1024
@@ -177,6 +184,8 @@ export async function readImportSource(source: string, assertCurrent: () => void
               ? bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP'
               : bytes.subarray(0, 2).toString() === 'BM';
     if (!valid) throw new Error('The selected image does not match its file format.');
+  } else if (isAudioPath(source)) {
+    // Audio is opaque binary: no text or format validation, stored unchanged.
   } else {
     const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
     if (text.includes('\0')) throw new Error('Import requires UTF-8 text without binary data.');

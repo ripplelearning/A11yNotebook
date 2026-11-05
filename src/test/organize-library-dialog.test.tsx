@@ -120,6 +120,28 @@ describe('organize library dialog', () => {
     expect(callbacks.onApplied).not.toHaveBeenCalled();
   });
 
+  it('announces the destination notebook when Alt+Down moves an item', async () => {
+    setup();
+    await expandWork();
+    const guide = screen.getByRole('treeitem', { name: /Guide\.md/ });
+    guide.focus();
+    fireEvent.keyDown(guide, { key: 'ArrowDown', altKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Moved Guide.md into Archive (staged). Press OK to apply.',
+    );
+  });
+
+  it('announces Library root when Alt+Shift+Up moves an item out to the top level', async () => {
+    setup();
+    await expandWork();
+    const guide = screen.getByRole('treeitem', { name: /Guide\.md/ });
+    guide.focus();
+    fireEvent.keyDown(guide, { key: 'ArrowUp', altKey: true, shiftKey: true });
+    expect(screen.getByRole('status')).toHaveTextContent(
+      'Moved Guide.md into Library root (staged). Press OK to apply.',
+    );
+  });
+
   it('applies staged changes in order when OK is pressed', async () => {
     const { bridge, callbacks } = setup();
     await expandWork();

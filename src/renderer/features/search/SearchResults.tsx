@@ -80,7 +80,8 @@ export default function SearchResults({
         <label>
           Modified on or after
           <input
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={filters.modifiedAfter ?? ''}
             onChange={(event) => onFilters({ ...filters, modifiedAfter: event.target.value || undefined })}
           />
@@ -88,7 +89,8 @@ export default function SearchResults({
         <label>
           Modified on or before
           <input
-            type="date"
+            type="text"
+            placeholder="YYYY-MM-DD"
             value={filters.modifiedBefore ?? ''}
             onChange={(event) => onFilters({ ...filters, modifiedBefore: event.target.value || undefined })}
           />

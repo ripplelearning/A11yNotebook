@@ -1,6 +1,7 @@
 import DOMPurify from 'dompurify';
 import { useState } from 'react';
 import { imageUrl, parseCsv, type AttachmentPreview } from '../../../shared/attachments';
+import { isAudioPath } from '../../../shared/audio';
 import PlainTextDocument from '../vault/PlainTextDocument';
 import DocumentReader from './DocumentReader';
 
@@ -10,11 +11,30 @@ interface Props {
   onSaveAlt: (alt: string) => Promise<void>;
   onExternal: () => void;
   announce: (message: string) => void;
+  /** Transcribe this audio file; absent when the preview is not audio. */
+  onTranscribe?: () => void;
+  /** True while a transcription of this audio file is running. */
+  transcribing?: boolean;
+  /** Path of the transcript note for this audio file, when one exists. */
+  transcriptPath?: string | null;
+  /** Open the transcript note; used with transcriptPath. */
+  onOpenTranscript?: () => void;
 }
 
-export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, announce }: Props) {
+export default function AttachmentView({
+  preview,
+  alt,
+  onSaveAlt,
+  onExternal,
+  announce,
+  onTranscribe,
+  transcribing,
+  transcriptPath,
+  onOpenTranscript,
+}: Props) {
   const [description, setDescription] = useState(alt);
   const image = /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(preview.path);
+  const audio = isAudioPath(preview.path);
   let rows: string[][] = [];
   let csvError = '';
   if (preview.kind === '.csv') {
@@ -56,7 +76,24 @@ export default function AttachmentView({ preview, alt, onSaveAlt, onExternal, an
       <button type="button" onClick={onExternal}>
         Open in external app
       </button>
-      {image ? (
+      {audio ? (
+        <>
+          <audio controls src={imageUrl(preview.path)} aria-label={`Audio: ${preview.path.split('/').at(-1)}`} />
+          {onTranscribe ? (
+            <button type="button" disabled={transcribing} onClick={onTranscribe}>
+              {transcribing ? 'Transcribing…' : 'Transcribe'}
+            </button>
+          ) : null}
+          {transcriptPath && onOpenTranscript ? (
+            <p>
+              A transcript exists:{' '}
+              <button type="button" onClick={onOpenTranscript}>
+                Open transcript
+              </button>
+            </p>
+          ) : null}
+        </>
+      ) : image ? (
         <>
           <img src={imageUrl(preview.path)} alt={alt || `Image: ${preview.path}`} />
           <form

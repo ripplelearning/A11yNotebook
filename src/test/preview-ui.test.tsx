@@ -86,4 +86,39 @@ describe('safe preview rendering and image insertion', () => {
     );
     expect(screen.getByText('Loading epub document…')).toBeInTheDocument();
   });
+  it('shows a Transcribe button and a transcript link for audio previews', () => {
+    const onTranscribe = vi.fn();
+    const onOpenTranscript = vi.fn();
+    render(
+      <AttachmentView
+        preview={{ path: 'Notes/Interview.webm', kind: '.webm', text: '' }}
+        alt=""
+        onSaveAlt={vi.fn()}
+        onExternal={vi.fn()}
+        announce={vi.fn()}
+        onTranscribe={onTranscribe}
+        transcriptPath="Notes/Interview transcript.md"
+        onOpenTranscript={onOpenTranscript}
+      />,
+    );
+    expect(screen.getByLabelText('Audio: Interview.webm')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Transcribe' }));
+    expect(onTranscribe).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByRole('button', { name: 'Open transcript' }));
+    expect(onOpenTranscript).toHaveBeenCalledTimes(1);
+  });
+  it('disables the Transcribe button while transcription is running', () => {
+    render(
+      <AttachmentView
+        preview={{ path: 'Notes/Interview.webm', kind: '.webm', text: '' }}
+        alt=""
+        onSaveAlt={vi.fn()}
+        onExternal={vi.fn()}
+        announce={vi.fn()}
+        onTranscribe={vi.fn()}
+        transcribing
+      />,
+    );
+    expect(screen.getByRole('button', { name: 'Transcribing…' })).toBeDisabled();
+  });
 });

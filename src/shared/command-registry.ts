@@ -18,6 +18,8 @@ export type CommandId =
   | 'open-selected-external'
   | 'new-task'
   | 'quick-task'
+  | 'dictate'
+  | 'record-audio-note'
   | 'new-asset'
   | 'context-open-with'
   | 'context-open-with-default'
@@ -229,6 +231,19 @@ export const COMMANDS: CommandDefinition[] = [
     description: 'Open a Quick Task dialog to add a task to the current library and notebook.',
     shortcut: 'Ctrl+Q',
     macShortcut: '',
+    contexts: ['general'],
+  },
+  {
+    id: 'dictate',
+    label: 'Dictate',
+    description: 'Start or stop dictation; transcribed text is inserted at the cursor.',
+    shortcut: 'Ctrl+Alt+D',
+    contexts: ['general'],
+  },
+  {
+    id: 'record-audio-note',
+    label: 'Record audio note',
+    description: 'Record an audio note into the current notebook; it can be played back and transcribed.',
     contexts: ['general'],
   },
   {

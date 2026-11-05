@@ -43,7 +43,7 @@ describe('CitationDialog', () => {
     await waitFor(() => expect(saveBibliography).toHaveBeenCalled());
     const saved = saveBibliography.mock.calls[0][1] as Array<{ title: string }>;
     expect(saved[0].title).toBe('Accessible Design');
-    fireEvent.click(screen.getByRole('button', { name: 'Insert in-text citation' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Insert In-Text Citation' }));
     expect(onInsertInText).toHaveBeenCalledWith('(Rivera, 2024)');
   });
 
@@ -109,7 +109,44 @@ describe('CitationDialog', () => {
       />,
     );
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
-    expect(screen.getByRole('button', { name: 'Insert in-text citation' })).toBeDisabled();
+    expect(screen.getByRole('button', { name: 'Insert In-Text Citation' })).toBeDisabled();
     expect(screen.getByText(/Inserting is disabled/)).toBeInTheDocument();
+  });
+
+  it('offers Insert In-Text Citation from a bibliography entry context menu', async () => {
+    const bridge = {
+      vault: {
+        getBibliography: vi.fn(async () => [
+          {
+            id: 'entry-1',
+            notebookPath: 'Research',
+            sourceType: 'book',
+            authors: [{ last: 'Rivera', first: 'Alex' }],
+            title: 'Accessible Design',
+            year: '2024',
+            publisher: 'Open Press',
+          },
+        ]),
+        saveBibliography: vi.fn(async (_notebook: string, entries: never[]) => entries),
+      },
+    };
+    window.a11yNotebook = bridge as unknown as NotebookBridge;
+    const onInsertInText = vi.fn();
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={onInsertInText}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    await waitFor(() => expect(screen.getByText(/Accessible Design/)).toBeInTheDocument());
+    const entryText = screen.getByText(/Accessible Design/);
+    const listItem = entryText.closest('li');
+    expect(listItem).not.toBeNull();
+    fireEvent.contextMenu(listItem!);
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Insert In-Text Citation' }));
+    expect(onInsertInText).toHaveBeenCalledWith('(Rivera, 2024)');
   });
 });

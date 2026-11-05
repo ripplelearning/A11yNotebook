@@ -21,3 +21,29 @@ export function findAllMatches(text: string, query: string, caseSensitive: boole
     from = index + needle.length;
   }
 }
+
+/**
+ * A readable snippet of text around one match: up to `context` characters
+ * on each side, whitespace collapsed to single spaces (notes carry line
+ * breaks and indentation that would otherwise read as gaps), with an
+ * ellipsis where text was cut. The matched text itself is kept verbatim,
+ * so the snippet always contains the searched term.
+ */
+export function matchSnippet(text: string, match: TextMatch, context = 40): string {
+  const start = Math.max(0, match.index - context);
+  const end = Math.min(text.length, match.index + match.length + context);
+  const snippet = text.slice(start, end).replace(/\s+/g, ' ').trim();
+  const leading = start > 0 ? '… ' : '';
+  const trailing = end < text.length ? ' …' : '';
+  return `${leading}${snippet}${trailing}`;
+}
+
+/** One snippet per match of query in text, in document order. */
+export function findMatchSnippets(
+  text: string,
+  query: string,
+  caseSensitive: boolean,
+  context = 40,
+): string[] {
+  return findAllMatches(text, query, caseSensitive).map((match) => matchSnippet(text, match, context));
+}

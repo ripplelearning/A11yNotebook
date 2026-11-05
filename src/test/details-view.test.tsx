@@ -352,6 +352,18 @@ describe('accessible details view', () => {
     expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
   });
 
+  it('moves focus into the notebooks grid when opening a library', async () => {
+    const { vault, bridge } = renderLibrary();
+    await screen.findByRole('heading', { name: 'Study', level: 2 });
+    vi.mocked(bridge.vault.open).mockResolvedValue({ ...vault, name: 'Other', path: 'C:/Other' });
+    navigate('o');
+    await screen.findByRole('heading', { name: 'Other', level: 2 });
+    const grid = screen.getByRole('grid', { name: 'Notebooks' });
+    // The first column header: focusing a body cell would select its
+    // notebook, so the open-landing focus target is the header.
+    expect(document.activeElement).toBe(within(grid).getAllByRole('columnheader')[0]);
+  });
+
   it('searches the whole library by default and announces the scope', async () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();
@@ -755,6 +767,6 @@ describe('accessible details view', () => {
     menu('show-assets');
     expect(document.title).toBe('Cognitive Tools | Study | A11y Notebook');
     menu('show-notes-files');
-    expect(document.title).toBe('Files | Study | A11y Notebook');
+    expect(document.title).toBe('Notes & Files | Study | A11y Notebook');
   });
 });

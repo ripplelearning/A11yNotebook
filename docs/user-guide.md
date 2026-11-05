@@ -161,7 +161,8 @@ on load, edit, paste, save, and render. Scripts, forms, active embedded content,
 unsafe URL schemes are not allowed. HTML images must have alternative text and use local raster files.
 Toggle **Read-only/edit mode** with Ctrl+E. Ctrl+R switches straight to reading mode without toggling. Ctrl+F opens
 a Find dialog that searches within the current note, in both reading and editing mode, with Find next and Find
-previous and an optional Match case. After the dialog closes, F3 finds the next match and Shift+F3 the previous
+previous and an optional Match case. Searching also lists every match with the text around it: Arrow keys move
+through the list, and Enter on a match closes the dialog and moves to that match in the note. After the dialog closes, F3 finds the next match and Shift+F3 the previous
 match of the last search. Ctrl+F also searches documents: in a PDF, ePub, or DOCX preview it moves focus to that
 reader's own search box, and in a text, CSV, or HTML attachment it searches the preview (HTML previews report
 matches without moving to them, because their preview frame cannot be selected inside). Images have no text to
@@ -319,7 +320,8 @@ missing. The right pane lists outgoing links and backlinks for the current note.
 bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. From
 edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at or before the cursor, and
 **Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
-menu and the command palette. Opening an anchored bookmark lands on its heading in the reading view, or
+menu and the command palette. Neither shortcut jumps anywhere: both only save a bookmark. To jump back
+to a saved bookmark, activate it in the Bookmarks section of the right pane. Opening an anchored bookmark lands on its heading in the reading view, or
 at its position in edit mode. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
 
@@ -607,6 +609,34 @@ DOCX uses a local bounded parser and semantic reader with headings, lists, table
 navigation and search. Encrypted Office archives, macros, embedded OLE packages and unsafe external resources are
 rejected. DOCX annotations are not available; legacy binary `.doc` is unsupported.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
+
+## Audio notes, dictation, and transcription
+
+Audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`, up to 40 MB) can be imported like any
+attachment and open in the app with standard playback controls. Transcription runs entirely on your machine
+with a free local Whisper model, so audio never leaves it.
+
+**Record an audio note.** File menu, then **Record audio note** (also in the command palette). It records
+into the currently selected notebook, or the library root when none is selected. Use the same command again
+to stop. The recording is saved as "Audio note" plus a timestamp and opens in the attachment preview, where
+you can play it back.
+
+**Dictate into a note.** With an editable note open in edit mode, press **Ctrl+Alt+D** (Edit menu, then
+**Dictate**, or the Dictate button among the editor command buttons) to start, and the same shortcut again
+to stop. The recorded segment is transcribed and the text is inserted at the caret. Dictation works in
+segments — speak, stop, and the text appears — rather than word-by-word as you speak.
+
+**Choose a transcription model.** The first time you dictate or transcribe, a dialog asks which model to
+download: the **Smaller model** (Whisper Base, about 150 MB; faster to download and transcribe, good
+accuracy for clear speech) or the **Larger model** (Whisper Small, about 500 MB; slower, noticeably more
+accurate, especially with accents, background noise, or quiet speech). The download happens once. You can
+change the model later in Settings, under **Transcription model**; the new model downloads the next time
+you transcribe.
+
+**Transcribe an audio file.** Open the audio file and press **Transcribe**. The transcript is saved as a
+note next to the audio file — for example, "Interview transcript.md" for "Interview.webm" — with a link
+back to the audio file. When a transcript exists, the audio preview offers an **Open transcript** button.
+Transcribing again replaces the existing transcript note instead of creating a duplicate.
 
 ## Settings
 
