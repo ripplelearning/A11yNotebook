@@ -53,7 +53,7 @@ import FindDialog, { type FindMatchJump } from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
-import { BIBLIOGRAPHY_HANGING_INDENT, sanitizeNoteHtml } from './features/vault/sanitize-html';
+import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
@@ -141,7 +141,7 @@ import {
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
 import {
-  formatBibliography,
+  formatBibliographyBlock,
   type BibliographyEntry,
   type CitationStyle,
 } from '../shared/citations';
@@ -4477,14 +4477,15 @@ export default function App() {
       : /\.md$/i.test(currentNote.path)
         ? 'markdown'
         : 'plain';
-    const formatted = entries.map((entry) => formatBibliography(entry, style, markup));
-    // APA, MLA, and Chicago all require a hanging indent. Markdown cannot
-    // express one, so only HTML notes get it (the note sanitizer keeps
-    // exactly this declaration and drops every other inline style).
-    const text =
-      markup === 'html'
-        ? formatted.map((entry) => `<p style="${BIBLIOGRAPHY_HANGING_INDENT}">${entry}</p>`).join('\n')
-        : formatted.join('\n\n');
+    const text = formatBibliographyBlock(entries, style, markup);
+    // In Rich text mode an HTML bibliography must be inserted as HTML, not
+    // as text: the plain-text insert would show the paragraph tags on screen.
+    if (markup === 'html' && document.querySelector('.rich-text-editor')) {
+      window.dispatchEvent(new CustomEvent('a11y:insert-citation-html', { detail: { html: text } }));
+      setCitationDialog(null);
+      setStatusMessage('Bibliography inserted.');
+      return;
+    }
     insertTextIntoNote(text);
     setCitationDialog(null);
     setStatusMessage('Bibliography inserted.');
