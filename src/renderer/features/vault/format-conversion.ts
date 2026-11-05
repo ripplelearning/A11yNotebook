@@ -60,7 +60,18 @@ function inlineMarkdown(node: Node): string {
       return `~~${content}~~`;
     case 'code':
       return markdownCodeSpan(node.textContent ?? '');
+    case 'sup': {
+      // A rendered footnote marker converts back to [^n].
+      if (node.classList.contains('footnote-ref')) {
+        const link = node.querySelector('a[href^="#fn"]');
+        const number = link ? /^#fn(\d+)$/.exec(link.getAttribute('href') ?? '')?.[1] : undefined;
+        if (number) return `[^${number}]`;
+      }
+      return content;
+    }
     case 'a': {
+      // A footnote backlink carries no text of its own.
+      if (node.classList.contains('footnote-backref')) return '';
       const href = node.getAttribute('href') ?? '';
       const wiki = href.startsWith('#wiki:') ? `[[${decodeURIComponent(href.slice(6))}]]` : `[${content}](${href})`;
       return wiki;
@@ -93,8 +104,18 @@ function blockMarkdown(node: Node): string {
       .join('\n');
   if (tag === 'pre') return `\`\`\`\n${node.textContent ?? ''}\n\`\`\``;
   if (tag === 'ul' || tag === 'ol') {
-    const items = Array.from(node.children)
-      .filter((item) => item.tagName.toLowerCase() === 'li')
+    const items = Array.from(node.children).filter((item) => item.tagName.toLowerCase() === 'li');
+    // A footnotes list converts back to [^n]: definitions, not a numbered list.
+    if (items.length > 0 && items.every((item) => /^fn-?\d+$/.test(item.getAttribute('id') ?? ''))) {
+      return items
+        .map((item) => {
+          const number = /^fn-?(\d+)$/.exec(item.getAttribute('id') ?? '')?.[1];
+          const text = Array.from(item.childNodes, inlineMarkdown).join('').trim();
+          return `[^${number}]: ${text}`;
+        })
+        .join('\n');
+    }
+    return items
       .map((item, index) => {
         const content = Array.from(item.childNodes, inlineMarkdown).join('').trim();
         const task = item.getAttribute('data-a11y-task-id');
@@ -104,8 +125,8 @@ function blockMarkdown(node: Node): string {
         const priority = item.getAttribute('data-a11y-task-priority');
         const reminder = item.getAttribute('data-a11y-task-remind');
         return `- [${checked ? 'x' : ' '}] ${content}${due ? ` due:${due}` : ''}${priority ? ` priority:${priority}` : ''}${reminder ? ` remind:${reminder}` : ''} <!-- a11y-task-id:${task} -->`;
-      });
-    return items.join('\n');
+      })
+      .join('\n');
   }
   if (tag === 'table') {
     const rows = Array.from(node.querySelectorAll('tr')).map(

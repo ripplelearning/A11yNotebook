@@ -220,6 +220,33 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const insertFootnote = (event: Event) => {
+      const target = editor.current;
+      if (!target) return;
+      const detail = (
+        event as CustomEvent<{ markerHtml?: string; listItemHtml?: string; sectionHtml?: string }>
+      ).detail;
+      if (!detail?.markerHtml || !detail?.listItemHtml || !detail?.sectionHtml) return;
+      focusAtEndIfNeeded();
+      document.execCommand('insertHTML', false, detail.markerHtml);
+      const existing = target.querySelectorAll('li[id^="fn"]');
+      const template = document.createElement('template');
+      if (existing.length) {
+        template.innerHTML = detail.listItemHtml.trim();
+        const item = template.content.firstElementChild;
+        if (item) existing[existing.length - 1].after(item);
+      } else {
+        template.innerHTML = detail.sectionHtml.trim();
+        target.append(template.content);
+      }
+      emitChange();
+    };
+    window.addEventListener('a11y:insert-citation-footnote', insertFootnote);
+    return () => window.removeEventListener('a11y:insert-citation-footnote', insertFootnote);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const onEditorKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     const target = editor.current;
     if (!target) return;

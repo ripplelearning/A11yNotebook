@@ -145,6 +145,11 @@ import {
   type BibliographyEntry,
   type CitationStyle,
 } from '../shared/citations';
+import {
+  buildFootnote,
+  footnoteEditorHtml,
+  insertFootnoteAtCaret,
+} from '../shared/footnotes';
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
@@ -4491,6 +4496,30 @@ export default function App() {
     setStatusMessage('Bibliography inserted.');
   };
 
+  const insertFootnote = (entry: BibliographyEntry, page?: string) => {
+    if (!currentNote) return;
+    const markup = /\.html?$/i.test(currentNote.path)
+      ? 'html'
+      : /\.md$/i.test(currentNote.path)
+        ? 'markdown'
+        : 'plain';
+    if (document.querySelector('.rich-text-editor')) {
+      const built = buildFootnote(currentNote.content, markup, entry, page);
+      const editorHtml = footnoteEditorHtml(markup, entry, page, built.number, built.shortened);
+      window.dispatchEvent(new CustomEvent('a11y:insert-citation-footnote', { detail: editorHtml }));
+      setCitationDialog(null);
+      setStatusMessage(`Footnote ${built.number} inserted.`);
+      return;
+    }
+    const textarea = editorRef.current;
+    const caret = textarea ? (textarea.selectionStart ?? currentNote.content.length) : currentNote.content.length;
+    const result = insertFootnoteAtCaret(currentNote.content, markup, entry, page, caret);
+    noteCaretRef.current[currentNote.id] = { start: result.caret, end: result.caret };
+    updateNoteContent(currentNote.id, result.content, 'edit');
+    setCitationDialog(null);
+    setStatusMessage(`Footnote ${result.number} inserted.`);
+  };
+
   /** Insert text at the editor caret, with a space when it would otherwise run into the previous word. */
   const insertTextAtCaret = (text: string) => {
     const note = currentNote;
@@ -5735,6 +5764,7 @@ export default function App() {
           initialView={citationDialog}
           onInsertInText={insertCitationText}
           onInsertBibliography={insertBibliography}
+          onInsertFootnote={insertFootnote}
           canInsert={mode === 'edit' && !currentNoteEditLocked}
           onClose={() => setCitationDialog(null)}
         />
