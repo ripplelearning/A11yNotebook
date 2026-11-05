@@ -248,7 +248,21 @@ class Parser {
   private primary(): string | null {
     const token = this.next();
     if (!token) return null;
-    if (token.type === 'number') return `<mn>${escapeXml(token.value)}</mn>`;
+    if (token.type === 'number') {
+      // Mixed fraction: a whole number followed by a fraction ("1 3/4").
+      // The fraction belongs to the whole number, not to whatever came before
+      // it, so "3/4+1 3/4" groups as 3/4 + (1 3/4) instead of (3/4+1) 3/4.
+      const numerator = this.tokens[this.position];
+      const slash = this.tokens[this.position + 1];
+      if (numerator?.type === 'number' && slash?.type === 'op' && slash.value === '/') {
+        this.next(); // numerator
+        this.next(); // '/'
+        const denominator = this.factor();
+        if (denominator === null) return null;
+        return `<mrow><mn>${escapeXml(token.value)}</mn><mfrac><mn>${escapeXml(numerator.value)}</mn>${denominator}</mfrac></mrow>`;
+      }
+      return `<mn>${escapeXml(token.value)}</mn>`;
+    }
     if (token.type === 'sci') {
       const exponent = token.exponent.replace(/^\+/, '');
       return `<mrow><mn>${escapeXml(token.mantissa)}</mn><mo>×</mo><msup><mn>10</mn><mn>${escapeXml(exponent)}</mn></msup></mrow>`;
