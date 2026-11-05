@@ -65,10 +65,12 @@ import { createAssetStore } from './assets';
 import { createAssetDraftStore } from './asset-drafts';
 import {
   IMPORT_EXTENSIONS,
+  POINTER_EXTENSIONS,
   convertImportedBytes,
   importedCopyPath,
   isEncryptedNoteSource,
   readImportSource,
+  readPointerFileUrl,
 } from './import';
 import { isExternalDocumentPath } from './external-documents';
 import { openWithWindows } from './open-with';
@@ -3569,7 +3571,27 @@ export function setupVaultIpc(
     const source = result.filePaths[0];
     return serializeVaultOperation(async () => {
       access.assertCurrent();
-      const bytes = await readImportSource(source, access.assertCurrent);
+      let bytes: Buffer;
+      try {
+        bytes = await readImportSource(source, access.assertCurrent);
+      } catch (failure) {
+        // A Google link-pointer file (.gdoc/.gsheet/.gslides) holds a URL,
+        // not a document: offer it back as a standalone link instead of
+        // only showing the download-and-import guidance. Other formats
+        // keep throwing their guidance.
+        const extension = path.extname(source).toLowerCase();
+        if (!POINTER_EXTENSIONS.has(extension)) throw failure;
+        const pointerUrl = await readPointerFileUrl(source).catch(() => null);
+        if (!pointerUrl) throw failure;
+        access.assertCurrent();
+        return {
+          pointer: {
+            url: pointerUrl,
+            extension: extension as '.gdoc' | '.gsheet' | '.gslides',
+            guidance: failure instanceof Error ? failure.message : '',
+          },
+        };
+      }
       access.assertCurrent();
       const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
       if (!(await lstat(currentNotebook)).isDirectory())
@@ -3817,6 +3839,26 @@ export function setupVaultIpc(
       await reminderService?.refresh();
       access.assertCurrent();
       return tasks;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultCreateLink, async (event, input: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const created = await access.vault.createLink(input, access.assertCurrent);
+      access.assertCurrent();
+      return created;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveLink, async (event, input: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const saved = await access.vault.saveLink(input, access.assertCurrent);
+      access.assertCurrent();
+      return saved;
     });
   });
   ipcMain.handle(

@@ -30,6 +30,13 @@ export interface NoteItem {
   summary: string;
 }
 
+/** A Google link-pointer file picked for import, offered back as a link. */
+export interface PointerImport {
+  url: string;
+  extension: '.gdoc' | '.gsheet' | '.gslides';
+  guidance: string;
+}
+
 /** A filesystem entry returned to the renderer without exposing Node objects. */
 export interface VaultEntry {
   name: string;

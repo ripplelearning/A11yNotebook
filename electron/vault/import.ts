@@ -16,6 +16,7 @@ import { isAudioPath } from '../../src/shared/audio';
 import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 import { isInternallySupportedPath } from '../../src/shared/file-provenance';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
+import { parsePointerFileUrl } from '../../src/shared/links';
 
 export function isEncryptedNoteSource(text: string) {
   let envelope: unknown;
@@ -117,6 +118,31 @@ export const FORMAT_GUIDANCE: Record<string, string> = {
 export function guidanceForExtension(extension: string): string | undefined {
   if (extension === '.gdoc') return GDOC_GUIDANCE;
   return FORMAT_GUIDANCE[extension];
+}
+
+/** Link-pointer files: JSON files holding a URL, not a document. */
+export const POINTER_EXTENSIONS = new Set(['.gdoc', '.gsheet', '.gslides']);
+
+/**
+ * Read the URL out of a link-pointer file picked for import. Returns null
+ * when the file cannot be read or holds no usable web URL; the caller then
+ * keeps the guidance error instead of offering "Add as link".
+ */
+export async function readPointerFileUrl(source: string): Promise<string | null> {
+  const resolved = path.resolve(source);
+  await assertNoSymlinks(resolved);
+  const before = await lstat(resolved);
+  if (!before.isFile() || before.isSymbolicLink() || before.size > 64 * 1024) return null;
+  const handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > 64 * 1024) return null;
+    return parsePointerFileUrl((await handle.readFile()).toString('utf8'));
+  } catch {
+    return null;
+  } finally {
+    await handle.close();
+  }
 }
 
 export function isSupportedDocument(filename: string) {

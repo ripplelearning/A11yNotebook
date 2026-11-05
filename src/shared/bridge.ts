@@ -2,6 +2,7 @@ import type { MenuCommand, NativeMenuState } from './ipc';
 import type { UpdaterStatus } from './updater';
 import type {
   ItemStats,
+  PointerImport,
   ReadingPosition,
   ReadingPositionInput,
   RecentLibrary,
@@ -64,6 +65,13 @@ export interface VaultBridge {
   readAudioData?(path: string): Promise<{ path: string; data: Uint8Array }>;
   createNotebook(path: string): Promise<VaultInfo>;
   createNote(path: string, content?: string): Promise<VaultInfo>;
+  /** Create a standalone link (.url file) in a notebook; returns its path and the updated view. */
+  createLink?(input: { title: string; url: string; notebookPath?: string }): Promise<{
+    path: string;
+    vault: VaultInfo;
+  }>;
+  /** Change a link's title and/or URL; returns the link's final path and the updated view. */
+  saveLink?(input: { path: string; title: string; url: string }): Promise<{ path: string; vault: VaultInfo }>;
   rename(path: string, name: string): Promise<VaultInfo>;
   move(path: string, destination: string): Promise<VaultInfo>;
   /** Protection flag for an item; absent on older bridges. */
@@ -165,7 +173,7 @@ export interface VaultBridge {
     options?: { makeDefault?: boolean },
   ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
-  importFile(notebookPath: string): Promise<VaultInfo | null>;
+  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | null>;
   importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
   importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
