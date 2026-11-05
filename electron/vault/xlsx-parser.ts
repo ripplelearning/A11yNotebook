@@ -235,8 +235,8 @@ function parseSheet(
   return sheet;
 }
 
-export function parseXlsxWorkbook(bytes: Buffer): SpreadsheetWorkbook {
-  const entries = readZipEntries(bytes, LABEL);
+/** Ordered sheet names and worksheet part paths for a workbook's entries. */
+export function xlsxSheetParts(entries: Map<string, ZipEntry>): Array<{ name: string; partPath: string }> {
   const workbookDocument = parseXml(entries, 'xl/workbook.xml', LABEL);
   if (!workbookDocument || !workbookDocument.documentElement)
     invalid(`The ${LABEL} part xl/workbook.xml is missing.`);
@@ -257,6 +257,25 @@ export function parseXlsxWorkbook(bytes: Buffer): SpreadsheetWorkbook {
   if (!sheetElements.length) invalid(`The ${LABEL} workbook contains no sheets.`);
   if (sheetElements.length > MAX_SHEETS) invalid(`The ${LABEL} workbook exceeds the ${MAX_SHEETS} sheet limit.`);
 
+  const usedPartPaths = new Set<string>();
+  const parts: Array<{ name: string; partPath: string }> = [];
+  sheetElements.forEach((sheetElement, index) => {
+    const name = sheetElement.getAttribute('name') || 'Sheet';
+    const id = relId(sheetElement);
+    const target = id ? relTargets.get(id) : undefined;
+    // Fall back to the conventional part order when relationships are absent.
+    const partPath = target ? `xl/${target}` : `xl/worksheets/sheet${index + 1}.xml`;
+    if (usedPartPaths.has(partPath)) invalid(`The ${LABEL} workbook lists the same worksheet twice.`);
+    usedPartPaths.add(partPath);
+    if (!entries.has(partPath)) invalid(`The ${LABEL} part ${partPath} is missing.`);
+    parts.push({ name, partPath });
+  });
+  return parts;
+}
+
+export function parseXlsxWorkbook(bytes: Buffer): SpreadsheetWorkbook {
+  const entries = readZipEntries(bytes, LABEL);
+  const parts = xlsxSheetParts(entries);
   const sharedStrings = parseSharedStrings(entries);
   const styles = parseStyles(entries);
   const state = { cells: 0, truncated: false, truncationReason: undefined as string | undefined };
@@ -266,17 +285,8 @@ export function parseXlsxWorkbook(bytes: Buffer): SpreadsheetWorkbook {
     unsupportedFeatures: [],
     truncated: false,
   };
-  const usedPartPaths = new Set<string>();
-  for (const sheetElement of sheetElements) {
-    const name = sheetElement.getAttribute('name') || 'Sheet';
-    const id = relId(sheetElement);
-    const target = id ? relTargets.get(id) : undefined;
-    // Fall back to the conventional part order when relationships are absent.
-    const partPath = target ? `xl/${target}` : `xl/worksheets/sheet${workbook.sheets.length + 1}.xml`;
-    if (usedPartPaths.has(partPath)) invalid(`The ${LABEL} workbook lists the same worksheet twice.`);
-    usedPartPaths.add(partPath);
-    if (!entries.has(partPath)) invalid(`The ${LABEL} part ${partPath} is missing.`);
-    workbook.sheets.push(parseSheet(entries, partPath, name, sharedStrings, styles, state));
+  for (const part of parts) {
+    workbook.sheets.push(parseSheet(entries, part.partPath, part.name, sharedStrings, styles, state));
     if (state.truncated) break;
   }
   workbook.truncated = state.truncated;

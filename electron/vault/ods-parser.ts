@@ -57,6 +57,8 @@ function parseCell(
   const formula = formulaAttr ? formulaAttr.replace(/^[^:]*:=/, '') : undefined;
   const result: SpreadsheetCell = { text: cellText(cell) };
   if (formula) result.formula = formula;
+  const styleName = attr(cell, 'table:style-name');
+  if (styleName) result.styleName = styleName;
 
   if (valueType === 'float' || valueType === 'percentage' || valueType === 'currency') {
     const numeric = Number(attr(cell, 'office:value'));
