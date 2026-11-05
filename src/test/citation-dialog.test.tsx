@@ -125,6 +125,7 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -136,6 +137,7 @@ describe('CitationDialog', () => {
         initialView="bibliography"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
@@ -147,11 +149,51 @@ describe('CitationDialog', () => {
         initialView="generator"
         onInsertInText={vi.fn()}
         onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
         onClose={vi.fn()}
       />,
     );
     expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
     expect(screen.getByLabelText(/^Title$/)).toBeInTheDocument();
+  });
+
+  it('offers a switch-to-edit action instead of insert controls in reading view', async () => {
+    const bridge = {
+      vault: {
+        getBibliography: vi.fn(async () => [
+          {
+            id: 'entry-1',
+            notebookPath: 'Research',
+            sourceType: 'book',
+            authors: [{ last: 'Rivera', first: 'Alex' }],
+            title: 'Accessible Design',
+            year: '2024',
+            publisher: 'Open Press',
+          },
+        ]),
+        saveBibliography: vi.fn(async (_notebook: string, entries: never[]) => entries),
+      },
+    };
+    window.a11yNotebook = bridge as unknown as NotebookBridge;
+    const onSwitchToEdit = vi.fn();
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+        canInsert={false}
+        onSwitchToEdit={onSwitchToEdit}
+      />,
+    );
+    expect(await screen.findByText(/Accessible Design/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Insert In-Text Citation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Insert full bibliography' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Inserting is disabled unless the note is open in edit mode.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to edit mode to insert citations' }));
+    expect(onSwitchToEdit).toHaveBeenCalledTimes(1);
   });
 
   it('offers Insert In-Text Citation from a bibliography entry context menu', async () => {

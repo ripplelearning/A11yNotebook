@@ -4763,11 +4763,17 @@ export default function App() {
     clearTimeout(navigationAnnouncementTimer.current);
     // While the citation dialog is open, its own view commands still work:
     // they switch the dialog between the generator and the bibliography.
+    // Its switch-to-edit action also works: it flips the mode from inside
+    // the dialog. Keyboard and menu paths still cannot reach the mode
+    // toggle while a dialog is open (their own guards stand), so only the
+    // dialog's own action passes here.
     const switchingCitationView =
       citationDialog &&
       (commandId === 'open-citation-generator' || commandId === 'open-bibliography');
+    const switchingToEditFromCitation = citationDialog && commandId === 'toggle-read-only-mode';
     if (
       !switchingCitationView &&
+      !switchingToEditFromCitation &&
       ((activeDialog && activeDialog !== 'palette') ||
         itemDialog ||
         organizeOpen ||
@@ -5795,6 +5801,11 @@ export default function App() {
           onInsertBibliography={insertBibliography}
           onInsertFootnote={insertFootnote}
           canInsert={mode === 'edit' && !currentNoteEditLocked}
+          onSwitchToEdit={
+            mode !== 'edit' && !currentNoteEditLocked
+              ? () => handleCommand('toggle-read-only-mode')
+              : undefined
+          }
           onClose={() => setCitationDialog(null)}
         />
       ) : null}
