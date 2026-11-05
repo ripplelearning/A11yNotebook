@@ -339,6 +339,9 @@ export default function App() {
   // when tabbed away from and back to. Entries are pruned when the
   // note closes, so reopening it applies the default again.
   const noteModeRef = useRef<Partial<Record<string, AppMode>>>({});
+  // The spreadsheet preview's save function, when one is open: Ctrl+S
+  // (save-current-note) calls it when the attachment tab is active.
+  const spreadsheetSaveRef = useRef<(() => Promise<void>) | null>(null);
   // The caret each still-open note was last at, same lifetime as the
   // mode memory: tabbing away and back restores it, closing forgets it.
   const noteCaretRef = useRef<Partial<Record<string, { start: number; end: number }>>>({});
@@ -4010,7 +4013,13 @@ export default function App() {
 
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || !window.a11yNotebook || activeConflict || synchronization.checking) return;
+    if (!note) {
+      if (selectedTab === 'attachment' && window.a11yNotebook && spreadsheetSaveRef.current) {
+        await spreadsheetSaveRef.current();
+      }
+      return;
+    }
+    if (!window.a11yNotebook || activeConflict || synchronization.checking) return;
     const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     try {
       await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
@@ -4866,17 +4875,20 @@ export default function App() {
           .importFile(targetNotebook)
           .then((updated) => updated && setVault(updated))
           .catch((failure) => {
-            // Surface the .gdoc guidance, not a generic message: the
-            // main process throws it for Google Docs link files, and
-            // a generic message hides it. Other import failures keep
-            // the generic message, so internal error text is never
-            // shown to the user. Strip the Electron IPC wrapper
-            // first, as in the updater's error cleaning.
+            // Surface the .gdoc and export-guidance messages, not a
+            // generic message: the main process throws them for
+            // Google Docs link files and for formats the app cannot
+            // read, and a generic message hides them. Other import
+            // failures keep the generic message, so internal error
+            // text is never shown to the user. Strip the Electron
+            // IPC wrapper first, as in the updater's error cleaning.
             const raw = failure instanceof Error ? failure.message : '';
             const cleaned = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
-            setStatusMessage(
-              cleaned.includes('.gdoc') ? cleaned : 'Could not import the selected file.',
-            );
+            const isGuidance =
+              cleaned.includes('.gdoc') ||
+              cleaned.includes('cannot be read by this app') ||
+              cleaned.includes('only a link to an online');
+            setStatusMessage(isGuidance ? cleaned : 'Could not import the selected file.');
           });
       else setStatusMessage('Select a notebook before importing a file.');
       return;
@@ -6188,6 +6200,10 @@ export default function App() {
                     if (!transcriptPath) return;
                     const entry = findEntry(vault?.entries ?? [], transcriptPath);
                     if (entry) void openEntry(entry);
+                  }}
+                  spreadsheetSaveRef={spreadsheetSaveRef}
+                  onSpreadsheetFileCreated={() => {
+                    void refreshVault();
                   }}
                 />
               </div>

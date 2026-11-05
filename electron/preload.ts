@@ -124,6 +124,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultEpubAnnotationDelete: 'vault:epub-annotation-delete',
   vaultReadAttachment: 'vault:read-attachment',
   vaultReadDocxStructure: 'vault:read-docx-structure',
+  vaultReadSpreadsheet: 'vault:read-spreadsheet',
+  vaultReadSlideDeck: 'vault:read-slide-deck',
+  vaultSaveSpreadsheet: 'vault:save-spreadsheet',
+  vaultSaveSpreadsheetAsXlsx: 'vault:save-spreadsheet-as-xlsx',
   vaultImageAlt: 'vault:image-alt',
   vaultSaveImageAlt: 'vault:save-image-alt',
   settingsGet: 'settings:get',
@@ -274,6 +278,12 @@ const bridge: NotebookBridge = {
     deleteEpubAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultEpubAnnotationDelete, relativePath, id),
     readAttachment: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadAttachment, relativePath),
     readDocxStructure: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadDocxStructure, relativePath),
+    readSpreadsheet: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadSpreadsheet, relativePath),
+    readSlideDeck: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadSlideDeck, relativePath),
+    saveSpreadsheet: (relativePath, workbook) =>
+      ipcRenderer.invoke(CHANNELS.vaultSaveSpreadsheet, relativePath, workbook),
+    saveSpreadsheetAsXlsx: (relativePath, workbook) =>
+      ipcRenderer.invoke(CHANNELS.vaultSaveSpreadsheetAsXlsx, relativePath, workbook),
     getImageAlt: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImageAlt, relativePath),
     saveImageAlt: (relativePath, alt) => ipcRenderer.invoke(CHANNELS.vaultSaveImageAlt, relativePath, alt),
     getSettings: () => ipcRenderer.invoke(CHANNELS.settingsGet),
