@@ -25,6 +25,20 @@ describe('asciiToMathML', () => {
     expect(asciiToMathML('1/2 + 3')).toContain('<mfrac><mn>1</mn><mn>2</mn></mfrac>');
   });
 
+  it('groups a mixed fraction with its whole number wherever it appears', () => {
+    expect(asciiToMathML('1 3/4')).toBe(
+      '<math alttext="1 3/4"><mrow><mn>1</mn><mfrac><mn>3</mn><mn>4</mn></mfrac></mrow></math>',
+    );
+    expect(asciiToMathML('3/4+1 3/4')).toBe(
+      '<math alttext="3/4+1 3/4"><mrow><mfrac><mn>3</mn><mn>4</mn></mfrac><mo>+</mo><mrow><mn>1</mn><mfrac><mn>3</mn><mn>4</mn></mfrac></mrow></mrow></math>',
+    );
+    expect(asciiToMathML('1 3/4+2')).toContain('<mrow><mn>1</mn><mfrac><mn>3</mn><mn>4</mn></mfrac></mrow><mo>+</mo>');
+    expect(asciiToMathML('13/4')).toBe(
+      '<math alttext="13/4"><mfrac><mn>13</mn><mn>4</mn></mfrac></math>',
+    );
+    expect(asciiToMathML('1 3/')).toBeNull();
+  });
+
   it('rejects broken input instead of emitting broken MathML', () => {
     expect(asciiToMathML('')).toBeNull();
     expect(asciiToMathML('sqrt(')).toBeNull();
