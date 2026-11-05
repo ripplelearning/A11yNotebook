@@ -6798,6 +6798,8 @@ export default function App() {
           onSearch={searchDocument}
           onListMatches={listFindMatches}
           onJumpToMatch={jumpToFindMatch}
+          initialQuery={findQueryRef.current?.query ?? ''}
+          initialCaseSensitive={findQueryRef.current?.caseSensitive ?? false}
         />
       ) : null}
       {thesaurusRequest && currentNote ? (

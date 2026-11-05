@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Modal from './Modal';
 
 export interface FindMatchJump {
@@ -13,18 +13,45 @@ interface Props {
   onListMatches?: (query: string, caseSensitive: boolean) => string[];
   /** Move to one listed match. The dialog closes only when moved is true. */
   onJumpToMatch?: (position: number) => FindMatchJump;
+  /** The previous search, restored when the dialog reopens. */
+  initialQuery?: string;
+  initialCaseSensitive?: boolean;
 }
 
-export default function FindDialog({ onClose, onSearch, onListMatches, onJumpToMatch }: Props) {
-  const [query, setQuery] = useState('');
-  const [caseSensitive, setCaseSensitive] = useState(false);
+export default function FindDialog({
+  onClose,
+  onSearch,
+  onListMatches,
+  onJumpToMatch,
+  initialQuery = '',
+  initialCaseSensitive = false,
+}: Props) {
+  const [query, setQuery] = useState(initialQuery);
+  const [caseSensitive, setCaseSensitive] = useState(initialCaseSensitive);
   const [status, setStatus] = useState('Type text to find in this note.');
   const [matches, setMatches] = useState<string[]>([]);
   const matchButtonRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   const refreshMatches = (searchedQuery: string, searchedCaseSensitive: boolean) => {
-    if (onListMatches) setMatches(onListMatches(searchedQuery, searchedCaseSensitive));
+    const listed = onListMatches ? onListMatches(searchedQuery, searchedCaseSensitive) : [];
+    setMatches(listed);
+    return listed;
   };
+
+  useEffect(() => {
+    // Reopening restores the previous search: the match list is repopulated
+    // so previous/next work without retyping the term.
+    if (initialQuery) {
+      const listed = refreshMatches(initialQuery, initialCaseSensitive);
+      setStatus(
+        listed.length === 0
+          ? `No matches for "${initialQuery}".`
+          : `${listed.length} ${listed.length === 1 ? 'match' : 'matches'} for "${initialQuery}".`,
+      );
+    }
+    // Run once, when the dialog opens.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const search = (direction: 'next' | 'prev') => {
     setStatus(onSearch(query, direction, caseSensitive));

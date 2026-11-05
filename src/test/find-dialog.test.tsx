@@ -17,6 +17,28 @@ describe('Find dialog', () => {
     expect(onSearch).toHaveBeenCalledWith('Idea', 'next', true);
   });
 
+  it('restores the previous search and repopulates the match list on reopen', () => {
+    const onListMatches = vi.fn(() => ['Idea at the start', 'Idea again later']);
+    const onSearch = vi.fn(() => 'Match 1 of 2 for "Idea".');
+    render(
+      <FindDialog
+        onClose={vi.fn()}
+        onSearch={onSearch}
+        onListMatches={onListMatches}
+        initialQuery="Idea"
+        initialCaseSensitive
+      />,
+    );
+    expect(screen.getByRole('textbox', { name: 'Find in document' })).toHaveValue('Idea');
+    expect(screen.getByRole('checkbox', { name: 'Match case' })).toBeChecked();
+    expect(onListMatches).toHaveBeenCalledWith('Idea', true);
+    expect(screen.getByRole('button', { name: 'Match 1: Idea at the start' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Match 2: Idea again later' })).toBeInTheDocument();
+    expect(screen.getByRole('status')).toHaveTextContent('2 matches for "Idea".');
+    fireEvent.click(screen.getByRole('button', { name: 'Find next' }));
+    expect(onSearch).toHaveBeenCalledWith('Idea', 'next', true);
+  });
+
   it('closes from the Close button', () => {
     const onClose = vi.fn();
     render(<FindDialog onClose={onClose} onSearch={vi.fn(() => 'No matches for "x".')} />);
