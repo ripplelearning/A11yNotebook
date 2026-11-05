@@ -4759,19 +4759,25 @@ export default function App() {
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current || securityLockedRef.current) return;
     clearTimeout(navigationAnnouncementTimer.current);
+    // While the citation dialog is open, its own view commands still work:
+    // they switch the dialog between the generator and the bibliography.
+    const switchingCitationView =
+      citationDialog &&
+      (commandId === 'open-citation-generator' || commandId === 'open-bibliography');
     if (
-      (activeDialog && activeDialog !== 'palette') ||
-      itemDialog ||
-      organizeOpen ||
-      taskDialogOpen ||
-      quickTaskStep ||
-      spellingOpen ||
-      thesaurusRequest ||
-      citationDialog ||
-      externalFile ||
-      notePasswordDialog ||
-      activeConflict ||
-      exportRequest
+      !switchingCitationView &&
+      ((activeDialog && activeDialog !== 'palette') ||
+        itemDialog ||
+        organizeOpen ||
+        taskDialogOpen ||
+        quickTaskStep ||
+        spellingOpen ||
+        thesaurusRequest ||
+        citationDialog ||
+        externalFile ||
+        notePasswordDialog ||
+        activeConflict ||
+        exportRequest)
     )
       return;
     if (commandId === 'open-citation-generator' || commandId === 'open-bibliography') {
@@ -5277,11 +5283,26 @@ export default function App() {
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing || securityLockedRef.current || event.keyCode === 229) return;
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
+    // Exception: while the citation dialog is open, its two view shortcuts
+    // (Ctrl+Shift+C / Ctrl+Shift+J, or the user's remapped equivalents) still
+    // switch views instead of being swallowed.
+    const switchingCitationView =
+      citationDialog &&
+      (['open-bibliography', 'open-citation-generator'] as const).some((id) => {
+        const command = COMMANDS.find((item) => item.id === id);
+        return (
+          command &&
+          effectiveCommandShortcuts(command, settings.shortcuts, settings.shortcutAliases, isMac).some((shortcut) =>
+            matchesShortcut(event, shortcut, isMac),
+          )
+        );
+      });
     if (
-      activeDialog ||
-      itemDialog ||
-      activeConflict ||
-      document.querySelector('[role="dialog"], [role="alertdialog"]')
+      !switchingCitationView &&
+      (activeDialog ||
+        itemDialog ||
+        activeConflict ||
+        document.querySelector('[role="dialog"], [role="alertdialog"]'))
     ) {
       return;
     }

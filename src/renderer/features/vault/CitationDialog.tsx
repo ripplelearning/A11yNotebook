@@ -89,6 +89,11 @@ export default function CitationDialog({
   canInsert = true,
 }: Props) {
   const [view, setView] = useState<'generator' | 'bibliography'>(initialView);
+  // Keyboard shortcuts switch views while the dialog is open: follow
+  // initialView instead of only reading it on first mount.
+  useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
   const [entries, setEntries] = useState<BibliographyEntry[]>([]);
   const [loadError, setLoadError] = useState('');
   const [style, setStyle] = useState<CitationStyle>('apa');
@@ -372,7 +377,7 @@ export default function CitationDialog({
               {previewEntry.title ? formatInText(previewEntry, style) : '—'}
             </p>
           </div>
-          <button type="submit">{editingId ? 'Update bibliography entry' : 'Save to bibliography'}</button>
+          <button type="submit">{editingId ? 'Update bibliography entry' : 'Add to Bibliography'}</button>
           <button
             type="button"
             onClick={() => {

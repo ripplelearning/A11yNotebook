@@ -40,7 +40,7 @@ describe('CitationDialog', () => {
     fireEvent.change(screen.getByLabelText(/Authors/), { target: { value: 'Rivera, Alex' } });
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
     fireEvent.change(screen.getByLabelText(/^Year$/), { target: { value: '2024' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save to bibliography' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Bibliography' }));
     await waitFor(() => expect(saveBibliography).toHaveBeenCalled());
     const saved = saveBibliography.mock.calls[0][1] as Array<{ title: string }>;
     expect(saved[0].title).toBe('Accessible Design');
@@ -115,6 +115,43 @@ describe('CitationDialog', () => {
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
     expect(screen.getByRole('button', { name: 'Insert In-Text Citation' })).toBeDisabled();
     expect(screen.getByText(/Inserting is disabled/)).toBeInTheDocument();
+  });
+
+  it('follows initialView when it changes while the dialog is open', async () => {
+    installBridge();
+    const { rerender } = render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Title$/)).toBeInTheDocument();
+    rerender(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole('dialog', { name: 'Bibliography' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Title$/)).toBeNull();
+    rerender(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Title$/)).toBeInTheDocument();
   });
 
   it('offers Insert In-Text Citation from a bibliography entry context menu', async () => {
