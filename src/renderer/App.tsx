@@ -124,6 +124,7 @@ import {
   transcriptPathForAudio,
   type TranscriptionModelOption,
 } from '../shared/audio';
+import { isAllowedLinkUrl, parseLinkUrl } from '../shared/links';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
 import type { NoteTemplate } from '../shared/templates';
@@ -138,6 +139,7 @@ import {
   QuickTaskLibraryPicker,
   QuickTaskNotebookPicker,
 } from './features/reminders/QuickTaskDialog';
+import { LinkDialog } from './features/links/LinkDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
 import {
@@ -253,6 +255,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'new-contextual',
       'new-notebook',
       'new-note',
+      'add-link',
       'new-from-template',
       'save-current-note',
       'export-current-note',
@@ -472,6 +475,10 @@ export default function App() {
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
   const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'notebook' | 'task' | null>(null);
+  type LinkDialogState =
+    | { mode: 'add'; notebookPath: string; initialUrl: string; guidance?: string }
+    | { mode: 'edit'; path: string; title: string; url: string };
+  const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
   const [quickTaskNotebookPath, setQuickTaskNotebookPath] = useState<string | undefined>();
   const [dictationActive, setDictationActive] = useState(false);
   const [transcriptionModelChoiceOpen, setTranscriptionModelChoiceOpen] = useState(false);
@@ -1884,6 +1891,45 @@ export default function App() {
     if (entry.kind === 'notebook') setSelectedNotebookPath(entry.path);
   };
 
+  /** Open a standalone link in the default browser (never inside a note). */
+  const openLinkEntry = async (entry: VaultEntry) => {
+    const bridge = window.a11yNotebook;
+    if (!bridge) return;
+    try {
+      const preview = await bridge.vault.readAttachment(entry.path);
+      const url = parseLinkUrl(preview.text ?? '');
+      if (!url || !isAllowedLinkUrl(url)) {
+        setStatusMessage('This link has no usable web address. Edit the link to fix the address.');
+        return;
+      }
+      await bridge.vault.openUrl(url);
+      setStatusMessage(`Opened ${entry.name} in the default browser.`);
+    } catch {
+      setStatusMessage('Could not open this link.');
+    }
+  };
+
+  /** Open the edit dialog for a link, reading its current address from the file. */
+  const openEditLinkDialog = async (entry: VaultEntry) => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge) return;
+    try {
+      const preview = await bridge.readAttachment(entry.path);
+      const url = parseLinkUrl(preview.text ?? '') ?? '';
+      setLinkDialog({ mode: 'edit', path: entry.path, title: entry.name.replace(/\.url$/i, ''), url });
+    } catch {
+      setStatusMessage('Could not read this link.');
+    }
+  };
+
+  /** The notebook a new grid item goes into: the selected notebook, or the open Notes & Files notebook. */
+  const linkTargetNotebook = (): string | undefined => {
+    const selectedEntry = findEntry(vault?.entries ?? [], treeSelection);
+    if (selectedEntry?.kind === 'notebook') return selectedEntry.path;
+    if (selectedTab === 'notes-files') return selectedNotebookPath || undefined;
+    return undefined;
+  };
+
   const openEntry = async (
     entry: VaultEntry,
     notePassword?: string,
@@ -1901,6 +1947,10 @@ export default function App() {
       vaultGenerationRef.current === generation &&
       canContinue();
     selectEntry(entry);
+    if (entry.kind === 'link') {
+      await openLinkEntry(entry);
+      return;
+    }
     if (entry.kind !== 'notebook' && !isManagedEntry(entry)) {
       const encryptedLegacy =
         entry.kind === 'note' &&
@@ -3792,9 +3842,11 @@ export default function App() {
       } catch {
         setStatusMessage('Could not open the mail app.');
       }
+    } else if (commandId === 'edit-link' && entry?.kind === 'link') {
+      await openEditLinkDialog(entry);
     } else if (
       entry &&
-      (request.context.startsWith('tree-') || request.context === 'attachment') &&
+      (request.context.startsWith('tree-') || request.context === 'attachment' || request.context === 'link') &&
       [
         'context-rename',
         'context-move',
@@ -4779,6 +4831,7 @@ export default function App() {
         organizeOpen ||
         taskDialogOpen ||
         quickTaskStep ||
+        linkDialog ||
         spellingOpen ||
         thesaurusRequest ||
         citationDialog ||
@@ -4917,7 +4970,22 @@ export default function App() {
       if (targetNotebook && window.a11yNotebook)
         void window.a11yNotebook.vault
           .importFile(targetNotebook)
-          .then((updated) => updated && setVault(updated))
+          .then((updated) => {
+            if (!updated) return;
+            if ('pointer' in updated) {
+              // A Google link-pointer file: offer "Add as link" with the
+              // URL read from the file, alongside the guidance for the
+              // download-and-import path shown in the dialog.
+              setLinkDialog({
+                mode: 'add',
+                notebookPath: targetNotebook,
+                initialUrl: updated.pointer.url,
+                guidance: updated.pointer.guidance,
+              });
+              return;
+            }
+            setVault(updated);
+          })
           .catch((failure) => {
             // Surface the .gdoc and export-guidance messages, not a
             // generic message: the main process throws them for
@@ -5235,6 +5303,26 @@ export default function App() {
       }
       return;
     }
+    if (commandId === 'add-link') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      const notebookPath = linkTargetNotebook();
+      if (!notebookPath) {
+        setStatusMessage('Select a notebook before adding a link.');
+        return;
+      }
+      setLinkDialog({ mode: 'add', notebookPath, initialUrl: '' });
+      return;
+    }
+    if (commandId === 'edit-link') {
+      if (activeDialog === 'palette') setActiveDialog(null);
+      const entry = findEntry(vault?.entries ?? [], treeSelection);
+      if (!entry || entry.kind !== 'link') {
+        setStatusMessage('Select a link to edit it.');
+        return;
+      }
+      void openEditLinkDialog(entry);
+      return;
+    }
     if (commandId === 'dictate') {
       if (activeDialog === 'palette') setActiveDialog(null);
       toggleDictation();
@@ -5541,6 +5629,17 @@ export default function App() {
         (findEntry(vault.entries, treeSelection)?.kind !== 'notebook' &&
           !(selectedTab === 'notes-files' && !!selectedNotebookPath))
       );
+    if (id === 'add-link')
+      return (
+        !window.a11yNotebook ||
+        !vault ||
+        (findEntry(vault.entries, treeSelection)?.kind !== 'notebook' &&
+          !(selectedTab === 'notes-files' && !!selectedNotebookPath))
+      );
+    if (id === 'edit-link') {
+      const entry = findEntry(vault?.entries ?? [], treeSelection);
+      return !entry || entry.kind !== 'link';
+    }
     if (id === 'open-selected-external') {
       const entry = findEntry(vault?.entries ?? [], treeSelection);
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
@@ -5957,6 +6056,13 @@ export default function App() {
               </button>
               <button type="button" onClick={() => void createNote()} disabled={!vault}>
                 New note
+              </button>
+              <button
+                type="button"
+                onClick={() => handleCommand('add-link')}
+                disabled={isCommandDisabled('add-link')}
+              >
+                Add link
               </button>
               <button type="button" onClick={() => handleCommand('new-notebook')} disabled={!vault}>
                 New notebook
@@ -7053,6 +7159,32 @@ export default function App() {
             setStatusMessage('Task created.');
           }}
           onClose={() => setQuickTaskStep(null)}
+        />
+      ) : null}
+      {linkDialog && !securityLocked ? (
+        <LinkDialog
+          title={linkDialog.mode === 'add' ? 'Add link' : 'Edit link'}
+          initialTitle={linkDialog.mode === 'edit' ? linkDialog.title : ''}
+          initialUrl={linkDialog.mode === 'add' ? linkDialog.initialUrl : linkDialog.url}
+          guidance={linkDialog.mode === 'add' ? linkDialog.guidance : undefined}
+          submitLabel={linkDialog.mode === 'add' ? 'Add link' : 'Save changes'}
+          onSubmit={async (title, url) => {
+            const bridge = window.a11yNotebook?.vault;
+            if (!bridge?.createLink || !bridge?.saveLink || switchingRef.current)
+              throw new Error('Link saving is unavailable.');
+            if (linkDialog.mode === 'add') {
+              const created = await bridge.createLink({ title, url, notebookPath: linkDialog.notebookPath });
+              setVault(created.vault);
+              setTreeSelection(created.path);
+              setStatusMessage(`Added link ${title}.`);
+            } else {
+              const saved = await bridge.saveLink({ path: linkDialog.path, title, url });
+              setVault(saved.vault);
+              setTreeSelection(saved.path);
+              setStatusMessage(`Updated link ${title}.`);
+            }
+          }}
+          onClose={() => setLinkDialog(null)}
         />
       ) : null}
       {transcriptionModelChoiceOpen ? (

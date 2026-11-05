@@ -18,6 +18,8 @@ export type CommandId =
   | 'open-selected-external'
   | 'new-task'
   | 'quick-task'
+  | 'add-link'
+  | 'edit-link'
   | 'dictate'
   | 'record-audio-note'
   | 'new-asset'
@@ -123,6 +125,7 @@ export type MenuContext =
   | 'reader-link'
   | 'task-row'
   | 'search-result'
+  | 'link'
   | 'annotation'
   | 'reminder'
   | 'attachment'
@@ -234,6 +237,13 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
+    id: 'add-link',
+    label: 'Add link',
+    description: 'Add a link to a web page as an item in the current notebook; opening it shows the page in the default browser.',
+    shortcut: 'Ctrl+Alt+L',
+    contexts: ['general'],
+  },
+  {
     id: 'dictate',
     label: 'Dictate',
     description: 'Start or stop dictation; transcribed text is inserted at the cursor.',
@@ -305,7 +315,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-open',
     label: 'Open selected item',
     description: 'Open the focused item.',
-    contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview'],
+    contexts: ['tree-note', 'search-result', 'annotation', 'reminder', 'reader-link', 'document-preview', 'link'],
+  },
+  {
+    id: 'edit-link',
+    label: 'Edit link',
+    description: 'Change the selected link title or web address.',
+    contexts: ['link'],
   },
   {
     // Registry order is menu order: Import file sits right after Open so
@@ -334,19 +350,19 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-rename',
     label: 'Rename selected item',
     description: 'Rename the selected library item.',
-    contexts: ['tree-note', 'tree-folder'],
+    contexts: ['tree-note', 'tree-folder', 'link'],
   },
   {
     id: 'context-move',
     label: 'Move selected item',
     description: 'Move the selected library item.',
-    contexts: ['tree-note', 'tree-folder'],
+    contexts: ['tree-note', 'tree-folder', 'link'],
   },
   {
     id: 'context-delete',
     label: 'Delete selected item',
     description: 'Delete the selected library item.',
-    contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'annotation', 'reminder', 'link'],
   },
   {
     id: 'context-delete-library',
@@ -358,7 +374,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-reveal',
     label: 'Reveal this item in Explorer',
     description: 'Reveal the selected library item.',
-    contexts: ['tree-note', 'tree-folder', 'attachment', 'tab'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'tab', 'link'],
   },
   {
     id: 'context-bookmark',
@@ -376,19 +392,19 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-protect',
     label: 'Protect selected item',
     description: 'Prevent renaming, moving, deleting, or editing this item until it is unprotected.',
-    contexts: ['tree-note', 'tree-folder', 'attachment'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'link'],
   },
   {
     id: 'context-properties',
     label: 'Properties',
     description: 'Show details and counts for the selected item.',
-    contexts: ['tree-note', 'tree-folder', 'attachment'],
+    contexts: ['tree-note', 'tree-folder', 'attachment', 'link'],
   },
   {
     id: 'context-email-item',
     label: 'Send to email',
     description: 'Open a new email in the default mail app with this file attached.',
-    contexts: ['tree-note', 'attachment'],
+    contexts: ['tree-note', 'attachment', 'link'],
   },
   { id: 'context-close-tab', label: 'Close tab', description: 'Close this tab.', contexts: ['tab'] },
   {

@@ -57,6 +57,7 @@ export function buildApplicationMenu(
         commandItem('new-contextual'),
         commandItem('new-notebook'),
         commandItem('new-note'),
+        commandItem('add-link'),
         commandItem('record-audio-note'),
         commandItem('new-from-template'),
         { type: 'separator' },
