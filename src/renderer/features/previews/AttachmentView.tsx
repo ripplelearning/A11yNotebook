@@ -1,9 +1,11 @@
 import DOMPurify from 'dompurify';
-import { useState } from 'react';
-import { imageUrl, parseCsv, type AttachmentPreview } from '../../../shared/attachments';
+import { useState, type MutableRefObject } from 'react';
+import { imageUrl, type AttachmentPreview } from '../../../shared/attachments';
 import { isAudioPath } from '../../../shared/audio';
 import PlainTextDocument from '../vault/PlainTextDocument';
 import DocumentReader from './DocumentReader';
+import SpreadsheetView from './SpreadsheetView';
+import SlideDeckView from './SlideDeckView';
 
 interface Props {
   preview: AttachmentPreview;
@@ -19,6 +21,10 @@ interface Props {
   transcriptPath?: string | null;
   /** Open the transcript note; used with transcriptPath. */
   onOpenTranscript?: () => void;
+  /** App's Ctrl+S calls the spreadsheet save function registered here. */
+  spreadsheetSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** Called with the new path after an .xls file is saved as .xlsx. */
+  onSpreadsheetFileCreated?: (relativePath: string) => void;
 }
 
 export default function AttachmentView({
@@ -31,19 +37,14 @@ export default function AttachmentView({
   transcribing,
   transcriptPath,
   onOpenTranscript,
+  spreadsheetSaveRef,
+  onSpreadsheetFileCreated,
 }: Props) {
   const [description, setDescription] = useState(alt);
   const image = /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(preview.path);
   const audio = isAudioPath(preview.path);
-  let rows: string[][] = [];
-  let csvError = '';
-  if (preview.kind === '.csv') {
-    try {
-      rows = parseCsv(preview.text);
-    } catch {
-      csvError = 'This CSV could not be parsed. Open it externally to inspect it.';
-    }
-  }
+  const spreadsheet = /\.(?:xlsx|ods|csv|xls)$/i.test(preview.path);
+  const slides = /\.(?:pptx|odp)$/i.test(preview.path);
   const html =
     /\.html?$/i.test(preview.path) || preview.kind === '.html'
       ? DOMPurify.sanitize(preview.text, {
@@ -123,31 +124,16 @@ export default function AttachmentView({
         <DocumentReader key={preview.path} path={preview.path} kind=".epub" />
       ) : preview.kind === '.docx' ? (
         <DocumentReader key={preview.path} path={preview.path} kind=".docx" />
-      ) : preview.kind === '.csv' ? (
-        csvError ? (
-          <p>{csvError}</p>
-        ) : (
-          <div className="table-scroll">
-            <table>
-              <caption>{preview.path}</caption>
-              <tbody>
-                {rows.map((row, index) => (
-                  <tr key={index}>
-                    {row.map((cell, column) =>
-                      index === 0 ? (
-                        <th scope="col" key={column}>
-                          {cell || `Column ${column + 1}`}
-                        </th>
-                      ) : (
-                        <td key={column}>{cell}</td>
-                      ),
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
+      ) : spreadsheet ? (
+        <SpreadsheetView
+          key={preview.path}
+          path={preview.path}
+          announce={announce}
+          spreadsheetSaveRef={spreadsheetSaveRef}
+          onFileCreated={onSpreadsheetFileCreated}
+        />
+      ) : slides ? (
+        <SlideDeckView key={preview.path} path={preview.path} announce={announce} />
       ) : (
         <div className="document-body">
           <PlainTextDocument text={preview.text} />

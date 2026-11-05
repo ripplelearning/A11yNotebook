@@ -339,6 +339,9 @@ export default function App() {
   // when tabbed away from and back to. Entries are pruned when the
   // note closes, so reopening it applies the default again.
   const noteModeRef = useRef<Partial<Record<string, AppMode>>>({});
+  // The spreadsheet preview's save function, when one is open: Ctrl+S
+  // (save-current-note) calls it when the attachment tab is active.
+  const spreadsheetSaveRef = useRef<(() => Promise<void>) | null>(null);
   // The caret each still-open note was last at, same lifetime as the
   // mode memory: tabbing away and back restores it, closing forgets it.
   const noteCaretRef = useRef<Partial<Record<string, { start: number; end: number }>>>({});
@@ -4010,7 +4013,13 @@ export default function App() {
 
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || !window.a11yNotebook || activeConflict || synchronization.checking) return;
+    if (!note) {
+      if (selectedTab === 'attachment' && window.a11yNotebook && spreadsheetSaveRef.current) {
+        await spreadsheetSaveRef.current();
+      }
+      return;
+    }
+    if (!window.a11yNotebook || activeConflict || synchronization.checking) return;
     const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     try {
       await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
@@ -6188,6 +6197,10 @@ export default function App() {
                     if (!transcriptPath) return;
                     const entry = findEntry(vault?.entries ?? [], transcriptPath);
                     if (entry) void openEntry(entry);
+                  }}
+                  spreadsheetSaveRef={spreadsheetSaveRef}
+                  onSpreadsheetFileCreated={() => {
+                    void refreshVault();
                   }}
                 />
               </div>
