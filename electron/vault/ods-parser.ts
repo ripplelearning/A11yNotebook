@@ -1,7 +1,8 @@
-import type { Element as XmlElement, Node as XmlNode } from '@xmldom/xmldom';
+import type { Element as XmlElement } from '@xmldom/xmldom';
 import {
   childElements,
   descendants,
+  paragraphText,
   parseXml,
 } from './office-xml';
 import { readZipEntries, type ZipEntry } from './zip-archive';
@@ -31,28 +32,6 @@ function repeatCount(element: XmlElement, name: string, max: number): number {
   const raw = Number(element.getAttribute(name));
   if (!Number.isInteger(raw) || raw < 1) return 1;
   return Math.min(raw, max);
-}
-
-/** Text of a paragraph, expanding <text:s> space runs. */
-function paragraphText(paragraph: XmlElement): string {
-  let text = '';
-  const walk = (node: XmlNode) => {
-    const element = node as XmlElement;
-    const local = element.localName || element.nodeName.split(':').at(-1) || '';
-    if (node.nodeType === 3) {
-      text += node.nodeValue || '';
-      return;
-    }
-    if (node.nodeType !== 1) return;
-    if (local === 's') {
-      const count = Number(element.getAttribute('text:c'));
-      text += ' '.repeat(Number.isInteger(count) && count > 0 ? count : 1);
-      return;
-    }
-    for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
-  };
-  walk(paragraph);
-  return text;
 }
 
 function cellText(cell: XmlElement): string {

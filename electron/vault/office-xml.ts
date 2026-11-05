@@ -158,3 +158,25 @@ export function localNameOf(node: XmlNode): string {
   const element = node as XmlElement;
   return element.localName || element.nodeName.split(':').at(-1) || '';
 }
+
+/** Text of a paragraph, expanding OpenDocument <text:s> space runs. */
+export function paragraphText(paragraph: XmlElement): string {
+  let text = '';
+  const walk = (node: XmlNode) => {
+    const element = node as XmlElement;
+    const local = localNameOf(node);
+    if (node.nodeType === 3) {
+      text += node.nodeValue || '';
+      return;
+    }
+    if (node.nodeType !== 1) return;
+    if (local === 's') {
+      const count = Number(element.getAttribute('text:c'));
+      text += ' '.repeat(Number.isInteger(count) && count > 0 ? count : 1);
+      return;
+    }
+    for (let child = node.firstChild; child; child = child.nextSibling) walk(child);
+  };
+  walk(paragraph);
+  return text;
+}
