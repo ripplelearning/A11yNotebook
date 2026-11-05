@@ -36,15 +36,6 @@ const CONTEXTS = {
   link: 'link',
 } as const;
 
-/** The Type column reads the way the kinds are named: Notebook, Note, Attachment, Link. */
-const KIND_LABELS: Record<string, string> = {
-  notebook: 'Notebook',
-  note: 'Note',
-  attachment: 'Attachment',
-  link: 'Link',
-};
-const kindLabel = (kind: string) => KIND_LABELS[kind] ?? kind;
-
 const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
 /** A note created as a task (dialog or Quick Task) shows Type "Task". Any
