@@ -1,32 +1,29 @@
 import DOMPurify from 'dompurify';
 import { imageUrl } from '../../../shared/attachments';
+import { BIBLIOGRAPHY_HANGING_INDENT, isBibliographyStyle } from '../../../shared/citations';
 
 const SAFE_IMAGE_EXTENSION = /\.(?:png|jpe?g|gif|webp|bmp)$/i;
 
-/** The one inline style a note may carry: the bibliography hanging indent. */
-export const BIBLIOGRAPHY_HANGING_INDENT = 'padding-left: 0.5in; text-indent: -0.5in;';
-
-function normalizeStyle(value: string): string {
-  return value.replace(/\s*:\s*/g, ': ').replace(/\s*;\s*/g, '; ').trim().replace(/;$/, '');
-}
+export { BIBLIOGRAPHY_HANGING_INDENT };
 
 /**
- * DOMPurify drops every other inline style: only the bibliography hanging
- * indent survives, so a pasted style cannot hide content or restyle a
- * note. The hook is registered for this one call only, so other previews
- * that sanitize with their own configs are unaffected.
+ * DOMPurify drops every inline style that is not part of a bibliography
+ * block: only the bibliography declarations survive, so a pasted style
+ * cannot hide content or restyle a note. The hook is registered for this
+ * one call only, so other previews that sanitize with their own configs
+ * are unaffected.
  */
-function dropNonHangingStyles(
+function dropNonBibliographyStyles(
   _node: Element,
   data: { attrName: string; attrValue: string; keepAttr: boolean },
 ): void {
-  if (data.attrName === 'style' && normalizeStyle(data.attrValue) !== normalizeStyle(BIBLIOGRAPHY_HANGING_INDENT)) {
+  if (data.attrName === 'style' && !isBibliographyStyle(data.attrValue)) {
     data.keepAttr = false;
   }
 }
 
 export function sanitizeNoteHtml(content: string, notePath = '') {
-  DOMPurify.addHook('uponSanitizeAttribute', dropNonHangingStyles);
+  DOMPurify.addHook('uponSanitizeAttribute', dropNonBibliographyStyles);
   let clean: string;
   try {
     clean = DOMPurify.sanitize(content, {

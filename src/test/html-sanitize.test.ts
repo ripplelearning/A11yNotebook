@@ -56,4 +56,19 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).not.toContain('color: red');
     expect(safe).not.toContain('display: none');
   });
+
+  it('keeps bibliography heading and entry styles and drops every other inline style', () => {
+    const safe = sanitizeHtmlFragment(
+      '<p style="text-align: center; font-weight: bold; font-family: \'Times New Roman\', serif; font-size: 12pt;">References</p>' +
+        '<p style="padding-left: 0.5in; text-indent: -0.5in; line-height: 1; margin: 0 0 12pt; font-family: \'Times New Roman\', serif; font-size: 12pt;">Entry</p>' +
+        '<p style="color: red;">Red</p><p style="padding-left: 0.5in; color: red;">Mixed</p>',
+    );
+    expect(safe).toContain('text-align: center');
+    expect(safe).toContain('font-weight: bold');
+    expect(safe).toContain('line-height: 1');
+    expect(safe).toContain('margin: 0 0 12pt');
+    // The main-process sanitizer escapes quotes in attribute values.
+    expect(safe).toContain('font-family: &#39;Times New Roman&#39;, serif');
+    expect(safe).not.toContain('color: red');
+  });
 });

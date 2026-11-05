@@ -1,4 +1,5 @@
 import { decodeHtmlEntities } from './html-entities';
+import { isBibliographyStyle } from '../../src/shared/citations';
 
 const ALLOWED_TAGS = new Set([
   'a',
@@ -233,12 +234,12 @@ export function sanitizeHtmlFragment(
         const safe = validUrl(tag, name, value, options);
         if (safe) safeAttributes.set(name, safe);
       } else if (
-        // The one inline style a note may carry: the bibliography hanging
-        // indent. Every other inline style is dropped, so exported HTML
-        // cannot hide content or restyle a note.
+        // Bibliography blocks may carry only their own inline styles
+        // (hanging indent, heading alignment, line spacing, Times New
+        // Roman 12pt). Every other inline style is dropped, so exported
+        // HTML cannot hide content or restyle a note.
         name === 'style' &&
-        value.replace(/\s*:\s*/g, ': ').replace(/\s*;\s*/g, '; ').trim().replace(/;$/, '') ===
-          'padding-left: 0.5in; text-indent: -0.5in'
+        isBibliographyStyle(value)
       ) {
         safeAttributes.set(name, value);
       } else if (TASK_ATTRIBUTES.has(name)) {
