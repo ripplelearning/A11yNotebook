@@ -3308,6 +3308,60 @@ export function setupVaultIpc(
       return structure;
     });
   });
+  ipcMain.handle(IPC_CHANNELS.vaultReadSpreadsheet, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !/\.(?:xlsx|ods|csv|xls)$/i.test(relative)) {
+      throw new Error('Spreadsheet requests require a spreadsheet path.');
+    }
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const workbook = await access.vault.readSpreadsheet(relative);
+      access.assertCurrent();
+      return workbook;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultReadSlideDeck, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !/\.(?:pptx|odp)$/i.test(relative)) {
+      throw new Error('Slide requests require a slide-deck path.');
+    }
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const deck = await access.vault.readSlideDeck(relative);
+      access.assertCurrent();
+      return deck;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveSpreadsheet, async (event, relative: unknown, workbook: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !/\.(?:xlsx|ods|csv)$/i.test(relative)) {
+      throw new Error('Spreadsheet saving requires a spreadsheet path.');
+    }
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      await access.vault.saveSpreadsheet(relative, workbook);
+      access.assertCurrent();
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultSaveSpreadsheetAsXlsx,
+    async (event, relative: unknown, workbook: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (typeof relative !== 'string' || !/\.xls$/i.test(relative)) {
+        throw new Error('Save as .xlsx requires an .xls path.');
+      }
+      const access = captureVaultAccess(event, isTrustedSender);
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        const created = await access.vault.saveSpreadsheetAsXlsx(relative, workbook);
+        access.assertCurrent();
+        return created;
+      });
+    },
+  );
   ipcMain.handle(IPC_CHANNELS.vaultImageAlt, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string' || !IMAGE_TYPES[path.extname(relative).toLowerCase()])

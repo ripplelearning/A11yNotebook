@@ -25,6 +25,17 @@ import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
 import { parseFrontMatter } from '../../src/shared/front-matter';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
+import type { SpreadsheetWorkbook } from '../../src/shared/spreadsheet';
+import { parseXlsxWorkbook } from './xlsx-parser';
+import { writeXlsxWorkbook, writeXlsxWorkbookFresh } from './xlsx-writer';
+import { parseOdsWorkbook } from './ods-parser';
+import { writeOdsWorkbook } from './ods-writer';
+import { parseCsvWorkbook } from './csv-workbook';
+import { writeCsvWorkbook } from './csv-writer';
+import { parseXlsWorkbook } from './xls-reader';
+import type { SlideDeck } from '../../src/shared/slides';
+import { parsePptxDeck } from './pptx-parser';
+import { parseOdpDeck } from './odp-parser';
 import { buildVaultLinkIndex } from './links';
 import {
   parseHtmlTasks,
@@ -471,6 +482,120 @@ export function createVaultService(
     } finally {
       await file.close();
     }
+  }
+
+  async function readVaultFileBytes(relativePath: string, label: string): Promise<Buffer> {
+    const absolute = await resolveEntry(relativePath);
+    const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) {
+        throw new Error(`This ${label} exceeds the 40 MiB file limit.`);
+      }
+      const bytes = decodeFileBytes(relativePath, await file.readFile());
+      if (bytes.length > 40 * 1024 * 1024) throw new Error(`This ${label} exceeds the 40 MiB file limit.`);
+      if (disposed || !root) throw new Error('This library is closed.');
+      return bytes;
+    } finally {
+      await file.close();
+    }
+  }
+
+  function validateSpreadsheetWorkbook(value: unknown): SpreadsheetWorkbook {
+    if (typeof value !== 'object' || value === null) throw new Error('Spreadsheet data is invalid.');
+    const workbook = value as SpreadsheetWorkbook;
+    if (!['xlsx', 'ods', 'csv', 'xls'].includes(workbook.sourceFormat)) {
+      throw new Error('Spreadsheet data is invalid.');
+    }
+    if (!Array.isArray(workbook.sheets) || !workbook.sheets.length || workbook.sheets.length > 100) {
+      throw new Error('Spreadsheet data is invalid.');
+    }
+    let cells = 0;
+    for (const sheet of workbook.sheets) {
+      if (typeof sheet.name !== 'string' || !Array.isArray(sheet.rows) || sheet.rows.length > 10_000) {
+        throw new Error('Spreadsheet data is invalid.');
+      }
+      for (const row of sheet.rows) {
+        if (!Array.isArray(row) || row.length > 256) throw new Error('Spreadsheet data is invalid.');
+        for (const cell of row) {
+          if (typeof cell !== 'object' || cell === null || typeof cell.text !== 'string') {
+            throw new Error('Spreadsheet data is invalid.');
+          }
+          cells += 1;
+          if (cells > 500_000) throw new Error('Spreadsheet data is invalid.');
+        }
+      }
+    }
+    return workbook;
+  }
+
+  async function readSpreadsheet(relativePath: string): Promise<SpreadsheetWorkbook> {
+    if (/\.xlsx$/i.test(relativePath)) {
+      return parseXlsxWorkbook(await readVaultFileBytes(relativePath, 'XLSX'));
+    }
+    if (/\.ods$/i.test(relativePath)) {
+      return parseOdsWorkbook(await readVaultFileBytes(relativePath, 'ODS'));
+    }
+    if (/\.csv$/i.test(relativePath)) {
+      const text = (await readVaultFileBytes(relativePath, 'CSV')).toString('utf8');
+      const name = path.basename(relativePath).replace(/\.csv$/i, '') || 'Sheet';
+      return parseCsvWorkbook(text, name);
+    }
+    if (/\.xls$/i.test(relativePath)) {
+      return parseXlsWorkbook(await readVaultFileBytes(relativePath, 'XLS'));
+    }
+    throw new Error('Spreadsheet reading requires an .xlsx, .ods, .csv, or .xls file.');
+  }
+
+  async function readSlideDeck(relativePath: string): Promise<SlideDeck> {
+    if (/\.pptx$/i.test(relativePath)) {
+      return parsePptxDeck(await readVaultFileBytes(relativePath, 'PPTX'));
+    }
+    if (/\.odp$/i.test(relativePath)) {
+      return parseOdpDeck(await readVaultFileBytes(relativePath, 'ODP'));
+    }
+    throw new Error('Slide reading requires a .pptx or .odp file.');
+  }
+
+  async function saveSpreadsheet(relativePath: string, value: unknown): Promise<void> {
+    const workbook = validateSpreadsheetWorkbook(value);
+    const originalBytes = await readVaultFileBytes(relativePath, 'spreadsheet');
+    let bytes: Buffer;
+    if (/\.xlsx$/i.test(relativePath)) {
+      if (workbook.sourceFormat !== 'xlsx') throw new Error('This spreadsheet is not an .xlsx file.');
+      bytes = writeXlsxWorkbook(originalBytes, workbook);
+    } else if (/\.ods$/i.test(relativePath)) {
+      if (workbook.sourceFormat !== 'ods') throw new Error('This spreadsheet is not an .ods file.');
+      bytes = writeOdsWorkbook(originalBytes, workbook);
+    } else if (/\.csv$/i.test(relativePath)) {
+      if (workbook.sourceFormat !== 'csv') throw new Error('This spreadsheet is not a .csv file.');
+      bytes = Buffer.from(writeCsvWorkbook(workbook), 'utf8');
+    } else {
+      throw new Error('Spreadsheet saving requires an .xlsx, .ods, or .csv file.');
+    }
+    await rewriteRawBytes(relativePath, bytes);
+    await refreshSearchIndex();
+  }
+
+  async function saveSpreadsheetAsXlsx(relativePath: string, value: unknown): Promise<string> {
+    const workbook = validateSpreadsheetWorkbook(value);
+    if (!/\.xls$/i.test(relativePath)) throw new Error('Save as .xlsx requires an .xls file.');
+    if (workbook.sourceFormat !== 'xls') throw new Error('This spreadsheet is not an .xls file.');
+    const bytes = writeXlsxWorkbookFresh(workbook);
+    const directory = path.posix.dirname(relativePath);
+    const base = path.basename(relativePath).replace(/\.xls$/i, '');
+    let candidate = path.posix.join(directory, `${base}.xlsx`);
+    for (let attempt = 2; attempt <= 100; attempt += 1) {
+      try {
+        await resolveEntry(candidate);
+        candidate = path.posix.join(directory, `${base} ${attempt}.xlsx`);
+      } catch {
+        break;
+      }
+    }
+    await createDocument(candidate, bytes, 'created');
+    await refreshSearchIndex();
+    return candidate;
   }
 
   async function scanDirectory(
@@ -2087,6 +2212,10 @@ export function createVaultService(
     validateDocxAnnotationDocument,
     validateEpubAnnotationDocument,
     readDocxStructure,
+    readSpreadsheet,
+    readSlideDeck,
+    saveSpreadsheet,
+    saveSpreadsheetAsXlsx,
     resolveMetadata,
     search,
     getTags,

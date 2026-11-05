@@ -25,6 +25,8 @@ import type { AssetDraft, AssetDraftInput, AssetDraftRecovery } from './asset-dr
 import type { CardSchedule } from './assets';
 import type { PdfReadingPreferences } from './pdf-reading-preferences';
 import type { DocxStructure } from './docx';
+import type { SpreadsheetWorkbook } from './spreadsheet';
+import type { SlideDeck } from './slides';
 
 /** Explicit local-vault operations exposed by the sandboxed preload bridge. */
 export interface VaultBridge {
@@ -95,6 +97,10 @@ export interface VaultBridge {
   deleteEpubAnnotation(path: string, id: string): Promise<void>;
   readAttachment(path: string): Promise<AttachmentPreview>;
   readDocxStructure(path: string): Promise<DocxStructure>;
+  readSpreadsheet(path: string): Promise<SpreadsheetWorkbook>;
+  readSlideDeck(path: string): Promise<SlideDeck>;
+  saveSpreadsheet(path: string, workbook: SpreadsheetWorkbook): Promise<void>;
+  saveSpreadsheetAsXlsx(path: string, workbook: SpreadsheetWorkbook): Promise<string>;
   getImageAlt(path: string): Promise<string>;
   saveImageAlt(path: string, alt: string): Promise<void>;
   getSettings(): Promise<NotebookSettings>;
