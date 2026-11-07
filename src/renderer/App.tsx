@@ -55,7 +55,12 @@ import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
-import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
+import {
+  headingAnchorAt,
+  normalizeHeadingText,
+  readingJumpHeading,
+  resolveBookmarkAnchor,
+} from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
@@ -3168,18 +3173,24 @@ export default function App() {
   };
 
   // Focus the heading a bookmark points at in the reading view. Returns
-  // false when there is no heading to land on (a position bookmark
-  // before the first heading, or a note with no headings).
-  const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
+  // the focused heading, or null when there is no heading to land on (a
+  // position bookmark before the first heading, or a note with no
+  // headings). The comparison uses the rendered heading text: an anchor
+  // stores the heading as written in source (`Hello *world*`), while the
+  // reading view shows it formatted (`Hello world`).
+  const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
-    if (!jumpHeading) return false;
+    if (!jumpHeading) return null;
     const container = annotationTools.documentRef.current;
     const headings = container
       ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
       : [];
-    const matches = headings.filter((heading) => heading.textContent?.trim() === jumpHeading.text);
+    const wanted = normalizeHeadingText(jumpHeading.text);
+    const matches = headings.filter(
+      (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+    );
     const target = matches[jumpHeading.occurrence] ?? matches[0];
-    if (!target) return false;
+    if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
     try {
@@ -3187,7 +3198,39 @@ export default function App() {
     } catch {
       // Scrolling is best-effort; the focus landing is what matters.
     }
-    return true;
+    return target;
+  };
+
+  // Move the caret to the bookmarked place in the rich-text editor, which
+  // has no textarea: the edit branch of the jump cannot use editorRef.
+  // A heading anchor (or a position anchor inside a section) lands the
+  // caret at the start of that heading; a position anchor before the
+  // first heading lands it at the start of the editor. Returns true when
+  // the caret is placed and the editor has focus.
+  const focusRichTextBookmark = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
+    const editor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    if (!editor) return false;
+    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+    let caretNode: Node | null = null;
+    if (jumpHeading) {
+      const wanted = normalizeHeadingText(jumpHeading.text);
+      const headings = [...editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
+      const matches = headings.filter(
+        (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+      );
+      const target = matches[jumpHeading.occurrence] ?? matches[0];
+      if (target) caretNode = target.firstChild ?? target;
+    }
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return false;
+    const range = document.createRange();
+    if (caretNode) range.setStart(caretNode, 0);
+    else range.selectNodeContents(editor);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return document.activeElement === editor;
   };
 
   // A bookmark jump suppresses the next resume only while that note stays
@@ -3201,41 +3244,84 @@ export default function App() {
 
   // After a bookmark with an anchor is activated, land the caret (edit
   // mode) or focus (reading view) at the anchored place once the note is
-  // the current one.
+  // the current one. The first attempt is deferred a tick: opening a note
+  // (or switching to it) can change the mode in a later effect in the
+  // same commit, which swaps the editor for the reading view (or the
+  // reverse) and destroys whatever the jump just focused — that is how a
+  // jump used to land and then lose focus, leaving the reader at the top
+  // of the note. The anchor is only cleared once the landing is verified
+  // (focus really is on the target), and a landing that cannot be made
+  // yet is retried a bounded number of times instead of being dropped.
   useEffect(() => {
     if (!pendingBookmarkAnchor || currentNote?.path !== pendingBookmarkAnchor.path) return;
     const { anchor } = pendingBookmarkAnchor;
     const isHtml = /\.html?$/i.test(currentNote.path);
     const offset = resolveBookmarkAnchor(currentNote.content, isHtml, anchor);
-    setPendingBookmarkAnchor(null);
     if (offset === null) {
+      setPendingBookmarkAnchor(null);
       setStatusMessage('That bookmarked heading no longer exists in the note.');
       return;
     }
-    const textarea = editorRef.current;
-    if (textarea && mode === 'edit') {
-      textarea.focus();
-      try {
-        textarea.setSelectionRange(offset, offset);
-      } catch {
-        // The caret landing is best-effort; the note is open either way.
+    const path = currentNote.path;
+    const content = currentNote.content;
+    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+    const headingName = jumpHeading ? normalizeHeadingText(jumpHeading.text) : null;
+    const announce = () =>
+      setStatusMessage(headingName ? `Jumped to ${headingName}.` : 'Jumped to the bookmarked place.');
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const tryLand = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const textarea = editorRef.current;
+      if (textarea && mode === 'edit') {
+        textarea.focus();
+        try {
+          textarea.setSelectionRange(offset, offset);
+        } catch {
+          // The caret landing is best-effort; the note is open either way.
+        }
+        if (document.activeElement === textarea && textarea.selectionStart === offset) {
+          bookmarkJumpRef.current = { path, anchor };
+          setPendingBookmarkAnchor(null);
+          announce();
+          return;
+        }
+      } else if (mode === 'edit' && focusRichTextBookmark(content, isHtml, anchor)) {
+        bookmarkJumpRef.current = { path, anchor };
+        setPendingBookmarkAnchor(null);
+        announce();
+        return;
+      } else if (mode !== 'edit') {
+        const target = focusBookmarkHeading(content, isHtml, anchor);
+        if (target && document.activeElement === target) {
+          bookmarkJumpRef.current = { path, anchor };
+          setPendingBookmarkAnchor(null);
+          announce();
+          return;
+        }
       }
-      bookmarkJumpRef.current = { path: currentNote.path, anchor };
+      if (attempts < 10) {
+        timer = setTimeout(tryLand, 50);
+        return;
+      }
+      // No heading to land on (a position bookmark before the first
+      // heading), or the target never became focusable: focus already
+      // rests on the note's main region (opening the note requests it),
+      // which is the top of the note, so the jump still lands the reader
+      // in the note.
+      bookmarkJumpRef.current = { path, anchor };
+      setPendingBookmarkAnchor(null);
       setStatusMessage('Opened at the bookmarked place.');
-      return;
-    }
-    if (focusBookmarkHeading(currentNote.content, isHtml, anchor)) {
-      bookmarkJumpRef.current = { path: currentNote.path, anchor };
-      setStatusMessage('Opened at the bookmarked heading.');
-      return;
-    }
-    // No heading to land on: focus already rests on the note's main
-    // region (opening the note requests it), which is the top of the
-    // note, so the jump still lands the reader in the note.
-    bookmarkJumpRef.current = { path: currentNote.path, anchor };
-    setStatusMessage('Opened at the bookmarked place.');
+    };
+    timer = setTimeout(tryLand, 0);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingBookmarkAnchor, currentNote]);
+  }, [pendingBookmarkAnchor, currentNote, mode]);
 
   // Resume a note in reading mode at the heading the reader had reached.
   // A bookmark jump takes precedence: when one is pending, this stays out
@@ -3252,10 +3338,13 @@ export default function App() {
       // one): keep the reader at the bookmarked heading instead of
       // resuming to the saved reading position. When there is no heading
       // to land on, fall through to the normal resume below.
-      if (
-        focusBookmarkHeading(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor)
-      ) {
-        setStatusMessage('Opened at the bookmarked heading.');
+      const jumpedTarget = focusBookmarkHeading(
+        currentNote.content,
+        /\.html?$/i.test(currentNote.path),
+        jumped.anchor,
+      );
+      if (jumpedTarget) {
+        setStatusMessage(`Jumped to ${jumpedTarget.textContent?.trim() ?? 'the bookmarked heading'}.`);
         return;
       }
     }
@@ -3266,7 +3355,10 @@ export default function App() {
         if (cancelled || !saved?.heading) return;
         const container = annotationTools.documentRef.current;
         const headings = container ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')] : [];
-        const matches = headings.filter((heading) => heading.textContent?.trim() === saved.heading);
+        const wanted = normalizeHeadingText(saved.heading);
+        const matches = headings.filter(
+          (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+        );
         const target = matches[saved.occurrence ?? 0] ?? matches[0];
         if (target) {
           if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');

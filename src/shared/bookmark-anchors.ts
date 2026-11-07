@@ -24,6 +24,25 @@ function stripHtml(text: string): string {
     .trim();
 }
 
+/**
+ * The heading text as the reader sees it: inline Markdown formatting
+ * stripped. A heading stored from source (`# Hello *world*`) anchors as
+ * `Hello *world*` but renders as `Hello world`, so the two forms must be
+ * compared in their rendered shape or the jump never matches.
+ */
+export function normalizeHeadingText(text: string): string {
+  return stripHtml(
+    text
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
+      .replace(/(`{1,3})([^`]*?)\1/g, '$2')
+      .replace(/(\*\*|__)(.*?)\1/g, '$2')
+      .replace(/(\*|_)(.*?)\1/g, '$2')
+      .replace(/~~(.*?)~~/g, '$1'),
+  ).trim();
+}
+
 /** Every heading in document order, with the character offset where it starts. */
 export function listHeadings(content: string, isHtml: boolean): HeadingHit[] {
   if (isHtml) {

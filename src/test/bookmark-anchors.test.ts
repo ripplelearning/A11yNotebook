@@ -7,6 +7,7 @@ import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
   listHeadings,
+  normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
   sanitizeBookmarkAnchor,
@@ -114,5 +115,17 @@ describe('readingJumpHeading', () => {
       occurrence: 0,
     });
     expect(readingJumpHeading('Intro first.\n\n# Title\n', false, { kind: 'offset', offset: 0 })).toBeNull();
+  });
+});
+
+describe('normalizeHeadingText', () => {
+  it('strips inline Markdown formatting to the rendered text', () => {
+    expect(normalizeHeadingText('Hello *world*')).toBe('Hello world');
+    expect(normalizeHeadingText('**Bold** and _italic_')).toBe('Bold and italic');
+    expect(normalizeHeadingText('Use `code` here')).toBe('Use code here');
+    expect(normalizeHeadingText('Read [the guide](https://example.com) first')).toBe('Read the guide first');
+    expect(normalizeHeadingText('See [the guide][g]')).toBe('See the guide');
+    expect(normalizeHeadingText('Plain heading')).toBe('Plain heading');
+    expect(normalizeHeadingText('  Spaced  ')).toBe('Spaced');
   });
 });
