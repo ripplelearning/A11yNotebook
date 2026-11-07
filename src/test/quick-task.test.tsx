@@ -10,7 +10,6 @@ import { shortcutConflicts } from '../shared/settings';
 import {
   QuickTaskDialog,
   QuickTaskLibraryPicker,
-  QuickTaskNotebookPicker,
 } from '../renderer/features/reminders/QuickTaskDialog';
 
 describe('quick task command defaults', () => {
@@ -54,7 +53,7 @@ describe('quick task dialog', () => {
       target: { value: '  Plan review  ' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
-    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith('Plan review'));
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith('Plan review', undefined));
     await vi.waitFor(() => expect(onClose).toHaveBeenCalled());
   });
 
@@ -111,27 +110,84 @@ describe('quick task fallback pickers', () => {
     expect(onOpenLibrary).toHaveBeenCalled();
   });
 
-  it('picks a notebook, or the library root', () => {
-    const onPickRoot = vi.fn();
-    const { unmount } = render(
-      <QuickTaskNotebookPicker notebooks={['Work', 'Home/Lists']} onPick={onPickRoot} onClose={() => undefined} />,
+});
+
+describe('quick task notebook chooser', () => {
+  const notebooks = [
+    { path: 'Work', name: 'Work' },
+    { path: 'Home/Lists', name: 'Lists' },
+  ];
+
+  it('shows the chooser after the text box, preselected to the most recent notebook', () => {
+    const onCreate = vi.fn(async () => undefined);
+    render(
+      <QuickTaskDialog onCreate={onCreate} onClose={() => undefined} notebooks={notebooks} defaultNotebookPath="Home/Lists" />,
     );
-    const rootDialog = screen.getByRole('dialog', { name: 'Quick Task notebook' });
-    const rootSelect = within(rootDialog).getByLabelText('Notebook');
-    expect(within(rootSelect as HTMLElement).getAllByRole('option').map((option) => option.textContent)).toEqual([
+    const dialog = screen.getByRole('dialog', { name: 'Quick Task' });
+    const inputs = within(dialog).queryAllByRole('textbox');
+    expect(inputs).toHaveLength(1);
+    expect(document.activeElement).toBe(inputs[0]);
+    const select = within(dialog).getByLabelText('Notebook');
+    expect(within(select as HTMLElement).getAllByRole('option').map((option) => option.textContent)).toEqual([
       'Library root',
       'Work',
-      'Home/Lists',
+      'Lists',
     ]);
-    fireEvent.click(within(rootDialog).getByRole('button', { name: 'OK' }));
-    expect(onPickRoot).toHaveBeenCalledWith(undefined);
+    expect(select).toHaveValue('Home/Lists');
+    // Saving without choosing uses the preselected most recent notebook.
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Quick Task' }), {
+      target: { value: 'Buy milk' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    return vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith('Buy milk', 'Home/Lists'));
+  });
+
+  it('saves to the picked notebook, or the library root', async () => {
+    const onCreate = vi.fn(async () => undefined);
+    const { unmount } = render(
+      <QuickTaskDialog onCreate={onCreate} onClose={() => undefined} notebooks={notebooks} defaultNotebookPath="Work" />,
+    );
+    const dialog = screen.getByRole('dialog', { name: 'Quick Task' });
+    fireEvent.change(within(dialog).getByLabelText('Notebook'), { target: { value: 'Home/Lists' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Quick Task' }), {
+      target: { value: 'Buy milk' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
+    await vi.waitFor(() => expect(onCreate).toHaveBeenCalledWith('Buy milk', 'Home/Lists'));
     unmount();
 
-    const onPickNotebook = vi.fn();
-    render(<QuickTaskNotebookPicker notebooks={['Work', 'Home/Lists']} onPick={onPickNotebook} onClose={() => undefined} />);
-    const dialog = screen.getByRole('dialog', { name: 'Quick Task notebook' });
-    fireEvent.change(within(dialog).getByLabelText('Notebook'), { target: { value: 'Home/Lists' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'OK' }));
-    expect(onPickNotebook).toHaveBeenCalledWith('Home/Lists');
+    const onCreateRoot = vi.fn(async () => undefined);
+    render(
+      <QuickTaskDialog
+        onCreate={onCreateRoot}
+        onClose={() => undefined}
+        notebooks={notebooks}
+        defaultNotebookPath="Work"
+      />,
+    );
+    const rootDialog = screen.getByRole('dialog', { name: 'Quick Task' });
+    fireEvent.change(within(rootDialog).getByLabelText('Notebook'), { target: { value: '' } });
+    fireEvent.change(within(rootDialog).getByRole('textbox', { name: 'Quick Task' }), {
+      target: { value: 'Buy milk' },
+    });
+    fireEvent.click(within(rootDialog).getByRole('button', { name: 'OK' }));
+    await vi.waitFor(() => expect(onCreateRoot).toHaveBeenCalledWith('Buy milk', undefined));
+  });
+
+  it('requires a notebook to be picked when there is no default', () => {
+    const onCreate = vi.fn(async () => undefined);
+    render(<QuickTaskDialog onCreate={onCreate} onClose={() => undefined} notebooks={notebooks} />);
+    const dialog = screen.getByRole('dialog', { name: 'Quick Task' });
+    const select = within(dialog).getByLabelText('Notebook');
+    expect(select).toHaveValue('__choose__');
+    expect(within(dialog).getByRole('button', { name: 'OK' })).toBeDisabled();
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Quick Task' }), {
+      target: { value: 'Buy milk' },
+    });
+    fireEvent.submit(dialog.querySelector('form')!);
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Choose a notebook.');
+    expect(onCreate).not.toHaveBeenCalled();
+    fireEvent.change(select, { target: { value: 'Work' } });
+    expect(within(dialog).getByRole('button', { name: 'OK' })).not.toBeDisabled();
   });
 });

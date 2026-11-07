@@ -54,11 +54,13 @@ export function parseLinkUrl(content: string): string | null {
 /**
  * Read the URL out of a Google link-pointer file (.gdoc, .gsheet,
  * .gslides). Pointer files are JSON with a `url` field. Returns null when
- * the file is not valid pointer JSON or the URL is not a web URL.
+ * the file is not valid pointer JSON or the URL is not a web URL. A UTF-8
+ * byte-order mark at the start of the file is tolerated: some writers
+ * emit one, and JSON.parse rejects it.
  */
 export function parsePointerFileUrl(content: string): string | null {
   try {
-    const parsed: unknown = JSON.parse(content);
+    const parsed: unknown = JSON.parse(content.replace(/^\uFEFF/, ''));
     if (!parsed || typeof parsed !== 'object') return null;
     const url = (parsed as Record<string, unknown>).url;
     if (typeof url !== 'string' || !isWebUrl(url)) return null;
@@ -66,6 +68,27 @@ export function parsePointerFileUrl(content: string): string | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Name the specific reason a link-pointer file holds no usable URL, so a
+ * failed "Add as link" offer can say what went wrong instead of falling
+ * back silently. Returns null when the content parses to a usable URL.
+ */
+export function describePointerFileProblem(content: string): string | null {
+  const text = content.replace(/^\uFEFF/, '');
+  if (!text.trim()) return 'The file is empty.';
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    return 'The file does not contain valid link data.';
+  }
+  if (!parsed || typeof parsed !== 'object') return 'The file does not contain valid link data.';
+  const url = (parsed as Record<string, unknown>).url;
+  if (typeof url !== 'string') return 'The file does not contain a web address.';
+  if (!isWebUrl(url)) return 'The web address in the file is not an http or https address.';
+  return null;
 }
 
 const ILLEGAL_FILE_NAME_CHARACTERS = /[<>:"/\\|?*\p{Cc}]/gu;

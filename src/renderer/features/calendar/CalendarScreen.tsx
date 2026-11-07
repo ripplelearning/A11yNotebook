@@ -73,6 +73,7 @@ export default function CalendarScreen({
   onOpenEntry,
   announce,
   createRequest = 0,
+  openRequest = null,
 }: {
   title?: string;
   vaultPath: string;
@@ -83,6 +84,8 @@ export default function CalendarScreen({
   announce: (message: string) => void;
   /** Increment to open the New appointment dialog (for example, from Ctrl+N). */
   createRequest?: number;
+  /** Open an existing appointment's dialog (for example, from a search result). */
+  openRequest?: { id: string; nonce: number } | null;
 }) {
   const [appointments, setAppointments] = useState<CalendarAppointment[]>([]);
   const [tasks, setTasks] = useState<VaultTask[]>([]);
@@ -143,6 +146,26 @@ export default function CalendarScreen({
     }
     lastCreateRequestRef.current = createRequest;
   }, [createRequest]);
+
+  // An open request opens that appointment's dialog once the appointments
+  // have loaded. The request is consumed only then: while loading, the
+  // effect simply waits for the next appointments update. A request for
+  // an appointment that loaded but is gone is announced once.
+  const lastOpenRequestRef = useRef<{ id: string; nonce: number } | null>(null);
+  useEffect(() => {
+    if (!openRequest) return;
+    if (lastOpenRequestRef.current?.nonce === openRequest.nonce) return;
+    const target = appointments.find((item) => item.id === openRequest.id);
+    if (!target) {
+      if (!loading) {
+        lastOpenRequestRef.current = openRequest;
+        announce('That appointment is no longer available.');
+      }
+      return;
+    }
+    lastOpenRequestRef.current = openRequest;
+    setDialog({ appointment: target });
+  }, [openRequest, appointments, loading, announce]);
 
   useEffect(() => {
     alive.current = true;

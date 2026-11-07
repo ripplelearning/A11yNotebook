@@ -196,7 +196,11 @@ export default function AppointmentDialog({
       await onDelete(appointment.id);
       if (mounted.current) onClose();
     } catch (reason) {
-      if (mounted.current) setError(reason instanceof Error ? reason.message : 'Could not delete appointment.');
+      if (mounted.current) {
+        // Close the confirmation so the error in the edit dialog is visible.
+        setConfirmDelete(false);
+        setError(reason instanceof Error ? reason.message : 'Could not delete appointment.');
+      }
     } finally {
       saving.current = false;
       if (mounted.current) setBusy(false);
@@ -440,24 +444,36 @@ export default function AppointmentDialog({
           <button type="button" disabled={busy} onClick={close}>
             Cancel
           </button>
-          {appointment && onDelete && !confirmDelete && (
+          {appointment && onDelete && (
             <button type="button" disabled={busy} onClick={() => setConfirmDelete(true)}>
               Delete appointment
             </button>
           )}
-          {appointment && onDelete && confirmDelete && (
-            <>
-              <p>Deleting removes the whole series, not just one occurrence.</p>
-              <button type="button" disabled={busy} onClick={() => void remove()}>
-                Delete the whole series
-              </button>
-              <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>
-                Keep appointment
-              </button>
-            </>
-          )}
         </div>
       </form>
+      {appointment && onDelete && confirmDelete && (
+        <Modal
+          title="Delete appointment"
+          titleId={`${id}-delete-title`}
+          describedBy={`${id}-delete-message`}
+          role="alertdialog"
+          onClose={() => setConfirmDelete(false)}
+        >
+          <p id={`${id}-delete-message`}>
+            {appointment.recurrence
+              ? 'Deleting removes the whole series, not just one occurrence.'
+              : 'Delete this appointment?'}
+          </p>
+          <div className="modal-actions">
+            <button type="button" data-autofocus disabled={busy} onClick={() => void remove()}>
+              {appointment.recurrence ? 'Delete the whole series' : 'Delete appointment'}
+            </button>
+            <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>
+              Keep appointment
+            </button>
+          </div>
+        </Modal>
+      )}
     </Modal>
   );
 }

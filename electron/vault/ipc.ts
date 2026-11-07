@@ -70,7 +70,7 @@ import {
   importedCopyPath,
   isEncryptedNoteSource,
   readImportSource,
-  readPointerFileUrl,
+  readPointerFile,
 } from './import';
 import { isExternalDocumentPath } from './external-documents';
 import { openWithWindows } from './open-with';
@@ -3587,16 +3587,23 @@ export function setupVaultIpc(
         // keep throwing their guidance.
         const extension = path.extname(source).toLowerCase();
         if (!POINTER_EXTENSIONS.has(extension)) throw failure;
-        const pointerUrl = await readPointerFileUrl(source).catch(() => null);
-        if (!pointerUrl) throw failure;
-        access.assertCurrent();
-        return {
-          pointer: {
-            url: pointerUrl,
-            extension: extension as '.gdoc' | '.gsheet' | '.gslides',
-            guidance: failure instanceof Error ? failure.message : '',
-          },
-        };
+        const pointer = await readPointerFile(source).catch(() => null);
+        if (pointer && 'url' in pointer) {
+          access.assertCurrent();
+          return {
+            pointer: {
+              url: pointer.url,
+              extension: extension as '.gdoc' | '.gsheet' | '.gslides',
+              guidance: failure instanceof Error ? failure.message : '',
+            },
+          };
+        }
+        // The pointer read failed: keep the export guidance, but name the
+        // specific reason the link could not be read, so the failure is
+        // diagnosable instead of silently showing guidance alone.
+        const reason =
+          pointer && 'reason' in pointer ? pointer.reason : 'The link could not be read from this file.';
+        throw new Error(`${failure instanceof Error ? failure.message : ''} ${reason}`);
       }
       access.assertCurrent();
       const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;

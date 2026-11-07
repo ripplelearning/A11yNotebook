@@ -107,12 +107,20 @@ describe('citation dialog in reading view', () => {
     expect(screen.queryByRole('button', { name: 'Switch to edit mode to insert citations' })).not.toBeInTheDocument();
   });
 
-  it('hides the generator insert control in reading view, and switching reveals it', async () => {
+  it('has no view toggle in reading view, and switching views still works from the keyboard path', async () => {
     const { menu } = renderLibrary();
     await openNote();
     menu('open-bibliography');
     expect(screen.getByRole('dialog', { name: 'Bibliography' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Citation generator' }));
+    expect(screen.queryByRole('group', { name: 'Citation view' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Citation generator' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Bibliography' })).not.toBeInTheDocument();
+    // With the toggle gone, the keyboard commands are the only way to
+    // switch views while the dialog is open — including from reading
+    // view, where the generator shows its switch-to-edit action. (The
+    // native-menu path drops commands while a dialog is open, so drive
+    // the switch as a key event, like the view-switch test does.)
+    fireEvent.keyDown(document.body, { key: 'C', ctrlKey: true, shiftKey: true });
     expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Insert In-Text Citation' })).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Switch to edit mode to insert citations' }));

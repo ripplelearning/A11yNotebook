@@ -2,22 +2,40 @@ import { useState } from 'react';
 import Modal from '../../components/Modal';
 
 interface QuickTaskDialogProps {
-  onCreate: (text: string) => Promise<void>;
+  onCreate: (text: string, notebookPath: string | undefined) => Promise<void>;
   onClose: () => void;
+  /** The notebook the task goes to when there is no chooser (a notebook is already open). */
+  notebookPath?: string;
+  /**
+   * When set, a notebook chooser appears after the text box, in the same
+   * dialog, so the task can be jotted down first and the destination
+   * picked (or left on the most recent notebook) second.
+   */
+  notebooks?: { path: string; name: string }[];
+  /**
+   * The chooser's initial value: the most recent notebook. Undefined
+   * when there is no default — then a notebook must be picked before
+   * saving. An empty string in the chooser means the library root.
+   */
+  defaultNotebookPath?: string;
 }
 
 /**
- * The Quick Task dialog: only a Quick Task text box, OK, and Cancel.
- * OK is first and default, so Enter while focused in the text box
- * activates it through native form submission.
+ * The Quick Task dialog: a Quick Task text box first (focused on open),
+ * then — when no notebook is open — a notebook chooser in the same flow,
+ * then OK and Cancel. Saving without choosing uses the most recent
+ * notebook; OK stays disabled until a notebook is picked when there is
+ * no default at all.
  */
-export function QuickTaskDialog({ onCreate, onClose }: QuickTaskDialogProps) {
+export function QuickTaskDialog({ onCreate, onClose, notebookPath, notebooks, defaultNotebookPath }: QuickTaskDialogProps) {
   const [text, setText] = useState('');
+  const [chosen, setChosen] = useState<string | undefined>(defaultNotebookPath);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const close = () => {
     if (!busy) onClose();
   };
+  const needsChoice = notebooks !== undefined && chosen === undefined;
   return (
     <Modal title="Quick Task" titleId="quick-task-title" onClose={close}>
       <form
@@ -28,9 +46,14 @@ export function QuickTaskDialog({ onCreate, onClose }: QuickTaskDialogProps) {
             setError('Enter task text.');
             return;
           }
+          if (needsChoice) {
+            setError('Choose a notebook.');
+            return;
+          }
           setBusy(true);
           setError('');
-          void onCreate(text.trim())
+          const destination = notebooks ? (chosen === '' ? undefined : chosen) : notebookPath;
+          void onCreate(text.trim(), destination)
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
             .finally(() => setBusy(false));
@@ -40,8 +63,30 @@ export function QuickTaskDialog({ onCreate, onClose }: QuickTaskDialogProps) {
           Quick Task
           <input data-autofocus value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         </label>
+        {notebooks ? (
+          <label>
+            Notebook
+            <select
+              value={chosen ?? '__choose__'}
+              disabled={busy}
+              onChange={(event) => setChosen(event.target.value)}
+            >
+              {chosen === undefined ? (
+                <option value="__choose__" disabled>
+                  Choose a notebook
+                </option>
+              ) : null}
+              <option value="">Library root</option>
+              {notebooks.map((notebook) => (
+                <option key={notebook.path} value={notebook.path}>
+                  {notebook.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {error ? <p role="alert">{error}</p> : null}
-        <button type="submit" data-default disabled={busy}>
+        <button type="submit" data-default disabled={busy || needsChoice}>
           OK
         </button>
         <button type="button" disabled={busy} onClick={close}>
@@ -118,51 +163,6 @@ export function QuickTaskLibraryPicker({ libraries, onPick, onOpenLibrary, onClo
           </button>
         </div>
       )}
-    </Modal>
-  );
-}
-
-interface QuickTaskNotebookPickerProps {
-  notebooks: string[];
-  onPick: (notebookPath: string | undefined) => void;
-  onClose: () => void;
-}
-
-/** Second fallback step: pick a notebook in the newly opened library. */
-export function QuickTaskNotebookPicker({ notebooks, onPick, onClose }: QuickTaskNotebookPickerProps) {
-  const [path, setPath] = useState('');
-  const [busy, setBusy] = useState(false);
-  const close = () => {
-    if (!busy) onClose();
-  };
-  return (
-    <Modal title="Quick Task notebook" titleId="quick-task-notebook-title" onClose={close}>
-      <form
-        onSubmit={(event) => {
-          event.preventDefault();
-          if (busy) return;
-          setBusy(true);
-          onPick(path || undefined);
-        }}
-      >
-        <label>
-          Notebook
-          <select data-autofocus value={path} disabled={busy} onChange={(event) => setPath(event.target.value)}>
-            <option value="">Library root</option>
-            {notebooks.map((notebook) => (
-              <option key={notebook} value={notebook}>
-                {notebook}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="submit" data-default disabled={busy}>
-          OK
-        </button>
-        <button type="button" disabled={busy} onClick={close}>
-          Cancel
-        </button>
-      </form>
     </Modal>
   );
 }

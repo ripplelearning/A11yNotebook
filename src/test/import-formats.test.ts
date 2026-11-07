@@ -2,7 +2,7 @@ import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { convertImportedBytes, readImport, readImportSource, readPointerFileUrl } from '../../electron/vault/import';
+import { convertImportedBytes, readImport, readImportSource, readPointerFile, readPointerFileUrl } from '../../electron/vault/import';
 import { buildDocFixture } from './helpers/doc-fixture';
 import { zip } from './test-zip';
 
@@ -144,5 +144,35 @@ describe('Google pointer files as links', () => {
     await expect(readPointerFileUrl(wrongScheme)).resolves.toBeNull();
     const notJson = await writeTempFile('Broken.gdoc', 'not json at all');
     await expect(readPointerFileUrl(notJson)).resolves.toBeNull();
+  });
+
+  it('reads a BOM-prefixed pointer file', async () => {
+    const url = 'https://docs.google.com/document/d/abc';
+    const file = await writeTempFile('Marked.gdoc', `\uFEFF${JSON.stringify({ url })}`);
+    await expect(readPointerFileUrl(file)).resolves.toBe(url);
+    await expect(readPointerFile(file)).resolves.toEqual({ url });
+  });
+
+  it('names the reason the pointer file holds no usable URL', async () => {
+    const cases: Array<[string, string, { reason: string }]> = [
+      ['Empty.gdoc', '', { reason: 'The file is empty.' }],
+      ['Broken.gdoc', 'not json at all', { reason: 'The file does not contain valid link data.' }],
+      [
+        'NoUrl.gdoc',
+        JSON.stringify({ resource_id: 'abc' }),
+        { reason: 'The file does not contain a web address.' },
+      ],
+      [
+        'Ftp.gdoc',
+        JSON.stringify({ url: 'ftp://example.com/file' }),
+        { reason: 'The web address in the file is not an http or https address.' },
+      ],
+    ];
+    for (const [name, content, expected] of cases) {
+      const file = await writeTempFile(name, content);
+      await expect(readPointerFile(file)).resolves.toEqual(expected);
+    }
+    const missing = path.join(await realpath(tmpdir()), 'a11y-import-formats-no-such-file.gdoc');
+    await expect(readPointerFile(missing)).resolves.toEqual({ reason: 'The file could not be read.' });
   });
 });

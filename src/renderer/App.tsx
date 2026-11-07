@@ -55,7 +55,12 @@ import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
-import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
+import {
+  headingAnchorAt,
+  normalizeHeadingText,
+  readingJumpHeading,
+  resolveBookmarkAnchor,
+} from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
@@ -93,9 +98,11 @@ import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
 import ConflictDialog from './features/vault/ConflictDialog';
 import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
+import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
+import { searchTasksRemindersAppointments } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
 import SpellingDialog from './features/vault/SpellingDialog';
 import ThesaurusDialog from './features/vault/ThesaurusDialog';
@@ -136,11 +143,7 @@ import RemindersView from './features/reminders/RemindersView';
 import CalendarScreen from './features/calendar/CalendarScreen';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
-import {
-  QuickTaskDialog,
-  QuickTaskLibraryPicker,
-  QuickTaskNotebookPicker,
-} from './features/reminders/QuickTaskDialog';
+import { QuickTaskDialog, QuickTaskLibraryPicker } from './features/reminders/QuickTaskDialog';
 import { LinkDialog } from './features/links/LinkDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
@@ -406,6 +409,13 @@ export default function App() {
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string; permanent: boolean } | null>(null);
+  const [deleteGuard, setDeleteGuard] = useState<{
+    path: string;
+    name: string;
+    kind: 'note' | 'notebook';
+    permanent: boolean;
+    taskCount: number;
+  } | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
@@ -475,6 +485,15 @@ export default function App() {
   // reads it once on launch (see the wake focus effects below).
   const [wakeFocus, setWakeFocus] = useState<{ libraryPath: string; reminderId: string } | null>(null);
   const [pendingWakeFocusId, setPendingWakeFocusId] = useState<string | null>(null);
+  // A task or reminder opened from a search result: the view to show and
+  // the row to focus once it has rendered. Appointments open through a
+  // request to the calendar screen instead (it owns its data).
+  const [pendingSearchFocus, setPendingSearchFocus] = useState<{
+    tab: 'tasks' | 'reminders';
+    id: string;
+    announce: string;
+  } | null>(null);
+  const [openAppointmentRequest, setOpenAppointmentRequest] = useState<{ id: string; nonce: number } | null>(null);
   const [calendarTabOpen, setCalendarTabOpen] = useState(false);
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
@@ -483,12 +502,11 @@ export default function App() {
   const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
-  const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'notebook' | 'task' | null>(null);
+  const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'task' | null>(null);
   type LinkDialogState =
     | { mode: 'add'; notebookPath: string; initialUrl: string; guidance?: string }
     | { mode: 'edit'; path: string; title: string; url: string };
   const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
-  const [quickTaskNotebookPath, setQuickTaskNotebookPath] = useState<string | undefined>();
   const [dictationActive, setDictationActive] = useState(false);
   const [transcriptionModelChoiceOpen, setTranscriptionModelChoiceOpen] = useState(false);
   const [audioNoteRecording, setAudioNoteRecording] = useState(false);
@@ -1615,21 +1633,41 @@ export default function App() {
         searchScope === 'current'
           ? { text: searchText, ...searchFilters, notebook: selectedNotebookPath, limit: 100 }
           : { text: searchText, ...searchFilters, limit: 100 };
-      void bridge.vault
-        .search(query)
-        .then((matches) => {
-          if (!cancelled) {
-            setSearchResults(matches);
-            // The list itself is filtered at render, but the announcement
-            // must count what is actually shown.
-            const hidden = settings.showOriginalFiles
-              ? new Set<string>()
-              : supersededPaths(vault?.entries ?? []);
-            const visible = matches.filter((match) => !hidden.has(match.path)).length;
-            setStatusMessage(
-              `${visible} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
-            );
-          }
+      // The file index only knows file kinds: a task, reminder, or
+      // appointment kind must never reach it (its validator rejects the
+      // kind), so those searches skip the file query entirely.
+      const fileKind =
+        query.kind === 'task' || query.kind === 'reminder' || query.kind === 'appointment' ? null : query;
+      void Promise.all([
+        fileKind ? bridge.vault.search(fileKind) : Promise.resolve([] as VaultSearchResult[]),
+        bridge.vault.getCalendar?.().catch(() => []) ?? Promise.resolve([]),
+      ])
+        .then(([fileMatches, appointments]) => {
+          if (cancelled) return;
+          const extra = searchTasksRemindersAppointments(query, {
+            tasks,
+            reminders: reminderState.reminders,
+            appointments: appointments ?? [],
+          });
+          const matches = [...fileMatches, ...extra]
+            .sort(
+              (a, b) =>
+                b.score - a.score ||
+                a.path.localeCompare(b.path) ||
+                a.kind.localeCompare(b.kind) ||
+                (a.targetId ?? '').localeCompare(b.targetId ?? ''),
+            )
+            .slice(0, query.limit ?? 100);
+          setSearchResults(matches);
+          // The list itself is filtered at render, but the announcement
+          // must count what is actually shown.
+          const hidden = settings.showOriginalFiles
+            ? new Set<string>()
+            : supersededPaths(vault?.entries ?? []);
+          const visible = matches.filter((match) => !hidden.has(match.path)).length;
+          setStatusMessage(
+            `${visible} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
+          );
         })
         .catch(() => {
           if (!cancelled) setStatusMessage('Could not query the search index.');
@@ -1639,7 +1677,16 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault, settings.showOriginalFiles]);
+  }, [
+    searchText,
+    searchFilters,
+    searchScope,
+    selectedNotebookPath,
+    vault,
+    settings.showOriginalFiles,
+    tasks,
+    reminderState.reminders,
+  ]);
 
   const availableRegions = FOCUS_REGION_ORDER.filter(
     (region) => (region !== 'right-pane' || rightPaneOpen) && (!focusMode || region === 'main'),
@@ -2019,7 +2066,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc|xlsx|ods|xls|pptx|odp)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (!canOpen()) return;
         setAttachment(preview);
@@ -3160,18 +3207,24 @@ export default function App() {
   };
 
   // Focus the heading a bookmark points at in the reading view. Returns
-  // false when there is no heading to land on (a position bookmark
-  // before the first heading, or a note with no headings).
-  const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
+  // the focused heading, or null when there is no heading to land on (a
+  // position bookmark before the first heading, or a note with no
+  // headings). The comparison uses the rendered heading text: an anchor
+  // stores the heading as written in source (`Hello *world*`), while the
+  // reading view shows it formatted (`Hello world`).
+  const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
-    if (!jumpHeading) return false;
+    if (!jumpHeading) return null;
     const container = annotationTools.documentRef.current;
     const headings = container
       ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
       : [];
-    const matches = headings.filter((heading) => heading.textContent?.trim() === jumpHeading.text);
+    const wanted = normalizeHeadingText(jumpHeading.text);
+    const matches = headings.filter(
+      (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+    );
     const target = matches[jumpHeading.occurrence] ?? matches[0];
-    if (!target) return false;
+    if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
     try {
@@ -3179,7 +3232,39 @@ export default function App() {
     } catch {
       // Scrolling is best-effort; the focus landing is what matters.
     }
-    return true;
+    return target;
+  };
+
+  // Move the caret to the bookmarked place in the rich-text editor, which
+  // has no textarea: the edit branch of the jump cannot use editorRef.
+  // A heading anchor (or a position anchor inside a section) lands the
+  // caret at the start of that heading; a position anchor before the
+  // first heading lands it at the start of the editor. Returns true when
+  // the caret is placed and the editor has focus.
+  const focusRichTextBookmark = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
+    const editor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    if (!editor) return false;
+    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+    let caretNode: Node | null = null;
+    if (jumpHeading) {
+      const wanted = normalizeHeadingText(jumpHeading.text);
+      const headings = [...editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
+      const matches = headings.filter(
+        (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+      );
+      const target = matches[jumpHeading.occurrence] ?? matches[0];
+      if (target) caretNode = target.firstChild ?? target;
+    }
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return false;
+    const range = document.createRange();
+    if (caretNode) range.setStart(caretNode, 0);
+    else range.selectNodeContents(editor);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    return document.activeElement === editor;
   };
 
   // A bookmark jump suppresses the next resume only while that note stays
@@ -3193,41 +3278,84 @@ export default function App() {
 
   // After a bookmark with an anchor is activated, land the caret (edit
   // mode) or focus (reading view) at the anchored place once the note is
-  // the current one.
+  // the current one. The first attempt is deferred a tick: opening a note
+  // (or switching to it) can change the mode in a later effect in the
+  // same commit, which swaps the editor for the reading view (or the
+  // reverse) and destroys whatever the jump just focused — that is how a
+  // jump used to land and then lose focus, leaving the reader at the top
+  // of the note. The anchor is only cleared once the landing is verified
+  // (focus really is on the target), and a landing that cannot be made
+  // yet is retried a bounded number of times instead of being dropped.
   useEffect(() => {
     if (!pendingBookmarkAnchor || currentNote?.path !== pendingBookmarkAnchor.path) return;
     const { anchor } = pendingBookmarkAnchor;
     const isHtml = /\.html?$/i.test(currentNote.path);
     const offset = resolveBookmarkAnchor(currentNote.content, isHtml, anchor);
-    setPendingBookmarkAnchor(null);
     if (offset === null) {
+      setPendingBookmarkAnchor(null);
       setStatusMessage('That bookmarked heading no longer exists in the note.');
       return;
     }
-    const textarea = editorRef.current;
-    if (textarea && mode === 'edit') {
-      textarea.focus();
-      try {
-        textarea.setSelectionRange(offset, offset);
-      } catch {
-        // The caret landing is best-effort; the note is open either way.
+    const path = currentNote.path;
+    const content = currentNote.content;
+    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+    const headingName = jumpHeading ? normalizeHeadingText(jumpHeading.text) : null;
+    const announce = () =>
+      setStatusMessage(headingName ? `Jumped to ${headingName}.` : 'Jumped to the bookmarked place.');
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const tryLand = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const textarea = editorRef.current;
+      if (textarea && mode === 'edit') {
+        textarea.focus();
+        try {
+          textarea.setSelectionRange(offset, offset);
+        } catch {
+          // The caret landing is best-effort; the note is open either way.
+        }
+        if (document.activeElement === textarea && textarea.selectionStart === offset) {
+          bookmarkJumpRef.current = { path, anchor };
+          setPendingBookmarkAnchor(null);
+          announce();
+          return;
+        }
+      } else if (mode === 'edit' && focusRichTextBookmark(content, isHtml, anchor)) {
+        bookmarkJumpRef.current = { path, anchor };
+        setPendingBookmarkAnchor(null);
+        announce();
+        return;
+      } else if (mode !== 'edit') {
+        const target = focusBookmarkHeading(content, isHtml, anchor);
+        if (target && document.activeElement === target) {
+          bookmarkJumpRef.current = { path, anchor };
+          setPendingBookmarkAnchor(null);
+          announce();
+          return;
+        }
       }
-      bookmarkJumpRef.current = { path: currentNote.path, anchor };
+      if (attempts < 10) {
+        timer = setTimeout(tryLand, 50);
+        return;
+      }
+      // No heading to land on (a position bookmark before the first
+      // heading), or the target never became focusable: focus already
+      // rests on the note's main region (opening the note requests it),
+      // which is the top of the note, so the jump still lands the reader
+      // in the note.
+      bookmarkJumpRef.current = { path, anchor };
+      setPendingBookmarkAnchor(null);
       setStatusMessage('Opened at the bookmarked place.');
-      return;
-    }
-    if (focusBookmarkHeading(currentNote.content, isHtml, anchor)) {
-      bookmarkJumpRef.current = { path: currentNote.path, anchor };
-      setStatusMessage('Opened at the bookmarked heading.');
-      return;
-    }
-    // No heading to land on: focus already rests on the note's main
-    // region (opening the note requests it), which is the top of the
-    // note, so the jump still lands the reader in the note.
-    bookmarkJumpRef.current = { path: currentNote.path, anchor };
-    setStatusMessage('Opened at the bookmarked place.');
+    };
+    timer = setTimeout(tryLand, 0);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pendingBookmarkAnchor, currentNote]);
+  }, [pendingBookmarkAnchor, currentNote, mode]);
 
   // Resume a note in reading mode at the heading the reader had reached.
   // A bookmark jump takes precedence: when one is pending, this stays out
@@ -3244,10 +3372,13 @@ export default function App() {
       // one): keep the reader at the bookmarked heading instead of
       // resuming to the saved reading position. When there is no heading
       // to land on, fall through to the normal resume below.
-      if (
-        focusBookmarkHeading(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor)
-      ) {
-        setStatusMessage('Opened at the bookmarked heading.');
+      const jumpedTarget = focusBookmarkHeading(
+        currentNote.content,
+        /\.html?$/i.test(currentNote.path),
+        jumped.anchor,
+      );
+      if (jumpedTarget) {
+        setStatusMessage(`Jumped to ${jumpedTarget.textContent?.trim() ?? 'the bookmarked heading'}.`);
         return;
       }
     }
@@ -3258,7 +3389,10 @@ export default function App() {
         if (cancelled || !saved?.heading) return;
         const container = annotationTools.documentRef.current;
         const headings = container ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')] : [];
-        const matches = headings.filter((heading) => heading.textContent?.trim() === saved.heading);
+        const wanted = normalizeHeadingText(saved.heading);
+        const matches = headings.filter(
+          (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+        );
         const target = matches[saved.occurrence ?? 0] ?? matches[0];
         if (target) {
           if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
@@ -3403,10 +3537,30 @@ export default function App() {
     })();
   };
 
-  const deleteEntry = async (entryPath: string, bypassProtection = false) => {
+  const deleteEntry = async (entryPath: string, bypassProtection = false, skipTaskGuard = false) => {
     if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
       openProtectedRequest(entryPath, 'delete');
       return;
+    }
+    if (!skipTaskGuard) {
+      // Tasks are checklist lines inside notes: deleting a note deletes
+      // its tasks with it. Warn first, naming the count, so the loss is
+      // never a surprise. A notebook counts the tasks in every note
+      // inside it.
+      const entry = findEntry(vault?.entries ?? [], entryPath);
+      const taskCount = tasks.filter(
+        (task) => task.path === entryPath || task.path.startsWith(`${entryPath}/`),
+      ).length;
+      if (taskCount > 0) {
+        setDeleteGuard({
+          path: entryPath,
+          name: entry?.name ?? entryPath.split('/').at(-1) ?? entryPath,
+          kind: entry?.kind === 'notebook' ? 'notebook' : 'note',
+          permanent: false,
+          taskCount,
+        });
+        return;
+      }
     }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     if (
@@ -3429,10 +3583,26 @@ export default function App() {
     }
   };
 
-  const deleteEntryPermanently = async (entryPath: string, bypassProtection = false) => {
+  const deleteEntryPermanently = async (entryPath: string, bypassProtection = false, skipTaskGuard = false) => {
     if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
       openProtectedRequest(entryPath, 'delete-permanent');
       return;
+    }
+    if (!skipTaskGuard) {
+      const entry = findEntry(vault?.entries ?? [], entryPath);
+      const taskCount = tasks.filter(
+        (task) => task.path === entryPath || task.path.startsWith(`${entryPath}/`),
+      ).length;
+      if (taskCount > 0) {
+        setDeleteGuard({
+          path: entryPath,
+          name: entry?.name ?? entryPath.split('/').at(-1) ?? entryPath,
+          kind: entry?.kind === 'notebook' ? 'notebook' : 'note',
+          permanent: true,
+          taskCount,
+        });
+        return;
+      }
     }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     const hasUnsavedChanges = affectedNotes.some((item) => item.content !== item.saved);
@@ -4444,10 +4614,10 @@ export default function App() {
   };
 
   // When a Quick Task library is picked, the library opens first and the
-  // notebook picker follows once the open library is in state.
+  // task dialog follows once the open library is in state.
   useEffect(() => {
     if (quickTaskStep === 'library' && vault) {
-      setQuickTaskStep('notebook');
+      setQuickTaskStep('task');
     }
   }, [quickTaskStep, vault]);
 
@@ -4523,6 +4693,25 @@ export default function App() {
     const item = reminderState.reminders.find((entry) => entry.id === id);
     if (item) setStatusMessage(`Due reminder: ${item.title}, ${new Date(item.scheduledAt).toLocaleString()}`);
   }, [pendingWakeFocusId, selectedTab, reminderState.reminders]);
+
+  // Focus a task or reminder opened from a search result once its view
+  // has rendered. Task and reminder rows already carry data-task-id /
+  // data-reminder-id and tabIndex -1; the opener resets the task filters
+  // first, so the row is present. Like the wake focus above, a dialog
+  // already on screen keeps focus instead.
+  useEffect(() => {
+    if (!pendingSearchFocus || selectedTab !== pendingSearchFocus.tab) return;
+    const { tab, id, announce } = pendingSearchFocus;
+    setPendingSearchFocus(null);
+    if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+    const attribute = tab === 'tasks' ? 'data-task-id' : 'data-reminder-id';
+    const row = Array.from(document.querySelectorAll(`[${attribute}]`)).find(
+      (element) => element.getAttribute(attribute) === id,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    row.focus();
+    setStatusMessage(announce);
+  }, [pendingSearchFocus, selectedTab, tasks, reminderState.reminders]);
 
   const createContextual = () => {
     if (selectedTab === 'libraries') {
@@ -4909,7 +5098,7 @@ export default function App() {
         setStatusMessage('Open a note in a notebook first.');
         return;
       }
-      if (commandId === 'open-citation-generator' && mode !== 'edit') {
+      if (commandId === 'open-citation-generator' && mode !== 'edit' && !citationDialog) {
         setStatusMessage('Open a note in a notebook in edit mode first.');
         return;
       }
@@ -5054,8 +5243,9 @@ export default function App() {
             // generic message: the main process throws them for
             // Google Docs link files and for formats the app cannot
             // read, and a generic message hides them. Other import
-            // failures keep the generic message, so internal error
-            // text is never shown to the user. Strip the Electron
+            // failures keep the generic lead-in but append the real
+            // underlying reason (for example the spreadsheet or ZIP
+            // error), so a failure is diagnosable. Strip the Electron
             // IPC wrapper first, as in the updater's error cleaning.
             const raw = failure instanceof Error ? failure.message : '';
             const cleaned = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
@@ -5063,7 +5253,13 @@ export default function App() {
               cleaned.includes('.gdoc') ||
               cleaned.includes('cannot be read by this app') ||
               cleaned.includes('only a link to an online');
-            setStatusMessage(isGuidance ? cleaned : 'Could not import the selected file.');
+            setStatusMessage(
+              isGuidance
+                ? cleaned
+                : cleaned
+                  ? `Could not import the selected file. ${cleaned}`
+                  : 'Could not import the selected file.',
+            );
           });
       else setStatusMessage('Select a notebook before importing a file.');
       return;
@@ -5354,15 +5550,11 @@ export default function App() {
       if (activeDialog === 'palette') setActiveDialog(null);
       if (!vault) {
         setQuickTaskStep('library');
-      } else if (selectedTab === 'notes-files' && selectedNotebookPath) {
-        // A notebook is visibly open: create the task there directly.
-        setQuickTaskNotebookPath(selectedNotebookPath);
-        setQuickTaskStep('task');
       } else {
-        // On the landing grid (or any other tab) the remembered notebook
-        // path does not count as open: ask which notebook the task goes in.
-        setQuickTaskNotebookPath(undefined);
-        setQuickTaskStep('notebook');
+        // The task dialog opens at once, with the text box focused first;
+        // when no notebook is open it carries the notebook chooser after
+        // the text box, in the same flow, instead of asking first.
+        setQuickTaskStep('task');
       }
       return;
     }
@@ -5920,6 +6112,13 @@ export default function App() {
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 
+  // The notebook a Quick Task goes to without asking: the notebook whose
+  // Notes & Files grid is visibly open. On the landing grid (or any other
+  // tab) the remembered notebook path does not count as open, so the task
+  // dialog carries the notebook chooser instead.
+  const quickTaskNotebookOpen =
+    selectedTab === 'notes-files' && selectedNotebookPath ? selectedNotebookPath : undefined;
+
   return (
     <div
       className={`${showCommandButtons ? 'app-shell' : 'app-shell command-buttons-hidden'}${focusMode ? ' focus-mode' : ''}${focusMode && settings.immersiveFocusMode ? ' immersive-focus-mode' : ''}`}
@@ -6196,8 +6395,39 @@ export default function App() {
               selectedNotebookPath={selectedNotebookPath}
               selectedNotebookName={selectedNotebookName}
               scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
-              onOpen={(relative) => {
-                const entry = findEntry(vault.entries, relative);
+              onOpen={(result) => {
+                if (result.kind === 'task' && result.targetId) {
+                  // The task filters could hide the row (a done task under
+                  // the Open filter, for example): show everything first,
+                  // then focus the row once the Tasks view renders.
+                  setTaskStatusFilter('all');
+                  setTaskDueFilter('any');
+                  setTaskPriorityFilter('all');
+                  setTaskNotebookFilter('all');
+                  setTaskTabOpen(true);
+                  navigateScreen('tasks');
+                  setPendingSearchFocus({ tab: 'tasks', id: result.targetId, announce: `Task: ${result.title}.` });
+                  return;
+                }
+                if (result.kind === 'reminder' && result.targetId) {
+                  const reminder = reminderState.reminders.find((item) => item.id === result.targetId);
+                  setReminderTabOpen(true);
+                  navigateScreen('reminders');
+                  setPendingSearchFocus({
+                    tab: 'reminders',
+                    id: result.targetId,
+                    announce: reminder
+                      ? `Reminder: ${reminder.title}, ${new Date(reminder.scheduledAt).toLocaleString()}.`
+                      : `Reminder: ${result.title}.`,
+                  });
+                  return;
+                }
+                if (result.kind === 'appointment' && result.targetId) {
+                  navigateScreen('calendar');
+                  setOpenAppointmentRequest({ id: result.targetId, nonce: Date.now() });
+                  return;
+                }
+                const entry = findEntry(vault.entries, result.path);
                 if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
               }}
             />
@@ -6375,6 +6605,7 @@ export default function App() {
                   }
                   announce={setStatusMessage}
                   createRequest={calendarCreateRequest}
+                  openRequest={openAppointmentRequest}
                   onOpenEntry={async (relative) => {
                     const entry = findEntry(vault.entries, relative);
                     if (!entry) throw new Error('The linked item is no longer available.');
@@ -7195,31 +7426,46 @@ export default function App() {
           onClose={() => setQuickTaskStep(null)}
         />
       ) : null}
-      {quickTaskStep === 'notebook' && vault && !securityLocked ? (
-        <QuickTaskNotebookPicker
-          notebooks={flattenEntries(vault.entries)
-            .filter((entry) => entry.kind === 'notebook')
-            .map((entry) => entry.path)}
-          onPick={(notebookPath) => {
-            setQuickTaskNotebookPath(notebookPath);
-            setQuickTaskStep('task');
-          }}
-          onClose={() => setQuickTaskStep(null)}
-        />
-      ) : null}
       {quickTaskStep === 'task' && !securityLocked ? (
         <QuickTaskDialog
-          onCreate={async (text) => {
+          notebookPath={quickTaskNotebookOpen}
+          notebooks={
+            quickTaskNotebookOpen || !vault
+              ? undefined
+              : flattenEntries(vault.entries)
+                  .filter((entry) => entry.kind === 'notebook')
+                  .map((entry) => ({ path: entry.path, name: entry.name }))
+          }
+          defaultNotebookPath={
+            quickTaskNotebookOpen || !vault
+              ? undefined
+              : (() => {
+                  const notebookPaths = flattenEntries(vault.entries)
+                    .filter((entry) => entry.kind === 'notebook')
+                    .map((entry) => entry.path);
+                  // The most recent notebook is the last one recorded in
+                  // settings; a deleted or renamed one falls back to the
+                  // first notebook in the library. No notebooks at all
+                  // leaves no default, so a destination must be picked.
+                  return settings.lastNotebookPath && notebookPaths.includes(settings.lastNotebookPath)
+                    ? settings.lastNotebookPath
+                    : notebookPaths[0];
+                })()
+          }
+          onCreate={async (text, notebookPath) => {
             const bridge = window.a11yNotebook?.vault;
             if (!bridge?.createTask || switchingRef.current) throw new Error('Task creation is unavailable.');
             setTasks(
               await bridge.createTask({
-                notebookPath: quickTaskNotebookPath,
+                notebookPath,
                 text,
               }),
             );
             await refreshVault();
-            setStatusMessage('Task created.');
+            const name = notebookPath
+              ? findEntry(vault?.entries ?? [], notebookPath)?.name ?? notebookPath
+              : vault?.name ?? 'the library';
+            setStatusMessage(`Task created in ${name}.`);
           }}
           onClose={() => setQuickTaskStep(null)}
         />
@@ -7368,6 +7614,20 @@ export default function App() {
           permanent={deleteLibraryTarget.permanent}
           onCancel={() => setDeleteLibraryTarget(null)}
           onConfirm={() => void confirmDeleteLibrary()}
+        />
+      ) : null}
+      {deleteGuard ? (
+        <DeleteGuardDialog
+          name={deleteGuard.name}
+          kind={deleteGuard.kind}
+          permanent={deleteGuard.permanent}
+          taskCount={deleteGuard.taskCount}
+          onCancel={() => setDeleteGuard(null)}
+          onConfirm={() => {
+            const { path, permanent } = deleteGuard;
+            setDeleteGuard(null);
+            void (permanent ? deleteEntryPermanently(path, false, true) : deleteEntry(path, false, true));
+          }}
         />
       ) : null}
       {activeDialog === 'updates' ? (

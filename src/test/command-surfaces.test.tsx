@@ -115,7 +115,9 @@ describe('command surface visibility', () => {
     bridge.vault.importFile.mockRejectedValueOnce(new Error('Import denied'));
     menu('import-file');
     await waitFor(() =>
-      expect(screen.getByLabelText('Status bar')).toHaveTextContent('Could not import the selected file.'),
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+        'Could not import the selected file. Import denied',
+      ),
     );
     await openTreeLeaf(/Idea\.md/);
     bridge.vault.openExternal.mockRejectedValueOnce(new Error('Encrypted note'));

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  describePointerFileProblem,
   formatLinkFile,
   isAllowedLinkUrl,
   isLinkPath,
@@ -56,6 +57,26 @@ describe('link files', () => {
     expect(parsePointerFileUrl(JSON.stringify({ url: 'ftp://example.com/file' }))).toBeNull();
     expect(parsePointerFileUrl(JSON.stringify({}))).toBeNull();
     expect(parsePointerFileUrl('not json')).toBeNull();
+  });
+
+  it('tolerates a UTF-8 byte-order mark before pointer JSON', () => {
+    const gdoc = `\uFEFF${JSON.stringify({ url: 'https://docs.google.com/document/d/abc123/edit' })}`;
+    expect(parsePointerFileUrl(gdoc)).toBe('https://docs.google.com/document/d/abc123/edit');
+  });
+
+  it('names the specific pointer-file problem for each failure', () => {
+    expect(describePointerFileProblem('')).toBe('The file is empty.');
+    expect(describePointerFileProblem('   ')).toBe('The file is empty.');
+    expect(describePointerFileProblem('not json')).toBe('The file does not contain valid link data.');
+    expect(describePointerFileProblem(JSON.stringify({ resource_id: 'abc' }))).toBe(
+      'The file does not contain a web address.',
+    );
+    expect(describePointerFileProblem(JSON.stringify({ url: 'ftp://example.com/file' }))).toBe(
+      'The web address in the file is not an http or https address.',
+    );
+    expect(
+      describePointerFileProblem(JSON.stringify({ url: 'https://docs.google.com/document/d/abc123/edit' })),
+    ).toBeNull();
   });
 
   it('turns a typed title into a safe link file name', () => {
