@@ -419,6 +419,12 @@ export default function App() {
     anchor: BookmarkAnchor;
     nonce: number;
   } | null>(null);
+  // The last bookmark jump that landed, so switching views after it (or
+  // resuming) does not yank the reader back to the saved reading
+  // position instead of the bookmarked place. Consumed once by the
+  // resume effect, and forgotten when the note is left, so reopening
+  // the note resumes normally.
+  const bookmarkJumpRef = useRef<{ path: string; anchor: BookmarkAnchor } | null>(null);
   // Fallback undo: one recorded edit history per open note, so undo works
   // even when the textarea's native undo stack is unavailable.
   const editHistoriesRef = useRef(new Map<string, EditHistory>());
@@ -3153,13 +3159,46 @@ export default function App() {
     }
   };
 
+  // Focus the heading a bookmark points at in the reading view. Returns
+  // false when there is no heading to land on (a position bookmark
+  // before the first heading, or a note with no headings).
+  const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
+    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+    if (!jumpHeading) return false;
+    const container = annotationTools.documentRef.current;
+    const headings = container
+      ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
+      : [];
+    const matches = headings.filter((heading) => heading.textContent?.trim() === jumpHeading.text);
+    const target = matches[jumpHeading.occurrence] ?? matches[0];
+    if (!target) return false;
+    if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+    target.focus();
+    try {
+      target.scrollIntoView({ block: 'start' });
+    } catch {
+      // Scrolling is best-effort; the focus landing is what matters.
+    }
+    return true;
+  };
+
+  // A bookmark jump suppresses the next resume only while that note stays
+  // open. Leaving the note forgets the jump, so reopening the note
+  // resumes normally instead of re-landing on the old bookmark.
+  useEffect(() => {
+    if (bookmarkJumpRef.current && bookmarkJumpRef.current.path !== currentNote?.path) {
+      bookmarkJumpRef.current = null;
+    }
+  }, [currentNote?.path]);
+
   // After a bookmark with an anchor is activated, land the caret (edit
   // mode) or focus (reading view) at the anchored place once the note is
   // the current one.
   useEffect(() => {
     if (!pendingBookmarkAnchor || currentNote?.path !== pendingBookmarkAnchor.path) return;
     const { anchor } = pendingBookmarkAnchor;
-    const offset = resolveBookmarkAnchor(currentNote.content, /\.html?$/i.test(currentNote.path), anchor);
+    const isHtml = /\.html?$/i.test(currentNote.path);
+    const offset = resolveBookmarkAnchor(currentNote.content, isHtml, anchor);
     setPendingBookmarkAnchor(null);
     if (offset === null) {
       setStatusMessage('That bookmarked heading no longer exists in the note.');
@@ -3173,29 +3212,19 @@ export default function App() {
       } catch {
         // The caret landing is best-effort; the note is open either way.
       }
+      bookmarkJumpRef.current = { path: currentNote.path, anchor };
       setStatusMessage('Opened at the bookmarked place.');
       return;
     }
-    const jumpHeading = readingJumpHeading(
-      currentNote.content,
-      /\.html?$/i.test(currentNote.path),
-      anchor,
-    );
-    if (jumpHeading) {
-      const container = annotationTools.documentRef.current;
-      const headings = container
-        ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
-        : [];
-      const matches = headings.filter((heading) => heading.textContent?.trim() === jumpHeading.text);
-      const target = matches[jumpHeading.occurrence] ?? matches[0];
-      if (target) {
-        if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
-        target.focus();
-        target.scrollIntoView({ block: 'start' });
-        setStatusMessage('Opened at the bookmarked heading.');
-        return;
-      }
+    if (focusBookmarkHeading(currentNote.content, isHtml, anchor)) {
+      bookmarkJumpRef.current = { path: currentNote.path, anchor };
+      setStatusMessage('Opened at the bookmarked heading.');
+      return;
     }
+    // No heading to land on: focus already rests on the note's main
+    // region (opening the note requests it), which is the top of the
+    // note, so the jump still lands the reader in the note.
+    bookmarkJumpRef.current = { path: currentNote.path, anchor };
     setStatusMessage('Opened at the bookmarked place.');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingBookmarkAnchor, currentNote]);
@@ -3208,6 +3237,20 @@ export default function App() {
     const bridge = window.a11yNotebook?.vault;
     if (!bridge?.getReadingPosition) return;
     const path = currentNote.path;
+    const jumped = bookmarkJumpRef.current;
+    if (jumped && jumped.path === path) {
+      bookmarkJumpRef.current = null;
+      // The reader just landed on a bookmark (or switched views after
+      // one): keep the reader at the bookmarked heading instead of
+      // resuming to the saved reading position. When there is no heading
+      // to land on, fall through to the normal resume below.
+      if (
+        focusBookmarkHeading(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor)
+      ) {
+        setStatusMessage('Opened at the bookmarked heading.');
+        return;
+      }
+    }
     let cancelled = false;
     void bridge
       .getReadingPosition(path)
@@ -3220,7 +3263,11 @@ export default function App() {
         if (target) {
           if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
           target.focus();
-          target.scrollIntoView({ block: 'start' });
+          try {
+            target.scrollIntoView({ block: 'start' });
+          } catch {
+            // Scrolling is best-effort; the focus landing is what matters.
+          }
           setStatusMessage(`Resumed at ${saved.heading}.`);
         }
       })
