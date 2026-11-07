@@ -105,6 +105,7 @@ import { notePositionFromHeadings } from '../shared/note-reading-position';
 import LockedReminderAlerts from './features/reminders/LockedReminderAlerts';
 import ReminderAlerts from './features/reminders/ReminderAlerts';
 import type { Reminder } from '../shared/reminders';
+import { formatTaskDueDate } from '../shared/reminders';
 import {
   DEFAULT_SETTINGS,
   formatPriorityName,
@@ -6485,7 +6486,7 @@ export default function App() {
                             </label>
                           </th>
                           <td>{notebookForTask(task)}</td>
-                          <td>{task.dueDate ?? 'No due date'}</td>
+                          <td>{formatTaskDueDate(task.dueDate, task.dueTime)}</td>
                           <td>{formatPriorityName(task.priority ?? 'medium')}</td>
                           <td>
                             {taskLinks
