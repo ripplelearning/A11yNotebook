@@ -34,7 +34,7 @@ import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import { isAudioPath } from '../../src/shared/audio';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
-import { dropLinksForDeletedPath } from '../../src/shared/task-links';
+import { dropLinksForDeletedPath, dropLinksToDeletedPath } from '../../src/shared/task-links';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
@@ -3745,7 +3745,7 @@ export function setupVaultIpc(
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
         const links = await vault.getTaskLinks();
-        const kept = dropLinksForDeletedPath(links, relativePath);
+        const kept = dropLinksToDeletedPath(dropLinksForDeletedPath(links, relativePath), relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
         await vault.pruneProtection(access.assertCurrent);
@@ -3790,7 +3790,7 @@ export function setupVaultIpc(
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
         const links = await vault.getTaskLinks();
-        const kept = dropLinksForDeletedPath(links, relativePath);
+        const kept = dropLinksToDeletedPath(dropLinksForDeletedPath(links, relativePath), relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
         await vault.pruneProtection(access.assertCurrent);

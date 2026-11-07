@@ -157,6 +157,7 @@ import {
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
+import { dropLinksToMissingTargets } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
@@ -2300,14 +2301,25 @@ export default function App() {
   };
 
   const openTaskLink = async (link: TaskLink) => {
+    const entry = findEntry(vault?.entries ?? [], link.target);
+    if (!entry) {
+      // The target is gone: drop the dead link instead of leaving it
+      // displayed, and say so — opening it again must not repeat the
+      // "no longer in the library" message.
+      if (window.a11yNotebook?.vault.saveTaskLinks) {
+        await removeTaskLink(link.id, link.target);
+        setStatusMessage(`The linked ${link.kind} is no longer in the library, so its link was removed.`);
+      } else {
+        setStatusMessage(`The linked ${link.kind} is no longer in the library.`);
+      }
+      return;
+    }
     if (link.kind === 'notebook') {
       setSelectedNotebookPath(link.target);
       setSelectedTab('notes-files');
       return;
     }
-    const entry = findEntry(vault?.entries ?? [], link.target);
-    if (entry) await openEntry(entry);
-    else setStatusMessage(`The linked ${link.kind} is no longer in the library.`);
+    await openEntry(entry);
   };
 
   const savePriorityOptions = async (options: string[]) => {
@@ -2915,6 +2927,31 @@ export default function App() {
     if (switchingRef.current || vaultPathRef.current !== root || generation !== vaultGenerationRef.current) return;
     if (index) setLinks(index.links);
     if (savedBookmarks) setBookmarks(savedBookmarks);
+  };
+
+  /**
+   * Reload task links and drop any whose target no longer exists, so a
+   * link to a note deleted outside the app (or before delete-time
+   * cleanup existed) disappears on refresh instead of lingering as a
+   * dead link. Never prunes when the library tree itself could not be
+   * loaded: an empty tree would drop every link.
+   */
+  const refreshTaskLinks = async () => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.getTaskLinks || !bridge?.get) return;
+    try {
+      const [items, latest] = await Promise.all([bridge.getTaskLinks(), bridge.get()]);
+      if (!latest) return;
+      const existing = new Set(flattenEntries(latest.entries ?? []).map((entry) => entry.path));
+      const kept = dropLinksToMissingTargets(items, existing);
+      if (kept.length !== items.length && bridge.saveTaskLinks) {
+        setTaskLinks(await bridge.saveTaskLinks(kept));
+      } else {
+        setTaskLinks(kept);
+      }
+    } catch {
+      // Keep the displayed links when the reload fails.
+    }
   };
 
   const brokenLinks = links.filter((link) => !link.resolved);
@@ -5186,7 +5223,7 @@ export default function App() {
       return;
     }
     if (commandId === 'refresh-links') {
-      void refreshVault().then(refreshLinkIndex);
+      void refreshVault().then(refreshLinkIndex).then(refreshTaskLinks);
       setStatusMessage('Library and links refreshed.');
       return;
     }

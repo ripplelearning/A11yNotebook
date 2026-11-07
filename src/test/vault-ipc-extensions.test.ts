@@ -468,6 +468,23 @@ describe('extended vault IPC integration', () => {
     expect(view.entries.find((entry) => entry.path === 'Imported.md')?.provenance).toBeUndefined();
   });
 
+  it('drops task links to a deleted note, not just links from tasks in it', async () => {
+    const { shell } = await import('electron');
+    await invoke(IPC_CHANNELS.vaultSaveTaskLinks, [
+      { id: 'link-1', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Reference.md' },
+      { id: 'link-2', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Topic.md' },
+    ]);
+    // Delete is the first (default) button in the confirmation dialog.
+    mock.confirm = 0;
+    vi.mocked(shell.trashItem).mockImplementationOnce(async (filename) => {
+      await rm(filename);
+    });
+    await invoke(IPC_CHANNELS.vaultDelete, 'Reference.md');
+    expect(await invoke(IPC_CHANNELS.vaultGetTaskLinks)).toEqual([
+      { id: 'link-2', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Topic.md' },
+    ]);
+  });
+
   it('does not copy a selected import after a lock during its native dialog', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
     mock.openSelection = path.join(temporary, 'Original.md');
