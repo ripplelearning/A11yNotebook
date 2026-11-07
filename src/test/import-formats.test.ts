@@ -2,7 +2,7 @@ import { mkdtemp, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { convertImportedBytes, readImport, readImportSource } from '../../electron/vault/import';
+import { convertImportedBytes, readImport, readImportSource, readPointerFileUrl } from '../../electron/vault/import';
 import { buildDocFixture } from './helpers/doc-fixture';
 import { zip } from './test-zip';
 
@@ -121,5 +121,28 @@ describe('spreadsheet and slide import', () => {
       await expect(readImport(file, assertCurrent)).rejects.toThrow(pattern);
       await expect(readImportSource(file, assertCurrent)).rejects.toThrow(pattern);
     }
+  });
+});
+
+describe('Google pointer files as links', () => {
+  it('reads the URL out of .gdoc, .gsheet, and .gslides pointer files', async () => {
+    const cases: Array<[string, string]> = [
+      ['Shared.gdoc', 'https://docs.google.com/document/d/abc'],
+      ['Sheet.gsheet', 'https://docs.google.com/spreadsheets/d/def'],
+      ['Deck.gslides', 'https://docs.google.com/presentation/d/ghi'],
+    ];
+    for (const [name, url] of cases) {
+      const file = await writeTempFile(name, JSON.stringify({ url }));
+      await expect(readPointerFileUrl(file)).resolves.toBe(url);
+    }
+  });
+
+  it('returns null when the pointer file holds no usable web URL', async () => {
+    const missing = await writeTempFile('Empty.gdoc', JSON.stringify({ resource_id: 'abc' }));
+    await expect(readPointerFileUrl(missing)).resolves.toBeNull();
+    const wrongScheme = await writeTempFile('Odd.gdoc', JSON.stringify({ url: 'ftp://example.com/file' }));
+    await expect(readPointerFileUrl(wrongScheme)).resolves.toBeNull();
+    const notJson = await writeTempFile('Broken.gdoc', 'not json at all');
+    await expect(readPointerFileUrl(notJson)).resolves.toBeNull();
   });
 });

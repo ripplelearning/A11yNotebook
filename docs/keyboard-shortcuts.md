@@ -10,6 +10,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Shift+B   | Back up library                         |
 | Ctrl+Shift+O   | Open in external app                    |
 | Ctrl+Q         | Quick Task                              |
+| Ctrl+Alt+L     | Add link                                |
 | Ctrl+Alt+D     | Dictate                                 |
 | Ctrl+0         | Contents view                           |
 | Ctrl+1         | Libraries                               |

@@ -33,6 +33,7 @@ const CONTEXTS = {
   notebook: 'tree-folder',
   note: 'tree-note',
   attachment: 'attachment',
+  link: 'link',
 } as const;
 
 const cellKey = (path: string, column: Column) => `${path}\0${column}`;

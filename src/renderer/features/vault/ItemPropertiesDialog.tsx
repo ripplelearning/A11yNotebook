@@ -116,7 +116,8 @@ export default function ItemPropertiesDialog({
     };
   }, [livePath, entry.kind]);
 
-  const kindLabel = entry.kind === 'notebook' ? 'Notebook' : entry.kind === 'note' ? 'Note' : 'File';
+  const kindLabel =
+    entry.kind === 'notebook' ? 'Notebook' : entry.kind === 'note' ? 'Note' : entry.kind === 'link' ? 'Link' : 'File';
   const liveEntry = livePath ? findLiveEntry(liveEntries, livePath) : undefined;
   const descendants = liveEntry?.children ? collectDescendants(liveEntry) : [];
   const taskCount = livePath
