@@ -7,15 +7,19 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Spreadsheets (.xlsx, .ods, .csv, .xls) open in an editable grid and save back with Ctrl+S; slide decks (.pptx, .odp) open as read-only text.',
-      'Link notes: add a web link to a notebook as a grid item with Type Link (Ctrl+Alt+L); it opens in the default web browser.',
-      'Bibliographies now format correctly for APA, MLA, and Chicago, including a new Chicago (Notes-Bibliography) style with footnotes.',
+      'Quick Task now keeps the notebook chooser inside the same dialog, after the text box — type first, pick second — and always confirms "Task created in [Notebook Name]".',
+      'Global search now covers tasks, reminders, and appointments, with filters for each type; opening a result takes you to the task, reminder, or appointment.',
+      'Spreadsheets and slide decks now open in the app: .xlsx, .ods, .xls, .pptx, and .odp files open in the in-app preview instead of an external app.',
+      'Deleting a note or notebook that contains tasks now warns you first, with the task count.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'Opening an ePub or PDF no longer fails with "Failed to fetch"; task reminders now fire after saving a note; the note metadata shortcut is now Ctrl+M; task due dates read MM-DD-YYYY with the time when set; deleting a note removes its link from tasks; bookmark jumps hold their landing when switching views; mixed fractions like 1 3/4 are recognized in math; Quick Task prompts when no notebook is open.',
+      'Bookmark jumps now land focus on the heading, keep it there, and announce the landing; formatted headings match again, and jumps work in rich-text editing too.',
+      'Deleting an appointment now asks in a separate dialog; single appointments say "Delete this appointment?" instead of talking about a series.',
+      'The Bibliography toggle is gone from the Citations dialog; switch views with Ctrl+J (Bibliography) and Ctrl+Shift+C (Citation generator).',
+      'Import failures now name the real reason instead of "Could not import the selected file."; Google link files (.gdoc, .gsheet, .gslides) that cannot be read now say why.',
     ],
   },
 ];
