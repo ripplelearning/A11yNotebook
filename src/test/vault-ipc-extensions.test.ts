@@ -1274,6 +1274,37 @@ describe('extended vault IPC integration', () => {
     }
   });
 
+  it('collects a task reminder saved to a note without a watcher refresh or reopen', async () => {
+    mock.disableWatcher = true;
+    try {
+      await invoke(IPC_CHANNELS.vaultOpen);
+      mock.reminderEvents = [];
+      await invoke(
+        IPC_CHANNELS.vaultSaveNote,
+        'Topic.md',
+        '# Topic\n\nalpha #research\n\n- [ ] Read the report remind:2030-01-01 09:00\n',
+        '# Topic\n\nalpha #research\n',
+      );
+      // The save handler refreshes the reminder service itself; no
+      // getReminders call (which refreshes on its own) is needed for the
+      // reminder to reach the Reminders view.
+      await vi.waitFor(
+        () =>
+          expect(mock.reminderEvents).toContainEqual(
+            expect.objectContaining({
+              type: 'changed',
+              reminders: expect.arrayContaining([
+                expect.objectContaining({ title: 'Read the report', path: 'Topic.md' }),
+              ]),
+            }),
+          ),
+        { timeout: 3000 },
+      );
+    } finally {
+      mock.disableWatcher = false;
+    }
+  });
+
   it('completes standalone reminders and rejects stale Markdown and HTML task completion', async () => {
     mock.disableWatcher = true;
     try {

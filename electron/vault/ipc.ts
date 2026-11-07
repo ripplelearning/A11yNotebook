@@ -2903,6 +2903,12 @@ export function setupVaultIpc(
         } else {
           await vault.saveNote(relativePath, content, expectedContent, access.assertCurrent);
         }
+        // A task reminder is a marker in note text, so the reminder service
+        // only learns about it when it re-reads the notes. The filesystem
+        // watcher is the only other trigger on this path, and it can miss
+        // atomic saves (temp file + rename), so refresh explicitly. A
+        // refresh failure must never fail the save itself.
+        await reminderService?.refresh().catch(() => undefined);
         access.assertCurrent();
       });
     },

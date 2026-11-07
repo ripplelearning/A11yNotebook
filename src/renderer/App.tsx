@@ -58,6 +58,7 @@ import { outlineConversionWarning } from '../shared/outline-conversion';
 import { headingAnchorAt, readingJumpHeading, resolveBookmarkAnchor } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
+import { updateMarkdownTaskLine } from '../shared/task-line';
 import {
   createEditHistory,
   recordEdit,
@@ -2197,29 +2198,6 @@ export default function App() {
     } finally {
       setTaskCreating(false);
     }
-  };
-
-  /** Rewrite one Markdown task line's schedule and priority markers, keeping the task text intact. */
-  const updateMarkdownTaskLine = (
-    line: string,
-    update: { schedule?: TaskSchedule; priority?: string },
-  ): string => {
-    let next = line;
-    if (update.schedule) {
-      const { dueDate, dueTime, remindAt } = update.schedule;
-      next = next
-        .replace(/\s+(?:due:\d{4}-\d{2}-\d{2}|📅\s+\d{4}-\d{2}-\d{2})/g, '')
-        .replace(/\s+due-time:\d{2}:\d{2}/g, '')
-        .replace(/\s+remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/g, '');
-      if (dueDate) next += ` due:${dueDate}`;
-      if (dueTime) next += ` due-time:${dueTime}`;
-      if (remindAt) next += ` remind:${remindAt}`;
-    }
-    if (update.priority !== undefined) {
-      next = next.replace(/\s+priority:[^\s]+/g, '');
-      if (update.priority) next += ` priority:${update.priority}`;
-    }
-    return next;
   };
 
   const saveTaskSchedule = async (task: VaultTask, schedule: TaskSchedule) => {
