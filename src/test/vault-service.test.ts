@@ -1,5 +1,5 @@
 // @vitest-environment node
-import { access, mkdtemp, mkdir, rm, symlink } from 'node:fs/promises';
+import { access, mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -58,6 +58,57 @@ describe('vault filesystem service', () => {
       },
     ]);
     await expect(access(path.join(temporaryDirectory, '.a11ynotebook'))).resolves.toBeUndefined();
+  });
+
+  it('saves bibliography entries and reads them back, keeping other notebooks', async () => {
+    const service = await openService();
+    const researchEntry = {
+      id: 'entry-1',
+      notebookPath: 'Research',
+      sourceType: 'book' as const,
+      authors: [{ last: 'Rivera', first: 'Alex' }],
+      title: 'Accessible Design',
+      year: '2024',
+    };
+    const saved = await service.saveBibliography('Research', [researchEntry]);
+    expect(saved).toEqual([{ ...researchEntry, notebookPath: 'Research' }]);
+    expect(await service.getBibliography('Research')).toEqual(saved);
+    const archiveEntry = {
+      id: 'entry-2',
+      notebookPath: 'Archive',
+      sourceType: 'book' as const,
+      authors: [{ last: 'Doe', first: 'Jane' }],
+      title: 'Older Work',
+      year: '2020',
+    };
+    await service.saveBibliography('Archive', [archiveEntry]);
+    expect(await service.getBibliography('Research')).toEqual(saved);
+    expect(await service.getBibliography('Archive')).toEqual([{ ...archiveEntry, notebookPath: 'Archive' }]);
+  });
+
+  it('reads the wrapped bibliography shape as well as the flat shape', async () => {
+    const service = await openService();
+    await mkdir(path.join(temporaryDirectory, '.a11ynotebook'), { recursive: true });
+    await writeFile(
+      path.join(temporaryDirectory, '.a11ynotebook', 'bibliography.json'),
+      JSON.stringify({
+        notebooks: {
+          Research: [
+            {
+              id: 'entry-1',
+              notebookPath: 'Research',
+              sourceType: 'book',
+              authors: [{ last: 'Rivera', first: 'Alex' }],
+              title: 'Accessible Design',
+              year: '2024',
+            },
+          ],
+        },
+      }),
+    );
+    const entries = await service.getBibliography('Research');
+    expect(entries).toHaveLength(1);
+    expect(entries[0].title).toBe('Accessible Design');
   });
 
   it.skipIf(process.platform === 'win32')('rejects a symlink path before it can escape the vault', async () => {

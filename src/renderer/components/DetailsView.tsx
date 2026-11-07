@@ -5,6 +5,8 @@ export interface DetailsViewItem {
   name: string;
   path: string;
   kind: string;
+  /** Creation marker: a note created as a task renders as Type "Task". */
+  provenance?: 'created' | 'imported' | 'task' | 'unknown';
 }
 
 type Column = 'name' | 'kind' | 'path';
@@ -35,6 +37,12 @@ const CONTEXTS = {
 
 const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
+/** A note created as a task (dialog or Quick Task) shows Type "Task". Any
+ * other note — including one that merely contains a checkbox task line —
+ * shows its kind. */
+const typeLabel = (item: DetailsViewItem) =>
+  item.kind === 'note' && item.provenance === 'task' ? 'Task' : item.kind;
+
 export default function DetailsView<T extends DetailsViewItem>({
   label,
   items,
@@ -59,7 +67,7 @@ export default function DetailsView<T extends DetailsViewItem>({
 
   const sortedItems = useMemo(() => {
     const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: 'base' });
-    const value = (item: T, column: Column) => (column === 'name' ? item.name : column === 'path' ? item.path : item.kind);
+    const value = (item: T, column: Column) => (column === 'name' ? item.name : column === 'path' ? item.path : typeLabel(item));
     return [...items].sort((left, right) => {
       const first = value(left, sort.column);
       const second = value(right, sort.column);
@@ -304,7 +312,7 @@ export default function DetailsView<T extends DetailsViewItem>({
                 onDoubleClick={() => onOpen(item)}
                 onKeyDown={(event) => handleKeyDown(event, item, index)}
               >
-                {column === 'name' ? item.name : column === 'path' ? item.path : item.kind}
+                {column === 'name' ? item.name : column === 'path' ? item.path : typeLabel(item)}
               </div>
             ))}
           </div>

@@ -40,7 +40,7 @@ describe('CitationDialog', () => {
     fireEvent.change(screen.getByLabelText(/Authors/), { target: { value: 'Rivera, Alex' } });
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
     fireEvent.change(screen.getByLabelText(/^Year$/), { target: { value: '2024' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Save to bibliography' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to Bibliography' }));
     await waitFor(() => expect(saveBibliography).toHaveBeenCalled());
     const saved = saveBibliography.mock.calls[0][1] as Array<{ title: string }>;
     expect(saved[0].title).toBe('Accessible Design');
@@ -115,6 +115,85 @@ describe('CitationDialog', () => {
     fireEvent.change(screen.getByLabelText(/^Title$/), { target: { value: 'Accessible Design' } });
     expect(screen.getByRole('button', { name: 'Insert In-Text Citation' })).toBeDisabled();
     expect(screen.getByText(/Inserting is disabled/)).toBeInTheDocument();
+  });
+
+  it('follows initialView when it changes while the dialog is open', async () => {
+    installBridge();
+    const { rerender } = render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Title$/)).toBeInTheDocument();
+    rerender(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(await screen.findByRole('dialog', { name: 'Bibliography' })).toBeInTheDocument();
+    expect(screen.queryByLabelText(/^Title$/)).toBeNull();
+    rerender(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="generator"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole('dialog', { name: 'Citations' })).toBeInTheDocument();
+    expect(screen.getByLabelText(/^Title$/)).toBeInTheDocument();
+  });
+
+  it('offers a switch-to-edit action instead of insert controls in reading view', async () => {
+    const bridge = {
+      vault: {
+        getBibliography: vi.fn(async () => [
+          {
+            id: 'entry-1',
+            notebookPath: 'Research',
+            sourceType: 'book',
+            authors: [{ last: 'Rivera', first: 'Alex' }],
+            title: 'Accessible Design',
+            year: '2024',
+            publisher: 'Open Press',
+          },
+        ]),
+        saveBibliography: vi.fn(async (_notebook: string, entries: never[]) => entries),
+      },
+    };
+    window.a11yNotebook = bridge as unknown as NotebookBridge;
+    const onSwitchToEdit = vi.fn();
+    render(
+      <CitationDialog
+        notebookPath="Research"
+        initialView="bibliography"
+        onInsertInText={vi.fn()}
+        onInsertBibliography={vi.fn()}
+        onInsertFootnote={vi.fn()}
+        onClose={vi.fn()}
+        canInsert={false}
+        onSwitchToEdit={onSwitchToEdit}
+      />,
+    );
+    expect(await screen.findByText(/Accessible Design/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Insert In-Text Citation' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Insert full bibliography' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Inserting is disabled unless the note is open in edit mode.')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch to edit mode to insert citations' }));
+    expect(onSwitchToEdit).toHaveBeenCalledTimes(1);
   });
 
   it('offers Insert In-Text Citation from a bibliography entry context menu', async () => {

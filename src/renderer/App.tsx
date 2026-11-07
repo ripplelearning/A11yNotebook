@@ -216,7 +216,9 @@ function findEntry(entries: VaultEntry[], targetPath: string | null): VaultEntry
 }
 
 function isManagedEntry(entry: VaultEntry): boolean {
-  return entry.provenance === 'created' || entry.provenance === 'imported';
+  // 'task' notes are created by the app, so they stay managed: they can
+  // receive further tasks and show as managed entries elsewhere.
+  return entry.provenance === 'created' || entry.provenance === 'imported' || entry.provenance === 'task';
 }
 
 function notebookForTask(task: VaultTask) {
@@ -4759,19 +4761,31 @@ export default function App() {
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current || securityLockedRef.current) return;
     clearTimeout(navigationAnnouncementTimer.current);
+    // While the citation dialog is open, its own view commands still work:
+    // they switch the dialog between the generator and the bibliography.
+    // Its switch-to-edit action also works: it flips the mode from inside
+    // the dialog. Keyboard and menu paths still cannot reach the mode
+    // toggle while a dialog is open (their own guards stand), so only the
+    // dialog's own action passes here.
+    const switchingCitationView =
+      citationDialog &&
+      (commandId === 'open-citation-generator' || commandId === 'open-bibliography');
+    const switchingToEditFromCitation = citationDialog && commandId === 'toggle-read-only-mode';
     if (
-      (activeDialog && activeDialog !== 'palette') ||
-      itemDialog ||
-      organizeOpen ||
-      taskDialogOpen ||
-      quickTaskStep ||
-      spellingOpen ||
-      thesaurusRequest ||
-      citationDialog ||
-      externalFile ||
-      notePasswordDialog ||
-      activeConflict ||
-      exportRequest
+      !switchingCitationView &&
+      !switchingToEditFromCitation &&
+      ((activeDialog && activeDialog !== 'palette') ||
+        itemDialog ||
+        organizeOpen ||
+        taskDialogOpen ||
+        quickTaskStep ||
+        spellingOpen ||
+        thesaurusRequest ||
+        citationDialog ||
+        externalFile ||
+        notePasswordDialog ||
+        activeConflict ||
+        exportRequest)
     )
       return;
     if (commandId === 'open-citation-generator' || commandId === 'open-bibliography') {
@@ -5207,11 +5221,17 @@ export default function App() {
     }
     if (commandId === 'quick-task') {
       if (activeDialog === 'palette') setActiveDialog(null);
-      if (vault) {
+      if (!vault) {
+        setQuickTaskStep('library');
+      } else if (selectedTab === 'notes-files' && selectedNotebookPath) {
+        // A notebook is visibly open: create the task there directly.
         setQuickTaskNotebookPath(selectedNotebookPath);
         setQuickTaskStep('task');
       } else {
-        setQuickTaskStep('library');
+        // On the landing grid (or any other tab) the remembered notebook
+        // path does not count as open: ask which notebook the task goes in.
+        setQuickTaskNotebookPath(undefined);
+        setQuickTaskStep('notebook');
       }
       return;
     }
@@ -5277,11 +5297,26 @@ export default function App() {
   const handleGlobalKeyDown = (event: KeyboardEvent) => {
     if (event.defaultPrevented || event.isComposing || securityLockedRef.current || event.keyCode === 229) return;
     // Open dialogs manage their own keyboard interaction (Tab trapping and Escape).
+    // Exception: while the citation dialog is open, its two view shortcuts
+    // (Ctrl+Shift+C / Ctrl+Shift+J, or the user's remapped equivalents) still
+    // switch views instead of being swallowed.
+    const switchingCitationView =
+      citationDialog &&
+      (['open-bibliography', 'open-citation-generator'] as const).some((id) => {
+        const command = COMMANDS.find((item) => item.id === id);
+        return (
+          command &&
+          effectiveCommandShortcuts(command, settings.shortcuts, settings.shortcutAliases, isMac).some((shortcut) =>
+            matchesShortcut(event, shortcut, isMac),
+          )
+        );
+      });
     if (
-      activeDialog ||
-      itemDialog ||
-      activeConflict ||
-      document.querySelector('[role="dialog"], [role="alertdialog"]')
+      !switchingCitationView &&
+      (activeDialog ||
+        itemDialog ||
+        activeConflict ||
+        document.querySelector('[role="dialog"], [role="alertdialog"]'))
     ) {
       return;
     }
@@ -5766,6 +5801,11 @@ export default function App() {
           onInsertBibliography={insertBibliography}
           onInsertFootnote={insertFootnote}
           canInsert={mode === 'edit' && !currentNoteEditLocked}
+          onSwitchToEdit={
+            mode !== 'edit' && !currentNoteEditLocked
+              ? () => handleCommand('toggle-read-only-mode')
+              : undefined
+          }
           onClose={() => setCitationDialog(null)}
         />
       ) : null}
@@ -6798,6 +6838,8 @@ export default function App() {
           onSearch={searchDocument}
           onListMatches={listFindMatches}
           onJumpToMatch={jumpToFindMatch}
+          initialQuery={findQueryRef.current?.query ?? ''}
+          initialCaseSensitive={findQueryRef.current?.caseSensitive ?? false}
         />
       ) : null}
       {thesaurusRequest && currentNote ? (

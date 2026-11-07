@@ -321,6 +321,19 @@ describe('accessible details view', () => {
     expect(screen.queryByRole('gridcell', { name: 'Archive' })).not.toBeInTheDocument();
   });
 
+  it('shows Type "Task" only for notes created as tasks', () => {
+    const taskItems: VaultEntry[] = [
+      { name: 'Buy milk.md', path: 'Research/Buy milk.md', kind: 'note', provenance: 'task' },
+      // A plain note that merely contains a checkbox task line is still a note.
+      { name: 'Checklist.md', path: 'Research/Checklist.md', kind: 'note', provenance: 'created' },
+      { name: 'Plain.md', path: 'Research/Plain.md', kind: 'note', provenance: 'created' },
+    ];
+    renderDetails({ items: taskItems });
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    expect(within(grid).getByRole('gridcell', { name: 'Task' })).toBeInTheDocument();
+    expect(within(grid).getAllByRole('gridcell', { name: 'note' })).toHaveLength(2);
+  });
+
   it('shows nothing in notes and files until a notebook is selected (notebook silo)', () => {
     const entries: VaultEntry[] = [
       {

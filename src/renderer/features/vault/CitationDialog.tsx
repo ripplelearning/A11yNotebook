@@ -22,6 +22,12 @@ interface Props {
   onClose: () => void;
   /** False in reading view (or for a locked note): the dialog still views and generates, but cannot insert. */
   canInsert?: boolean;
+  /**
+   * Provided when inserting is blocked only because the note is in reading
+   * view: the insert controls hide and this switch action takes their place.
+   * Absent for a locked note, which keeps the disabled controls instead.
+   */
+  onSwitchToEdit?: () => void;
 }
 
 type FieldKey =
@@ -87,8 +93,14 @@ export default function CitationDialog({
   onInsertFootnote,
   onClose,
   canInsert = true,
+  onSwitchToEdit,
 }: Props) {
   const [view, setView] = useState<'generator' | 'bibliography'>(initialView);
+  // Keyboard shortcuts switch views while the dialog is open: follow
+  // initialView instead of only reading it on first mount.
+  useEffect(() => {
+    setView(initialView);
+  }, [initialView]);
   const [entries, setEntries] = useState<BibliographyEntry[]>([]);
   const [loadError, setLoadError] = useState('');
   const [style, setStyle] = useState<CitationStyle>('apa');
@@ -105,12 +117,15 @@ export default function CitationDialog({
   const [contextEntryId, setContextEntryId] = useState<string | null>(null);
   const contextMenuItemRef = useRef<HTMLButtonElement | null>(null);
   const entryInsertRefs = useRef<Record<string, HTMLButtonElement | null>>({});
+  const entryEditRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   useEffect(() => {
     if (contextEntryId) contextMenuItemRef.current?.focus();
   }, [contextEntryId]);
   const closeContextMenu = (entryId: string) => {
     setContextEntryId(null);
-    entryInsertRefs.current[entryId]?.focus();
+    // In reading view the per-entry insert button is hidden, so fall back
+    // to the entry's Edit button for focus.
+    (entryInsertRefs.current[entryId] ?? entryEditRefs.current[entryId])?.focus();
   };
 
   useEffect(() => {
@@ -275,7 +290,7 @@ export default function CitationDialog({
           Bibliography
         </button>
       </div>
-      {!canInsert ? <p>Inserting is disabled unless the note is open in edit mode.</p> : null}
+      {!canInsert && !onSwitchToEdit ? <p>Inserting is disabled unless the note is open in edit mode.</p> : null}
       <label>
         Citation style
         <select value={style} onChange={(event) => setStyle(event.target.value as CitationStyle)}>
@@ -372,7 +387,7 @@ export default function CitationDialog({
               {previewEntry.title ? formatInText(previewEntry, style) : '—'}
             </p>
           </div>
-          <button type="submit">{editingId ? 'Update bibliography entry' : 'Save to bibliography'}</button>
+          <button type="submit">{editingId ? 'Update bibliography entry' : 'Add to Bibliography'}</button>
           <button
             type="button"
             onClick={() => {
@@ -384,17 +399,23 @@ export default function CitationDialog({
           >
             Clear form
           </button>
-          <button
-            type="button"
-            onClick={() =>
-              style === 'chicago-notes'
-                ? onInsertFootnote(previewEntry)
-                : onInsertInText(formatInText(previewEntry, style))
-            }
-            disabled={!canInsert || !previewEntry.title}
-          >
-            {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
-          </button>
+          {onSwitchToEdit ? (
+            <button type="button" onClick={onSwitchToEdit}>
+              Switch to edit mode to insert citations
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() =>
+                style === 'chicago-notes'
+                  ? onInsertFootnote(previewEntry)
+                  : onInsertInText(formatInText(previewEntry, style))
+              }
+              disabled={!canInsert || !previewEntry.title}
+            >
+              {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
+            </button>
+          )}
         </form>
       ) : (
         <div>
@@ -409,13 +430,19 @@ export default function CitationDialog({
               : 'Cited page (optional, for in-text citations)'}
             <input value={page} onChange={(event) => setPage(event.target.value)} />
           </label>
-          <button
-            type="button"
-            disabled={!canInsert || sorted.length === 0}
-            onClick={() => onInsertBibliography(sorted, style)}
-          >
-            Insert full bibliography
-          </button>
+          {onSwitchToEdit ? (
+            <button type="button" onClick={onSwitchToEdit}>
+              Switch to edit mode to insert citations
+            </button>
+          ) : (
+            <button
+              type="button"
+              disabled={!canInsert || sorted.length === 0}
+              onClick={() => onInsertBibliography(sorted, style)}
+            >
+              Insert full bibliography
+            </button>
+          )}
           {style === 'chicago-notes' ? (
             <p>
               Chicago notes-bibliography uses footnotes: each in-text citation adds a numbered footnote, full the
@@ -442,20 +469,22 @@ export default function CitationDialog({
                 }}
               >
                 <p>{formatBibliography(entry, style, 'plain')}</p>
-                <button
-                  type="button"
-                  ref={(element) => {
-                    entryInsertRefs.current[entry.id] = element;
-                  }}
-                  disabled={!canInsert}
-                  onClick={() =>
-                    style === 'chicago-notes'
-                      ? onInsertFootnote(entry, page)
-                      : onInsertInText(formatInText(entry, style, page))
-                  }
-                >
-                  {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
-                </button>
+                {onSwitchToEdit ? null : (
+                  <button
+                    type="button"
+                    ref={(element) => {
+                      entryInsertRefs.current[entry.id] = element;
+                    }}
+                    disabled={!canInsert}
+                    onClick={() =>
+                      style === 'chicago-notes'
+                        ? onInsertFootnote(entry, page)
+                        : onInsertInText(formatInText(entry, style, page))
+                    }
+                  >
+                    {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
+                  </button>
+                )}
                 {contextEntryId === entry.id ? (
                   <div
                     role="menu"
@@ -467,25 +496,38 @@ export default function CitationDialog({
                       }
                     }}
                   >
+                    {onSwitchToEdit ? null : (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        ref={contextMenuItemRef}
+                        disabled={!canInsert}
+                        onClick={() => {
+                          if (style === 'chicago-notes') onInsertFootnote(entry, page);
+                          else onInsertInText(formatInText(entry, style, page));
+                          setContextEntryId(null);
+                        }}
+                      >
+                        {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
+                      </button>
+                    )}
                     <button
                       type="button"
                       role="menuitem"
-                      ref={contextMenuItemRef}
-                      disabled={!canInsert}
-                      onClick={() => {
-                        if (style === 'chicago-notes') onInsertFootnote(entry, page);
-                        else onInsertInText(formatInText(entry, style, page));
-                        setContextEntryId(null);
-                      }}
+                      ref={onSwitchToEdit ? contextMenuItemRef : undefined}
+                      onClick={() => closeContextMenu(entry.id)}
                     >
-                      {style === 'chicago-notes' ? 'Insert Footnote' : 'Insert In-Text Citation'}
-                    </button>
-                    <button type="button" role="menuitem" onClick={() => closeContextMenu(entry.id)}>
                       Close menu
                     </button>
                   </div>
                 ) : null}
-                <button type="button" onClick={() => loadIntoForm(entry)}>
+                <button
+                  type="button"
+                  ref={(element) => {
+                    entryEditRefs.current[entry.id] = element;
+                  }}
+                  onClick={() => loadIntoForm(entry)}
+                >
                   Edit
                 </button>
                 {confirmDeleteId === entry.id ? (

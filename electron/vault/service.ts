@@ -1014,11 +1014,11 @@ export function createVaultService(
     const baseName = taskNoteBaseName(text.trim()) || `Tasks-${randomUUID()}`;
     let relative = path.posix.join(notebookPath, `${baseName}.md`);
     try {
-      await createNote(relative, content, 'created', assertCurrent);
+      await createNote(relative, content, 'task', assertCurrent);
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       relative = path.posix.join(notebookPath, `${baseName}-${randomUUID()}.md`);
-      await createNote(relative, content, 'created', assertCurrent);
+      await createNote(relative, content, 'task', assertCurrent);
     }
     assertCurrent();
     const tasks = await getTasks();
@@ -1411,10 +1411,13 @@ export function createVaultService(
   async function readBibliographyFile(): Promise<Record<string, BibliographyEntry[]>> {
     const parsed: unknown = await readBibliographyRaw();
     if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return {};
-    const notebooks = (parsed as { notebooks?: unknown }).notebooks;
-    if (typeof notebooks !== 'object' || notebooks === null || Array.isArray(notebooks)) return {};
+    // The writer stores entries flat, keyed by notebook path; accept that
+    // shape as well as the wrapped { notebooks: {...} } shape.
+    const wrapped = (parsed as { notebooks?: unknown }).notebooks;
+    const byNotebook: unknown =
+      typeof wrapped === 'object' && wrapped !== null && !Array.isArray(wrapped) ? wrapped : parsed;
     const result: Record<string, BibliographyEntry[]> = {};
-    for (const [notebookPath, entries] of Object.entries(notebooks as Record<string, unknown>)) {
+    for (const [notebookPath, entries] of Object.entries(byNotebook as Record<string, unknown>)) {
       result[notebookPath] = cleanBibliographyEntries(entries);
     }
     return result;
