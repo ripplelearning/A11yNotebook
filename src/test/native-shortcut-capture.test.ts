@@ -35,6 +35,7 @@ const mock = vi.hoisted(() => {
     template: [] as MenuItemConstructorOptions[],
     bridge: undefined as NotebookBridge | undefined,
     send: vi.fn(),
+    registeredSchemes: [] as { scheme: string; privileges?: Record<string, boolean> }[],
   };
 });
 
@@ -59,7 +60,11 @@ vi.mock('electron', () => ({
     }),
     setApplicationMenu: vi.fn(),
   },
-  protocol: { registerSchemesAsPrivileged: vi.fn() },
+  protocol: {
+    registerSchemesAsPrivileged: vi.fn((schemes: { scheme: string; privileges?: Record<string, boolean> }[]) => {
+      mock.registeredSchemes = schemes;
+    }),
+  },
   session: { defaultSession: { setPermissionRequestHandler: vi.fn() } },
   ipcMain: {
     handle: vi.fn(),
@@ -180,5 +185,17 @@ describe('native shortcut capture suppression', () => {
     expect(mock.webContents.setIgnoreMenuShortcuts).not.toHaveBeenCalled();
     (menuItem('New library').click as () => void)();
     expect(mock.webContents.send).toHaveBeenCalledOnce();
+  });
+});
+
+describe('vault-file custom scheme privileges', () => {
+  it('registers vault-file with fetch support so PDF and ePub readers can fetch bytes', () => {
+    const vaultFile = mock.registeredSchemes.find((scheme) => scheme.scheme === 'vault-file');
+    expect(vaultFile).toBeDefined();
+    expect(vaultFile?.privileges?.standard).toBe(true);
+    expect(vaultFile?.privileges?.secure).toBe(true);
+    // Without supportFetchAPI, Chromium rejects fetch() to a custom scheme
+    // with "Failed to fetch" — the PDF/ePub reader fetches via vault-file.
+    expect(vaultFile?.privileges?.supportFetchAPI).toBe(true);
   });
 });
