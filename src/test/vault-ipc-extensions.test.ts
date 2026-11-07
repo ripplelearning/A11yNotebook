@@ -468,6 +468,23 @@ describe('extended vault IPC integration', () => {
     expect(view.entries.find((entry) => entry.path === 'Imported.md')?.provenance).toBeUndefined();
   });
 
+  it('drops task links to a deleted note, not just links from tasks in it', async () => {
+    const { shell } = await import('electron');
+    await invoke(IPC_CHANNELS.vaultSaveTaskLinks, [
+      { id: 'link-1', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Reference.md' },
+      { id: 'link-2', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Topic.md' },
+    ]);
+    // Delete is the first (default) button in the confirmation dialog.
+    mock.confirm = 0;
+    vi.mocked(shell.trashItem).mockImplementationOnce(async (filename) => {
+      await rm(filename);
+    });
+    await invoke(IPC_CHANNELS.vaultDelete, 'Reference.md');
+    expect(await invoke(IPC_CHANNELS.vaultGetTaskLinks)).toEqual([
+      { id: 'link-2', taskId: 'Topic.md:1', taskPath: 'Topic.md', kind: 'note', target: 'Topic.md' },
+    ]);
+  });
+
   it('does not copy a selected import after a lock during its native dialog', async () => {
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
     mock.openSelection = path.join(temporary, 'Original.md');
@@ -1269,6 +1286,37 @@ describe('extended vault IPC integration', () => {
         }),
       );
       expect(mock.notifications).toEqual([]);
+    } finally {
+      mock.disableWatcher = false;
+    }
+  });
+
+  it('collects a task reminder saved to a note without a watcher refresh or reopen', async () => {
+    mock.disableWatcher = true;
+    try {
+      await invoke(IPC_CHANNELS.vaultOpen);
+      mock.reminderEvents = [];
+      await invoke(
+        IPC_CHANNELS.vaultSaveNote,
+        'Topic.md',
+        '# Topic\n\nalpha #research\n\n- [ ] Read the report remind:2030-01-01 09:00\n',
+        '# Topic\n\nalpha #research\n',
+      );
+      // The save handler refreshes the reminder service itself; no
+      // getReminders call (which refreshes on its own) is needed for the
+      // reminder to reach the Reminders view.
+      await vi.waitFor(
+        () =>
+          expect(mock.reminderEvents).toContainEqual(
+            expect.objectContaining({
+              type: 'changed',
+              reminders: expect.arrayContaining([
+                expect.objectContaining({ title: 'Read the report', path: 'Topic.md' }),
+              ]),
+            }),
+          ),
+        { timeout: 3000 },
+      );
     } finally {
       mock.disableWatcher = false;
     }

@@ -56,6 +56,28 @@ export function dropLinksForDeletedPath(links: TaskLink[], deletedPath: string):
 }
 
 /**
+ * Drop links whose target is a deleted note, file, or notebook. A link
+ * points at the deleted tree when its target is the deleted path or lives
+ * under it. Used alongside dropLinksForDeletedPath when an entry is
+ * deleted, so tasks stop showing links to notes that no longer exist.
+ */
+export function dropLinksToDeletedPath(links: TaskLink[], deletedPath: string): TaskLink[] {
+  const prefix = `${deletedPath}/`;
+  return links.filter((link) => link.target !== deletedPath && !link.target.startsWith(prefix));
+}
+
+/**
+ * Drop links whose target is not among the library's current entries.
+ * Used when refreshing task links, so links to notes deleted outside the
+ * app (or before this cleanup existed) disappear instead of lingering
+ * as dead links. A target counts as present only by exact path match:
+ * every note, file, and notebook is itself an entry.
+ */
+export function dropLinksToMissingTargets(links: TaskLink[], existingPaths: ReadonlySet<string>): TaskLink[] {
+  return links.filter((link) => existingPaths.has(link.target));
+}
+
+/**
  * Drop links to stable-id tasks that no longer exist in the given note's
  * freshly saved content. Only `#stable-id` links are pruned: a
  * line-number link (`path:line`) cannot tell a deleted task from a task

@@ -34,7 +34,7 @@ import { planLinkRepair, type NoteSource } from './link-repair';
 import { DEFAULT_SETTINGS, validateSettings } from '../../src/shared/settings';
 import { isAudioPath } from '../../src/shared/audio';
 import { sanitizeBookmarkAnchor } from '../../src/shared/bookmark-anchors';
-import { dropLinksForDeletedPath } from '../../src/shared/task-links';
+import { dropLinksForDeletedPath, dropLinksToDeletedPath } from '../../src/shared/task-links';
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
@@ -2903,6 +2903,12 @@ export function setupVaultIpc(
         } else {
           await vault.saveNote(relativePath, content, expectedContent, access.assertCurrent);
         }
+        // A task reminder is a marker in note text, so the reminder service
+        // only learns about it when it re-reads the notes. The filesystem
+        // watcher is the only other trigger on this path, and it can miss
+        // atomic saves (temp file + rename), so refresh explicitly. A
+        // refresh failure must never fail the save itself.
+        await reminderService?.refresh().catch(() => undefined);
         access.assertCurrent();
       });
     },
@@ -3739,7 +3745,7 @@ export function setupVaultIpc(
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
         const links = await vault.getTaskLinks();
-        const kept = dropLinksForDeletedPath(links, relativePath);
+        const kept = dropLinksToDeletedPath(dropLinksForDeletedPath(links, relativePath), relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
         await vault.pruneProtection(access.assertCurrent);
@@ -3784,7 +3790,7 @@ export function setupVaultIpc(
         access.assertCurrent();
         await drafts?.deletePaths(relativePath);
         const links = await vault.getTaskLinks();
-        const kept = dropLinksForDeletedPath(links, relativePath);
+        const kept = dropLinksToDeletedPath(dropLinksForDeletedPath(links, relativePath), relativePath);
         if (kept.length !== links.length) await vault.saveTaskLinks(kept);
         await vault.pruneProvenance(access.assertCurrent);
         await vault.pruneProtection(access.assertCurrent);

@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
-import { cleanTaskLinks, dropLinksForDeletedPath, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../shared/task-links';
+import { cleanTaskLinks, dropLinksForDeletedPath, dropLinksToDeletedPath, dropLinksToMissingTargets, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../shared/task-links';
 
 let temporaryDirectory = '';
 
@@ -59,6 +59,33 @@ describe('dropLinksForDeletedPath', () => {
     ];
     expect(dropLinksForDeletedPath(links, 'Note.md')).toEqual([links[1], links[2], links[3]]);
     expect(dropLinksForDeletedPath(links, 'Work')).toEqual([links[0], links[2], links[3]]);
+  });
+});
+
+describe('dropLinksToDeletedPath', () => {
+  it('drops links to the deleted note and under a deleted notebook, and keeps the rest', () => {
+    const links = [
+      link({ id: 'a', target: 'Note.md' }),
+      link({ id: 'b', target: 'Work/Note.md' }),
+      link({ id: 'c', target: 'Work2/Note.md' }),
+      link({ id: 'd', target: 'Other.md' }),
+    ];
+    expect(dropLinksToDeletedPath(links, 'Note.md')).toEqual([links[1], links[2], links[3]]);
+    expect(dropLinksToDeletedPath(links, 'Work')).toEqual([links[0], links[2], links[3]]);
+  });
+});
+
+describe('dropLinksToMissingTargets', () => {
+  it('drops links whose target is not among the current entries', () => {
+    const links = [
+      link({ id: 'a', target: 'Notes/Guide.md' }),
+      link({ id: 'b', target: 'Notes/Gone.md' }),
+      link({ id: 'c', kind: 'notebook', target: 'Work' }),
+      link({ id: 'd', kind: 'notebook', target: 'Gone' }),
+    ];
+    expect(
+      dropLinksToMissingTargets(links, new Set(['Notes/Guide.md', 'Work', 'Tasks.md'])),
+    ).toEqual([links[0], links[2]]);
   });
 });
 

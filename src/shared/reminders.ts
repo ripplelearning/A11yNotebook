@@ -165,6 +165,23 @@ export function splitStoredTime(stored: string): { time: string; meridiem: Merid
 }
 
 /**
+ * Display a task's due date (and time, when set) for the Tasks table:
+ * "MM-DD-YYYY", or "MM-DD-YYYY at H:MM AM/PM" when a time is set. The
+ * time is shown 12-hour with AM/PM, matching the schedule dialog. A
+ * missing date reads "No due date"; a date with no time shows the date
+ * alone, never a dangling "at".
+ */
+export function formatTaskDueDate(dueDate: string | undefined, dueTime: string | undefined): string {
+  if (!dueDate) return 'No due date';
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate.trim());
+  const date = match ? `${match[2]}-${match[3]}-${match[1]}` : dueDate;
+  if (!dueTime) return date;
+  const stored = splitStoredTime(dueTime);
+  const time = /^\d{2}:\d{2}$/.test(stored.time) ? stored.time.replace(/^0/, '') : stored.time;
+  return `${date} at ${time} ${stored.meridiem}`;
+}
+
+/**
  * Compose the reminder dialog's time text plus its AM/PM combobox into
  * a normalized 24-hour time. Precedence, stated in the dialog so the
  * user can predict it: a typed AM/PM marker wins; an unambiguous

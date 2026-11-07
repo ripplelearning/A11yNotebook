@@ -116,6 +116,34 @@ describe('external vault watcher', () => {
     expect(callback).not.toHaveBeenCalled();
   });
 
+  // The app saves notes atomically (temp file + rename), and the temp name
+  // starts with a dot, so its watcher event is dropped as invisible. The
+  // rename must still surface the target name, or in-app saves would never
+  // trigger a watcher refresh. Skipped on macOS: FSEvents rename delivery
+  // is unreliable for exact-path assertions (see the first test above).
+  it.skipIf(process.platform === 'darwin')(
+    'reports the target name for an atomic temp-file plus rename save',
+    async () => {
+      const root = await folder();
+      const events: VaultChangedEvent[] = [];
+      disposables.push(
+        await createVaultWatcher(
+          root,
+          (event) => {
+            events.push(event);
+          },
+          { recursive: false, debounceMs: 20 },
+        ),
+      );
+      await writeFile(path.join(root, '.Note.md.test-uuid.tmp'), '- [ ] Read remind:2026-11-07 09:00');
+      await rename(path.join(root, '.Note.md.test-uuid.tmp'), path.join(root, 'Note.md'));
+      await vi.waitFor(() => expect(events.some((event) => event.paths.includes('Note.md'))).toBe(true), {
+        timeout: 3000,
+      });
+      expect(events.some((event) => event.paths.some((item) => item.startsWith('.Note.md.')))).toBe(false);
+    },
+  );
+
   it('reports callback errors without unhandled rejections and continues watching', async () => {
     const root = await folder();
     const error = new Error('Callback failed');

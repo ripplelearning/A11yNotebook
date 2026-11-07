@@ -31,7 +31,9 @@ import { validatePdfReadingPreferences, type PdfReadingPreferences } from '../sr
 
 const isDevelopment = !app.isPackaged;
 const DEV_SERVER_URL = 'http://127.0.0.1:5173';
-protocol.registerSchemesAsPrivileged([{ scheme: 'vault-file', privileges: { standard: true, secure: true } }]);
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'vault-file', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+]);
 
 // Compiled output lives in dist-electron/electron/, the renderer build in dist/.
 const rendererIndexPath = path.join(__dirname, '..', '..', 'dist', 'index.html');
