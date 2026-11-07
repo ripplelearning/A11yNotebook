@@ -142,11 +142,7 @@ import RemindersView from './features/reminders/RemindersView';
 import CalendarScreen from './features/calendar/CalendarScreen';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
 import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
-import {
-  QuickTaskDialog,
-  QuickTaskLibraryPicker,
-  QuickTaskNotebookPicker,
-} from './features/reminders/QuickTaskDialog';
+import { QuickTaskDialog, QuickTaskLibraryPicker } from './features/reminders/QuickTaskDialog';
 import { LinkDialog } from './features/links/LinkDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
 import CitationDialog from './features/vault/CitationDialog';
@@ -496,12 +492,11 @@ export default function App() {
   const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
   const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
-  const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'notebook' | 'task' | null>(null);
+  const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'task' | null>(null);
   type LinkDialogState =
     | { mode: 'add'; notebookPath: string; initialUrl: string; guidance?: string }
     | { mode: 'edit'; path: string; title: string; url: string };
   const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
-  const [quickTaskNotebookPath, setQuickTaskNotebookPath] = useState<string | undefined>();
   const [dictationActive, setDictationActive] = useState(false);
   const [transcriptionModelChoiceOpen, setTranscriptionModelChoiceOpen] = useState(false);
   const [audioNoteRecording, setAudioNoteRecording] = useState(false);
@@ -4580,10 +4575,10 @@ export default function App() {
   };
 
   // When a Quick Task library is picked, the library opens first and the
-  // notebook picker follows once the open library is in state.
+  // task dialog follows once the open library is in state.
   useEffect(() => {
     if (quickTaskStep === 'library' && vault) {
-      setQuickTaskStep('notebook');
+      setQuickTaskStep('task');
     }
   }, [quickTaskStep, vault]);
 
@@ -5497,15 +5492,11 @@ export default function App() {
       if (activeDialog === 'palette') setActiveDialog(null);
       if (!vault) {
         setQuickTaskStep('library');
-      } else if (selectedTab === 'notes-files' && selectedNotebookPath) {
-        // A notebook is visibly open: create the task there directly.
-        setQuickTaskNotebookPath(selectedNotebookPath);
-        setQuickTaskStep('task');
       } else {
-        // On the landing grid (or any other tab) the remembered notebook
-        // path does not count as open: ask which notebook the task goes in.
-        setQuickTaskNotebookPath(undefined);
-        setQuickTaskStep('notebook');
+        // The task dialog opens at once, with the text box focused first;
+        // when no notebook is open it carries the notebook chooser after
+        // the text box, in the same flow, instead of asking first.
+        setQuickTaskStep('task');
       }
       return;
     }
@@ -6062,6 +6053,13 @@ export default function App() {
   }, [titleView, currentNote, vault, selectedTab, activeDialog]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
+
+  // The notebook a Quick Task goes to without asking: the notebook whose
+  // Notes & Files grid is visibly open. On the landing grid (or any other
+  // tab) the remembered notebook path does not count as open, so the task
+  // dialog carries the notebook chooser instead.
+  const quickTaskNotebookOpen =
+    selectedTab === 'notes-files' && selectedNotebookPath ? selectedNotebookPath : undefined;
 
   return (
     <div
@@ -7338,31 +7336,46 @@ export default function App() {
           onClose={() => setQuickTaskStep(null)}
         />
       ) : null}
-      {quickTaskStep === 'notebook' && vault && !securityLocked ? (
-        <QuickTaskNotebookPicker
-          notebooks={flattenEntries(vault.entries)
-            .filter((entry) => entry.kind === 'notebook')
-            .map((entry) => entry.path)}
-          onPick={(notebookPath) => {
-            setQuickTaskNotebookPath(notebookPath);
-            setQuickTaskStep('task');
-          }}
-          onClose={() => setQuickTaskStep(null)}
-        />
-      ) : null}
       {quickTaskStep === 'task' && !securityLocked ? (
         <QuickTaskDialog
-          onCreate={async (text) => {
+          notebookPath={quickTaskNotebookOpen}
+          notebooks={
+            quickTaskNotebookOpen || !vault
+              ? undefined
+              : flattenEntries(vault.entries)
+                  .filter((entry) => entry.kind === 'notebook')
+                  .map((entry) => ({ path: entry.path, name: entry.name }))
+          }
+          defaultNotebookPath={
+            quickTaskNotebookOpen || !vault
+              ? undefined
+              : (() => {
+                  const notebookPaths = flattenEntries(vault.entries)
+                    .filter((entry) => entry.kind === 'notebook')
+                    .map((entry) => entry.path);
+                  // The most recent notebook is the last one recorded in
+                  // settings; a deleted or renamed one falls back to the
+                  // first notebook in the library. No notebooks at all
+                  // leaves no default, so a destination must be picked.
+                  return settings.lastNotebookPath && notebookPaths.includes(settings.lastNotebookPath)
+                    ? settings.lastNotebookPath
+                    : notebookPaths[0];
+                })()
+          }
+          onCreate={async (text, notebookPath) => {
             const bridge = window.a11yNotebook?.vault;
             if (!bridge?.createTask || switchingRef.current) throw new Error('Task creation is unavailable.');
             setTasks(
               await bridge.createTask({
-                notebookPath: quickTaskNotebookPath,
+                notebookPath,
                 text,
               }),
             );
             await refreshVault();
-            setStatusMessage('Task created.');
+            const name = notebookPath
+              ? findEntry(vault?.entries ?? [], notebookPath)?.name ?? notebookPath
+              : vault?.name ?? 'the library';
+            setStatusMessage(`Task created in ${name}.`);
           }}
           onClose={() => setQuickTaskStep(null)}
         />
