@@ -2019,7 +2019,7 @@ export default function App() {
       return;
     }
     if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc)$/i.test(entry.path)) {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc|xlsx|ods|xls|pptx|odp)$/i.test(entry.path)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (!canOpen()) return;
         setAttachment(preview);
@@ -5054,8 +5054,9 @@ export default function App() {
             // generic message: the main process throws them for
             // Google Docs link files and for formats the app cannot
             // read, and a generic message hides them. Other import
-            // failures keep the generic message, so internal error
-            // text is never shown to the user. Strip the Electron
+            // failures keep the generic lead-in but append the real
+            // underlying reason (for example the spreadsheet or ZIP
+            // error), so a failure is diagnosable. Strip the Electron
             // IPC wrapper first, as in the updater's error cleaning.
             const raw = failure instanceof Error ? failure.message : '';
             const cleaned = raw.replace(/^Error invoking remote method '[^']*':\s*(?:Error:\s*)?/, '');
@@ -5063,7 +5064,13 @@ export default function App() {
               cleaned.includes('.gdoc') ||
               cleaned.includes('cannot be read by this app') ||
               cleaned.includes('only a link to an online');
-            setStatusMessage(isGuidance ? cleaned : 'Could not import the selected file.');
+            setStatusMessage(
+              isGuidance
+                ? cleaned
+                : cleaned
+                  ? `Could not import the selected file. ${cleaned}`
+                  : 'Could not import the selected file.',
+            );
           });
       else setStatusMessage('Select a notebook before importing a file.');
       return;

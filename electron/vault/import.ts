@@ -16,7 +16,7 @@ import { isAudioPath } from '../../src/shared/audio';
 import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 import { isInternallySupportedPath } from '../../src/shared/file-provenance';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
-import { parsePointerFileUrl } from '../../src/shared/links';
+import { describePointerFileProblem, parsePointerFileUrl } from '../../src/shared/links';
 
 export function isEncryptedNoteSource(text: string) {
   let envelope: unknown;
@@ -123,26 +123,53 @@ export function guidanceForExtension(extension: string): string | undefined {
 /** Link-pointer files: JSON files holding a URL, not a document. */
 export const POINTER_EXTENSIONS = new Set(['.gdoc', '.gsheet', '.gslides']);
 
+/** The outcome of reading a link-pointer file: its URL, or why it holds none. */
+export type PointerFileOutcome = { url: string } | { reason: string };
+
+/**
+ * Read the URL out of a link-pointer file picked for import, naming the
+ * specific reason when it holds no usable URL instead of failing
+ * silently. A symlink anywhere in the path, an unreadable or oversized
+ * file, and an empty or invalid file each get their own reason.
+ */
+export async function readPointerFile(source: string): Promise<PointerFileOutcome> {
+  const resolved = path.resolve(source);
+  // The existence check comes first: a missing file reports as
+  // unreadable, not as a symlink problem (the symlink guard's lstat
+  // throws for a missing path too).
+  const before = await lstat(resolved).catch(() => null);
+  if (!before) return { reason: 'The file could not be read.' };
+  if (!before.isFile() || before.isSymbolicLink()) return { reason: 'The selected file is not a regular file.' };
+  if (before.size > 64 * 1024) return { reason: 'The file is larger than 64 KB.' };
+  try {
+    await assertNoSymlinks(resolved);
+  } catch {
+    return { reason: 'A folder in the file path is a symbolic link.' };
+  }
+  let handle: Awaited<ReturnType<typeof open>> | undefined;
+  try {
+    handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.size > 64 * 1024) return { reason: 'The file could not be read.' };
+    const content = (await handle.readFile()).toString('utf8');
+    const url = parsePointerFileUrl(content);
+    if (url) return { url };
+    return { reason: describePointerFileProblem(content) ?? 'The file does not contain a usable web address.' };
+  } catch {
+    return { reason: 'The file could not be read.' };
+  } finally {
+    await handle?.close();
+  }
+}
+
 /**
  * Read the URL out of a link-pointer file picked for import. Returns null
  * when the file cannot be read or holds no usable web URL; the caller then
  * keeps the guidance error instead of offering "Add as link".
  */
 export async function readPointerFileUrl(source: string): Promise<string | null> {
-  const resolved = path.resolve(source);
-  await assertNoSymlinks(resolved);
-  const before = await lstat(resolved);
-  if (!before.isFile() || before.isSymbolicLink() || before.size > 64 * 1024) return null;
-  const handle = await open(resolved, constants.O_RDONLY | constants.O_NOFOLLOW);
-  try {
-    const stat = await handle.stat();
-    if (!stat.isFile() || stat.size > 64 * 1024) return null;
-    return parsePointerFileUrl((await handle.readFile()).toString('utf8'));
-  } catch {
-    return null;
-  } finally {
-    await handle.close();
-  }
+  const outcome = await readPointerFile(source);
+  return 'url' in outcome ? outcome.url : null;
 }
 
 export function isSupportedDocument(filename: string) {
