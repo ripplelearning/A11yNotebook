@@ -7,16 +7,15 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Quick Task (Ctrl+Q): a small dialog that creates a task in the Tasks list from one line of text.',
-      'Find now lists every match with its surrounding text; Arrow keys move through the list and Enter moves to the chosen match.',
-      'Reading-view task checkboxes now toggle the task, instead of display-only.',
-      'Dictation (Ctrl+Alt+D) inserts transcribed speech at the caret; audio notes record, play back, and transcribe locally with a free Whisper model you choose.',
+      'Spreadsheets (.xlsx, .ods, .csv, .xls) open in an editable grid and save back with Ctrl+S; slide decks (.pptx, .odp) open as read-only text.',
+      'Link notes: add a web link to a notebook as a grid item with Type Link (Ctrl+Alt+L); it opens in the default web browser.',
+      'Bibliographies now format correctly for APA, MLA, and Chicago, including a new Chicago (Notes-Bibliography) style with footnotes.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'Settings now names itself in the window title; reminder dates and times are plain-text fields with an AM/PM choice; Ctrl+Tab no longer returns to a cancelled appointment; in-text citations have a bibliography context menu; importing a .gdoc file explains itself instead of failing generically; bookmark shortcuts are clarified as set-only.',
+      'Opening an ePub or PDF no longer fails with "Failed to fetch"; task reminders now fire after saving a note; the note metadata shortcut is now Ctrl+M; task due dates read MM-DD-YYYY with the time when set; deleting a note removes its link from tasks; bookmark jumps hold their landing when switching views; mixed fractions like 1 3/4 are recognized in math; Quick Task prompts when no notebook is open.',
     ],
   },
 ];
