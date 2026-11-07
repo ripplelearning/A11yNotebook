@@ -93,6 +93,7 @@ import type { OpenNote } from './features/vault/open-note';
 import { useVaultChanges } from './hooks/useVaultChanges';
 import ConflictDialog from './features/vault/ConflictDialog';
 import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
+import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
@@ -406,6 +407,13 @@ export default function App() {
   const [selectedTab, setSelectedTab] = useState('notes-files');
   const [contextMenu, setContextMenu] = useState<ContextMenuRequest | null>(null);
   const [deleteLibraryTarget, setDeleteLibraryTarget] = useState<{ name: string; path: string; permanent: boolean } | null>(null);
+  const [deleteGuard, setDeleteGuard] = useState<{
+    path: string;
+    name: string;
+    kind: 'note' | 'notebook';
+    permanent: boolean;
+    taskCount: number;
+  } | null>(null);
   const [pinnedTabs, setPinnedTabs] = useState<Set<string>>(() => new Set());
   const [vault, setVault] = useState<VaultInfo | null>(null);
   const [recentLibraries, setRecentLibraries] = useState<RecentLibrary[]>([]);
@@ -3403,10 +3411,30 @@ export default function App() {
     })();
   };
 
-  const deleteEntry = async (entryPath: string, bypassProtection = false) => {
+  const deleteEntry = async (entryPath: string, bypassProtection = false, skipTaskGuard = false) => {
     if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
       openProtectedRequest(entryPath, 'delete');
       return;
+    }
+    if (!skipTaskGuard) {
+      // Tasks are checklist lines inside notes: deleting a note deletes
+      // its tasks with it. Warn first, naming the count, so the loss is
+      // never a surprise. A notebook counts the tasks in every note
+      // inside it.
+      const entry = findEntry(vault?.entries ?? [], entryPath);
+      const taskCount = tasks.filter(
+        (task) => task.path === entryPath || task.path.startsWith(`${entryPath}/`),
+      ).length;
+      if (taskCount > 0) {
+        setDeleteGuard({
+          path: entryPath,
+          name: entry?.name ?? entryPath.split('/').at(-1) ?? entryPath,
+          kind: entry?.kind === 'notebook' ? 'notebook' : 'note',
+          permanent: false,
+          taskCount,
+        });
+        return;
+      }
     }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     if (
@@ -3429,10 +3457,26 @@ export default function App() {
     }
   };
 
-  const deleteEntryPermanently = async (entryPath: string, bypassProtection = false) => {
+  const deleteEntryPermanently = async (entryPath: string, bypassProtection = false, skipTaskGuard = false) => {
     if (!bypassProtection && findProtectionBlockInTree(vault?.entries ?? [], entryPath)) {
       openProtectedRequest(entryPath, 'delete-permanent');
       return;
+    }
+    if (!skipTaskGuard) {
+      const entry = findEntry(vault?.entries ?? [], entryPath);
+      const taskCount = tasks.filter(
+        (task) => task.path === entryPath || task.path.startsWith(`${entryPath}/`),
+      ).length;
+      if (taskCount > 0) {
+        setDeleteGuard({
+          path: entryPath,
+          name: entry?.name ?? entryPath.split('/').at(-1) ?? entryPath,
+          kind: entry?.kind === 'notebook' ? 'notebook' : 'note',
+          permanent: true,
+          taskCount,
+        });
+        return;
+      }
     }
     const affectedNotes = openNotes.filter((item) => item.path === entryPath || item.path.startsWith(`${entryPath}/`));
     const hasUnsavedChanges = affectedNotes.some((item) => item.content !== item.saved);
@@ -7375,6 +7419,20 @@ export default function App() {
           permanent={deleteLibraryTarget.permanent}
           onCancel={() => setDeleteLibraryTarget(null)}
           onConfirm={() => void confirmDeleteLibrary()}
+        />
+      ) : null}
+      {deleteGuard ? (
+        <DeleteGuardDialog
+          name={deleteGuard.name}
+          kind={deleteGuard.kind}
+          permanent={deleteGuard.permanent}
+          taskCount={deleteGuard.taskCount}
+          onCancel={() => setDeleteGuard(null)}
+          onConfirm={() => {
+            const { path, permanent } = deleteGuard;
+            setDeleteGuard(null);
+            void (permanent ? deleteEntryPermanently(path, false, true) : deleteEntry(path, false, true));
+          }}
         />
       ) : null}
       {activeDialog === 'updates' ? (
