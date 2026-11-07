@@ -4909,7 +4909,7 @@ export default function App() {
         setStatusMessage('Open a note in a notebook first.');
         return;
       }
-      if (commandId === 'open-citation-generator' && mode !== 'edit') {
+      if (commandId === 'open-citation-generator' && mode !== 'edit' && !citationDialog) {
         setStatusMessage('Open a note in a notebook in edit mode first.');
         return;
       }

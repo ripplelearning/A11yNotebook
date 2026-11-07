@@ -282,14 +282,6 @@ export default function CitationDialog({
       titleId="citation-dialog-title"
       onClose={onClose}
     >
-      <div role="group" aria-label="Citation view">
-        <button type="button" aria-pressed={view === 'generator'} onClick={() => setView('generator')}>
-          Citation generator
-        </button>
-        <button type="button" aria-pressed={view === 'bibliography'} onClick={() => setView('bibliography')}>
-          Bibliography
-        </button>
-      </div>
       {!canInsert && !onSwitchToEdit ? <p>Inserting is disabled unless the note is open in edit mode.</p> : null}
       <label>
         Citation style
