@@ -102,6 +102,7 @@ import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
+import { searchTasksRemindersAppointments } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
 import SpellingDialog from './features/vault/SpellingDialog';
 import ThesaurusDialog from './features/vault/ThesaurusDialog';
@@ -484,6 +485,15 @@ export default function App() {
   // reads it once on launch (see the wake focus effects below).
   const [wakeFocus, setWakeFocus] = useState<{ libraryPath: string; reminderId: string } | null>(null);
   const [pendingWakeFocusId, setPendingWakeFocusId] = useState<string | null>(null);
+  // A task or reminder opened from a search result: the view to show and
+  // the row to focus once it has rendered. Appointments open through a
+  // request to the calendar screen instead (it owns its data).
+  const [pendingSearchFocus, setPendingSearchFocus] = useState<{
+    tab: 'tasks' | 'reminders';
+    id: string;
+    announce: string;
+  } | null>(null);
+  const [openAppointmentRequest, setOpenAppointmentRequest] = useState<{ id: string; nonce: number } | null>(null);
   const [calendarTabOpen, setCalendarTabOpen] = useState(false);
   const [assetTabOpen, setAssetTabOpen] = useState(false);
   const [assetInitialPath, setAssetInitialPath] = useState<string | undefined>();
@@ -1623,21 +1633,41 @@ export default function App() {
         searchScope === 'current'
           ? { text: searchText, ...searchFilters, notebook: selectedNotebookPath, limit: 100 }
           : { text: searchText, ...searchFilters, limit: 100 };
-      void bridge.vault
-        .search(query)
-        .then((matches) => {
-          if (!cancelled) {
-            setSearchResults(matches);
-            // The list itself is filtered at render, but the announcement
-            // must count what is actually shown.
-            const hidden = settings.showOriginalFiles
-              ? new Set<string>()
-              : supersededPaths(vault?.entries ?? []);
-            const visible = matches.filter((match) => !hidden.has(match.path)).length;
-            setStatusMessage(
-              `${visible} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
-            );
-          }
+      // The file index only knows file kinds: a task, reminder, or
+      // appointment kind must never reach it (its validator rejects the
+      // kind), so those searches skip the file query entirely.
+      const fileKind =
+        query.kind === 'task' || query.kind === 'reminder' || query.kind === 'appointment' ? null : query;
+      void Promise.all([
+        fileKind ? bridge.vault.search(fileKind) : Promise.resolve([] as VaultSearchResult[]),
+        bridge.vault.getCalendar?.().catch(() => []) ?? Promise.resolve([]),
+      ])
+        .then(([fileMatches, appointments]) => {
+          if (cancelled) return;
+          const extra = searchTasksRemindersAppointments(query, {
+            tasks,
+            reminders: reminderState.reminders,
+            appointments: appointments ?? [],
+          });
+          const matches = [...fileMatches, ...extra]
+            .sort(
+              (a, b) =>
+                b.score - a.score ||
+                a.path.localeCompare(b.path) ||
+                a.kind.localeCompare(b.kind) ||
+                (a.targetId ?? '').localeCompare(b.targetId ?? ''),
+            )
+            .slice(0, query.limit ?? 100);
+          setSearchResults(matches);
+          // The list itself is filtered at render, but the announcement
+          // must count what is actually shown.
+          const hidden = settings.showOriginalFiles
+            ? new Set<string>()
+            : supersededPaths(vault?.entries ?? []);
+          const visible = matches.filter((match) => !hidden.has(match.path)).length;
+          setStatusMessage(
+            `${visible} search results shown in ${searchScope === 'current' ? 'the current notebook' : 'the whole library'}.`,
+          );
         })
         .catch(() => {
           if (!cancelled) setStatusMessage('Could not query the search index.');
@@ -1647,7 +1677,16 @@ export default function App() {
       cancelled = true;
       window.clearTimeout(timeout);
     };
-  }, [searchText, searchFilters, searchScope, selectedNotebookPath, vault, settings.showOriginalFiles]);
+  }, [
+    searchText,
+    searchFilters,
+    searchScope,
+    selectedNotebookPath,
+    vault,
+    settings.showOriginalFiles,
+    tasks,
+    reminderState.reminders,
+  ]);
 
   const availableRegions = FOCUS_REGION_ORDER.filter(
     (region) => (region !== 'right-pane' || rightPaneOpen) && (!focusMode || region === 'main'),
@@ -4655,6 +4694,25 @@ export default function App() {
     if (item) setStatusMessage(`Due reminder: ${item.title}, ${new Date(item.scheduledAt).toLocaleString()}`);
   }, [pendingWakeFocusId, selectedTab, reminderState.reminders]);
 
+  // Focus a task or reminder opened from a search result once its view
+  // has rendered. Task and reminder rows already carry data-task-id /
+  // data-reminder-id and tabIndex -1; the opener resets the task filters
+  // first, so the row is present. Like the wake focus above, a dialog
+  // already on screen keeps focus instead.
+  useEffect(() => {
+    if (!pendingSearchFocus || selectedTab !== pendingSearchFocus.tab) return;
+    const { tab, id, announce } = pendingSearchFocus;
+    setPendingSearchFocus(null);
+    if (document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]')) return;
+    const attribute = tab === 'tasks' ? 'data-task-id' : 'data-reminder-id';
+    const row = Array.from(document.querySelectorAll(`[${attribute}]`)).find(
+      (element) => element.getAttribute(attribute) === id,
+    );
+    if (!(row instanceof HTMLElement)) return;
+    row.focus();
+    setStatusMessage(announce);
+  }, [pendingSearchFocus, selectedTab, tasks, reminderState.reminders]);
+
   const createContextual = () => {
     if (selectedTab === 'libraries') {
       openLibrary(true);
@@ -6337,8 +6395,39 @@ export default function App() {
               selectedNotebookPath={selectedNotebookPath}
               selectedNotebookName={selectedNotebookName}
               scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
-              onOpen={(relative) => {
-                const entry = findEntry(vault.entries, relative);
+              onOpen={(result) => {
+                if (result.kind === 'task' && result.targetId) {
+                  // The task filters could hide the row (a done task under
+                  // the Open filter, for example): show everything first,
+                  // then focus the row once the Tasks view renders.
+                  setTaskStatusFilter('all');
+                  setTaskDueFilter('any');
+                  setTaskPriorityFilter('all');
+                  setTaskNotebookFilter('all');
+                  setTaskTabOpen(true);
+                  navigateScreen('tasks');
+                  setPendingSearchFocus({ tab: 'tasks', id: result.targetId, announce: `Task: ${result.title}.` });
+                  return;
+                }
+                if (result.kind === 'reminder' && result.targetId) {
+                  const reminder = reminderState.reminders.find((item) => item.id === result.targetId);
+                  setReminderTabOpen(true);
+                  navigateScreen('reminders');
+                  setPendingSearchFocus({
+                    tab: 'reminders',
+                    id: result.targetId,
+                    announce: reminder
+                      ? `Reminder: ${reminder.title}, ${new Date(reminder.scheduledAt).toLocaleString()}.`
+                      : `Reminder: ${result.title}.`,
+                  });
+                  return;
+                }
+                if (result.kind === 'appointment' && result.targetId) {
+                  navigateScreen('calendar');
+                  setOpenAppointmentRequest({ id: result.targetId, nonce: Date.now() });
+                  return;
+                }
+                const entry = findEntry(vault.entries, result.path);
                 if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
               }}
             />
@@ -6516,6 +6605,7 @@ export default function App() {
                   }
                   announce={setStatusMessage}
                   createRequest={calendarCreateRequest}
+                  openRequest={openAppointmentRequest}
                   onOpenEntry={async (relative) => {
                     const entry = findEntry(vault.entries, relative);
                     if (!entry) throw new Error('The linked item is no longer available.');

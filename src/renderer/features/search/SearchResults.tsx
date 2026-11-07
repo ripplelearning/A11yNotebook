@@ -8,12 +8,21 @@ interface Props {
   notebooks: string[];
   results: VaultSearchResult[];
   active: boolean;
-  onOpen: (relative: string) => void;
+  onOpen: (result: VaultSearchResult) => void;
   scope: SearchScope;
   selectedNotebookPath?: string;
   selectedNotebookName?: string;
   scopeBlocked: boolean;
 }
+
+const KIND_LABELS: Record<VaultSearchResult['kind'], string> = {
+  note: 'Note',
+  attachment: 'Text attachment',
+  docx: 'DOCX document',
+  task: 'Task',
+  reminder: 'Reminder',
+  appointment: 'Appointment',
+};
 
 export default function SearchResults({
   filters,
@@ -59,7 +68,7 @@ export default function SearchResults({
             onChange={(event) =>
               onFilters({
                 ...filters,
-                kind: event.target.value ? (event.target.value as 'note' | 'attachment' | 'docx') : undefined,
+                kind: event.target.value ? (event.target.value as VaultSearchQuery['kind']) : undefined,
               })
             }
           >
@@ -67,8 +76,15 @@ export default function SearchResults({
             <option value="note">Notes</option>
             <option value="attachment">Text attachments</option>
             <option value="docx">DOCX documents</option>
+            <option value="task">Tasks</option>
+            <option value="reminder">Reminders</option>
+            <option value="appointment">Appointments</option>
           </select>
         </label>
+        <p>
+          Tasks, reminders, and appointments have no tags and no modified date, so the tag and modified-date
+          filters exclude them; appointments belong to no notebook, so the notebook filter excludes them too.
+        </p>
         <label>
           Search tag
           <input
@@ -106,18 +122,19 @@ export default function SearchResults({
             </p>
             <ul aria-label="Search results">
               {results.map((result) => (
-                <li key={result.path}>
+                <li key={`${result.kind}:${result.targetId ?? result.path}`}>
                   <button
                     type="button"
                     data-context="search-result"
                     data-path={result.path}
-                    onClick={() => onOpen(result.path)}
+                    onClick={() => onOpen(result)}
                   >
-                    {result.title}
+                    {KIND_LABELS[result.kind]}: {result.title}
                   </button>
                   <p>{result.snippet}</p>
                   <small>
-                    {result.path} · {result.tags.join(', ')}
+                    {result.path ? `${result.path} · ` : ''}
+                    {result.tags.join(', ')}
                   </small>
                 </li>
               ))}
