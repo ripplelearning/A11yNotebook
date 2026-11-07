@@ -37,7 +37,9 @@ that prerequisite rather than silently creating a different kind of item.
 
 ## Navigate files
 
-In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Enter opens the selected item: a managed note, or a supported managed preview. External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently. Space selects a row. To arrange notebooks, notes, and files in the library tree, use the Organize Library dialog below.
+In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Enter opens the selected item: a managed note, or a supported managed preview. External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently.
+Deleting a note or notebook that contains tasks first warns how many tasks will be deleted with it, since tasks
+live inside notes and have no separate copy. Space selects a row. To arrange notebooks, notes, and files in the library tree, use the Organize Library dialog below.
 
 Use **File → New note**, **File → New notebook**, or **Tools → Import file**. Imported files are copied into the
 selected notebook. Select an item before using **Tools → Reveal selected item in Explorer** or **Open selected item
@@ -259,11 +261,18 @@ library open (where the scope controls are shown disabled):
 **Current notebook** searches only the selected notebook (including its sub-notebooks) and, with no notebook
 selected, shows guidance instead of searching the whole library; **Whole library** searches every notebook.
 The scope is remembered on this device. In Whole library scope, the notebook filter in Search filters can still
-narrow results to one notebook. Search filters also select note/attachment kind, tag,
-and modified-date range. `#tag` terms also filter by tag. Inline hashtags and supported front-matter tag fields
+narrow results to one notebook. Search filters also select kind — notes, text attachments, DOCX documents, tasks,
+reminders, and appointments — tag, and modified-date range. `#tag` terms also filter by tag. Inline hashtags and supported front-matter tag fields
 are indexed; this is not a general YAML editor. Text/CSV/HTML attachment and note contents, plus bounded PDF/ePub
 extracted text, are searchable. Unsupported or invalid attachments are searchable by filename. Results are capped at
 100 in the UI.
+
+Global search also finds tasks, reminders, and appointments: a task result shows its text and due date or priority,
+a reminder its title and scheduled time, and an appointment its title, time, and location. Opening a task result
+shows the task in the Tasks view and focuses its row; a reminder result opens the Reminders tab and focuses the
+reminder; an appointment result opens the appointment itself. Tasks, reminders, and appointments have no tags and
+no modified date, so the tag and modified-date filters exclude them; appointments belong to no notebook, so the
+notebook filter (and Current notebook scope) excludes them too.
 
 ## Tasks
 
@@ -275,9 +284,13 @@ stale note revisions or duplicate/missing IDs fail safely. Markdown optional dat
 list (displayed as Critical, High, Medium, Low, and Optional by default). Legacy `low`, `normal`, `high`, and
 `urgent` values still parse.
 
-Press Ctrl+Q anywhere to open the Quick Task dialog: type the task, press Enter or OK, and it
-becomes a new task in the Tasks list, saved as a task file in the current library and notebook.
-If no library is open, Quick Task first asks for a library, then for a notebook in that library.
+Press Ctrl+Q anywhere to open the Quick Task dialog: the task text box is focused first, so type the task,
+press Enter or OK, and it becomes a new task in the Tasks list, saved as a task file in the current library
+and notebook. When no notebook is open, a notebook chooser follows the text box in the same dialog,
+preselected to the most recent notebook — saving without choosing uses that notebook. When the library has
+no notebooks at all, a destination must be picked before saving. Every Quick Task confirms with
+"Task created in [Notebook Name]", announced and shown in the status bar, including when a notebook is open.
+If no library is open, Quick Task first asks for a library.
 On macOS, Quick Task has no default shortcut; assign one under Settings → Keyboard Shortcuts.
 
 Open the context menu on a task row (Shift+F10, the Applications key, or right-click) for **Set due date**,
@@ -322,7 +335,8 @@ edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at 
 **Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
 menu and the command palette. Neither shortcut jumps anywhere: both only save a bookmark. To jump back
 to a saved bookmark, activate it in the Bookmarks section of the right pane. Opening an anchored bookmark lands on its heading in the reading view, or
-at its position in edit mode. Bookmarks and
+at its position in edit mode — in plain source and in the rich-text editor alike — and announces the heading
+it landed on. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
 
 When a link points at a note that does not exist, the right pane marks it as a missing note with a Repair
@@ -483,7 +497,9 @@ Today controls. The **Month grid** is a table with a button per day labelled wit
 choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or
 timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
 end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
-removes the whole series, not just one occurrence; deletion asks for explicit confirmation. Live two-way
+removes the whole series, not just one occurrence; deletion asks for confirmation in a separate dialog —
+a single appointment asks "Delete this appointment?", and a recurring one warns that deleting removes the
+whole series. Live two-way
 sync with Google Calendar, Outlook Calendar, and Apple Calendar is built in (see Calendar sync
 setup below). Windows screen-reader verification has not been run.
 
