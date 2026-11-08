@@ -183,6 +183,22 @@ describe('persistent vault search', () => {
     expect((await service.search({ text: 'manual' }))[0]).toMatchObject({ path: 'manual.pdf', snippet: '' });
   });
 
+  it('shows task-line markers as readable dates and times in snippets, never raw markers', async () => {
+    const service = await open(await folder());
+    await service.createFolder('Work');
+    await service.createNote('Work/Note.md');
+    await service.saveNote(
+      'Work/Note.md',
+      '# Reminder test\n\n- [ ] Call the dentist remind:2026-11-08 22:03 due:2026-11-08 priority:high',
+    );
+    const [result] = await service.search({ text: 'dentist' });
+    expect(result.snippet).toContain('11/08/2026, 10:03 PM');
+    expect(result.snippet).not.toContain('remind:');
+    expect(result.snippet).not.toContain('2026-11-08');
+    expect(result.snippet).not.toContain('priority:');
+    expect(result.snippet).not.toContain('due-time:');
+  });
+
   it('indexes task toggles, creates, saves, and folder renames immediately', async () => {
     const service = await open(await folder());
     await service.createFolder('Work');

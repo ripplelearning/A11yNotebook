@@ -1,5 +1,6 @@
 import type { CalendarAppointment } from './calendar';
 import type { Reminder } from './reminders';
+import { formatReminderDateTime, formatTaskDueDate } from './reminders';
 import type { VaultTask } from './types';
 
 export interface VaultSearchQuery {
@@ -74,7 +75,7 @@ export function searchTasksRemindersAppointments(
       if (!matchesAllTerms(task.text, terms)) continue;
       const titleHit = terms.length > 0 && terms.some((term) => task.text.toLowerCase().includes(term));
       const noteName = task.path.split('/').at(-1) ?? task.path;
-      const due = task.dueDate ? `Due ${task.dueDate}${task.dueTime ? ` ${task.dueTime}` : ''}` : '';
+      const due = task.dueDate ? `Due ${formatTaskDueDate(task.dueDate, task.dueTime)}` : '';
       const priority = task.priority ? `${task.priority} priority` : '';
       const context = [due, priority].filter(Boolean).join(' · ') || `In ${noteName}`;
       results.push({
@@ -105,7 +106,7 @@ export function searchTasksRemindersAppointments(
         notebook,
         tags: [],
         modified: '',
-        snippet: `Reminder at ${new Date(reminder.scheduledAt).toLocaleString()}${noteName ? ` · In ${noteName}` : ''}`,
+        snippet: `Reminder at ${formatReminderDateTime(reminder.scheduledAt)}${noteName ? ` · In ${noteName}` : ''}`,
         score: titleHit ? 10 : 1,
         targetId: reminder.id,
       });
@@ -122,7 +123,7 @@ export function searchTasksRemindersAppointments(
         terms.length > 0 && terms.some((term) => appointment.title.toLowerCase().includes(term));
       const when = appointment.allDay
         ? `All day ${appointment.start}`
-        : new Date(appointment.start).toLocaleString();
+        : formatReminderDateTime(appointment.start);
       results.push({
         path: '',
         title: appointment.title,

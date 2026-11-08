@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
-import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, splitStoredTime, composeDialogTime, formatTaskDueDate, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
+import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, splitStoredTime, composeDialogTime, formatTaskDueDate, formatReminderDateTime, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
@@ -703,5 +703,18 @@ describe('task due date display', () => {
     expect(formatTaskDueDate('2026-11-07', '')).toBe('11-07-2026');
     expect(formatTaskDueDate(undefined, undefined)).toBe('No due date');
     expect(formatTaskDueDate(undefined, '09:30')).toBe('No due date');
+  });
+});
+
+describe('reminder date-time display for search results', () => {
+  it('shows MM/DD/YYYY, HH:MM AM/PM for a stored task marker', () => {
+    expect(formatReminderDateTime('2026-11-08 22:03')).toBe('11/08/2026, 10:03 PM');
+    expect(formatReminderDateTime('2026-11-08 09:30')).toBe('11/08/2026, 9:30 AM');
+    expect(formatReminderDateTime('2026-11-08 00:30')).toBe('11/08/2026, 12:30 AM');
+    expect(formatReminderDateTime('2026-11-08 12:00')).toBe('11/08/2026, 12:00 PM');
+  });
+
+  it('keeps an unparseable value instead of guessing', () => {
+    expect(formatReminderDateTime('not a date')).toBe('not a date');
   });
 });

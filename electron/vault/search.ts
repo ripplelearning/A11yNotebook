@@ -4,6 +4,7 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import type { VaultSearchQuery, VaultSearchResult } from '../../src/shared/search';
 import { type DocxStructure } from '../../src/shared/docx';
+import { formatReminderDateTime } from '../../src/shared/reminders';
 import { extractDocText } from './doc';
 import { extractEpubPages, extractPdfPages } from './document-preview';
 import { docxSearchText, parseDocxStructure } from './docx-parser';
@@ -35,6 +36,32 @@ export function isVisibleVaultPath(relativePath: string) {
     !relativePath.includes('\\') &&
     relativePath.split('/').every((segment) => segment !== '' && !segment.startsWith('.'))
   );
+}
+
+/**
+ * Make a search-result snippet readable: a task line's stored markers are
+ * shown as plain dates and times instead of their stored forms — a
+ * remind: marker reads "MM/DD/YYYY, HH:MM AM/PM" — and due times,
+ * priorities, and the stable task-id comment are dropped. Matching still
+ * runs on the raw indexed text; only the displayed slice is formatted.
+ * The marker patterns mirror the ones parseMarkdownTasks strips
+ * (electron/vault/tasks.ts).
+ */
+function formatSnippet(snippet: string): string {
+  return snippet
+    .replace(
+      /(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/gi,
+      (_, value: string) => formatReminderDateTime(value),
+    )
+    .replace(
+      /(?:📅\s*|due:)(\d{4})-(\d{2})-(\d{2})/gi,
+      (_, year: string, month: string, day: string) => `${month}/${day}/${year}`,
+    )
+    .replace(/due-time:\d{2}:\d{2}/gi, '')
+    .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
+    .replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /** Check every ancestor, including the private metadata folder, before accessing it. */
@@ -503,7 +530,9 @@ export function createSearchIndex(root: string, protection?: SearchIndexProtecti
       );
       const match = terms.length ? text.indexOf(terms[0]) : 0;
       const start = Math.max(0, match - 60);
-      const snippet = `${start ? '…' : ''}${doc.text.slice(start, start + 220)}${doc.text.length > start + 220 ? '…' : ''}`;
+      const snippet = formatSnippet(
+        `${start ? '…' : ''}${doc.text.slice(start, start + 220)}${doc.text.length > start + 220 ? '…' : ''}`,
+      );
       results.push({
         path: doc.path,
         title: doc.title,
