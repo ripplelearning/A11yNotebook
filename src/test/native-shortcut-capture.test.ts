@@ -197,5 +197,11 @@ describe('vault-file custom scheme privileges', () => {
     // Without supportFetchAPI, Chromium rejects fetch() to a custom scheme
     // with "Failed to fetch" — the PDF/ePub reader fetches via vault-file.
     expect(vaultFile?.privileges?.supportFetchAPI).toBe(true);
+    // supportFetchAPI alone is not enough: the renderer loads from file://,
+    // so the fetch is cross-origin, and Electron blocks it without
+    // corsEnabled — the same "Failed to fetch" symptom. Only an
+    // Electron-level integration test can verify a real fetch() to
+    // vault-file://; this suite can only assert the flags.
+    expect(vaultFile?.privileges?.corsEnabled).toBe(true);
   });
 });
