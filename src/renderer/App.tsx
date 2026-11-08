@@ -1122,7 +1122,7 @@ export default function App() {
    */
   useEffect(() => {
     if (!focusEditorOnEditRef.current) return;
-    focusEditorOnEditRef.current = null;
+    focusEditorOnEditRef.current = false;
     if (mode !== 'edit' || !currentNoteId || citationDialog) return;
     const richEditor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
     if (richEditor) {
@@ -1646,7 +1646,6 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tasks, vault, dismissedTaskAutoLinksLoaded]);
   // Task links are private metadata, but the Tasks screen displays them,
   // so a cloud-folder change to the task-links store must refresh the
