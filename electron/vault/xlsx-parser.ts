@@ -243,12 +243,21 @@ export function xlsxSheetParts(entries: Map<string, ZipEntry>): Array<{ name: st
 
   const relsDocument = parseXml(entries, 'xl/_rels/workbook.xml.rels', LABEL, false);
   const relTargets = new Map<string, string>();
+  // Relationship ids that point at a part that is not a worksheet (chart
+  // sheets, dialog sheets, macro sheets). Those sheets have no worksheet
+  // data to read and must not fall through to the positional guess below,
+  // where they can collide with a real worksheet's part.
+  const nonWorksheetIds = new Set<string>();
   if (relsDocument && relsDocument.documentElement) {
     for (const rel of childElements(relsDocument.documentElement, 'Relationship')) {
-      if (rel.getAttribute('Type') !== WORKSHEET_TYPE) continue;
       const id = rel.getAttribute('Id');
       const target = rel.getAttribute('Target');
-      if (id && target) relTargets.set(id, target.replace(/^\//, '').replace(/^xl\//, ''));
+      if (!id || !target) continue;
+      if (rel.getAttribute('Type') === WORKSHEET_TYPE) {
+        relTargets.set(id, target.replace(/^\//, '').replace(/^xl\//, ''));
+      } else {
+        nonWorksheetIds.add(id);
+      }
     }
   }
 
@@ -262,6 +271,7 @@ export function xlsxSheetParts(entries: Map<string, ZipEntry>): Array<{ name: st
   sheetElements.forEach((sheetElement, index) => {
     const name = sheetElement.getAttribute('name') || 'Sheet';
     const id = relId(sheetElement);
+    if (id && nonWorksheetIds.has(id)) return;
     const target = id ? relTargets.get(id) : undefined;
     // Fall back to the conventional part order when relationships are absent.
     const partPath = target ? `xl/${target}` : `xl/worksheets/sheet${index + 1}.xml`;
@@ -270,6 +280,7 @@ export function xlsxSheetParts(entries: Map<string, ZipEntry>): Array<{ name: st
     if (!entries.has(partPath)) invalid(`The ${LABEL} part ${partPath} is missing.`);
     parts.push({ name, partPath });
   });
+  if (!parts.length) invalid(`The ${LABEL} workbook contains no worksheets.`);
   return parts;
 }
 

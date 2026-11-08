@@ -76,6 +76,24 @@ describe('xlsx parser', () => {
     delete entries['xl/worksheets/sheet2.xml'];
     expect(() => parseXlsxWorkbook(zip(entries))).toThrow('sheet2.xml is missing');
   });
+
+  it('skips a chart sheet between worksheets instead of reporting a duplicate', () => {
+    const entries = validEntries();
+    entries['xl/workbook.xml'] =
+      `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Chart1" sheetId="2" r:id="rId3"/><sheet name="Notes" sheetId="3" r:id="rId2"/></sheets></workbook>`;
+    entries['xl/_rels/workbook.xml.rels'] =
+      `<Relationships xmlns="${relNs}"><Relationship Id="rId1" Type="${relsNs}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${relsNs}/worksheet" Target="worksheets/sheet2.xml"/><Relationship Id="rId3" Type="${relsNs}/chartsheet" Target="charts/chart1.xml"/></Relationships>`;
+    const workbook = parseXlsxWorkbook(zip(entries));
+    expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Budget', 'Notes']);
+    expect(workbook.sheets[1].rows).toEqual([[{ text: 'Groceries' }]]);
+  });
+
+  it('still rejects two worksheets that share one part', () => {
+    const entries = validEntries();
+    entries['xl/workbook.xml'] =
+      `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Copy" sheetId="2" r:id="rId1"/></sheets></workbook>`;
+    expect(() => parseXlsxWorkbook(zip(entries))).toThrow('lists the same worksheet twice');
+  });
 });
 
 describe('spreadsheet cell references', () => {
