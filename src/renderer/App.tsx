@@ -2053,7 +2053,10 @@ export default function App() {
       setExternalFile(entry);
       return;
     }
-    if (assetRegistry.resolve(entry.path)) {
+    // CSV files always open in the spreadsheet view, even though the Grid
+    // cognitive tool also claims the .csv extension: Grid files stay
+    // openable from the Assets tab, where readAsset resolves them by type.
+    if (!/\.csv$/i.test(entry.path) && assetRegistry.resolve(entry.path)) {
       if (assetDirty || assetBusy) {
         setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
         return;
@@ -3986,11 +3989,13 @@ export default function App() {
         const created = findEntry(imported.vault.entries, imported.path);
         if (created) await openEntry(created);
         const kind =
-          created && assetRegistry.resolve(created.path)
-            ? 'a cognitive tool'
-            : created?.kind === 'note'
-              ? 'an editable note'
-              : 'a read-only preview';
+          created && /\.csv$/i.test(created.path)
+            ? 'a spreadsheet'
+            : created && assetRegistry.resolve(created.path)
+              ? 'a cognitive tool'
+              : created?.kind === 'note'
+                ? 'an editable note'
+                : 'a read-only preview';
         setStatusMessage(`Document imported as ${kind}. The original file was kept.`);
       } catch (failure) {
         if (!securityLockedRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation)

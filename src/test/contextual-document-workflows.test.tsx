@@ -817,6 +817,31 @@ describe('contextual shell document workflows', () => {
     },
   );
 
+  it('opens a CSV file in the spreadsheet view, not Cognitive Tools', async () => {
+    const path = 'Budget.csv';
+    const { bridge } = setup({
+      entries: [{ name: path, path, kind: 'attachment', provenance: 'imported' }],
+    });
+    bridge.vault.readAttachment.mockResolvedValue({ path, kind: '.csv', text: '' });
+    bridge.vault.readSpreadsheet.mockResolvedValue({
+      sourceFormat: 'csv',
+      sheets: [
+        {
+          name: 'Budget',
+          rows: [[{ text: 'Rent' }, { text: '1200', value: 1200 }]],
+          mergedCells: [],
+          columnWidths: [],
+        },
+      ],
+      unsupportedFeatures: [],
+      truncated: false,
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    await openTreeLeaf(/Budget\.csv/);
+    expect(await screen.findByLabelText('Row 1, column A, Rent')).toBeInTheDocument();
+    expect(document.title).not.toContain('Cognitive Tools');
+  });
+
   it('keeps the tab panel labelled when note paths contain spaces and punctuation', async () => {
     setup({ entries: [{ name: 'A plan #1.md', path: 'A plan #1.md', kind: 'note', provenance: 'created' }] });
     await screen.findByRole('heading', { name: 'Study' });
