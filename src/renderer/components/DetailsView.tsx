@@ -197,7 +197,21 @@ export default function DetailsView<T extends DetailsViewItem>({
           openContextMenu(item, event.currentTarget);
         }
         return;
-      default:
+      default: {
+        // Type-ahead: a single printable character jumps to the next item
+        // whose name starts with it, searching in sorted order from the
+        // row after the focused one and wrapping around, so repeated
+        // presses cycle through every match. Mirrors VaultTree.
+        if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          event.preventDefault();
+          const query = event.key.toLocaleLowerCase();
+          const candidate = [...sortedItems.slice(index + 1), ...sortedItems.slice(0, index + 1)].find(
+            (entry) => entry.name.toLocaleLowerCase().startsWith(query),
+          );
+          if (candidate) focusCell(sortedItems.indexOf(candidate), focusedColumn);
+        }
+        return;
+      }
     }
   };
 

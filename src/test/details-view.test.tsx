@@ -167,6 +167,31 @@ describe('accessible details view', () => {
     expect(reportType).toHaveFocus();
   });
 
+  it('jumps to the next item whose name starts with a typed letter, wrapping and cycling', () => {
+    renderDetails();
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    const alpha = within(grid).getByRole('gridcell', { name: 'Alpha.md' });
+    const beta = within(grid).getByRole('gridcell', { name: 'Beta.md' });
+    const report = within(grid).getByRole('gridcell', { name: 'Report.pdf' });
+
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'r' });
+    expect(report).toHaveFocus();
+    // Wraps past the end back to the first match.
+    fireEvent.keyDown(report, { key: 'b' });
+    expect(beta).toHaveFocus();
+    // The only 'b' item is the focused one, so pressing it again stays put.
+    fireEvent.keyDown(beta, { key: 'b' });
+    expect(beta).toHaveFocus();
+    // Uppercase matches too; a letter with no match and a modified key do nothing.
+    fireEvent.keyDown(beta, { key: 'R' });
+    expect(report).toHaveFocus();
+    fireEvent.keyDown(report, { key: 'z' });
+    expect(report).toHaveFocus();
+    fireEvent.keyDown(report, { key: 'a', ctrlKey: true });
+    expect(report).toHaveFocus();
+  });
+
   it('keeps one tab stop and includes sortable headers in grid keyboard navigation', () => {
     renderDetails();
     const grid = screen.getByRole('grid', { name: 'Notebook items' });
