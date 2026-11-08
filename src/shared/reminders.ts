@@ -272,11 +272,15 @@ export function parseReminderDate(value: string): Date | null {
   return Number.isFinite(result.getTime()) ? result : null;
 }
 
+/** A reminder may link to any entry inside the library — a note or a file.
+ * The path must still be a safe relative path: no absolute paths, no
+ * traversal, nothing under .a11ynotebook. Task reminders are the one
+ * exception: parseTaskReminders only reads note content, so it keeps its
+ * own Markdown/HTML guard. */
 export function isReminderPath(path: string): boolean {
   return (
     typeof path === 'string' &&
     !/^[\\/]|^[a-z]:|[\0\r\n]/i.test(path) &&
-    /\.(?:md|html)$/i.test(path) &&
     path.split(/[\\/]/).every((part) => part !== '' && part !== '.' && part !== '..') &&
     path.split(/[\\/]/)[0].toLowerCase() !== '.a11ynotebook'
   );

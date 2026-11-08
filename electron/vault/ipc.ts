@@ -1002,7 +1002,9 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       return routedMetadataFor(nextService).write('reminders.json', value, assertCurrent);
     },
     validateNote: async (relative) => {
-      await nextService.readNote(relative);
+      // Reminders link to notes and files alike; resolveEntry accepts any
+      // existing entry and rejects anything outside the library.
+      await nextService.resolveEntry(relative);
     },
     getNotes: async () => {
       const notes: NoteSource[] = [];

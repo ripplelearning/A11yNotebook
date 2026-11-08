@@ -22,9 +22,11 @@ export interface ParsedReminderTask extends Reminder {
   complete: boolean;
 }
 
-/** Independent of the task index, so reminder markers need no task-parser changes. */
+/** Independent of the task index, so reminder markers need no task-parser changes.
+ * Task reminders only ever come from note content, so the Markdown/HTML
+ * guard stays here even though isReminderPath now accepts files too. */
 export function parseTaskReminders(content: string, path: string): ParsedReminderTask[] {
-  if (!isReminderPath(path)) return [];
+  if (!/\.(?:md|html)$/i.test(path) || !isReminderPath(path)) return [];
   if (/\.html$/i.test(path)) {
     return parseHtmlTasks(content, path).flatMap((task) => {
       const date = task.remindAt && parseReminderDate(task.remindAt);
@@ -219,7 +221,7 @@ export function validateReminderStore(value: unknown): ReminderStore {
 export interface ReminderServiceOptions {
   readStore: () => Promise<unknown>;
   writeStore: (store: ReminderStore) => Promise<void>;
-  /** Must resolve only for an existing, safe Markdown file inside this vault. */
+  /** Must resolve only for an existing entry inside this vault. */
   validateNote: (path: string) => Promise<void>;
   getNotes: () => Promise<ReminderNote[]>;
   /** Timed appointments with reminders; absent when the vault has no calendar. */
@@ -513,7 +515,7 @@ export function createReminderService(options: ReminderServiceOptions) {
           (input.privacy !== undefined && !['show-title', 'hide-title'].includes(input.privacy)) ||
           (input.notification !== undefined && typeof input.notification !== 'boolean')
         )
-          throw new Error('Enter a title, valid note, and valid reminder date.');
+          throw new Error('Enter a title, valid note or file, and valid reminder date.');
         await options.validateNote(input.path);
         requireActive();
         const item: Reminder = {

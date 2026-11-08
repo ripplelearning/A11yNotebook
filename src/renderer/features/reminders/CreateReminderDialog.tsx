@@ -12,6 +12,10 @@ import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../share
 
 export interface CreateReminderDialogProps {
   notePaths: string[];
+  /** Files the reminder may link to, alongside notes. */
+  filePaths?: string[];
+  /** Path to pre-select, for example the note or file a context menu was opened on. */
+  initialPath?: string;
   onCreate: (input: CreateReminderInput) => void | Promise<unknown>;
   defaults?: ReminderDefaults;
   onSaveDefaults?: (defaults: ReminderDefaults) => void | Promise<unknown>;
@@ -25,6 +29,8 @@ function localDate() {
 
 export default function CreateReminderDialog({
   notePaths,
+  filePaths = [],
+  initialPath,
   onCreate,
   defaults = DEFAULT_REMINDER_DEFAULTS,
   onSaveDefaults,
@@ -32,7 +38,23 @@ export default function CreateReminderDialog({
 }: CreateReminderDialogProps) {
   const id = useId();
   const [title, setTitle] = useState('');
-  const [path, setPath] = useState(notePaths[0] ?? '');
+  // The linked item is a note or a file, mirroring the appointment link
+  // picker. When both kinds are available the kind is chosen first; when
+  // only one kind exists the kind is forced and the picker is hidden.
+  const initialKind: 'note' | 'file' =
+    initialPath && filePaths.includes(initialPath)
+      ? 'file'
+      : initialPath && notePaths.includes(initialPath)
+        ? 'note'
+        : notePaths.length > 0
+          ? 'note'
+          : 'file';
+  const initialTargets = initialKind === 'note' ? notePaths : filePaths;
+  const [linkKind, setLinkKind] = useState<'note' | 'file'>(initialKind);
+  const [path, setPath] = useState(
+    initialPath && initialTargets.includes(initialPath) ? initialPath : (initialTargets[0] ?? ''),
+  );
+  const linkTargets = linkKind === 'note' ? notePaths : filePaths;
   const [date, setDate] = useState(localDate);
   const [time, setTime] = useState(() => splitStoredTime(defaults.time).time);
   const [meridiem, setMeridiem] = useState(() => splitStoredTime(defaults.time).meridiem);
@@ -61,8 +83,8 @@ export default function CreateReminderDialog({
       return;
     }
     const scheduledAt = `${date} ${normalizedTime}`;
-    if (!title.trim() || !notePaths.includes(path) || !parseReminderDate(scheduledAt)) {
-      setError('Enter a title, note, and valid date and time.');
+    if (!title.trim() || !linkTargets.includes(path) || !parseReminderDate(scheduledAt)) {
+      setError('Enter a title, note or file, and valid date and time.');
       return;
     }
     setBusy(true);
@@ -106,11 +128,28 @@ export default function CreateReminderDialog({
           required
           data-autofocus
         />
-        <label htmlFor={`${id}-note`}>Note</label>
+        {notePaths.length > 0 && filePaths.length > 0 && (
+          <>
+            <label htmlFor={`${id}-link-kind`}>Link to</label>
+            <select
+              id={`${id}-link-kind`}
+              value={linkKind}
+              onChange={(event) => {
+                const next = event.target.value as 'note' | 'file';
+                setLinkKind(next);
+                setPath((next === 'note' ? notePaths : filePaths)[0] ?? '');
+              }}
+            >
+              <option value="note">Note</option>
+              <option value="file">File</option>
+            </select>
+          </>
+        )}
+        <label htmlFor={`${id}-note`}>{linkKind === 'note' ? 'Note' : 'File'}</label>
         <select id={`${id}-note`} value={path} onChange={(event) => setPath(event.target.value)} required>
-          {notePaths.map((note) => (
-            <option key={note} value={note}>
-              {note}
+          {linkTargets.map((target) => (
+            <option key={target} value={target}>
+              {target}
             </option>
           ))}
         </select>
@@ -184,7 +223,7 @@ export default function CreateReminderDialog({
           PM or is 24-hour (14:30).
         </p>
         {error && <p role="alert">{error}</p>}
-        <button type="submit" disabled={busy || notePaths.length === 0}>
+        <button type="submit" disabled={busy || linkTargets.length === 0}>
           {busy ? 'Creating…' : 'Create reminder'}
         </button>
         <button type="button" onClick={onClose}>

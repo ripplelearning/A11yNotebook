@@ -2246,6 +2246,7 @@ export default function App() {
   };
 
   const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
+  const [reminderCreatePath, setReminderCreatePath] = useState<string | undefined>(undefined);
   const [calendarCreateRequest, setCalendarCreateRequest] = useState(0);
   // A stale create request must not reopen a cancelled dialog when its
   // view remounts: leaving the calendar or reminders view consumes the
@@ -2258,12 +2259,15 @@ export default function App() {
   useEffect(() => {
     if (selectedTab !== 'reminders') setReminderCreateRequest(0);
   }, [selectedTab]);
-  const openCreateReminder = () => {
+  const openCreateReminder = (path?: string) => {
     if (!vault || securityLocked) {
       setStatusMessage('Open and unlock a library before creating a reminder.');
       return;
     }
     setSelectedTab('reminders');
+    // A path from the context menu pre-selects that note or file in the
+    // dialog; any other entry point clears a stale one.
+    setReminderCreatePath(path);
     setReminderCreateRequest((value) => value + 1);
   };
 
@@ -5321,7 +5325,9 @@ export default function App() {
       return;
     }
     if (commandId === 'create-reminder') {
-      openCreateReminder();
+      // From a context menu this is the note or file the menu was opened
+      // on; from anywhere else there is no path to pre-select.
+      openCreateReminder(contextMenu?.path);
       return;
     }
     if (commandId === 'new-task') {
@@ -6836,7 +6842,9 @@ export default function App() {
                 title={viewTitles.reminders}
                 reminders={reminderState.reminders}
                 notePaths={reminderNotePaths}
+                filePaths={filePaths}
                 createRequest={reminderCreateRequest}
+                initialPath={reminderCreatePath}
                 defaults={reminderState.defaults}
                 onSaveDefaults={reminderState.saveDefaults}
                 onCreate={async (input) => {

@@ -915,4 +915,36 @@ describe('contextual shell document workflows', () => {
     const editor = await screen.findByLabelText('Markdown source');
     expect(editor).toHaveFocus();
   });
+
+  it('offers Create reminder from the context menu on a file and pre-selects it', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Report.pdf', path: 'Research/Report.pdf', kind: 'attachment', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Report.pdf' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create reminder' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create reminder' });
+    expect(within(dialog).getByLabelText('Link to')).toHaveValue('file');
+    expect(within(dialog).getByLabelText('File')).toHaveValue('Research/Report.pdf');
+    fireEvent.change(within(dialog).getByLabelText('Reminder title'), { target: { value: 'Review report' } });
+    fireEvent.change(within(dialog).getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-11-09' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(bridge.vault.createReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Review report', path: 'Research/Report.pdf' }),
+      ),
+    );
+  });
 });
