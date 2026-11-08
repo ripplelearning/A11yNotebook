@@ -987,6 +987,8 @@ export default function App() {
   // the panel-focus effect. These refs are consumed once, after render.
   const forceEditNoteRef = useRef<string | null>(null);
   const pendingEditorFocusRef = useRef<{ path: string; cursor?: number } | null>(null);
+  /** Set when the mode toggle asks for edit: the editor takes focus once it renders. */
+  const focusEditorOnEditRef = useRef(false);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
@@ -1107,6 +1109,28 @@ export default function App() {
     const length = textarea.value.length;
     textarea.setSelectionRange(Math.min(caret.start, length), Math.min(caret.end, length));
   }, [selectedTab, currentNoteId, mode]);
+  /**
+   * Move focus into the editor when the mode toggle switches a note to
+   * edit mode. The request is raised only by the toggle command, so tab
+   * switches and note opens — which also flip the mode through the
+   * remembered-mode restore — never steal focus, and the caret restore
+   * above has already run, so the caret is in place when focus lands.
+   * The citation dialog's switch-to-edit flips the mode the same way
+   * but keeps focus in the dialog: the user is mid-citation there.
+   * Rich text has no textarea, so the rich-text editor takes focus when
+   * it is the active form.
+   */
+  useEffect(() => {
+    if (!focusEditorOnEditRef.current) return;
+    focusEditorOnEditRef.current = null;
+    if (mode !== 'edit' || !currentNoteId || citationDialog) return;
+    const richEditor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    if (richEditor) {
+      richEditor.focus();
+      return;
+    }
+    editorRef.current?.focus();
+  }, [mode, currentNoteId, citationDialog]);
   const clearEditLock = (path: string) => {
     const key = `${vault?.path ?? ''}\0${path}`;
     setLockedEditPaths((paths) => {
@@ -5822,6 +5846,10 @@ export default function App() {
           openProtectedRequest(currentNote.path, 'edit');
           return;
         }
+        // Only the mode toggle asks for edit here (reading mode asks for
+        // read-only), so a flip to edit is a user request to start
+        // editing: focus the editor once it renders.
+        if (nextMode === 'edit' && mode === 'read-only') focusEditorOnEditRef.current = true;
         setMode(nextMode);
       },
       setRightPaneOpen,
