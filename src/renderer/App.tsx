@@ -57,12 +57,20 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import {
   headingAnchorAt,
+  headingTextSpan,
+  lineSpanAt,
   normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
-import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
+import {
+  findDomMatches,
+  focusReaderSearchBox,
+  selectDomMatch,
+  selectElementContents,
+  selectRenderedLine,
+} from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
 import {
   createEditHistory,
@@ -3215,6 +3223,10 @@ export default function App() {
   // headings). The comparison uses the rendered heading text: an anchor
   // stores the heading as written in source (`Hello *world*`), while the
   // reading view shows it formatted (`Hello world`).
+  // Focus alone does not move a screen reader's virtual cursor, so the
+  // heading's text is selected after focus lands — mirroring Find, which
+  // re-selects its match after focusing for the same reason. Returns the
+  // heading only when both focus and a live selection are in place.
   const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
     if (!jumpHeading) return null;
@@ -3230,44 +3242,96 @@ export default function App() {
     if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
+    const selected = selectElementContents(target);
     try {
       target.scrollIntoView({ block: 'start' });
     } catch {
       // Scrolling is best-effort; the focus landing is what matters.
     }
-    return target;
+    const selection = window.getSelection();
+    return document.activeElement === target &&
+      selected &&
+      !!selection?.anchorNode &&
+      target.contains(selection.anchorNode)
+      ? target
+      : null;
+  };
+
+  // Land a position bookmark that sits before the first heading: there is
+  // no heading to focus, so focus the reading document and select the
+  // rendered text of the source line at the bookmarked offset instead of
+  // silently falling back to the top of the note. Returns the container
+  // only when both focus and a live selection are in place.
+  const focusBookmarkPosition = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
+    const container = annotationTools.documentRef.current;
+    if (!container) return null;
+    const offset = resolveBookmarkAnchor(content, isHtml, anchor);
+    if (offset === null) return null;
+    const line = lineSpanAt(content, offset);
+    if (!line) return null;
+    if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
+    container.focus();
+    const selected = selectRenderedLine(container, normalizeHeadingText(content.slice(line.start, line.end)));
+    try {
+      container.scrollIntoView({ block: 'start' });
+    } catch {
+      // Scrolling is best-effort; the focus landing is what matters.
+    }
+    const selection = window.getSelection();
+    return document.activeElement === container &&
+      selected &&
+      !!selection?.anchorNode &&
+      container.contains(selection.anchorNode)
+      ? container
+      : null;
   };
 
   // Move the caret to the bookmarked place in the rich-text editor, which
   // has no textarea: the edit branch of the jump cannot use editorRef.
-  // A heading anchor (or a position anchor inside a section) lands the
-  // caret at the start of that heading; a position anchor before the
-  // first heading lands it at the start of the editor. Returns true when
-  // the caret is placed and the editor has focus.
+  // A heading anchor selects the heading's text (a collapsed caret does
+  // not move the virtual cursor); a position anchor selects the rendered
+  // text of the line at its offset, falling back to the start of the
+  // editor only when that line cannot be found. Returns true when the
+  // editor has focus and a live selection is in place.
   const focusRichTextBookmark = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
     const editor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
     if (!editor) return false;
-    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
-    let caretNode: Node | null = null;
-    if (jumpHeading) {
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return false;
+    if (anchor.kind === 'heading') {
+      const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+      if (!jumpHeading) return false;
       const wanted = normalizeHeadingText(jumpHeading.text);
       const headings = [...editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
       const matches = headings.filter(
         (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
       );
       const target = matches[jumpHeading.occurrence] ?? matches[0];
-      if (target) caretNode = target.firstChild ?? target;
+      if (!target) return false;
+      if (!selectElementContents(target)) return false;
+    } else {
+      const offset = resolveBookmarkAnchor(content, isHtml, anchor);
+      const line = offset === null ? null : lineSpanAt(content, offset);
+      if (
+        !line ||
+        !selectRenderedLine(editor, normalizeHeadingText(content.slice(line.start, line.end)))
+      ) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return document.activeElement === editor;
+      }
     }
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection) return false;
-    const range = document.createRange();
-    if (caretNode) range.setStart(caretNode, 0);
-    else range.selectNodeContents(editor);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return document.activeElement === editor;
+    return (
+      document.activeElement === editor &&
+      selection.rangeCount > 0 &&
+      selection.toString().length > 0 &&
+      !!selection.anchorNode &&
+      editor.contains(selection.anchorNode)
+    );
   };
 
   // A bookmark jump suppresses the next resume only while that note stays
@@ -3314,12 +3378,22 @@ export default function App() {
       const textarea = editorRef.current;
       if (textarea && mode === 'edit') {
         textarea.focus();
+        // A collapsed caret does not move the virtual cursor: select the
+        // heading's text for a heading anchor, or the line at the offset
+        // for a position anchor.
+        const span = headingTextSpan(content, isHtml, anchor) ?? lineSpanAt(content, offset);
+        const start = span?.start ?? offset;
+        const end = span?.end ?? offset;
         try {
-          textarea.setSelectionRange(offset, offset);
+          textarea.setSelectionRange(start, end);
         } catch {
           // The caret landing is best-effort; the note is open either way.
         }
-        if (document.activeElement === textarea && textarea.selectionStart === offset) {
+        if (
+          document.activeElement === textarea &&
+          textarea.selectionStart === start &&
+          textarea.selectionEnd === end
+        ) {
           bookmarkJumpRef.current = { path, anchor };
           setPendingBookmarkAnchor(null);
           announce();
@@ -3331,7 +3405,8 @@ export default function App() {
         announce();
         return;
       } else if (mode !== 'edit') {
-        const target = focusBookmarkHeading(content, isHtml, anchor);
+        const target =
+          focusBookmarkHeading(content, isHtml, anchor) ?? focusBookmarkPosition(content, isHtml, anchor);
         if (target && document.activeElement === target) {
           bookmarkJumpRef.current = { path, anchor };
           setPendingBookmarkAnchor(null);
@@ -3343,11 +3418,9 @@ export default function App() {
         timer = setTimeout(tryLand, 50);
         return;
       }
-      // No heading to land on (a position bookmark before the first
-      // heading), or the target never became focusable: focus already
-      // rests on the note's main region (opening the note requests it),
-      // which is the top of the note, so the jump still lands the reader
-      // in the note.
+      // The target never became focusable: focus already rests on the
+      // note's main region (opening the note requests it), which is the
+      // top of the note, so the jump still lands the reader in the note.
       bookmarkJumpRef.current = { path, anchor };
       setPendingBookmarkAnchor(null);
       setStatusMessage('Opened at the bookmarked place.');
@@ -3373,15 +3446,23 @@ export default function App() {
       bookmarkJumpRef.current = null;
       // The reader just landed on a bookmark (or switched views after
       // one): keep the reader at the bookmarked heading instead of
-      // resuming to the saved reading position. When there is no heading
-      // to land on, fall through to the normal resume below.
-      const jumpedTarget = focusBookmarkHeading(
+      // resuming to the saved reading position. A position bookmark with
+      // no heading lands on its line instead; only when neither landing
+      // works does it fall through to the normal resume below.
+      const jumpedHeading = focusBookmarkHeading(
         currentNote.content,
         /\.html?$/i.test(currentNote.path),
         jumped.anchor,
       );
+      const jumpedTarget =
+        jumpedHeading ??
+        focusBookmarkPosition(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor);
       if (jumpedTarget) {
-        setStatusMessage(`Jumped to ${jumpedTarget.textContent?.trim() ?? 'the bookmarked heading'}.`);
+        setStatusMessage(
+          jumpedHeading
+            ? `Jumped to ${jumpedHeading.textContent?.trim() ?? 'the bookmarked heading'}.`
+            : 'Jumped to the bookmarked place.',
+        );
         return;
       }
     }

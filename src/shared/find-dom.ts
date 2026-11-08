@@ -38,6 +38,42 @@ export function selectDomMatch(matches: readonly DomMatch[], position: number): 
 }
 
 /**
+ * Select the contents of an element — the bookmark-jump counterpart of
+ * selectDomMatch. Focus alone does not move a screen reader's virtual
+ * cursor; a live text selection does. Returns false when nothing ends up
+ * selected.
+ */
+export function selectElementContents(element: HTMLElement): boolean {
+  const selection = window.getSelection();
+  if (!selection) return false;
+  const range = document.createRange();
+  range.selectNodeContents(element);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  return selection.rangeCount > 0 && selection.toString().length > 0;
+}
+
+/**
+ * Select the rendered text of a source line inside a rendered container:
+ * the line's first words are located like a Find query and selected, so
+ * the virtual cursor lands on that line. Falls back to the container's
+ * first text when the line cannot be found (for example, when its words
+ * are split across text nodes by inline formatting).
+ */
+export function selectRenderedLine(container: HTMLElement, lineText: string): boolean {
+  const words = lineText.trim().split(/\s+/).filter(Boolean);
+  const query = words.slice(0, 3).join(' ');
+  if (query) {
+    const matches = findDomMatches(container, query, false);
+    if (matches.length) return selectDomMatch(matches, 0);
+  }
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const node = walker.nextNode() as Text | null;
+  if (!node || !node.data.trim()) return false;
+  return selectElementContents(node.parentElement ?? container);
+}
+
+/**
  * Focus the search box of an open PDF, ePub, or DOCX reader inside root.
  * The readers label their boxes "Find in PDF", "Find in ePub", and
  * "Find in DOCX". Returns false when no reader search box is present.

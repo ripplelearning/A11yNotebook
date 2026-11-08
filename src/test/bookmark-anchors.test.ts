@@ -6,6 +6,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
+  headingTextSpan,
+  lineSpanAt,
   listHeadings,
   normalizeHeadingText,
   readingJumpHeading,
@@ -127,5 +129,36 @@ describe('normalizeHeadingText', () => {
     expect(normalizeHeadingText('See [the guide][g]')).toBe('See the guide');
     expect(normalizeHeadingText('Plain heading')).toBe('Plain heading');
     expect(normalizeHeadingText('  Spaced  ')).toBe('Spaced');
+  });
+});
+
+describe('headingTextSpan and lineSpanAt', () => {
+  it('spans a heading anchor text, skipping the Markdown markers', () => {
+    const start = markdown.indexOf('## Setup');
+    const span = headingTextSpan(markdown, false, { kind: 'heading', text: 'Setup', occurrence: 0 });
+    expect(span).toEqual({ start: start + 3, end: start + 8 });
+    expect(markdown.slice(span!.start, span!.end)).toBe('Setup');
+  });
+
+  it('spans a formatted heading anchor text as written in source', () => {
+    const content = '# Title\n\n## Hello *world*\n';
+    const start = content.indexOf('## Hello *world*');
+    const span = headingTextSpan(content, false, { kind: 'heading', text: 'Hello *world*', occurrence: 0 });
+    expect(span).toEqual({ start: start + 3, end: start + 3 + 'Hello *world*'.length });
+  });
+
+  it('returns null for a position anchor or a missing heading', () => {
+    expect(headingTextSpan(markdown, false, { kind: 'offset', offset: 0 })).toBeNull();
+    expect(headingTextSpan(markdown, false, { kind: 'heading', text: 'Missing', occurrence: 0 })).toBeNull();
+  });
+
+  it('spans the trimmed line at an offset, and null for a blank line', () => {
+    const content = '# Title\n\n  Intro text.  \n\nMore text.\n';
+    const offset = content.indexOf('Intro text.');
+    const span = lineSpanAt(content, offset);
+    expect(span).not.toBeNull();
+    expect(content.slice(span!.start, span!.end)).toBe('Intro text.');
+    expect(lineSpanAt(content, content.indexOf('\nMore text.'))).toBeNull();
+    expect(lineSpanAt('No newlines here', 5)).toEqual({ start: 0, end: 16 });
   });
 });

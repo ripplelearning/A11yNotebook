@@ -109,6 +109,41 @@ export function readingJumpHeading(
   return headingAnchorAt(content, isHtml, anchor.offset);
 }
 
+/**
+ * The source span of a heading anchor's text, so an edit-mode jump can
+ * select the heading text instead of dropping a collapsed caret on it.
+ * Null for a position anchor (which lands on its own line instead) or
+ * when the heading is gone.
+ */
+export function headingTextSpan(
+  content: string,
+  isHtml: boolean,
+  anchor: BookmarkAnchor,
+): { start: number; end: number } | null {
+  if (anchor.kind !== 'heading') return null;
+  const start = resolveBookmarkAnchor(content, isHtml, anchor);
+  if (start === null) return null;
+  const textStart = content.indexOf(anchor.text, start);
+  if (textStart === -1) return null;
+  return { start: textStart, end: textStart + anchor.text.length };
+}
+
+/**
+ * The source span of the trimmed line containing `offset`, for a position
+ * anchor with no heading to land on. Null when the line is blank.
+ */
+export function lineSpanAt(content: string, offset: number): { start: number; end: number } | null {
+  const clamped = Math.max(0, Math.min(offset, content.length));
+  const lineStart = content.lastIndexOf('\n', clamped - 1) + 1;
+  const lineEnd = content.indexOf('\n', clamped);
+  const end = lineEnd === -1 ? content.length : lineEnd;
+  const line = content.slice(lineStart, end);
+  const start = lineStart + (line.length - line.trimStart().length);
+  const trimmedEnd = end - (line.length - line.trimEnd().length);
+  if (trimmedEnd <= start) return null;
+  return { start, end: trimmedEnd };
+}
+
 /** Validate an untrusted anchor value (bookmark files are user-editable JSON). */
 export function sanitizeBookmarkAnchor(value: unknown): BookmarkAnchor | undefined {
   if (!value || typeof value !== 'object') return undefined;
