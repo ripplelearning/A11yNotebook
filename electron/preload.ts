@@ -76,6 +76,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultSaveBibliography: 'vault:save-bibliography',
   vaultGetTaskLinks: 'vault:get-task-links',
   vaultSaveTaskLinks: 'vault:save-task-links',
+  vaultGetDismissedTaskAutoLinks: 'vault:get-dismissed-task-auto-links',
+  vaultSaveDismissedTaskAutoLinks: 'vault:save-dismissed-task-auto-links',
   vaultGetCalendar: 'vault:get-calendar',
   vaultSaveCalendar: 'vault:save-calendar',
   vaultGetSyncState: 'vault:get-sync-state',
@@ -376,6 +378,9 @@ const bridge: NotebookBridge = {
     getBibliography: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultGetBibliography, notebookPath),
     getTaskLinks: () => ipcRenderer.invoke(CHANNELS.vaultGetTaskLinks),
     saveTaskLinks: (links) => ipcRenderer.invoke(CHANNELS.vaultSaveTaskLinks, links),
+    getDismissedTaskAutoLinks: () => ipcRenderer.invoke(CHANNELS.vaultGetDismissedTaskAutoLinks),
+    saveDismissedTaskAutoLinks: (ids) =>
+      ipcRenderer.invoke(CHANNELS.vaultSaveDismissedTaskAutoLinks, ids),
     saveBibliography: (notebookPath, entries) =>
       ipcRenderer.invoke(CHANNELS.vaultSaveBibliography, notebookPath, entries),
     getCalendar: () => ipcRenderer.invoke(CHANNELS.vaultGetCalendar),

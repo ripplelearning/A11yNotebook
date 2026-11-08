@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Profiler } from 'react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import type { SpreadsheetWorkbook } from '../shared/spreadsheet';
 import type { VaultEntry, VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
 import { parseHtmlTasks, parseMarkdownTasks } from '../../electron/vault/tasks';
@@ -822,8 +823,7 @@ describe('contextual shell document workflows', () => {
     const { bridge } = setup({
       entries: [{ name: path, path, kind: 'attachment', provenance: 'imported' }],
     });
-    bridge.vault.readAttachment.mockResolvedValue({ path, kind: '.csv', text: '' });
-    bridge.vault.readSpreadsheet.mockResolvedValue({
+    const workbook: SpreadsheetWorkbook = {
       sourceFormat: 'csv',
       sheets: [
         {
@@ -835,7 +835,9 @@ describe('contextual shell document workflows', () => {
       ],
       unsupportedFeatures: [],
       truncated: false,
-    });
+    };
+    bridge.vault.readAttachment.mockResolvedValue({ path, kind: '.csv', text: '' });
+    bridge.vault.readSpreadsheet.mockResolvedValue(structuredClone(workbook));
     await screen.findByRole('heading', { name: 'Study' });
     await openTreeLeaf(/Budget\.csv/);
     expect(await screen.findByLabelText('Row 1, column A, Rent')).toBeInTheDocument();

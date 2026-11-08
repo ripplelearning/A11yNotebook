@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { DEFAULT_SETTINGS } from '../shared/settings';
+import type { SpreadsheetWorkbook } from '../shared/spreadsheet';
 
 export function vaultExtensions() {
   return {
@@ -42,8 +43,8 @@ export function vaultExtensions() {
       unsupportedFeatures: [],
       truncated: false,
     })),
-    readSpreadsheet: vi.fn(async () => ({
-      sourceFormat: 'xlsx' as const,
+    readSpreadsheet: vi.fn(async (): Promise<SpreadsheetWorkbook> => ({
+      sourceFormat: 'xlsx',
       sheets: [],
       unsupportedFeatures: [],
       truncated: false,
@@ -71,5 +72,7 @@ export function vaultExtensions() {
     getFlashcardSchedules: vi.fn(async () => ({})),
     saveFlashcardSchedule: vi.fn(async () => undefined),
     setHtmlTaskDueDate: vi.fn(async () => []),
+    getDismissedTaskAutoLinks: vi.fn(async () => []),
+    saveDismissedTaskAutoLinks: vi.fn(async (ids) => ids),
   };
 }

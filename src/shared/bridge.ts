@@ -215,6 +215,8 @@ export interface VaultBridge {
   getBibliography(notebookPath: string): Promise<import('./citations').BibliographyEntry[]>;
   getTaskLinks?(): Promise<import('./task-links').TaskLink[]>;
   saveTaskLinks?(links: import('./task-links').TaskLink[]): Promise<import('./task-links').TaskLink[]>;
+  getDismissedTaskAutoLinks?(): Promise<string[]>;
+  saveDismissedTaskAutoLinks?(ids: string[]): Promise<string[]>;
   saveBibliography(
     notebookPath: string,
     entries: import('./citations').BibliographyEntry[],

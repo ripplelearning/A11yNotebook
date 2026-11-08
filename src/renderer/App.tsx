@@ -170,7 +170,7 @@ import {
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
-import { dropLinksToMissingTargets } from '../shared/task-links';
+import { dropLinksToMissingTargets, reconcileTaskAutoLinks } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
@@ -708,6 +708,8 @@ export default function App() {
   const [citationDialog, setCitationDialog] = useState<'generator' | 'bibliography' | null>(null);
   const [taskPriorityDialog, setTaskPriorityDialog] = useState<VaultTask | null>(null);
   const [taskLinks, setTaskLinks] = useState<TaskLink[]>([]);
+  const [dismissedTaskAutoLinks, setDismissedTaskAutoLinks] = useState<string[]>([]);
+  const [dismissedTaskAutoLinksLoaded, setDismissedTaskAutoLinksLoaded] = useState(false);
   const [taskLinkDialog, setTaskLinkDialog] = useState<{ task: VaultTask; kind: TaskLinkKind } | null>(null);
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
@@ -1524,6 +1526,10 @@ export default function App() {
     };
   }, []);
 
+  // Which vault each task dataset was loaded for: reconciliation must
+  // only run when the tasks, links, and dismissed list all belong to the
+  // current vault, never on stale data left over from a vault switch.
+  const taskDataVaultRef = useRef({ tasks: '', links: '', dismissed: '' });
   useEffect(() => {
     let cancelled = false;
     if (!vault || !window.a11yNotebook) {
@@ -1533,19 +1539,91 @@ export default function App() {
     void window.a11yNotebook.vault
       .getTasks()
       .then((items) => {
-        if (!cancelled) setTasks(items);
+        if (!cancelled) {
+          taskDataVaultRef.current.tasks = vault.path;
+          setTasks(items);
+        }
       })
       .catch(() => setStatusMessage('Could not load tasks.'));
     void window.a11yNotebook.vault
       .getTaskLinks?.()
       .then((items) => {
-        if (!cancelled) setTaskLinks(items);
+        if (!cancelled) {
+          taskDataVaultRef.current.links = vault.path;
+          setTaskLinks(items);
+        }
       })
       .catch(() => undefined);
+    const dismissedPromise = window.a11yNotebook.vault.getDismissedTaskAutoLinks?.();
+    if (dismissedPromise) {
+      void dismissedPromise
+        .then((items) => {
+          if (!cancelled) {
+            taskDataVaultRef.current.dismissed = vault.path;
+            setDismissedTaskAutoLinks(items);
+            setDismissedTaskAutoLinksLoaded(true);
+          }
+        })
+        .catch(() => {
+          // Without the dismissed list, reconciliation would resurrect
+          // links the user removed; treat a failed load as an empty list
+          // only once the load has settled, so the gate below still waits.
+          if (!cancelled) {
+            taskDataVaultRef.current.dismissed = vault.path;
+            setDismissedTaskAutoLinksLoaded(true);
+          }
+        });
+    } else {
+      // No dismissed-list method on this build: reconciliation stays
+      // gated (the vault guard above requires a loaded dismissed list),
+      // so nothing can resurrect a removed link.
+    }
     return () => {
       cancelled = true;
     };
   }, [vault]);
+
+  // Every task links to the note it lives in, unless the user removed
+  // that link. Reconciling on the task list (not on the links) covers
+  // every way a task appears — dialog, Quick Task, or typed into a note
+  // — and backfills tasks created before auto-links existed. It runs on
+  // tasks only, so saving the links cannot re-trigger it; and it waits
+  // for the dismissed list, so a removed link is never resurrected by
+  // a refresh that raced the dismissal load.
+  const taskLinksRef = useRef(taskLinks);
+  taskLinksRef.current = taskLinks;
+  const dismissedTaskAutoLinksRef = useRef(dismissedTaskAutoLinks);
+  dismissedTaskAutoLinksRef.current = dismissedTaskAutoLinks;
+  useEffect(() => {
+    if (!vault || !dismissedTaskAutoLinksLoaded) return;
+    const loaded = taskDataVaultRef.current;
+    if (loaded.tasks !== vault.path || loaded.links !== vault.path || loaded.dismissed !== vault.path) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.saveTaskLinks) return;
+    const result = reconcileTaskAutoLinks(tasks, taskLinksRef.current, dismissedTaskAutoLinksRef.current);
+    if (!result.changed) return;
+    let cancelled = false;
+    void bridge
+      .saveTaskLinks(result.links)
+      .then((saved) => {
+        if (!cancelled) setTaskLinks(saved);
+      })
+      .catch(() => undefined);
+    if (result.dismissed.length !== dismissedTaskAutoLinksRef.current.length) {
+      const saveDismissed = bridge.saveDismissedTaskAutoLinks?.(result.dismissed);
+      if (saveDismissed) {
+        void saveDismissed
+          .then((saved) => {
+            if (!cancelled) setDismissedTaskAutoLinks(saved);
+          })
+          .catch(() => undefined);
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tasks, vault, dismissedTaskAutoLinksLoaded]);
   // Task links are private metadata, but the Tasks screen displays them,
   // so a cloud-folder change to the task-links store must refresh the
   // Links column the same way calendar changes refresh the Calendar
@@ -2359,12 +2437,20 @@ export default function App() {
     setStatusMessage(`Task linked to ${target}.`);
   };
 
-  const removeTaskLink = async (id: string, target: string) => {
+  const removeTaskLink = async (link: TaskLink) => {
     if (!window.a11yNotebook?.vault.saveTaskLinks) return;
     setTaskLinks(
-      await window.a11yNotebook.vault.saveTaskLinks(taskLinks.filter((item) => item.id !== id)),
+      await window.a11yNotebook.vault.saveTaskLinks(taskLinks.filter((item) => item.id !== link.id)),
     );
-    setStatusMessage(`Link to ${target} removed.`);
+    if (link.auto) {
+      // Removing an auto-link is a choice the next refresh must respect,
+      // not a gap for reconciliation to fill back in.
+      const dismissed = [...new Set([...dismissedTaskAutoLinks, link.taskId])];
+      setDismissedTaskAutoLinks(dismissed);
+      const saved = window.a11yNotebook.vault.saveDismissedTaskAutoLinks?.(dismissed);
+      if (saved) await saved.catch(() => undefined);
+    }
+    setStatusMessage(`Link to ${link.target} removed.`);
   };
 
   const openTaskLink = async (link: TaskLink) => {
@@ -2374,7 +2460,7 @@ export default function App() {
       // displayed, and say so — opening it again must not repeat the
       // "no longer in the library" message.
       if (window.a11yNotebook?.vault.saveTaskLinks) {
-        await removeTaskLink(link.id, link.target);
+        await removeTaskLink(link);
         setStatusMessage(`The linked ${link.kind} is no longer in the library, so its link was removed.`);
       } else {
         setStatusMessage(`The linked ${link.kind} is no longer in the library.`);
@@ -6941,7 +7027,7 @@ export default function App() {
                                   <button type="button" onClick={() => void openTaskLink(link)}>
                                     Open {link.kind}: {link.target}
                                   </button>{' '}
-                                  <button type="button" onClick={() => void removeTaskLink(link.id, link.target)}>
+                                  <button type="button" onClick={() => void removeTaskLink(link)}>
                                     Remove link to {link.target}
                                   </button>{' '}
                                 </span>

@@ -3996,6 +3996,15 @@ export function setupVaultIpc(
     if (!Array.isArray(links)) throw new Error('Task links must be a list.');
     return requireService().saveTaskLinks(links);
   });
+  ipcMain.handle(IPC_CHANNELS.vaultGetDismissedTaskAutoLinks, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getDismissedTaskAutoLinks();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveDismissedTaskAutoLinks, async (event, ids: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!Array.isArray(ids)) throw new Error('Dismissed task auto-links must be a list.');
+    return requireService().saveDismissedTaskAutoLinks(ids);
+  });
   ipcMain.handle(IPC_CHANNELS.vaultFetchCitationMetadata, async (event, identifier: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof identifier !== 'string') throw new Error('Identifier must be text.');
