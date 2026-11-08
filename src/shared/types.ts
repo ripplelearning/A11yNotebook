@@ -37,6 +37,18 @@ export interface PointerImport {
   guidance: string;
 }
 
+/**
+ * A Google link-pointer file picked for import whose URL could not be read
+ * from the file: the Add Link dialog is still offered, with the address
+ * left for the user to paste.
+ */
+export interface PointerImportFailure {
+  extension: '.gdoc' | '.gsheet' | '.gslides';
+  guidance: string;
+  reason: string;
+  code?: string;
+}
+
 /** A filesystem entry returned to the renderer without exposing Node objects. */
 export interface VaultEntry {
   name: string;

@@ -5241,6 +5241,21 @@ export default function App() {
               });
               return;
             }
+            if ('pointerFailed' in updated) {
+              // The link-pointer file could not be read, so its URL is
+              // unknown: still offer "Add as link" with an empty address
+              // for the user to paste, alongside the guidance and the
+              // specific reason the file could not be read.
+              const failed = updated.pointerFailed;
+              const code = failed.code ? ` (${failed.code})` : '';
+              setLinkDialog({
+                mode: 'add',
+                notebookPath: targetNotebook,
+                initialUrl: '',
+                guidance: `${failed.guidance} ${failed.reason}${code} You can still add it as a link: paste the document's web address below.`,
+              });
+              return;
+            }
             setVault(updated);
           })
           .catch((failure) => {

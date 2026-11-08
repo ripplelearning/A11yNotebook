@@ -3,6 +3,7 @@ import type { UpdaterStatus } from './updater';
 import type {
   ItemStats,
   PointerImport,
+  PointerImportFailure,
   ReadingPosition,
   ReadingPositionInput,
   RecentLibrary,
@@ -173,7 +174,7 @@ export interface VaultBridge {
     options?: { makeDefault?: boolean },
   ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
-  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | null>;
+  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | { pointerFailed: PointerImportFailure } | null>;
   importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
   importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;

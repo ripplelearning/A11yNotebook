@@ -3598,12 +3598,24 @@ export function setupVaultIpc(
             },
           };
         }
-        // The pointer read failed: keep the export guidance, but name the
-        // specific reason the link could not be read, so the failure is
-        // diagnosable instead of silently showing guidance alone.
+        // The pointer read failed: still offer "Add as link" with the URL
+        // left for the user to paste, instead of only showing the export
+        // guidance. The reason (and the underlying error code, when the
+        // filesystem call threw one) travels with the outcome so the
+        // failure stays diagnosable.
         const reason =
           pointer && 'reason' in pointer ? pointer.reason : 'The link could not be read from this file.';
-        throw new Error(`${failure instanceof Error ? failure.message : ''} ${reason}`);
+        const code = pointer && 'code' in pointer ? pointer.code : undefined;
+        if (code) console.error(`Could not read ${extension} pointer file ${source}: ${code}`);
+        access.assertCurrent();
+        return {
+          pointerFailed: {
+            extension: extension as '.gdoc' | '.gsheet' | '.gslides',
+            guidance: failure instanceof Error ? failure.message : '',
+            reason,
+            ...(code ? { code } : {}),
+          },
+        };
       }
       access.assertCurrent();
       const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;

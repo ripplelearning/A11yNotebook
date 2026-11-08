@@ -124,7 +124,18 @@ export function guidanceForExtension(extension: string): string | undefined {
 export const POINTER_EXTENSIONS = new Set(['.gdoc', '.gsheet', '.gslides']);
 
 /** The outcome of reading a link-pointer file: its URL, or why it holds none. */
-export type PointerFileOutcome = { url: string } | { reason: string };
+export type PointerFileOutcome = { url: string } | { reason: string; code?: string };
+
+/**
+ * The Node error code (ENOENT, EACCES, EPERM, …) when a filesystem call
+ * throws, so an unreadable file is diagnosable instead of collapsing every
+ * read failure into one string.
+ */
+function errorCode(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('code' in error)) return undefined;
+  const code = (error as { code: unknown }).code;
+  return typeof code === 'string' ? code : undefined;
+}
 
 /**
  * Read the URL out of a link-pointer file picked for import, naming the
@@ -137,8 +148,15 @@ export async function readPointerFile(source: string): Promise<PointerFileOutcom
   // The existence check comes first: a missing file reports as
   // unreadable, not as a symlink problem (the symlink guard's lstat
   // throws for a missing path too).
-  const before = await lstat(resolved).catch(() => null);
-  if (!before) return { reason: 'The file could not be read.' };
+  let before: Awaited<ReturnType<typeof lstat>> | null;
+  let lstatError: unknown;
+  try {
+    before = await lstat(resolved);
+  } catch (error) {
+    before = null;
+    lstatError = error;
+  }
+  if (!before) return { reason: 'The file could not be read.', code: errorCode(lstatError) };
   if (!before.isFile() || before.isSymbolicLink()) return { reason: 'The selected file is not a regular file.' };
   if (before.size > 64 * 1024) return { reason: 'The file is larger than 64 KB.' };
   try {
@@ -155,8 +173,8 @@ export async function readPointerFile(source: string): Promise<PointerFileOutcom
     const url = parsePointerFileUrl(content);
     if (url) return { url };
     return { reason: describePointerFileProblem(content) ?? 'The file does not contain a usable web address.' };
-  } catch {
-    return { reason: 'The file could not be read.' };
+  } catch (error) {
+    return { reason: 'The file could not be read.', code: errorCode(error) };
   } finally {
     await handle?.close();
   }
