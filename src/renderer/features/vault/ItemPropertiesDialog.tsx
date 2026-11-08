@@ -3,6 +3,7 @@ import Modal from '../../components/Modal';
 import type { ItemStats, VaultBookmark, VaultEntry, VaultLink, VaultTask } from '../../../shared/types';
 import type { Reminder } from '../../../shared/reminders';
 import { assetTypes, createAssetRegistry } from '../../../shared/assets';
+import { attachmentTypeLabel } from '../../../shared/attachments';
 
 const assetRegistry = createAssetRegistry(assetTypes);
 
@@ -117,7 +118,13 @@ export default function ItemPropertiesDialog({
   }, [livePath, entry.kind]);
 
   const kindLabel =
-    entry.kind === 'notebook' ? 'Notebook' : entry.kind === 'note' ? 'Note' : entry.kind === 'link' ? 'Link' : 'File';
+    entry.kind === 'notebook'
+      ? 'Notebook'
+      : entry.kind === 'note'
+        ? 'Note'
+        : entry.kind === 'link'
+          ? 'Link'
+          : attachmentTypeLabel(entry.path);
   const liveEntry = livePath ? findLiveEntry(liveEntries, livePath) : undefined;
   const descendants = liveEntry?.children ? collectDescendants(liveEntry) : [];
   const taskCount = livePath

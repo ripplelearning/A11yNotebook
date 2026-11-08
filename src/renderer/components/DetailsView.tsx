@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { attachmentTypeLabel } from '../../shared/attachments';
 import type { VaultEntry } from '../../shared/types';
 
 export interface DetailsViewItem {
@@ -40,9 +41,14 @@ const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
 /** A note created as a task (dialog or Quick Task) shows Type "Task". Any
  * other note — including one that merely contains a checkbox task line —
- * shows its kind. */
+ * shows its kind. An attachment shows its real file type ("PDF", "Word
+ * document") instead of the generic "Attachment". */
 const typeLabel = (item: DetailsViewItem) =>
-  item.kind === 'note' && item.provenance === 'task' ? 'Task' : item.kind;
+  item.kind === 'note' && item.provenance === 'task'
+    ? 'Task'
+    : item.kind === 'attachment'
+      ? attachmentTypeLabel(item.path)
+      : item.kind;
 
 export default function DetailsView<T extends DetailsViewItem>({
   label,
