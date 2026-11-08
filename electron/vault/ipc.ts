@@ -4040,10 +4040,12 @@ export function setupVaultIpc(
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
     return requireService().toggleBookmark(relativePath);
   });
-  ipcMain.handle(IPC_CHANNELS.vaultAddBookmark, async (event, relativePath: unknown, anchor: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultAddBookmark, async (event, relativePath: unknown, anchor: unknown, name: unknown, context: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
-    return requireService().addBookmark(relativePath, sanitizeBookmarkAnchor(anchor));
+    if (name !== undefined && typeof name !== 'string') throw new Error('Bookmark name must be text.');
+    if (context !== undefined && typeof context !== 'string') throw new Error('Bookmark context must be text.');
+    return requireService().addBookmark(relativePath, sanitizeBookmarkAnchor(anchor), name, context);
   });
   ipcMain.handle(IPC_CHANNELS.vaultRemoveBookmark, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);

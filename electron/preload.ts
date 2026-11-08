@@ -370,7 +370,8 @@ const bridge: NotebookBridge = {
     lookupThesaurus: (word) => ipcRenderer.invoke(CHANNELS.vaultLookupThesaurus, word),
     fetchDictionaryDefinitions: (word) => ipcRenderer.invoke(CHANNELS.vaultFetchDictionaryDefinitions, word),
     toggleBookmark: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultToggleBookmark, relativePath),
-    addBookmark: (relativePath, anchor) => ipcRenderer.invoke(CHANNELS.vaultAddBookmark, relativePath, anchor),
+    addBookmark: (relativePath, anchor, name, context) =>
+      ipcRenderer.invoke(CHANNELS.vaultAddBookmark, relativePath, anchor, name, context),
     removeBookmark: (id) => ipcRenderer.invoke(CHANNELS.vaultRemoveBookmark, id),
     getBibliography: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultGetBibliography, notebookPath),
     getTaskLinks: () => ipcRenderer.invoke(CHANNELS.vaultGetTaskLinks),

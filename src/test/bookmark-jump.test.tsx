@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
@@ -180,12 +180,21 @@ describe('bookmark jump from the side pane', () => {
     editor.selectionStart = caret;
     editor.selectionEnd = caret;
     menu('bookmark-heading-at-cursor');
+    const headingDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(headingDialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
+    fireEvent.click(within(headingDialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('Bookmarked heading "Setup".'),
     );
     menu('bookmark-position-at-cursor');
+    const positionDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(positionDialog).getByLabelText('Bookmark name')).toHaveValue('Details here.');
+    fireEvent.change(within(positionDialog).getByLabelText('Bookmark name'), {
+      target: { value: 'The details' },
+    });
+    fireEvent.click(within(positionDialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
-      expect(statusBar()).toHaveTextContent('Bookmarked this position.'),
+      expect(statusBar()).toHaveTextContent('Bookmarked "The details".'),
     );
   });
 
@@ -262,6 +271,28 @@ describe('bookmark jump from the side pane', () => {
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Hello world.'));
     expect(document.activeElement).toBe(heading);
     expect(window.getSelection()?.toString()).toBe('Hello world');
+  });
+
+  it('shows a bookmark under its chosen name, with the heading as the reader sees it', async () => {
+    const namedBookmark: VaultBookmark = {
+      id: 'bm-named',
+      path: 'Note.md',
+      title: 'Hello *world*',
+      name: 'My section',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Hello *world*', occurrence: 0 },
+    };
+    const unnamedBookmark: VaultBookmark = {
+      id: 'bm-unnamed',
+      path: 'Note.md',
+      title: 'Hello *world*',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Hello *world*', occurrence: 0 },
+    };
+    setup([namedBookmark, unnamedBookmark], '# Title\n\n## Hello *world*\n');
+    await openNote();
+    expect(screen.getByRole('button', { name: 'My section — Note.md' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hello world — Note.md' })).toBeInTheDocument();
   });
 
   it('moves the caret to the bookmarked heading in rich-text edit mode', async () => {

@@ -203,7 +203,12 @@ export interface VaultBridge {
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
-  addBookmark(path: string, anchor?: import('./types').BookmarkAnchor): Promise<VaultBookmark[]>;
+  addBookmark(
+    path: string,
+    anchor?: import('./types').BookmarkAnchor,
+    name?: string,
+    context?: string,
+  ): Promise<VaultBookmark[]>;
   removeBookmark(id: string): Promise<VaultBookmark[]>;
   lookupThesaurus(word: string): Promise<import('./thesaurus').ThesaurusGroup[]>;
   fetchDictionaryDefinitions?(word: string): Promise<import('./thesaurus').DictionaryMeaning[]>;

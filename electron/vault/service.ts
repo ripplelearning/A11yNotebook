@@ -1988,6 +1988,10 @@ export function createVaultService(
               created: bookmark.created,
             };
             if (anchor) clean.anchor = anchor;
+            if (typeof bookmark.name === 'string' && bookmark.name.trim())
+              clean.name = bookmark.name.trim().slice(0, 200);
+            if (typeof bookmark.context === 'string' && bookmark.context.trim())
+              clean.context = bookmark.context.trim().slice(0, 200);
             return clean;
           } catch {
             return null;
@@ -2022,7 +2026,7 @@ export function createVaultService(
   }
 
   /** Add a bookmark, optionally anchored to a heading or character position. Idempotent per path+anchor. */
-  async function addBookmark(relativePath: string, anchor?: BookmarkAnchor) {
+  async function addBookmark(relativePath: string, anchor?: BookmarkAnchor, name?: string, context?: string) {
     const target = await resolveEntry(relativePath);
     if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') {
       throw new Error('Only notes and DOCX documents can be bookmarked.');
@@ -2046,6 +2050,10 @@ export function createVaultService(
             : path.basename(relativePath, path.extname(relativePath)),
         created: new Date().toISOString(),
         ...(cleanAnchor ? { anchor: cleanAnchor } : {}),
+        ...(name?.trim() ? { name: name.trim().slice(0, 200) } : {}),
+        ...(cleanAnchor?.kind === 'offset' && context?.trim()
+          ? { context: context.trim().slice(0, 200) }
+          : {}),
       },
     ];
     await writeBookmarksRaw(next);

@@ -144,6 +144,29 @@ export function lineSpanAt(content: string, offset: number): { start: number; en
   return { start, end: trimmedEnd };
 }
 
+/**
+ * The text around an offset, for naming a position bookmark: the rendered
+ * form of the trimmed line at the offset, or the nearest non-blank line
+ * above it when the caret sits on a blank line. Truncated to `maxLength`
+ * characters. Empty when the note has no text around the offset.
+ */
+export function surroundingText(content: string, offset: number, maxLength = 60): string {
+  const clamped = Math.max(0, Math.min(offset, content.length));
+  const lines = content.split('\n');
+  let remaining = clamped;
+  let index = 0;
+  for (; index < lines.length; index += 1) {
+    if (remaining <= lines[index].length) break;
+    remaining -= lines[index].length + 1;
+  }
+  for (let lineIndex = Math.min(index, lines.length - 1); lineIndex >= 0; lineIndex -= 1) {
+    // A heading line names itself without its markers.
+    const text = normalizeHeadingText(lines[lineIndex].replace(/^ {0,3}#{1,6}\s+/, '')).trim();
+    if (text) return text.length > maxLength ? `${text.slice(0, maxLength - 1).trimEnd()}…` : text;
+  }
+  return '';
+}
+
 /** Validate an untrusted anchor value (bookmark files are user-editable JSON). */
 export function sanitizeBookmarkAnchor(value: unknown): BookmarkAnchor | undefined {
   if (!value || typeof value !== 'object') return undefined;

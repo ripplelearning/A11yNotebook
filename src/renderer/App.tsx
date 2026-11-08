@@ -62,6 +62,7 @@ import {
   normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
+  surroundingText,
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import {
@@ -108,6 +109,7 @@ import ConflictDialog from './features/vault/ConflictDialog';
 import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
 import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
+import BookmarkNameDialog, { type BookmarkNameRequest } from './features/vault/BookmarkNameDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import { searchTasksRemindersAppointments } from '../shared/search';
@@ -928,6 +930,7 @@ export default function App() {
     entry: VaultEntry;
   } | null>(null);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
+  const [bookmarkNameRequest, setBookmarkNameRequest] = useState<BookmarkNameRequest | null>(null);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   // Opening an item from the Organize dialog closes the dialog, and the
   // dialog's focus restore re-focuses the pre-dialog grid cell — which
@@ -3186,24 +3189,50 @@ export default function App() {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
     const caret = editorRef.current?.selectionStart ?? 0;
-    let anchor: BookmarkAnchor | null = null;
     if (kind === 'heading') {
-      anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
+      const anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
       if (!anchor) {
         setStatusMessage('No heading at or before the cursor to bookmark.');
         return;
       }
+      // The name prompt is pre-filled with the heading as the reader sees
+      // it; the user accepts it or types a better name.
+      setBookmarkNameRequest({
+        path: note.path,
+        anchor,
+        suggestedName: normalizeHeadingText(anchor.text),
+      });
     } else {
-      anchor = { kind: 'offset', offset: caret };
+      const anchor: BookmarkAnchor = { kind: 'offset', offset: caret };
+      const context = surroundingText(note.content, caret, 200);
+      setBookmarkNameRequest({
+        path: note.path,
+        anchor,
+        suggestedName:
+          surroundingText(note.content, caret) ||
+          note.path.split('/').pop()?.replace(/\.[^.]+$/, '') ||
+          'Bookmark',
+        ...(context ? { context } : {}),
+      });
     }
+  };
+
+  const submitBookmarkName = async (name: string) => {
+    const request = bookmarkNameRequest;
+    if (!request || !window.a11yNotebook) return;
     try {
-      const nextBookmarks = await window.a11yNotebook.vault.addBookmark(note.path, anchor);
+      const nextBookmarks = await window.a11yNotebook.vault.addBookmark(
+        request.path,
+        request.anchor,
+        name,
+        request.context,
+      );
       setBookmarks(nextBookmarks);
       setStatusMessage(
-        anchor.kind === 'heading' ? `Bookmarked heading "${anchor.text}".` : 'Bookmarked this position.',
+        request.anchor.kind === 'heading' ? `Bookmarked heading "${name}".` : `Bookmarked "${name}".`,
       );
     } catch {
-      setStatusMessage('Could not add the bookmark.');
+      throw new Error('Could not add the bookmark.');
     }
   };
 
@@ -7160,34 +7189,40 @@ export default function App() {
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
               <ul>
-                {bookmarks.map((bookmark) => (
-                  <li key={bookmark.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const entry = findEntry(vault?.entries ?? [], bookmark.path);
-                        if (entry) {
-                          if (bookmark.anchor)
-                            setPendingBookmarkAnchor({
-                              path: bookmark.path,
-                              anchor: bookmark.anchor,
-                              nonce: Date.now(),
-                            });
-                          void openEntry(entry);
-                        }
-                      }}
-                    >
-                      {bookmark.anchor?.kind === 'heading'
-                        ? `${bookmark.title} — ${bookmark.path.split('/').pop()}`
-                        : bookmark.anchor?.kind === 'offset'
-                          ? `${bookmark.title} (position)`
-                          : bookmark.title}
-                    </button>{' '}
-                    <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
+                {bookmarks.map((bookmark) => {
+                  // A user-chosen name wins; otherwise the title as the
+                  // reader sees it (a heading stored from source may
+                  // carry Markdown formatting).
+                  const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
+                  return (
+                    <li key={bookmark.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const entry = findEntry(vault?.entries ?? [], bookmark.path);
+                          if (entry) {
+                            if (bookmark.anchor)
+                              setPendingBookmarkAnchor({
+                                path: bookmark.path,
+                                anchor: bookmark.anchor,
+                                nonce: Date.now(),
+                              });
+                            void openEntry(entry);
+                          }
+                        }}
+                      >
+                        {bookmark.anchor?.kind === 'heading'
+                          ? `${label} — ${bookmark.path.split('/').pop()}`
+                          : bookmark.anchor?.kind === 'offset'
+                            ? `${label} (position)`
+                            : label}
+                      </button>{' '}
+                      <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
+                        Remove
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           </aside>
@@ -7646,6 +7681,13 @@ export default function App() {
           notebooks={notebooks}
           onClose={() => setItemDialog(null)}
           onSubmit={submitItem}
+        />
+      ) : null}
+      {!securityLocked && bookmarkNameRequest ? (
+        <BookmarkNameDialog
+          request={bookmarkNameRequest}
+          onClose={() => setBookmarkNameRequest(null)}
+          onSubmit={submitBookmarkName}
         />
       ) : null}
       {!securityLocked && organizeOpen && vault ? (

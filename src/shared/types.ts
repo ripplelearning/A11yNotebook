@@ -144,6 +144,10 @@ export interface VaultBookmark {
   title: string;
   created: string;
   anchor?: BookmarkAnchor;
+  /** User-chosen name from the naming prompt; the sidebar shows this instead of title. */
+  name?: string;
+  /** Surrounding text at an offset anchor, stored at creation so the bookmark stays meaningful. */
+  context?: string;
 }
 
 /** The last reading position in a document, used to resume where the reader stopped. */
