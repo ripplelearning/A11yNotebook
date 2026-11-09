@@ -3,6 +3,7 @@ import type { ElectronApplication } from '@playwright/test';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { dismissTutorial } from './helpers';
 
 const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
 
@@ -70,7 +71,8 @@ test('app shell is accessible end to end', async () => {
     // bar (<nav> "Main menu") is intentionally off by default
     // (settings.showCommandButtons defaults to false); the native menu
     // provides the same commands, so it must NOT be present here.
-    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
     await expect(page.getByRole('navigation', { name: 'Main menu' })).toHaveCount(0);
     await expect(page.getByRole('main', { name: 'Main content' })).toBeVisible();
     await expect(page.getByRole('complementary', { name: 'Navigation pane' })).toBeVisible();
@@ -131,11 +133,7 @@ test('app shell is accessible end to end', async () => {
     });
     // Diagnostic reports only: a failed write must not mask the verdicts below.
     try {
-      writeFileSync(
-        path.join(tmpdir(), 'e2e-axe.json'),
-        JSON.stringify(results.violations, null, 2),
-        'utf8',
-      );
+      writeFileSync(path.join(tmpdir(), 'e2e-axe.json'), JSON.stringify(results.violations, null, 2), 'utf8');
       writeFileSync(
         path.join(tmpdir(), 'e2e-console.json'),
         JSON.stringify({ pageErrors, consoleErrors }, null, 2),
@@ -168,7 +166,8 @@ test('app shell is accessible in the light theme', async () => {
     });
 
     await expect(page).toHaveTitle(/A11y Notebook/);
-    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
 
     // Real user path: Settings dialog, Theme select, Save. The dialog is
     // reachable from the welcome shell; settings save to the app userData
@@ -290,11 +289,7 @@ test('app shell is accessible in the light theme', async () => {
       });
     });
     try {
-      writeFileSync(
-        path.join(tmpdir(), 'e2e-axe-light.json'),
-        JSON.stringify(results.violations, null, 2),
-        'utf8',
-      );
+      writeFileSync(path.join(tmpdir(), 'e2e-axe-light.json'), JSON.stringify(results.violations, null, 2), 'utf8');
       writeFileSync(
         path.join(tmpdir(), 'e2e-console-light.json'),
         JSON.stringify({ pageErrors, consoleErrors }, null, 2),
@@ -327,7 +322,8 @@ test('app shell is accessible in the high contrast theme', async () => {
     });
 
     await expect(page).toHaveTitle(/A11y Notebook/);
-    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
 
     // Real user path: Settings dialog, Theme select, Save — the same path
     // as the light test, which previously proved the theme select itself
@@ -442,7 +438,8 @@ test('focus mode hides chrome and leaves only header, search, and document tabba
     });
     const page = await app.firstWindow();
     await expect(page).toHaveTitle(/A11y Notebook/);
-    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible();
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
 
     // The shell test has no library open, so Focus Mode cannot be entered
     // through the UI here; the state machine is covered by the jsdom App

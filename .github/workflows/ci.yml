@@ -38,6 +38,22 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: End-to-end tests (Linux)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a npm run test:e2e
+
+      - name: End-to-end tests (Windows)
+        if: runner.os == 'Windows'
+        run: npm run test:e2e
+
+      - name: Upload end-to-end failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failures-${{ runner.os }}
+          path: test-results/
+          if-no-files-found: ignore
+
       - name: Build
         run: npm run build
 
