@@ -412,6 +412,42 @@ describe('accessible details view', () => {
     expect(screen.getByText(/Select a notebook to see its notes and files/)).toBeInTheDocument();
   });
 
+  it("shows a notebook its own notes plus its sub-notebooks, never a sub-notebook's notes", () => {
+    const entries: VaultEntry[] = [
+      {
+        name: 'Archive',
+        path: 'Archive',
+        kind: 'notebook',
+        children: [
+          { name: 'Old.md', path: 'Archive/Old.md', kind: 'note' },
+          {
+            name: 'Interview Instructions',
+            path: 'Archive/Interview Instructions',
+            kind: 'notebook',
+            children: [{ name: 'Guide.md', path: 'Archive/Interview Instructions/Guide.md', kind: 'note' }],
+          },
+        ],
+      },
+    ];
+    const screenProps = {
+      entries,
+      hasLibrary: true,
+      selectedPath: null,
+      onSelect: vi.fn(),
+      onOpen: vi.fn(),
+    };
+    const { rerender } = render(<NotesFilesScreen {...screenProps} notebookPath="Archive" />);
+    expect(screen.getByRole('grid', { name: 'Notes and files' })).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'Old.md' })).toBeInTheDocument();
+    expect(screen.getByRole('gridcell', { name: 'Interview Instructions' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Guide.md' })).not.toBeInTheDocument();
+
+    rerender(<NotesFilesScreen {...screenProps} notebookPath="Archive/Interview Instructions" />);
+    expect(screen.getByRole('gridcell', { name: 'Guide.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Old.md' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('gridcell', { name: 'Interview Instructions' })).not.toBeInTheDocument();
+  });
+
   it('moves focus into the notebooks grid when opening a library', async () => {
     const { vault, bridge } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
