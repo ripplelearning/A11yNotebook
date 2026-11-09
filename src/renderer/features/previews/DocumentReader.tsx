@@ -1,11 +1,11 @@
-import type ePubFactory from 'epubjs/src/index.js';
-import type { EpubTocItem } from 'epubjs/src/index.js';
+import type { EpubBook, EpubTocItem } from 'epubjs/src/index.js';
 import DOMPurify from 'dompurify';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
+import { openEpubBook } from './epub-book';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
 import DocxReader from './DocxReader';
@@ -397,7 +397,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [sectionIndex, setSectionIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
-  const [book, setBook] = useState<Awaited<ReturnType<typeof ePubFactory>> | null>(null);
+  const [book, setBook] = useState<EpubBook | null>(null);
   const [epubAnnotations, setEpubAnnotations] = useState<EpubAnnotation[]>([]);
   const [sectionTexts, setSectionTexts] = useState<ReadonlyMap<string, string>>(new Map());
   const [pendingCapture, setPendingCapture] = useState<EpubAnnotationAnchor | null>(null);
@@ -406,7 +406,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [epubStatus, setEpubStatus] = useState('');
   const appliedHighlightsRef = useRef(new Map<string, string>());
   const [renditionTick, setRenditionTick] = useState(0);
-  const renditionRef = useRef<ReturnType<Awaited<ReturnType<typeof ePubFactory>>['renderTo']> | null>(null);
+  const renditionRef = useRef<ReturnType<EpubBook['renderTo']> | null>(null);
   const renditionContainerRef = useRef<HTMLDivElement>(null);
   const pendingHrefRef = useRef<string | null>(null);
   const pendingCfiRef = useRef<string | null>(null);
@@ -581,11 +581,8 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
 
   useEffect(() => {
     let cancelled = false;
-    let book: Awaited<ReturnType<typeof ePubFactory>> | undefined;
-    void import('epubjs/src/index.js')
-      .then(({ default: ePub }) =>
-        ePub(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer),
-      )
+    let book: EpubBook | undefined;
+    void openEpubBook(bytes)
       .then(async (opened) => {
         if (cancelled) {
           opened.destroy();
@@ -738,7 +735,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
 
   useEffect(() => {
     if (!positionReady) return;
-    const section = book?.spine.spineItems[sectionIndex];
+    const section = book?.spine?.spineItems?.[sectionIndex];
     if (!section || !renditionRef.current) return;
     const target = pendingCfiRef.current ?? pendingHrefRef.current ?? section.href;
     pendingCfiRef.current = null;
@@ -775,7 +772,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           Annotate selection
         </button>
       </div>
-      {book?.navigation.toc.length ? (
+      {book?.navigation?.toc?.length ? (
         <nav aria-label="ePub table of contents">
           <h4>Table of contents</h4>
           <EpubToc
