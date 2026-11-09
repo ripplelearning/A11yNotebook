@@ -162,6 +162,9 @@ async function createNote(page: import('@playwright/test').Page, name: string, c
   await noteDialog.getByLabel('New Note Name').fill(name);
   await noteDialog.getByRole('button', { name: 'New note', exact: true }).click();
   const editor = page.getByRole('textbox', { name: 'Markdown source' });
+  // A newly created note opens in edit mode, but the editor renders
+  // asynchronously; wait for it before asserting focus.
+  await expect(editor).toBeVisible({ timeout: 30000 });
   await expect(editor).toBeFocused();
   await editor.fill(content);
   await page.keyboard.press('Control+S');
@@ -176,6 +179,17 @@ async function createNote(page: import('@playwright/test').Page, name: string, c
 /** Switch to the Notebooks grid (Ctrl+2), the list of notebooks. */
 async function showNotebooks(page: import('@playwright/test').Page): Promise<void> {
   await switchView(page, 'Control+2', async () => page.getByRole('gridcell', { name: 'Archive' }).count());
+}
+
+/**
+ * Wait until an opened note's reading view has rendered. Ctrl+E is refused
+ * while the note is still loading (the command guard needs currentNote),
+ * so the heading must be visible before toggling to edit mode — on a slow
+ * runner the keypress otherwise lands before the note is current and is
+ * dropped with "This view has no note editor."
+ */
+async function waitForNoteOpen(page: import('@playwright/test').Page, title: string): Promise<void> {
+  await expect(page.getByRole('heading', { name: title, level: 1 })).toBeVisible({ timeout: 30000 });
 }
 
 test('csv opens as an editable spreadsheet, not Cognitive Tools', async () => {
@@ -330,6 +344,7 @@ test('tasks created in a note show the note in the Links column', async () => {
   try {
     await openNotebook(page, 'Tasks');
     await openGridEntry(page, 'Task note.md');
+    await waitForNoteOpen(page, 'Task note');
     // Edit mode, then write two checkbox tasks and save. Tasks are parsed
     // from the saved file, so the save must land before checking Tasks.
     await page.keyboard.press('Control+E');
@@ -366,6 +381,7 @@ test('Ctrl+E moves focus into the editor textbox', async () => {
   try {
     await openNotebook(page, 'Seeded');
     await openGridEntry(page, 'Seeded note.md');
+    await waitForNoteOpen(page, 'Seeded note');
     // A freshly opened note is in reading mode; Ctrl+E switches to edit.
     await page.keyboard.press('Control+E');
     await expect(page.getByRole('textbox', { name: 'Markdown source' })).toBeFocused();
@@ -381,6 +397,7 @@ test('bookmark jump moves focus to the bookmarked heading', async () => {
   try {
     await openNotebook(page, 'Seeded');
     await openGridEntry(page, 'Seeded note.md');
+    await waitForNoteOpen(page, 'Seeded note');
     await page.keyboard.press('Control+E');
     const editor = page.getByRole('textbox', { name: 'Markdown source' });
     await expect(editor).toBeFocused();
