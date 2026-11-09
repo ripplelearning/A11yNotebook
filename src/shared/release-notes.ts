@@ -7,19 +7,23 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Quick Task now keeps the notebook chooser inside the same dialog, after the text box — type first, pick second — and always confirms "Task created in [Notebook Name]".',
-      'Global search now covers tasks, reminders, and appointments, with filters for each type; opening a result takes you to the task, reminder, or appointment.',
-      'Spreadsheets and slide decks now open in the app: .xlsx, .ods, .xls, .pptx, and .odp files open in the in-app preview instead of an external app.',
-      'Deleting a note or notebook that contains tasks now warns you first, with the task count.',
+      'Every .csv file now opens as a spreadsheet grid, instead of opening the Cognitive Tools view.',
+      'Tasks you create in a note are now automatically linked to that note, and the link shows in the Tasks view — you can remove it like any other link.',
+      'Create Reminder is now on the context menu for notes and files, and the new reminder comes pre-linked to the item you chose.',
+      'Pressing a letter or number key in the Notes & Files grid now jumps to the next item starting with that character.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'Bookmark jumps now land focus on the heading, keep it there, and announce the landing; formatted headings match again, and jumps work in rich-text editing too.',
-      'Deleting an appointment now asks in a separate dialog; single appointments say "Delete this appointment?" instead of talking about a series.',
-      'The Bibliography toggle is gone from the Citations dialog; switch views with Ctrl+J (Bibliography) and Ctrl+Shift+C (Citation generator).',
-      'Import failures now name the real reason instead of "Could not import the selected file."; Google link files (.gdoc, .gsheet, .gslides) that cannot be read now say why.',
+      'Bookmark jumps now move the virtual cursor the same way Find does, so the screen reader follows the jump.',
+      'When you set a bookmark, you can now name it — the name field is pre-filled with the heading or nearby text.',
+      'The Type column now shows the real file type (ePub, PDF, Word document) instead of "Attachment" for every file.',
+      'Search results no longer show raw reminder text; reminder times read MM/DD/YYYY, HH:MM AM/PM.',
+      'ePub and PDF files should now open in the app: the file reader can finally fetch the file. Please retest and tell me if they still fail.',
+      'A spreadsheet whose workbook lists the same worksheet twice now imports instead of failing.',
+      'When a Google link file (.gdoc, .gsheet, .gslides) cannot be read, you can still add it as a link from the dialog that opens.',
+      'Switching to edit mode with Ctrl+E now moves focus into the note text box automatically.',
     ],
   },
 ];
