@@ -3948,10 +3948,15 @@ export default function App() {
     const request = itemDialog;
     if (request.action === 'new-note' || request.action === 'new-notebook') {
       const selected = findEntry(vault.entries, treeSelection);
+      // A new notebook goes where the dialog's Location picker says —
+      // the Library root by default — never silently inside the selected
+      // notebook. A new note still goes into the selected notebook.
       const parent =
-        request.path ??
-        selectedNotebookPath ??
-        (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? ''));
+        request.action === 'new-notebook'
+          ? notebook
+          : (request.path ??
+            selectedNotebookPath ??
+            (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? '')));
       const leaf =
         request.action === 'new-note'
           ? `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : format === 'txt' ? 'txt' : 'md'}`
@@ -3960,6 +3965,12 @@ export default function App() {
       setVault(
         request.action === 'new-note' ? await bridge.createNote(relative) : await bridge.createNotebook(relative),
       );
+      if (request.action === 'new-notebook') {
+        // The new notebook becomes the selected notebook, so its Notes
+        // and Files view is one step away.
+        setSelectedNotebookPath(relative);
+        setTreeSelection(relative);
+      }
       if (request.action === 'new-note')
         await openEntry({ name: leaf, path: relative, kind: 'note', provenance: 'created' });
       if (request.action === 'new-note') {
@@ -3971,7 +3982,15 @@ export default function App() {
         pendingEditorFocusRef.current = { path: relative };
         setMode('edit');
       }
-      setStatusMessage(`${request.action === 'new-note' ? 'Note' : 'Notebook'} created.`);
+      if (request.action === 'new-notebook') {
+        // Announce the full location: previously a notebook could land
+        // inside the selected notebook without saying so.
+        setStatusMessage(
+          parent ? `Notebook created inside ${parent}.` : 'Notebook created in the Library root.',
+        );
+      } else {
+        setStatusMessage('Note created.');
+      }
       return;
     }
     if (openNotes.some((note) => note.content !== note.saved))
@@ -5038,7 +5057,7 @@ export default function App() {
       return;
     }
     if (selectedTab === 'notebooks') {
-      setItemDialog({ action: 'new-notebook' });
+      setItemDialog({ action: 'new-notebook', currentNotebook: selectedNotebookPath });
     } else if (selectedTab === 'tasks') {
       setTaskCreationNotebookPath(
         taskNotebookFilter === 'all'
@@ -5782,7 +5801,7 @@ export default function App() {
         setStatusMessage('Open a library before creating a notebook.');
         return;
       }
-      setItemDialog({ action: 'new-notebook' });
+      setItemDialog({ action: 'new-notebook', currentNotebook: selectedNotebookPath });
       return;
     }
     if (commandId === 'edit-note-metadata') {

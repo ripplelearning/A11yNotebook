@@ -27,12 +27,15 @@ export default function NotesFilesScreen({
   showCommandButtons = true,
   ...details
 }: NotesFilesScreenProps) {
-  const prefix = notebookPath ? `${notebookPath}/` : undefined;
   // Notebooks are silos: without a selected notebook this view shows
   // nothing at all. Cross-notebook discovery happens through global
   // search, never by browsing an everything-in-the-library list.
-  const notesAndFiles = prefix
-    ? flatten(entries).filter((entry) => entry.kind !== 'notebook' && entry.path.startsWith(prefix))
+  // A notebook shows its own notes and files plus the notebooks inside
+  // it; a sub-notebook's notes only appear when that sub-notebook is
+  // opened, so a note is never listed under two notebooks at once.
+  const parentOf = (path: string) => path.split('/').slice(0, -1).join('/');
+  const notesAndFiles = notebookPath
+    ? flatten(entries).filter((entry) => parentOf(entry.path) === notebookPath)
     : [];
   return (
     <section aria-labelledby="notes-files-heading">
@@ -58,7 +61,10 @@ export default function NotesFilesScreen({
       {!hasLibrary ? (
         <p>Open a library and select a notebook to create notes.</p>
       ) : !notebookPath ? (
-        <p>Select a notebook to see its notes and files. Each notebook shows only its own notes and files.</p>
+        <p>
+          Select a notebook to see its notes and files. Each notebook shows its own notes and files, plus the
+          notebooks inside it.
+        </p>
       ) : null}
       {notebookPath ? <p>Items in {notebookPath}</p> : null}
       <DetailsView
