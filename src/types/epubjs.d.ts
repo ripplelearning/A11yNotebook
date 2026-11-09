@@ -87,6 +87,7 @@ declare module 'epubjs/src/index.js' {
       manifest: unknown,
       options: Record<string, unknown>,
     ) => EpubRendition;
+    CFI: new (cfi: string) => { spinePos: number };
   }
 
   const ePub: EpubFactory;
