@@ -35,6 +35,50 @@ export function mapEpubTocItems(
   }));
 }
 
+/** The epubjs internals the findInSpine patch reads. */
+interface RenditionInternals {
+  epubcfi: { isCfiString: (target: string) => boolean };
+  spineByHref: Record<string, number>;
+  spineBySource: Record<string, number>;
+  spineById: Record<string, number>;
+  manifest: { spine: Array<unknown> };
+  findInSpine: (target: string | number) => unknown;
+}
+
+/**
+ * Correct epubjs 0.4.2's Rendition.findInSpine on this rendition only.
+ * Upstream resolves a href target with an || chain, so the first section
+ * (index 0) reads as missing and display() rejects with "No Section
+ * Found" — every book's opening section, and any table-of-contents entry
+ * pointing at it. This is upstream's logic with index 0 preserved
+ * (nullish checks instead of ||), so fragments still reach the view for
+ * anchor jumps.
+ */
+export function patchFindInSpine(
+  ePub: { CFI: new (cfi: string) => { spinePos: number } },
+  rendition: ReturnType<EpubBook['renderTo']>,
+): void {
+  const internals = rendition as unknown as RenditionInternals;
+  internals.findInSpine = function (this: RenditionInternals, target: string | number) {
+    let index: number | undefined;
+    if (this.epubcfi.isCfiString(target as string)) {
+      index = new ePub.CFI(target as string).spinePos;
+    } else if (typeof target === 'number' || isNaN(Number(target)) === false) {
+      index = target as number;
+    } else if (typeof target === 'string' && target.indexOf('#') === 0) {
+      index = this.spineById[target.substring(1)];
+    } else if (typeof target === 'string') {
+      const href = target.split('#')[0];
+      index =
+        this.spineByHref[href] ??
+        this.spineByHref[encodeURI(href)] ??
+        this.spineBySource[href] ??
+        this.spineBySource[encodeURI(href)];
+    }
+    return index === undefined ? null : (this.manifest.spine[index] ?? null);
+  };
+}
+
 /**
  * Open an ePub from its bytes and return the reader's EpubBook.
  * epubjs 0.4.2's factory must be called with no arguments and the book
@@ -43,6 +87,12 @@ export function mapEpubTocItems(
  */
 export async function openEpubBook(bytes: Uint8Array): Promise<EpubBook> {
   const { default: ePub } = await import('epubjs/src/index.js');
+  // epubjs assumes a browser global `ePub`: the Contents constructor reads
+  // ePub.VERSION with no guard, so displaying a section throws
+  // "ReferenceError: ePub is not defined" in the bundled app, which has no
+  // such global. Expose the factory as that global; it carries VERSION,
+  // CFI, ViewManagers, and Views.
+  (globalThis as { ePub?: typeof ePub }).ePub = ePub;
   const epub = await ePub();
   await epub.open(
     bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer,
@@ -77,6 +127,7 @@ export async function openEpubBook(bytes: Uint8Array): Promise<EpubBook> {
         manager: ePub.ViewManagers['default'],
         view: ePub.Views['iframe'],
       });
+      patchFindInSpine(ePub, rendition);
       rendition.attachTo(element);
       return rendition;
     },
