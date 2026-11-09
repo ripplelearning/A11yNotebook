@@ -33,8 +33,16 @@ function installBook() {
     display,
     destroy: vi.fn(),
     annotations: annotationsApi,
+    attachTo: vi.fn((element: HTMLElement) => {
+      element.appendChild(document.createElement('iframe'));
+    }),
     on: (event: string, handler: (...args: never[]) => void) => handlers.set(event, handler),
   };
+  // A function expression (not an arrow function): the adapter constructs
+  // the Rendition with `new`, and arrow functions cannot be constructed.
+  const Rendition = vi.fn(function MockRendition() {
+    return rendition;
+  });
   const spineItems = [
     {
       index: 0,
@@ -49,21 +57,26 @@ function installBook() {
       hooks: { serialize: { register: vi.fn() } },
     },
   ];
-  const book = {
-    spine: {
-      spineItems,
-      get: (target: string) =>
-        target.includes('/6/2') ? spineItems[0] : target.includes('/6/4') ? spineItems[1] : spineItems[0],
-    },
+  const epub = {
+    open: vi.fn(async () => undefined),
     navigation: { toc: [] },
-    renderTo: vi.fn((container: HTMLElement) => {
-      container.appendChild(document.createElement('iframe'));
-      return rendition;
-    }),
+    book: {
+      sections: {
+        spineItems,
+        get: (target: string) =>
+          target.includes('/6/2') ? spineItems[0] : target.includes('/6/4') ? spineItems[1] : spineItems[0],
+      },
+      manifest: { spine: spineItems.map(({ href }) => ({ href })) },
+      destroy: vi.fn(),
+    },
+    resources: { resolve: (href: string) => href },
     destroy: vi.fn(),
   };
-  ePub.mockResolvedValue(book);
-  return { book, rendition, handlers, annotationsApi, display };
+  (ePub as unknown as Record<string, unknown>).Rendition = Rendition;
+  (ePub as unknown as Record<string, unknown>).ViewManagers = { default: class {} };
+  (ePub as unknown as Record<string, unknown>).Views = { iframe: class {} };
+  ePub.mockResolvedValue(epub);
+  return { rendition, handlers, annotationsApi, display };
 }
 
 function installVault(overrides: Record<string, unknown> = {}) {
