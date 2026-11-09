@@ -61,6 +61,17 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload end-to-end failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failures-windows-${{ env.RELEASE_TAG }}
+          path: test-results/
+          if-no-files-found: ignore
+
       - name: Verify release-tool formatting and generated shortcuts
         shell: pwsh
         run: |
@@ -285,6 +296,17 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload end-to-end failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failures-macos-${{ env.RELEASE_TAG }}
+          path: test-results/
+          if-no-files-found: ignore
 
       - name: Verify release-tool formatting and generated shortcuts
         run: |
