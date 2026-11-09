@@ -111,14 +111,24 @@ async function openTasksTable(menu: (command: MenuCommand) => void) {
   return screen.findByRole('table', { name: 'Tasks in Study' });
 }
 
+function lastSavedLinks(bridge: NotebookBridge): TaskLink[] {
+  const calls = vi.mocked(bridge.vault.saveTaskLinks!).mock.calls;
+  return calls[calls.length - 1]?.[0] ?? [];
+}
+
 describe('dead task links', () => {
   it('drops the link when opening it finds the target is gone', async () => {
     const { bridge, menu } = setup();
     const taskTable = await openTasksTable(menu);
     fireEvent.click(within(taskTable).getByRole('button', { name: 'Open note: Gone.md' }));
-    await waitFor(() =>
-      expect(bridge.vault.saveTaskLinks).toHaveBeenCalledWith([liveLink]),
-    );
+    await waitFor(() => {
+      const saved = lastSavedLinks(bridge);
+      expect(saved).toContainEqual(liveLink);
+      expect(saved).toContainEqual(
+        expect.objectContaining({ taskId: 'Tasks.md:1', target: 'Tasks.md', auto: true }),
+      );
+      expect(saved).not.toContainEqual(deadLink);
+    });
     expect(screen.getByLabelText('Status bar')).toHaveTextContent(
       'The linked note is no longer in the library, so its link was removed.',
     );
@@ -129,11 +139,38 @@ describe('dead task links', () => {
     const { bridge, menu } = setup();
     await screen.findByRole('heading', { name: 'Study' });
     menu('refresh-links');
-    await waitFor(() =>
-      expect(bridge.vault.saveTaskLinks).toHaveBeenCalledWith([liveLink]),
-    );
+    await waitFor(() => {
+      const saved = lastSavedLinks(bridge);
+      expect(saved).toContainEqual(liveLink);
+      expect(saved).not.toContainEqual(deadLink);
+    });
     const taskTable = await openTasksTable(menu);
     expect(within(taskTable).queryByRole('button', { name: 'Open note: Gone.md' })).toBeNull();
     expect(within(taskTable).getByRole('button', { name: 'Open note: Guide.md' })).toBeInTheDocument();
+  });
+});
+
+describe('task auto-links', () => {
+  it('links each task to its own note in the Links column', async () => {
+    const { menu } = setup();
+    const taskTable = await openTasksTable(menu);
+    await waitFor(() =>
+      expect(within(taskTable).getByRole('button', { name: 'Open note: Tasks.md' })).toBeInTheDocument(),
+    );
+    expect(within(taskTable).getByRole('button', { name: 'Open note: Guide.md' })).toBeInTheDocument();
+  });
+
+  it('keeps a removed auto-link removed instead of re-creating it', async () => {
+    const { bridge, menu } = setup();
+    const taskTable = await openTasksTable(menu);
+    await waitFor(() =>
+      expect(within(taskTable).getByRole('button', { name: 'Open note: Tasks.md' })).toBeInTheDocument(),
+    );
+    fireEvent.click(within(taskTable).getByRole('button', { name: 'Remove link to Tasks.md' }));
+    await waitFor(() =>
+      expect(bridge.vault.saveDismissedTaskAutoLinks).toHaveBeenCalledWith(['Tasks.md:1']),
+    );
+    expect(within(taskTable).queryByRole('button', { name: 'Open note: Tasks.md' })).toBeNull();
+    expect(lastSavedLinks(bridge).find((link) => link.auto)).toBeUndefined();
   });
 });

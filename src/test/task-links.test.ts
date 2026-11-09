@@ -4,7 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
-import { cleanTaskLinks, dropLinksForDeletedPath, dropLinksToDeletedPath, dropLinksToMissingTargets, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../shared/task-links';
+import { cleanTaskLinks, cleanDismissedTaskAutoLinks, dropLinksForDeletedPath, dropLinksToDeletedPath, dropLinksToMissingTargets, dropMissingStableTaskLinks, migrateTaskLinks, reconcileTaskAutoLinks, type TaskLink } from '../shared/task-links';
 
 let temporaryDirectory = '';
 
@@ -46,6 +46,103 @@ describe('cleanTaskLinks', () => {
   it('returns an empty list for non-list input', () => {
     expect(cleanTaskLinks(undefined)).toEqual([]);
     expect(cleanTaskLinks({ links: [link()] })).toEqual([]);
+  });
+
+  it('keeps the auto marker on auto-links', () => {
+    expect(cleanTaskLinks([link({ auto: true })])).toEqual([link({ auto: true })]);
+    expect(cleanTaskLinks([link({ auto: false })])).toEqual([link()]);
+  });
+});
+
+describe('cleanDismissedTaskAutoLinks', () => {
+  it('keeps non-empty string ids, deduplicated', () => {
+    expect(cleanDismissedTaskAutoLinks(['Tasks.md:1', '', 'Tasks.md:1', 7, null, 'Guide.md#abc'])).toEqual([
+      'Tasks.md:1',
+      'Guide.md#abc',
+    ]);
+    expect(cleanDismissedTaskAutoLinks(undefined)).toEqual([]);
+  });
+});
+
+describe('reconcileTaskAutoLinks', () => {
+  const tasks = [
+    { id: 'Tasks.md:1', path: 'Tasks.md' },
+    { id: 'Guide.md#stable123', path: 'Guide.md' },
+  ];
+
+  it('creates an auto-link from each task to its own note', () => {
+    const result = reconcileTaskAutoLinks(tasks, [], []);
+    expect(result.changed).toBe(true);
+    expect(result.links).toHaveLength(2);
+    expect(result.links[0]).toMatchObject({
+      taskId: 'Tasks.md:1',
+      taskPath: 'Tasks.md',
+      kind: 'note',
+      target: 'Tasks.md',
+      auto: true,
+    });
+    expect(result.links[1]).toMatchObject({
+      taskId: 'Guide.md#stable123',
+      taskPath: 'Guide.md',
+      kind: 'note',
+      target: 'Guide.md',
+      auto: true,
+    });
+  });
+
+  it('does not duplicate a link a task already has to its own note', () => {
+    const userLink = link({ id: 'link-user', taskId: 'Tasks.md:1', taskPath: 'Tasks.md', target: 'Tasks.md' });
+    const autoLink = link({
+      id: 'link-auto',
+      taskId: 'Guide.md#stable123',
+      taskPath: 'Guide.md',
+      target: 'Guide.md',
+      auto: true,
+    });
+    const result = reconcileTaskAutoLinks(tasks, [userLink, autoLink], []);
+    expect(result.changed).toBe(false);
+    expect(result.links).toEqual([userLink, autoLink]);
+  });
+
+  it('does not re-create an auto-link the user removed', () => {
+    const result = reconcileTaskAutoLinks(tasks, [], ['Tasks.md:1']);
+    expect(result.links).toHaveLength(1);
+    expect(result.links[0].taskId).toBe('Guide.md#stable123');
+  });
+
+  it('drops auto-links for tasks that are gone, and prunes their dismissed ids', () => {
+    const staleAuto = link({
+      id: 'link-stale',
+      taskId: 'Tasks.md:2',
+      taskPath: 'Tasks.md',
+      target: 'Tasks.md',
+      auto: true,
+    });
+    const userLink = link({ id: 'link-user', taskId: 'Tasks.md:2', taskPath: 'Tasks.md' });
+    const result = reconcileTaskAutoLinks(
+      [{ id: 'Tasks.md:1', path: 'Tasks.md' }],
+      [staleAuto, userLink],
+      ['Tasks.md:2'],
+    );
+    // The stale auto-link is gone (its task moved down a line); the user
+    // link is never pruned here; the dismissed id for the gone task is
+    // dropped so a later task reusing that line is not suppressed.
+    expect(result.changed).toBe(true);
+    expect(result.links).toEqual([userLink, expect.objectContaining({ taskId: 'Tasks.md:1', auto: true })]);
+    expect(result.dismissed).toEqual([]);
+  });
+
+  it('reports no change when every task already links to its note', () => {
+    const links = tasks.map((task, index) =>
+      link({
+        id: `link-${index}`,
+        taskId: task.id,
+        taskPath: task.path,
+        target: task.path,
+        auto: true,
+      }),
+    );
+    expect(reconcileTaskAutoLinks(tasks, links, []).changed).toBe(false);
   });
 });
 
@@ -180,5 +277,18 @@ describe('task link storage', () => {
       link({ id: 'link-line', taskId: 'Note.md:2', taskPath: 'Note.md' }),
       link({ id: 'link-other', taskId: 'Other.md#other123', taskPath: 'Other.md' }),
     ]);
+  });
+
+  it('persists dismissed auto-links, and saving links does not wipe them', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-task-links-'));
+    const service = createVaultService(temporaryDirectory);
+    await service.initialize();
+    expect(await service.getDismissedTaskAutoLinks()).toEqual([]);
+    expect(await service.saveDismissedTaskAutoLinks(['Tasks.md:1', 'Tasks.md:1', ''])).toEqual(['Tasks.md:1']);
+    expect(await service.getDismissedTaskAutoLinks()).toEqual(['Tasks.md:1']);
+    await service.saveTaskLinks([link()]);
+    expect(await service.getDismissedTaskAutoLinks()).toEqual(['Tasks.md:1']);
+    expect(await service.getTaskLinks()).toEqual([link()]);
+    expect(await service.saveDismissedTaskAutoLinks([])).toEqual([]);
   });
 });

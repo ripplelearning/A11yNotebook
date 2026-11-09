@@ -173,6 +173,9 @@ describe('Google pointer files as links', () => {
       await expect(readPointerFile(file)).resolves.toEqual(expected);
     }
     const missing = path.join(await realpath(tmpdir()), 'a11y-import-formats-no-such-file.gdoc');
-    await expect(readPointerFile(missing)).resolves.toEqual({ reason: 'The file could not be read.' });
+    await expect(readPointerFile(missing)).resolves.toEqual({
+      reason: 'The file could not be read.',
+      code: 'ENOENT',
+    });
   });
 });

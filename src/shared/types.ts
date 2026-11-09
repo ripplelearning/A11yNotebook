@@ -37,6 +37,18 @@ export interface PointerImport {
   guidance: string;
 }
 
+/**
+ * A Google link-pointer file picked for import whose URL could not be read
+ * from the file: the Add Link dialog is still offered, with the address
+ * left for the user to paste.
+ */
+export interface PointerImportFailure {
+  extension: '.gdoc' | '.gsheet' | '.gslides';
+  guidance: string;
+  reason: string;
+  code?: string;
+}
+
 /** A filesystem entry returned to the renderer without exposing Node objects. */
 export interface VaultEntry {
   name: string;
@@ -132,6 +144,10 @@ export interface VaultBookmark {
   title: string;
   created: string;
   anchor?: BookmarkAnchor;
+  /** User-chosen name from the naming prompt; the sidebar shows this instead of title. */
+  name?: string;
+  /** Surrounding text at an offset anchor, stored at creation so the bookmark stays meaningful. */
+  context?: string;
 }
 
 /** The last reading position in a document, used to resume where the reader stopped. */

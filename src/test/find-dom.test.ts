@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
+import {
+  findDomMatches,
+  focusReaderSearchBox,
+  selectDomMatch,
+  selectElementContents,
+  selectRenderedLine,
+} from '../shared/find-dom';
 
 describe('find-dom', () => {
   it('finds matches across text nodes in document order', () => {
@@ -42,5 +48,34 @@ describe('find-dom', () => {
     const root = document.createElement('div');
     root.innerHTML = '<label>Search<input /></label>';
     expect(focusReaderSearchBox(root)).toBe(false);
+  });
+
+  it('selects the whole contents of an element', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<h2>Setup <em>now</em></h2>';
+    document.body.appendChild(root);
+    const heading = root.querySelector('h2')!;
+    expect(selectElementContents(heading)).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('Setup now');
+    expect(window.getSelection()?.isCollapsed).toBe(false);
+    root.remove();
+  });
+
+  it('selects the rendered text of a source line by its first words', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Intro text.</p><p>More text here.</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLine(root, 'More text here.')).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('More text here.');
+    root.remove();
+  });
+
+  it('falls back to the first text when a line cannot be found', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Intro text.</p><p>More text.</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLine(root, 'a line that is not rendered')).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('Intro text.');
+    root.remove();
   });
 });

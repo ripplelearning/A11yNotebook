@@ -1002,7 +1002,9 @@ function makeReminders(nextService: VaultService, vault: VaultInfo) {
       return routedMetadataFor(nextService).write('reminders.json', value, assertCurrent);
     },
     validateNote: async (relative) => {
-      await nextService.readNote(relative);
+      // Reminders link to notes and files alike; resolveEntry accepts any
+      // existing entry and rejects anything outside the library.
+      await nextService.resolveEntry(relative);
     },
     getNotes: async () => {
       const notes: NoteSource[] = [];
@@ -3598,12 +3600,24 @@ export function setupVaultIpc(
             },
           };
         }
-        // The pointer read failed: keep the export guidance, but name the
-        // specific reason the link could not be read, so the failure is
-        // diagnosable instead of silently showing guidance alone.
+        // The pointer read failed: still offer "Add as link" with the URL
+        // left for the user to paste, instead of only showing the export
+        // guidance. The reason (and the underlying error code, when the
+        // filesystem call threw one) travels with the outcome so the
+        // failure stays diagnosable.
         const reason =
           pointer && 'reason' in pointer ? pointer.reason : 'The link could not be read from this file.';
-        throw new Error(`${failure instanceof Error ? failure.message : ''} ${reason}`);
+        const code = pointer && 'code' in pointer ? pointer.code : undefined;
+        if (code) console.error(`Could not read ${extension} pointer file ${source}: ${code}`);
+        access.assertCurrent();
+        return {
+          pointerFailed: {
+            extension: extension as '.gdoc' | '.gsheet' | '.gslides',
+            guidance: failure instanceof Error ? failure.message : '',
+            reason,
+            ...(code ? { code } : {}),
+          },
+        };
       }
       access.assertCurrent();
       const currentNotebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
@@ -3984,6 +3998,15 @@ export function setupVaultIpc(
     if (!Array.isArray(links)) throw new Error('Task links must be a list.');
     return requireService().saveTaskLinks(links);
   });
+  ipcMain.handle(IPC_CHANNELS.vaultGetDismissedTaskAutoLinks, async (event) => {
+    assertTrusted(event, isTrustedSender);
+    return requireService().getDismissedTaskAutoLinks();
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultSaveDismissedTaskAutoLinks, async (event, ids: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!Array.isArray(ids)) throw new Error('Dismissed task auto-links must be a list.');
+    return requireService().saveDismissedTaskAutoLinks(ids);
+  });
   ipcMain.handle(IPC_CHANNELS.vaultFetchCitationMetadata, async (event, identifier: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof identifier !== 'string') throw new Error('Identifier must be text.');
@@ -4028,10 +4051,12 @@ export function setupVaultIpc(
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
     return requireService().toggleBookmark(relativePath);
   });
-  ipcMain.handle(IPC_CHANNELS.vaultAddBookmark, async (event, relativePath: unknown, anchor: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultAddBookmark, async (event, relativePath: unknown, anchor: unknown, name: unknown, context: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Bookmark path must be text.');
-    return requireService().addBookmark(relativePath, sanitizeBookmarkAnchor(anchor));
+    if (name !== undefined && typeof name !== 'string') throw new Error('Bookmark name must be text.');
+    if (context !== undefined && typeof context !== 'string') throw new Error('Bookmark context must be text.');
+    return requireService().addBookmark(relativePath, sanitizeBookmarkAnchor(anchor), name, context);
   });
   ipcMain.handle(IPC_CHANNELS.vaultRemoveBookmark, async (event, id: unknown) => {
     assertTrusted(event, isTrustedSender);

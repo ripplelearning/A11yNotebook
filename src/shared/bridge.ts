@@ -3,6 +3,7 @@ import type { UpdaterStatus } from './updater';
 import type {
   ItemStats,
   PointerImport,
+  PointerImportFailure,
   ReadingPosition,
   ReadingPositionInput,
   RecentLibrary,
@@ -173,7 +174,7 @@ export interface VaultBridge {
     options?: { makeDefault?: boolean },
   ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
-  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | null>;
+  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | { pointerFailed: PointerImportFailure } | null>;
   importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
   importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
@@ -202,13 +203,20 @@ export interface VaultBridge {
   getLinkIndex(): Promise<VaultLinkIndex>;
   getBookmarks(): Promise<VaultBookmark[]>;
   toggleBookmark(path: string): Promise<VaultBookmark[]>;
-  addBookmark(path: string, anchor?: import('./types').BookmarkAnchor): Promise<VaultBookmark[]>;
+  addBookmark(
+    path: string,
+    anchor?: import('./types').BookmarkAnchor,
+    name?: string,
+    context?: string,
+  ): Promise<VaultBookmark[]>;
   removeBookmark(id: string): Promise<VaultBookmark[]>;
   lookupThesaurus(word: string): Promise<import('./thesaurus').ThesaurusGroup[]>;
   fetchDictionaryDefinitions?(word: string): Promise<import('./thesaurus').DictionaryMeaning[]>;
   getBibliography(notebookPath: string): Promise<import('./citations').BibliographyEntry[]>;
   getTaskLinks?(): Promise<import('./task-links').TaskLink[]>;
   saveTaskLinks?(links: import('./task-links').TaskLink[]): Promise<import('./task-links').TaskLink[]>;
+  getDismissedTaskAutoLinks?(): Promise<string[]>;
+  saveDismissedTaskAutoLinks?(ids: string[]): Promise<string[]>;
   saveBibliography(
     notebookPath: string,
     entries: import('./citations').BibliographyEntry[],

@@ -1,7 +1,7 @@
 // @vitest-environment node
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createReminderService, migrateReminderStorePaths, parseTaskReminders, validateReminderStore } from '../../electron/vault/reminders';
-import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, splitStoredTime, composeDialogTime, formatTaskDueDate, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
+import { parseReminderDate, normalizeTimeText, isValidTimeText, snoozeUntil, splitStoredTime, composeDialogTime, formatTaskDueDate, formatReminderDateTime, type DueFlashcardReview, type ReminderStore } from '../shared/reminders';
 
 function fixture(content = '- [ ] Read remind:2026-10-03 09:00') {
   let persisted: unknown = null;
@@ -59,6 +59,9 @@ describe('reminder parsing and validation', () => {
     expect(tasks[0]).toMatchObject({ title: 'Read', line: 1, complete: false });
     expect(tasks[1]).toMatchObject({ title: 'Submit', line: 2, complete: true });
     expect(parseTaskReminders('- [ ] Read remind:2026-10-03 09:00', '../Study.md')).toEqual([]);
+    // Reminder paths may now point at files, but task markers only ever
+    // come from note content.
+    expect(parseTaskReminders('- [ ] Read remind:2026-10-03 09:00', 'Report.pdf')).toEqual([]);
   });
 
   it('parses HTML task reminder metadata using stable task identities', () => {
@@ -354,6 +357,34 @@ describe('vault reminder scheduler', () => {
     await vi.advanceTimersByTimeAsync(5 * 60_000);
     expect(f.notify).toHaveBeenCalledWith(expect.objectContaining({ title: 'Appointment', status: 'fired' }));
     expect(f.persisted()).toMatchObject({ version: 1, standalone: [{ status: 'fired' }] });
+    f.service.stop();
+  });
+
+  it('creates a standalone reminder linked to a file, not just a note', async () => {
+    const f = fixture('- [ ] Read remind:2026-10-03 11:00');
+    // The store's validateNote resolves for any existing entry, the way the
+    // main-process wiring resolves a file through resolveEntry.
+    const service = createReminderService({
+      ...f.options,
+      validateNote: vi.fn(async (path: string) => {
+        if (path !== 'Report.pdf') throw new Error('Missing entry.');
+      }),
+    });
+    await service.initialize();
+    const items = await service.createReminder({
+      title: 'Review report',
+      path: 'Report.pdf',
+      scheduledAt: '2026-10-03 10:05',
+    });
+    expect(items.find((item) => item.title === 'Review report')).toMatchObject({
+      source: 'standalone',
+      path: 'Report.pdf',
+      status: 'pending',
+    });
+    await expect(
+      service.createReminder({ title: 'Bad', path: '../Report.pdf', scheduledAt: '2026-10-03 10:05' }),
+    ).rejects.toThrow();
+    service.stop();
     f.service.stop();
   });
 
@@ -703,5 +734,18 @@ describe('task due date display', () => {
     expect(formatTaskDueDate('2026-11-07', '')).toBe('11-07-2026');
     expect(formatTaskDueDate(undefined, undefined)).toBe('No due date');
     expect(formatTaskDueDate(undefined, '09:30')).toBe('No due date');
+  });
+});
+
+describe('reminder date-time display for search results', () => {
+  it('shows MM/DD/YYYY, HH:MM AM/PM for a stored task marker', () => {
+    expect(formatReminderDateTime('2026-11-08 22:03')).toBe('11/08/2026, 10:03 PM');
+    expect(formatReminderDateTime('2026-11-08 09:30')).toBe('11/08/2026, 9:30 AM');
+    expect(formatReminderDateTime('2026-11-08 00:30')).toBe('11/08/2026, 12:30 AM');
+    expect(formatReminderDateTime('2026-11-08 12:00')).toBe('11/08/2026, 12:00 PM');
+  });
+
+  it('keeps an unparseable value instead of guessing', () => {
+    expect(formatReminderDateTime('not a date')).toBe('not a date');
   });
 });

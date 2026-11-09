@@ -7,6 +7,11 @@ export type TaskLinkKind = 'note' | 'file' | 'notebook';
  * for filtering without parsing the id. Both ends follow moves: when a
  * note or notebook moves, migrateTaskLinks rewrites the task's own note
  * and the link target to the new paths.
+ *
+ * `auto` marks the link the app creates itself from a task to its own
+ * note: every task links to the note it lives in unless the user removed
+ * that link. Auto-links are reconciled on refresh (see
+ * reconcileTaskAutoLinks) and are removable like any other link.
  */
 export interface TaskLink {
   id: string;
@@ -14,6 +19,7 @@ export interface TaskLink {
   taskPath: string;
   kind: TaskLinkKind;
   target: string;
+  auto?: boolean;
 }
 
 const KINDS: ReadonlySet<string> = new Set(['note', 'file', 'notebook']);
@@ -40,9 +46,67 @@ export function cleanTaskLinks(value: unknown): TaskLink[] {
       taskPath: link.taskPath,
       kind: link.kind,
       target: link.target,
+      ...(link.auto === true ? { auto: true } : {}),
     });
   }
   return result;
+}
+
+/** Keep only well-formed dismissed auto-link ids: non-empty strings, deduplicated. */
+export function cleanDismissedTaskAutoLinks(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const item of value) {
+    if (typeof item !== 'string' || !item || seen.has(item)) continue;
+    seen.add(item);
+    result.push(item);
+  }
+  return result;
+}
+
+/**
+ * Reconcile the auto-links that tie every task to the note it lives in.
+ * For each current task, a link to its own note must exist — an existing
+ * link to that note (auto or added by hand) satisfies it — unless the
+ * user removed the task's auto-link, which `dismissed` records. Auto-links
+ * whose task is gone are dropped, so a task that moved down a line (and
+ * so changed its `path:line` id) gets a fresh link at its new line
+ * instead of leaving a stale one behind; user links are never pruned
+ * here. Dismissed ids for tasks that no longer exist are dropped too, so
+ * a later task reusing a line number is not wrongly suppressed.
+ * Returns the reconciled links and dismissed list, and whether either
+ * changed — callers write back only when something changed.
+ */
+export function reconcileTaskAutoLinks(
+  tasks: readonly { id: string; path: string }[],
+  links: readonly TaskLink[],
+  dismissed: readonly string[],
+): { links: TaskLink[]; dismissed: string[]; changed: boolean } {
+  const present = new Set(tasks.map((task) => task.id));
+  const keptDismissed = dismissed.filter((id) => present.has(id));
+  const dismissedSet = new Set(keptDismissed);
+  const kept = links.filter((link) => !link.auto || present.has(link.taskId));
+  const linkedToOwnNote = new Set(
+    kept
+      .filter((link) => link.kind === 'note' && link.target === link.taskPath)
+      .map((link) => link.taskId),
+  );
+  const added: TaskLink[] = [];
+  for (const task of tasks) {
+    if (linkedToOwnNote.has(task.id) || dismissedSet.has(task.id)) continue;
+    added.push({
+      id: `auto-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`,
+      taskId: task.id,
+      taskPath: task.path,
+      kind: 'note',
+      target: task.path,
+      auto: true,
+    });
+  }
+  const nextLinks = added.length ? [...kept, ...added] : kept;
+  const changed = added.length > 0 || nextLinks.length !== links.length || keptDismissed.length !== dismissed.length;
+  return { links: nextLinks, dismissed: keptDismissed, changed };
 }
 
 /**

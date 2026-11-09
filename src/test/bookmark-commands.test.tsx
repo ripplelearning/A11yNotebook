@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
@@ -68,13 +68,37 @@ describe('bookmark commands', () => {
     editor.selectionEnd = caret;
 
     act(() => menuListener('bookmark-heading-at-cursor'));
+    // The command asks for a name, pre-filled with the heading.
+    const headingDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(headingDialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
+    fireEvent.click(within(headingDialog).getByRole('button', { name: 'Save bookmark' }));
     await vi.waitFor(() =>
-      expect(addBookmark).toHaveBeenCalledWith('Note.md', { kind: 'heading', text: 'Setup', occurrence: 0 }),
+      expect(addBookmark).toHaveBeenCalledWith(
+        'Note.md',
+        { kind: 'heading', text: 'Setup', occurrence: 0 },
+        'Setup',
+        undefined,
+      ),
+    );
+    // The dialog closes once the save resolves; wait for it to leave
+    // before opening the next one, or the lookup below can return the
+    // stale dialog.
+    await vi.waitFor(() =>
+      expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument(),
     );
 
     act(() => menuListener('bookmark-position-at-cursor'));
+    // A position bookmark is pre-filled with the surrounding text.
+    const positionDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(positionDialog).getByLabelText('Bookmark name')).toHaveValue('Details here.');
+    fireEvent.click(within(positionDialog).getByRole('button', { name: 'Save bookmark' }));
     await vi.waitFor(() =>
-      expect(addBookmark).toHaveBeenCalledWith('Note.md', { kind: 'offset', offset: caret }),
+      expect(addBookmark).toHaveBeenCalledWith(
+        'Note.md',
+        { kind: 'offset', offset: caret },
+        'Details here.',
+        'Details here.',
+      ),
     );
   });
 });

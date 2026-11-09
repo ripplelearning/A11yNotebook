@@ -12,8 +12,12 @@ export interface RemindersViewProps {
   title?: string;
   reminders: Reminder[];
   notePaths: string[];
+  /** Files a new reminder may link to, alongside notes. */
+  filePaths?: string[];
   /** Increment to open the Create reminder dialog (for example, from Ctrl+N). */
   createRequest?: number;
+  /** Path to pre-select when the dialog opens from a create request. */
+  initialPath?: string;
   onCreate: (input: CreateReminderInput) => void | Promise<unknown>;
   onDismiss: (id: string) => void | Promise<unknown>;
   onSnooze: (id: string, duration: SnoozeDuration) => void | Promise<unknown>;
@@ -28,7 +32,9 @@ export default function RemindersView({
   title: headingTitle = 'Reminders',
   reminders,
   notePaths,
+  filePaths = [],
   createRequest = 0,
+  initialPath,
   onCreate,
   onDismiss,
   onSnooze,
@@ -41,6 +47,7 @@ export default function RemindersView({
   const id = useId();
   const [view, setView] = useState('agenda');
   const [creating, setCreating] = useState(false);
+  const [createPath, setCreatePath] = useState<string | undefined>(undefined);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const lastCreateRequestRef = useRef(0);
@@ -48,10 +55,11 @@ export default function RemindersView({
     // Only a NEW request opens the dialog, for the same reason as the
     // calendar's: a cancelled create must not reopen on remount.
     if (createRequest > 0 && createRequest !== lastCreateRequestRef.current) {
+      setCreatePath(initialPath);
       setCreating(true);
     }
     lastCreateRequestRef.current = createRequest;
-  }, [createRequest]);
+  }, [createRequest, initialPath]);
   const visible = reminders
     .filter((item) => item.status !== 'dismissed' && item.status !== 'completed')
     .slice()
@@ -136,10 +144,19 @@ export default function RemindersView({
   return (
     <section aria-labelledby={`${id}-heading`}>
       <h2 id={`${id}-heading`}>{headingTitle}</h2>
-      <button type="button" disabled={notePaths.length === 0} onClick={() => setCreating(true)}>
+      <button
+        type="button"
+        disabled={notePaths.length === 0 && filePaths.length === 0}
+        onClick={() => {
+          setCreatePath(undefined);
+          setCreating(true);
+        }}
+      >
         Create reminder
       </button>
-      {notePaths.length === 0 ? <p>Create reminder needs at least one note in the library.</p> : null}
+      {notePaths.length === 0 && filePaths.length === 0 ? (
+        <p>Create reminder needs at least one note or file in the library.</p>
+      ) : null}
       <label htmlFor={`${id}-view`}>Reminder view</label>
       <select id={`${id}-view`} value={view} onChange={(event) => setView(event.target.value)}>
         <option value="agenda">Grouped agenda</option>
@@ -207,6 +224,8 @@ export default function RemindersView({
       {creating && (
         <CreateReminderDialog
           notePaths={notePaths}
+          filePaths={filePaths}
+          initialPath={createPath}
           defaults={defaults}
           onSaveDefaults={onSaveDefaults}
           onCreate={onCreate}

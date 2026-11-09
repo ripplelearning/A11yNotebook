@@ -57,12 +57,21 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import {
   headingAnchorAt,
+  headingTextSpan,
+  lineSpanAt,
   normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
+  surroundingText,
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
-import { findDomMatches, focusReaderSearchBox, selectDomMatch } from '../shared/find-dom';
+import {
+  findDomMatches,
+  focusReaderSearchBox,
+  selectDomMatch,
+  selectElementContents,
+  selectRenderedLine,
+} from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
 import {
   createEditHistory,
@@ -100,6 +109,7 @@ import ConflictDialog from './features/vault/ConflictDialog';
 import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
 import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
+import BookmarkNameDialog, { type BookmarkNameRequest } from './features/vault/BookmarkNameDialog';
 import SearchResults, { type SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
 import { searchTasksRemindersAppointments } from '../shared/search';
@@ -160,7 +170,7 @@ import {
 import TaskPriorityDialog from './features/reminders/TaskPriorityDialog';
 import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
-import { dropLinksToMissingTargets } from '../shared/task-links';
+import { dropLinksToMissingTargets, reconcileTaskAutoLinks } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
@@ -698,6 +708,8 @@ export default function App() {
   const [citationDialog, setCitationDialog] = useState<'generator' | 'bibliography' | null>(null);
   const [taskPriorityDialog, setTaskPriorityDialog] = useState<VaultTask | null>(null);
   const [taskLinks, setTaskLinks] = useState<TaskLink[]>([]);
+  const [dismissedTaskAutoLinks, setDismissedTaskAutoLinks] = useState<string[]>([]);
+  const [dismissedTaskAutoLinksLoaded, setDismissedTaskAutoLinksLoaded] = useState(false);
   const [taskLinkDialog, setTaskLinkDialog] = useState<{ task: VaultTask; kind: TaskLinkKind } | null>(null);
   const [taskNotebookFilter, setTaskNotebookFilter] = useState('all');
   const [dueAscending, setDueAscending] = useState(true);
@@ -920,6 +932,7 @@ export default function App() {
     entry: VaultEntry;
   } | null>(null);
   const [itemDialog, setItemDialog] = useState<ItemDialogRequest | null>(null);
+  const [bookmarkNameRequest, setBookmarkNameRequest] = useState<BookmarkNameRequest | null>(null);
   const [organizeOpen, setOrganizeOpen] = useState(false);
   // Opening an item from the Organize dialog closes the dialog, and the
   // dialog's focus restore re-focuses the pre-dialog grid cell — which
@@ -974,6 +987,8 @@ export default function App() {
   // the panel-focus effect. These refs are consumed once, after render.
   const forceEditNoteRef = useRef<string | null>(null);
   const pendingEditorFocusRef = useRef<{ path: string; cursor?: number } | null>(null);
+  /** Set when the mode toggle asks for edit: the editor takes focus once it renders. */
+  const focusEditorOnEditRef = useRef(false);
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
@@ -1094,6 +1109,28 @@ export default function App() {
     const length = textarea.value.length;
     textarea.setSelectionRange(Math.min(caret.start, length), Math.min(caret.end, length));
   }, [selectedTab, currentNoteId, mode]);
+  /**
+   * Move focus into the editor when the mode toggle switches a note to
+   * edit mode. The request is raised only by the toggle command, so tab
+   * switches and note opens — which also flip the mode through the
+   * remembered-mode restore — never steal focus, and the caret restore
+   * above has already run, so the caret is in place when focus lands.
+   * The citation dialog's switch-to-edit flips the mode the same way
+   * but keeps focus in the dialog: the user is mid-citation there.
+   * Rich text has no textarea, so the rich-text editor takes focus when
+   * it is the active form.
+   */
+  useEffect(() => {
+    if (!focusEditorOnEditRef.current) return;
+    focusEditorOnEditRef.current = false;
+    if (mode !== 'edit' || !currentNoteId || citationDialog) return;
+    const richEditor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    if (richEditor) {
+      richEditor.focus();
+      return;
+    }
+    editorRef.current?.focus();
+  }, [mode, currentNoteId, citationDialog]);
   const clearEditLock = (path: string) => {
     const key = `${vault?.path ?? ''}\0${path}`;
     setLockedEditPaths((paths) => {
@@ -1513,6 +1550,10 @@ export default function App() {
     };
   }, []);
 
+  // Which vault each task dataset was loaded for: reconciliation must
+  // only run when the tasks, links, and dismissed list all belong to the
+  // current vault, never on stale data left over from a vault switch.
+  const taskDataVaultRef = useRef({ tasks: '', links: '', dismissed: '' });
   useEffect(() => {
     let cancelled = false;
     if (!vault || !window.a11yNotebook) {
@@ -1522,19 +1563,90 @@ export default function App() {
     void window.a11yNotebook.vault
       .getTasks()
       .then((items) => {
-        if (!cancelled) setTasks(items);
+        if (!cancelled) {
+          taskDataVaultRef.current.tasks = vault.path;
+          setTasks(items);
+        }
       })
       .catch(() => setStatusMessage('Could not load tasks.'));
     void window.a11yNotebook.vault
       .getTaskLinks?.()
       .then((items) => {
-        if (!cancelled) setTaskLinks(items);
+        if (!cancelled) {
+          taskDataVaultRef.current.links = vault.path;
+          setTaskLinks(items);
+        }
       })
       .catch(() => undefined);
+    const dismissedPromise = window.a11yNotebook.vault.getDismissedTaskAutoLinks?.();
+    if (dismissedPromise) {
+      void dismissedPromise
+        .then((items) => {
+          if (!cancelled) {
+            taskDataVaultRef.current.dismissed = vault.path;
+            setDismissedTaskAutoLinks(items);
+            setDismissedTaskAutoLinksLoaded(true);
+          }
+        })
+        .catch(() => {
+          // Without the dismissed list, reconciliation would resurrect
+          // links the user removed; treat a failed load as an empty list
+          // only once the load has settled, so the gate below still waits.
+          if (!cancelled) {
+            taskDataVaultRef.current.dismissed = vault.path;
+            setDismissedTaskAutoLinksLoaded(true);
+          }
+        });
+    } else {
+      // No dismissed-list method on this build: reconciliation stays
+      // gated (the vault guard above requires a loaded dismissed list),
+      // so nothing can resurrect a removed link.
+    }
     return () => {
       cancelled = true;
     };
   }, [vault]);
+
+  // Every task links to the note it lives in, unless the user removed
+  // that link. Reconciling on the task list (not on the links) covers
+  // every way a task appears — dialog, Quick Task, or typed into a note
+  // — and backfills tasks created before auto-links existed. It runs on
+  // tasks only, so saving the links cannot re-trigger it; and it waits
+  // for the dismissed list, so a removed link is never resurrected by
+  // a refresh that raced the dismissal load.
+  const taskLinksRef = useRef(taskLinks);
+  taskLinksRef.current = taskLinks;
+  const dismissedTaskAutoLinksRef = useRef(dismissedTaskAutoLinks);
+  dismissedTaskAutoLinksRef.current = dismissedTaskAutoLinks;
+  useEffect(() => {
+    if (!vault || !dismissedTaskAutoLinksLoaded) return;
+    const loaded = taskDataVaultRef.current;
+    if (loaded.tasks !== vault.path || loaded.links !== vault.path || loaded.dismissed !== vault.path) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.saveTaskLinks) return;
+    const result = reconcileTaskAutoLinks(tasks, taskLinksRef.current, dismissedTaskAutoLinksRef.current);
+    if (!result.changed) return;
+    let cancelled = false;
+    void bridge
+      .saveTaskLinks(result.links)
+      .then((saved) => {
+        if (!cancelled) setTaskLinks(saved);
+      })
+      .catch(() => undefined);
+    if (result.dismissed.length !== dismissedTaskAutoLinksRef.current.length) {
+      const saveDismissed = bridge.saveDismissedTaskAutoLinks?.(result.dismissed);
+      if (saveDismissed) {
+        void saveDismissed
+          .then((saved) => {
+            if (!cancelled) setDismissedTaskAutoLinks(saved);
+          })
+          .catch(() => undefined);
+      }
+    }
+    return () => {
+      cancelled = true;
+    };
+  }, [tasks, vault, dismissedTaskAutoLinksLoaded]);
   // Task links are private metadata, but the Tasks screen displays them,
   // so a cloud-folder change to the task-links store must refresh the
   // Links column the same way calendar changes refresh the Calendar
@@ -2053,7 +2165,10 @@ export default function App() {
       setExternalFile(entry);
       return;
     }
-    if (assetRegistry.resolve(entry.path)) {
+    // CSV files always open in the spreadsheet view, even though the Grid
+    // cognitive tool also claims the .csv extension: Grid files stay
+    // openable from the Assets tab, where readAsset resolves them by type.
+    if (!/\.csv$/i.test(entry.path) && assetRegistry.resolve(entry.path)) {
       if (assetDirty || assetBusy) {
         setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
         return;
@@ -2154,6 +2269,7 @@ export default function App() {
   };
 
   const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
+  const [reminderCreatePath, setReminderCreatePath] = useState<string | undefined>(undefined);
   const [calendarCreateRequest, setCalendarCreateRequest] = useState(0);
   // A stale create request must not reopen a cancelled dialog when its
   // view remounts: leaving the calendar or reminders view consumes the
@@ -2166,12 +2282,15 @@ export default function App() {
   useEffect(() => {
     if (selectedTab !== 'reminders') setReminderCreateRequest(0);
   }, [selectedTab]);
-  const openCreateReminder = () => {
+  const openCreateReminder = (path?: string) => {
     if (!vault || securityLocked) {
       setStatusMessage('Open and unlock a library before creating a reminder.');
       return;
     }
     setSelectedTab('reminders');
+    // A path from the context menu pre-selects that note or file in the
+    // dialog; any other entry point clears a stale one.
+    setReminderCreatePath(path);
     setReminderCreateRequest((value) => value + 1);
   };
 
@@ -2345,12 +2464,20 @@ export default function App() {
     setStatusMessage(`Task linked to ${target}.`);
   };
 
-  const removeTaskLink = async (id: string, target: string) => {
+  const removeTaskLink = async (link: TaskLink) => {
     if (!window.a11yNotebook?.vault.saveTaskLinks) return;
     setTaskLinks(
-      await window.a11yNotebook.vault.saveTaskLinks(taskLinks.filter((item) => item.id !== id)),
+      await window.a11yNotebook.vault.saveTaskLinks(taskLinks.filter((item) => item.id !== link.id)),
     );
-    setStatusMessage(`Link to ${target} removed.`);
+    if (link.auto) {
+      // Removing an auto-link is a choice the next refresh must respect,
+      // not a gap for reconciliation to fill back in.
+      const dismissed = [...new Set([...dismissedTaskAutoLinks, link.taskId])];
+      setDismissedTaskAutoLinks(dismissed);
+      const saved = window.a11yNotebook.vault.saveDismissedTaskAutoLinks?.(dismissed);
+      if (saved) await saved.catch(() => undefined);
+    }
+    setStatusMessage(`Link to ${link.target} removed.`);
   };
 
   const openTaskLink = async (link: TaskLink) => {
@@ -2360,7 +2487,7 @@ export default function App() {
       // displayed, and say so — opening it again must not repeat the
       // "no longer in the library" message.
       if (window.a11yNotebook?.vault.saveTaskLinks) {
-        await removeTaskLink(link.id, link.target);
+        await removeTaskLink(link);
         setStatusMessage(`The linked ${link.kind} is no longer in the library, so its link was removed.`);
       } else {
         setStatusMessage(`The linked ${link.kind} is no longer in the library.`);
@@ -3175,24 +3302,50 @@ export default function App() {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
     const caret = editorRef.current?.selectionStart ?? 0;
-    let anchor: BookmarkAnchor | null = null;
     if (kind === 'heading') {
-      anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
+      const anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
       if (!anchor) {
         setStatusMessage('No heading at or before the cursor to bookmark.');
         return;
       }
+      // The name prompt is pre-filled with the heading as the reader sees
+      // it; the user accepts it or types a better name.
+      setBookmarkNameRequest({
+        path: note.path,
+        anchor,
+        suggestedName: normalizeHeadingText(anchor.text),
+      });
     } else {
-      anchor = { kind: 'offset', offset: caret };
+      const anchor: BookmarkAnchor = { kind: 'offset', offset: caret };
+      const context = surroundingText(note.content, caret, 200);
+      setBookmarkNameRequest({
+        path: note.path,
+        anchor,
+        suggestedName:
+          surroundingText(note.content, caret) ||
+          note.path.split('/').pop()?.replace(/\.[^.]+$/, '') ||
+          'Bookmark',
+        ...(context ? { context } : {}),
+      });
     }
+  };
+
+  const submitBookmarkName = async (name: string) => {
+    const request = bookmarkNameRequest;
+    if (!request || !window.a11yNotebook) return;
     try {
-      const nextBookmarks = await window.a11yNotebook.vault.addBookmark(note.path, anchor);
+      const nextBookmarks = await window.a11yNotebook.vault.addBookmark(
+        request.path,
+        request.anchor,
+        name,
+        request.context,
+      );
       setBookmarks(nextBookmarks);
       setStatusMessage(
-        anchor.kind === 'heading' ? `Bookmarked heading "${anchor.text}".` : 'Bookmarked this position.',
+        request.anchor.kind === 'heading' ? `Bookmarked heading "${name}".` : `Bookmarked "${name}".`,
       );
     } catch {
-      setStatusMessage('Could not add the bookmark.');
+      throw new Error('Could not add the bookmark.');
     }
   };
 
@@ -3212,6 +3365,10 @@ export default function App() {
   // headings). The comparison uses the rendered heading text: an anchor
   // stores the heading as written in source (`Hello *world*`), while the
   // reading view shows it formatted (`Hello world`).
+  // Focus alone does not move a screen reader's virtual cursor, so the
+  // heading's text is selected after focus lands — mirroring Find, which
+  // re-selects its match after focusing for the same reason. Returns the
+  // heading only when both focus and a live selection are in place.
   const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
     if (!jumpHeading) return null;
@@ -3227,44 +3384,96 @@ export default function App() {
     if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
+    const selected = selectElementContents(target);
     try {
       target.scrollIntoView({ block: 'start' });
     } catch {
       // Scrolling is best-effort; the focus landing is what matters.
     }
-    return target;
+    const selection = window.getSelection();
+    return document.activeElement === target &&
+      selected &&
+      !!selection?.anchorNode &&
+      target.contains(selection.anchorNode)
+      ? target
+      : null;
+  };
+
+  // Land a position bookmark that sits before the first heading: there is
+  // no heading to focus, so focus the reading document and select the
+  // rendered text of the source line at the bookmarked offset instead of
+  // silently falling back to the top of the note. Returns the container
+  // only when both focus and a live selection are in place.
+  const focusBookmarkPosition = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
+    const container = annotationTools.documentRef.current;
+    if (!container) return null;
+    const offset = resolveBookmarkAnchor(content, isHtml, anchor);
+    if (offset === null) return null;
+    const line = lineSpanAt(content, offset);
+    if (!line) return null;
+    if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
+    container.focus();
+    const selected = selectRenderedLine(container, normalizeHeadingText(content.slice(line.start, line.end)));
+    try {
+      container.scrollIntoView({ block: 'start' });
+    } catch {
+      // Scrolling is best-effort; the focus landing is what matters.
+    }
+    const selection = window.getSelection();
+    return document.activeElement === container &&
+      selected &&
+      !!selection?.anchorNode &&
+      container.contains(selection.anchorNode)
+      ? container
+      : null;
   };
 
   // Move the caret to the bookmarked place in the rich-text editor, which
   // has no textarea: the edit branch of the jump cannot use editorRef.
-  // A heading anchor (or a position anchor inside a section) lands the
-  // caret at the start of that heading; a position anchor before the
-  // first heading lands it at the start of the editor. Returns true when
-  // the caret is placed and the editor has focus.
+  // A heading anchor selects the heading's text (a collapsed caret does
+  // not move the virtual cursor); a position anchor selects the rendered
+  // text of the line at its offset, falling back to the start of the
+  // editor only when that line cannot be found. Returns true when the
+  // editor has focus and a live selection is in place.
   const focusRichTextBookmark = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
     const editor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
     if (!editor) return false;
-    const jumpHeading = readingJumpHeading(content, isHtml, anchor);
-    let caretNode: Node | null = null;
-    if (jumpHeading) {
+    editor.focus();
+    const selection = window.getSelection();
+    if (!selection) return false;
+    if (anchor.kind === 'heading') {
+      const jumpHeading = readingJumpHeading(content, isHtml, anchor);
+      if (!jumpHeading) return false;
       const wanted = normalizeHeadingText(jumpHeading.text);
       const headings = [...editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
       const matches = headings.filter(
         (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
       );
       const target = matches[jumpHeading.occurrence] ?? matches[0];
-      if (target) caretNode = target.firstChild ?? target;
+      if (!target) return false;
+      if (!selectElementContents(target)) return false;
+    } else {
+      const offset = resolveBookmarkAnchor(content, isHtml, anchor);
+      const line = offset === null ? null : lineSpanAt(content, offset);
+      if (
+        !line ||
+        !selectRenderedLine(editor, normalizeHeadingText(content.slice(line.start, line.end)))
+      ) {
+        const range = document.createRange();
+        range.selectNodeContents(editor);
+        range.collapse(true);
+        selection.removeAllRanges();
+        selection.addRange(range);
+        return document.activeElement === editor;
+      }
     }
-    editor.focus();
-    const selection = window.getSelection();
-    if (!selection) return false;
-    const range = document.createRange();
-    if (caretNode) range.setStart(caretNode, 0);
-    else range.selectNodeContents(editor);
-    range.collapse(true);
-    selection.removeAllRanges();
-    selection.addRange(range);
-    return document.activeElement === editor;
+    return (
+      document.activeElement === editor &&
+      selection.rangeCount > 0 &&
+      selection.toString().length > 0 &&
+      !!selection.anchorNode &&
+      editor.contains(selection.anchorNode)
+    );
   };
 
   // A bookmark jump suppresses the next resume only while that note stays
@@ -3311,12 +3520,22 @@ export default function App() {
       const textarea = editorRef.current;
       if (textarea && mode === 'edit') {
         textarea.focus();
+        // A collapsed caret does not move the virtual cursor: select the
+        // heading's text for a heading anchor, or the line at the offset
+        // for a position anchor.
+        const span = headingTextSpan(content, isHtml, anchor) ?? lineSpanAt(content, offset);
+        const start = span?.start ?? offset;
+        const end = span?.end ?? offset;
         try {
-          textarea.setSelectionRange(offset, offset);
+          textarea.setSelectionRange(start, end);
         } catch {
           // The caret landing is best-effort; the note is open either way.
         }
-        if (document.activeElement === textarea && textarea.selectionStart === offset) {
+        if (
+          document.activeElement === textarea &&
+          textarea.selectionStart === start &&
+          textarea.selectionEnd === end
+        ) {
           bookmarkJumpRef.current = { path, anchor };
           setPendingBookmarkAnchor(null);
           announce();
@@ -3328,7 +3547,8 @@ export default function App() {
         announce();
         return;
       } else if (mode !== 'edit') {
-        const target = focusBookmarkHeading(content, isHtml, anchor);
+        const target =
+          focusBookmarkHeading(content, isHtml, anchor) ?? focusBookmarkPosition(content, isHtml, anchor);
         if (target && document.activeElement === target) {
           bookmarkJumpRef.current = { path, anchor };
           setPendingBookmarkAnchor(null);
@@ -3340,11 +3560,9 @@ export default function App() {
         timer = setTimeout(tryLand, 50);
         return;
       }
-      // No heading to land on (a position bookmark before the first
-      // heading), or the target never became focusable: focus already
-      // rests on the note's main region (opening the note requests it),
-      // which is the top of the note, so the jump still lands the reader
-      // in the note.
+      // The target never became focusable: focus already rests on the
+      // note's main region (opening the note requests it), which is the
+      // top of the note, so the jump still lands the reader in the note.
       bookmarkJumpRef.current = { path, anchor };
       setPendingBookmarkAnchor(null);
       setStatusMessage('Opened at the bookmarked place.');
@@ -3370,15 +3588,23 @@ export default function App() {
       bookmarkJumpRef.current = null;
       // The reader just landed on a bookmark (or switched views after
       // one): keep the reader at the bookmarked heading instead of
-      // resuming to the saved reading position. When there is no heading
-      // to land on, fall through to the normal resume below.
-      const jumpedTarget = focusBookmarkHeading(
+      // resuming to the saved reading position. A position bookmark with
+      // no heading lands on its line instead; only when neither landing
+      // works does it fall through to the normal resume below.
+      const jumpedHeading = focusBookmarkHeading(
         currentNote.content,
         /\.html?$/i.test(currentNote.path),
         jumped.anchor,
       );
+      const jumpedTarget =
+        jumpedHeading ??
+        focusBookmarkPosition(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor);
       if (jumpedTarget) {
-        setStatusMessage(`Jumped to ${jumpedTarget.textContent?.trim() ?? 'the bookmarked heading'}.`);
+        setStatusMessage(
+          jumpedHeading
+            ? `Jumped to ${jumpedHeading.textContent?.trim() ?? 'the bookmarked heading'}.`
+            : 'Jumped to the bookmarked place.',
+        );
         return;
       }
     }
@@ -3986,11 +4212,13 @@ export default function App() {
         const created = findEntry(imported.vault.entries, imported.path);
         if (created) await openEntry(created);
         const kind =
-          created && assetRegistry.resolve(created.path)
-            ? 'a cognitive tool'
-            : created?.kind === 'note'
-              ? 'an editable note'
-              : 'a read-only preview';
+          created && /\.csv$/i.test(created.path)
+            ? 'a spreadsheet'
+            : created && assetRegistry.resolve(created.path)
+              ? 'a cognitive tool'
+              : created?.kind === 'note'
+                ? 'an editable note'
+                : 'a read-only preview';
         setStatusMessage(`Document imported as ${kind}. The original file was kept.`);
       } catch (failure) {
         if (!securityLockedRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation)
@@ -5120,7 +5348,9 @@ export default function App() {
       return;
     }
     if (commandId === 'create-reminder') {
-      openCreateReminder();
+      // From a context menu this is the note or file the menu was opened
+      // on; from anywhere else there is no path to pre-select.
+      openCreateReminder(contextMenu?.path);
       return;
     }
     if (commandId === 'new-task') {
@@ -5233,6 +5463,21 @@ export default function App() {
                 notebookPath: targetNotebook,
                 initialUrl: updated.pointer.url,
                 guidance: updated.pointer.guidance,
+              });
+              return;
+            }
+            if ('pointerFailed' in updated) {
+              // The link-pointer file could not be read, so its URL is
+              // unknown: still offer "Add as link" with an empty address
+              // for the user to paste, alongside the guidance and the
+              // specific reason the file could not be read.
+              const failed = updated.pointerFailed;
+              const code = failed.code ? ` (${failed.code})` : '';
+              setLinkDialog({
+                mode: 'add',
+                notebookPath: targetNotebook,
+                initialUrl: '',
+                guidance: `${failed.guidance} ${failed.reason}${code} You can still add it as a link: paste the document's web address below.`,
               });
               return;
             }
@@ -5600,6 +5845,10 @@ export default function App() {
           openProtectedRequest(currentNote.path, 'edit');
           return;
         }
+        // Only the mode toggle asks for edit here (reading mode asks for
+        // read-only), so a flip to edit is a user request to start
+        // editing: focus the editor once it renders.
+        if (nextMode === 'edit' && mode === 'read-only') focusEditorOnEditRef.current = true;
         setMode(nextMode);
       },
       setRightPaneOpen,
@@ -6620,7 +6869,9 @@ export default function App() {
                 title={viewTitles.reminders}
                 reminders={reminderState.reminders}
                 notePaths={reminderNotePaths}
+                filePaths={filePaths}
                 createRequest={reminderCreateRequest}
+                initialPath={reminderCreatePath}
                 defaults={reminderState.defaults}
                 onSaveDefaults={reminderState.saveDefaults}
                 onCreate={async (input) => {
@@ -6811,7 +7062,7 @@ export default function App() {
                                   <button type="button" onClick={() => void openTaskLink(link)}>
                                     Open {link.kind}: {link.target}
                                   </button>{' '}
-                                  <button type="button" onClick={() => void removeTaskLink(link.id, link.target)}>
+                                  <button type="button" onClick={() => void removeTaskLink(link)}>
                                     Remove link to {link.target}
                                   </button>{' '}
                                 </span>
@@ -7059,34 +7310,40 @@ export default function App() {
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
               <ul>
-                {bookmarks.map((bookmark) => (
-                  <li key={bookmark.id}>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const entry = findEntry(vault?.entries ?? [], bookmark.path);
-                        if (entry) {
-                          if (bookmark.anchor)
-                            setPendingBookmarkAnchor({
-                              path: bookmark.path,
-                              anchor: bookmark.anchor,
-                              nonce: Date.now(),
-                            });
-                          void openEntry(entry);
-                        }
-                      }}
-                    >
-                      {bookmark.anchor?.kind === 'heading'
-                        ? `${bookmark.title} — ${bookmark.path.split('/').pop()}`
-                        : bookmark.anchor?.kind === 'offset'
-                          ? `${bookmark.title} (position)`
-                          : bookmark.title}
-                    </button>{' '}
-                    <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
-                      Remove
-                    </button>
-                  </li>
-                ))}
+                {bookmarks.map((bookmark) => {
+                  // A user-chosen name wins; otherwise the title as the
+                  // reader sees it (a heading stored from source may
+                  // carry Markdown formatting).
+                  const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
+                  return (
+                    <li key={bookmark.id}>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const entry = findEntry(vault?.entries ?? [], bookmark.path);
+                          if (entry) {
+                            if (bookmark.anchor)
+                              setPendingBookmarkAnchor({
+                                path: bookmark.path,
+                                anchor: bookmark.anchor,
+                                nonce: Date.now(),
+                              });
+                            void openEntry(entry);
+                          }
+                        }}
+                      >
+                        {bookmark.anchor?.kind === 'heading'
+                          ? `${label} — ${bookmark.path.split('/').pop()}`
+                          : bookmark.anchor?.kind === 'offset'
+                            ? `${label} (position)`
+                            : label}
+                      </button>{' '}
+                      <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
+                        Remove
+                      </button>
+                    </li>
+                  );
+                })}
               </ul>
             </section>
           </aside>
@@ -7545,6 +7802,13 @@ export default function App() {
           notebooks={notebooks}
           onClose={() => setItemDialog(null)}
           onSubmit={submitItem}
+        />
+      ) : null}
+      {!securityLocked && bookmarkNameRequest ? (
+        <BookmarkNameDialog
+          request={bookmarkNameRequest}
+          onClose={() => setBookmarkNameRequest(null)}
+          onSubmit={submitBookmarkName}
         />
       ) : null}
       {!securityLocked && organizeOpen && vault ? (

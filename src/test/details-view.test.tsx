@@ -121,6 +121,28 @@ function expectResearchContext() {
 }
 
 describe('accessible details view', () => {
+  it('shows the real file type for attachments instead of the generic Attachment label', () => {
+    renderDetails({
+      items: [
+        { name: 'Guide.epub', path: 'Research/Guide.epub', kind: 'attachment' },
+        { name: 'Report.docx', path: 'Research/Report.docx', kind: 'attachment' },
+        { name: 'Budget.xlsx', path: 'Research/Budget.xlsx', kind: 'attachment' },
+        { name: 'Data.csv', path: 'Research/Data.csv', kind: 'attachment' },
+        { name: 'Deck.pptx', path: 'Research/Deck.pptx', kind: 'attachment' },
+        { name: 'Odd.xyz', path: 'Research/Odd.xyz', kind: 'attachment' },
+        { name: 'Note.md', path: 'Research/Note.md', kind: 'note' },
+      ],
+    });
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    expect(within(grid).getByRole('gridcell', { name: 'ePub' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'Word document' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'Excel spreadsheet' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'CSV' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'PowerPoint presentation' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'Attachment' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'note' })).toBeInTheDocument();
+  });
+
   it('exposes a labelled grid and supports arrow navigation and Home/End jumps to the first/last row', () => {
     renderDetails();
     const grid = screen.getByRole('grid', { name: 'Notebook items' });
@@ -128,7 +150,7 @@ describe('accessible details view', () => {
     const beta = within(grid).getByRole('gridcell', { name: 'Beta.md' });
     const betaType = within(screen.getByRole('row', { name: /Beta\.md/ })).getByRole('gridcell', { name: 'note' });
     const alphaType = within(screen.getAllByRole('row')[1]).getByRole('gridcell', { name: 'note' });
-    const reportType = within(grid).getByRole('gridcell', { name: 'attachment' });
+    const reportType = within(grid).getByRole('gridcell', { name: 'PDF' });
 
     alpha.focus();
     fireEvent.keyDown(alpha, { key: 'ArrowDown' });
@@ -143,6 +165,31 @@ describe('accessible details view', () => {
     expect(alphaType).toHaveFocus();
     fireEvent.keyDown(alphaType, { key: 'End', ctrlKey: true });
     expect(reportType).toHaveFocus();
+  });
+
+  it('jumps to the next item whose name starts with a typed letter, wrapping and cycling', () => {
+    renderDetails();
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    const alpha = within(grid).getByRole('gridcell', { name: 'Alpha.md' });
+    const beta = within(grid).getByRole('gridcell', { name: 'Beta.md' });
+    const report = within(grid).getByRole('gridcell', { name: 'Report.pdf' });
+
+    alpha.focus();
+    fireEvent.keyDown(alpha, { key: 'r' });
+    expect(report).toHaveFocus();
+    // Wraps past the end back to the first match.
+    fireEvent.keyDown(report, { key: 'b' });
+    expect(beta).toHaveFocus();
+    // The only 'b' item is the focused one, so pressing it again stays put.
+    fireEvent.keyDown(beta, { key: 'b' });
+    expect(beta).toHaveFocus();
+    // Uppercase matches too; a letter with no match and a modified key do nothing.
+    fireEvent.keyDown(beta, { key: 'R' });
+    expect(report).toHaveFocus();
+    fireEvent.keyDown(report, { key: 'z' });
+    expect(report).toHaveFocus();
+    fireEvent.keyDown(report, { key: 'a', ctrlKey: true });
+    expect(report).toHaveFocus();
   });
 
   it('keeps one tab stop and includes sortable headers in grid keyboard navigation', () => {

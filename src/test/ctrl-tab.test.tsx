@@ -167,6 +167,38 @@ describe('Ctrl+Tab cycle', () => {
     expect(editorAfter.selectionEnd).toBe(4);
   });
 
+  it('moves focus into the editor when toggling to edit mode, but not on Ctrl+Tab back to it', async () => {
+    const { menu } = renderLibrary();
+    await openIdea();
+    menu('toggle-read-only-mode');
+    const editor = (await screen.findByRole('textbox', { name: 'Markdown source' })) as HTMLTextAreaElement;
+    expect(editor).toHaveFocus();
+    menu('show-tasks');
+    await waitFor(() => expect(screen.getByRole('tab', { name: 'Tasks' })).toHaveAttribute('aria-selected', 'true'));
+    fireEvent.keyDown(document, { key: 'Tab', ctrlKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole('tab', { name: 'Idea' })).toHaveAttribute('aria-selected', 'true'),
+    );
+    const editorAfter = (await screen.findByRole('textbox', { name: 'Markdown source' })) as HTMLTextAreaElement;
+    expect(editorAfter).not.toHaveFocus();
+  });
+
+  it('moves focus into the rich-text editor when that form is active', async () => {
+    const { menu } = renderLibrary();
+    await openIdea();
+    menu('toggle-read-only-mode');
+    await screen.findByRole('textbox', { name: 'Markdown source' });
+    fireEvent.click(screen.getByRole('button', { name: 'Rich text' }));
+    await screen.findByRole('textbox', { name: 'Rich text editor' });
+    menu('toggle-read-only-mode');
+    await waitFor(() =>
+      expect(screen.queryByRole('textbox', { name: 'Rich text editor' })).not.toBeInTheDocument(),
+    );
+    menu('toggle-read-only-mode');
+    const richEditor = (await screen.findByRole('textbox', { name: 'Rich text editor' })) as HTMLElement;
+    expect(richEditor).toHaveFocus();
+  });
+
   it('keeps the caret across a mode toggle', async () => {
     const { menu } = renderLibrary();
     await openIdea();

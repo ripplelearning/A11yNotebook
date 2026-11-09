@@ -106,12 +106,15 @@ describe('searchTasksRemindersAppointments', () => {
     expect(task.notebook).toBe('Research');
     const [reminder] = search({ text: 'checkup', kind: 'reminder' });
     expect(reminder.targetId).toBe('r2');
-    expect(reminder.snippet).toContain('Reminder at');
+    expect(reminder.snippet).toMatch(/Reminder at \d{2}\/\d{2}\/\d{4}, \d{1,2}:\d{2} [AP]M/);
+    expect(reminder.snippet).not.toContain('2026-11-09T10:00:00');
     const [appointment] = search({ text: 'Team review', kind: 'appointment' });
     expect(appointment.targetId).toBe('a1');
     expect(appointment.snippet).toContain('Room 4');
+    expect(appointment.snippet).toMatch(/\d{2}\/\d{2}\/\d{4}, \d{1,2}:\d{2} [AP]M/);
     const [due] = search({ text: 'accessibility report', kind: 'task' });
-    expect(due.snippet).toContain('Due 2026-11-10');
+    expect(due.snippet).toContain('Due 11-10-2026');
+    expect(due.snippet).not.toContain('2026-11-10');
     expect(due.snippet).toContain('high priority');
   });
 });

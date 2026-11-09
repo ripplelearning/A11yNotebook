@@ -4,7 +4,7 @@ import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
 import { DEFAULT_SETTINGS } from '../shared/settings';
-import type { PointerImport, VaultInfo } from '../shared/types';
+import type { PointerImport, PointerImportFailure, VaultInfo } from '../shared/types';
 import { vaultExtensions } from './vault-extensions';
 import { gridNameCell } from './library-navigation';
 
@@ -55,7 +55,10 @@ function installBridge() {
       saveLink: vi.fn(async () => ({ path: 'Research/Example Site.url', vault })),
       readAttachment: vi.fn(async () => ({ path: 'Research/Example Site.url', text: LINK_FILE_TEXT, kind: '.url' })),
       openUrl: vi.fn(async () => undefined),
-      importFile: vi.fn(async (): Promise<VaultInfo | { pointer: PointerImport } | null> => null),
+      importFile: vi.fn(
+        async (): Promise<VaultInfo | { pointer: PointerImport } | { pointerFailed: PointerImportFailure } | null> =>
+          null,
+      ),
       getTasks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
@@ -142,6 +145,36 @@ describe('link notes in the app', () => {
       expect(bridge.vault.createLink).toHaveBeenCalledWith({
         title: 'My Doc',
         url: pointerUrl,
+        notebookPath: 'Research',
+      }),
+    );
+  });
+
+  it('offers Add as link with an empty address when the pointer file cannot be read', async () => {
+    const { bridge, menu } = installBridge();
+    const guidance =
+      'A Google Docs (.gdoc) file is only a link to an online document and contains no document text.';
+    bridge.vault.importFile.mockResolvedValueOnce({
+      pointerFailed: { extension: '.gdoc', guidance, reason: 'The file could not be read.', code: 'EACCES' },
+    });
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Study library' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    menu('import-file');
+    const dialog = await screen.findByRole('dialog', { name: 'Add link' });
+    expect(within(dialog).getByText(/only a link to an online document/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/The file could not be read/)).toBeInTheDocument();
+    expect(within(dialog).getByText(/paste the document's web address below/)).toBeInTheDocument();
+    expect(within(dialog).getByLabelText('Web address')).toHaveValue('');
+    fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'My Doc' } });
+    fireEvent.change(within(dialog).getByLabelText('Web address'), {
+      target: { value: 'https://docs.google.com/document/d/abc/edit' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add link' }));
+    await waitFor(() =>
+      expect(bridge.vault.createLink).toHaveBeenCalledWith({
+        title: 'My Doc',
+        url: 'https://docs.google.com/document/d/abc/edit',
         notebookPath: 'Research',
       }),
     );

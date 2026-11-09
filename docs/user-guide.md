@@ -37,7 +37,7 @@ that prerequisite rather than silently creating a different kind of item.
 
 ## Navigate files
 
-In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Enter opens the selected item: a managed note, or a supported managed preview. External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently.
+In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Typing a letter jumps to the next item whose name starts with it, wrapping around, so pressing the same letter again cycles through every match. Enter opens the selected item: a managed note, or a supported managed preview. The Type column shows the file's real type — PDF, ePub, Word document, Excel spreadsheet, CSV, PowerPoint presentation — instead of the generic "Attachment". External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently.
 Deleting a note or notebook that contains tasks first warns how many tasks will be deleted with it, since tasks
 live inside notes and have no separate copy. Space selects a row. To arrange notebooks, notes, and files in the library tree, use the Organize Library dialog below.
 
@@ -161,7 +161,7 @@ document previews editable or bypass an encrypted-note or editing lock. Ctrl+E r
 The read view contains semantic content; Markdown renders with unsafe raw HTML removed, and HTML notes are sanitized
 on load, edit, paste, save, and render. Scripts, forms, active embedded content, event handlers, remote images, and
 unsafe URL schemes are not allowed. HTML images must have alternative text and use local raster files.
-Toggle **Read-only/edit mode** with Ctrl+E. Ctrl+R switches straight to reading mode without toggling. Ctrl+F opens
+Toggle **Read-only/edit mode** with Ctrl+E. Switching to edit mode moves focus straight into the editor — the Markdown or HTML source, plain text, or the rich-text editor when that form is active — with the caret where you left it. Ctrl+R switches straight to reading mode without toggling. Ctrl+F opens
 a Find dialog that searches within the current note, in both reading and editing mode, with Find next and Find
 previous and an optional Match case. Searching also lists every match with the text around it: Arrow keys move
 through the list, and Enter on a match closes the dialog and moves to that match in the note. After the dialog closes, F3 finds the next match and Shift+F3 the previous
@@ -268,7 +268,7 @@ extracted text, are searchable. Unsupported or invalid attachments are searchabl
 100 in the UI.
 
 Global search also finds tasks, reminders, and appointments: a task result shows its text and due date or priority,
-a reminder its title and scheduled time, and an appointment its title, time, and location. Opening a task result
+a reminder its title and scheduled time, shown as MM/DD/YYYY, HH:MM AM/PM, and an appointment its title, time, and location. Opening a task result
 shows the task in the Tasks view and focuses its row; a reminder result opens the Reminders tab and focuses the
 reminder; an appointment result opens the appointment itself. Tasks, reminders, and appointments have no tags and
 no modified date, so the tag and modified-date filters exclude them; appointments belong to no notebook, so the
@@ -300,7 +300,9 @@ option is always kept, and option names are single words so they survive in task
 
 The same context menu offers **Link to note**, **Link to file**, and **Link to Notebook**. Each opens a
 dialog listing the library's notes, files, or notebooks; choosing one links it to the focused task. Linked
-items appear in the Links column of the Tasks table, where each link can be opened or removed. Links are
+items appear in the Links column of the Tasks table, where each link can be opened or removed. Every task is
+also linked automatically to the note it lives in, so the Links column always shows its own note; removing
+that automatic link stops it coming back. Links are
 stored in `.a11ynotebook/task-links.json`. Links to tasks removed from a note, and links in a deleted
 note or notebook, are removed automatically; links to tasks without a stable ID are kept, since a line
 move renumbers them. When a note, file, or notebook moves, its task links move with it: links from its
@@ -335,8 +337,8 @@ edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at 
 **Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
 menu and the command palette. Neither shortcut jumps anywhere: both only save a bookmark. To jump back
 to a saved bookmark, activate it in the Bookmarks section of the right pane. Opening an anchored bookmark lands on its heading in the reading view, or
-at its position in edit mode — in plain source and in the rich-text editor alike — and announces the heading
-it landed on. Bookmarks and
+at its position in edit mode — in plain source and in the rich-text editor alike — moves the reading cursor there, as a Find match does, so a screen reader follows the jump, and announces the heading
+it landed on. When you create a bookmark you are asked to name it: the name is pre-filled with the heading or the surrounding text, and you can accept it or type your own. The name is what the bookmark is listed under in the right pane. Bookmarks and
 the refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
 
 When a link points at a note that does not exist, the right pane marks it as a missing note with a Repair
@@ -433,7 +435,7 @@ ePub annotation UI remains unavailable.
 ## Reminders and project progress
 
 Put `remind:2026-10-04 09:30` or `⏰ 2026-10-04 09:30` on an open checkbox task (local time).
-Completed tasks do not notify. **Open Reminders** (Ctrl+Shift+R) also creates standalone note reminders.
+Completed tasks do not notify. **Open Reminders** (Ctrl+Shift+R) also creates standalone reminders, linked to a note or a file. You can also open the context menu on a note or file in Notes and Files and choose **Create reminder**: the dialog opens with that note or file already selected, and the **Link to** list switches between notes and files.
 Switch between the labelled table and Overdue/Today/This week lists. Snooze for 5/15/30/60 minutes, 1 day, or until the
 same local clock time tomorrow; Dismiss removes an item from active views. Clicking a native notification opens
 its note when the library is still open. Windows notification settings may suppress delivery.

@@ -9,7 +9,7 @@ import {
   CITATION_SOURCE_TYPES,
   type BibliographyEntry,
 } from '../../src/shared/citations';
-import { cleanTaskLinks, dropMissingStableTaskLinks, migrateTaskLinks, type TaskLink } from '../../src/shared/task-links';
+import { cleanTaskLinks, dropMissingStableTaskLinks, migrateTaskLinks, cleanDismissedTaskAutoLinks, type TaskLink } from '../../src/shared/task-links';
 import {
   cleanSyncState,
   pruneTombstones,
@@ -1570,7 +1570,11 @@ export function createVaultService(
     }
   }
 
-  async function writeTaskLinksRaw(value: { version: 1; links: TaskLink[] }): Promise<void> {
+  async function writeTaskLinksRaw(value: {
+    version: 1;
+    links: TaskLink[];
+    dismissedAutoLinks?: string[];
+  }): Promise<void> {
     if (protectedMetadata?.isProtected('task-links.json')) {
       await protectedMetadata.write('task-links.json', value);
       return;
@@ -1584,13 +1588,35 @@ export function createVaultService(
     return cleanTaskLinks((parsed as { links?: unknown }).links);
   }
 
+  async function readDismissedTaskAutoLinksFile(): Promise<string[]> {
+    const parsed: unknown = await readTaskLinksRaw();
+    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) return [];
+    return cleanDismissedTaskAutoLinks((parsed as { dismissedAutoLinks?: unknown }).dismissedAutoLinks);
+  }
+
   async function getTaskLinks(): Promise<TaskLink[]> {
     return readTaskLinksFile();
   }
 
+  /** Task ids whose auto-link the user removed; reconciliation must not re-create those links. */
+  async function getDismissedTaskAutoLinks(): Promise<string[]> {
+    return readDismissedTaskAutoLinksFile();
+  }
+
+  async function saveDismissedTaskAutoLinks(ids: string[]): Promise<string[]> {
+    const cleaned = cleanDismissedTaskAutoLinks(ids);
+    const links = await readTaskLinksFile();
+    await writeTaskLinksRaw({ version: 1, links, dismissedAutoLinks: cleaned });
+    return cleaned;
+  }
+
   async function saveTaskLinks(links: TaskLink[]): Promise<TaskLink[]> {
     const cleaned = cleanTaskLinks(links);
-    await writeTaskLinksRaw({ version: 1, links: cleaned });
+    // Saving links must not wipe the dismissed auto-links: they live in
+    // the same envelope, and a delete or move that rewrites the links
+    // would otherwise resurrect links the user removed.
+    const dismissed = await readDismissedTaskAutoLinksFile();
+    await writeTaskLinksRaw({ version: 1, links: cleaned, dismissedAutoLinks: dismissed });
     return cleaned;
   }
 
@@ -1988,6 +2014,10 @@ export function createVaultService(
               created: bookmark.created,
             };
             if (anchor) clean.anchor = anchor;
+            if (typeof bookmark.name === 'string' && bookmark.name.trim())
+              clean.name = bookmark.name.trim().slice(0, 200);
+            if (typeof bookmark.context === 'string' && bookmark.context.trim())
+              clean.context = bookmark.context.trim().slice(0, 200);
             return clean;
           } catch {
             return null;
@@ -2022,7 +2052,7 @@ export function createVaultService(
   }
 
   /** Add a bookmark, optionally anchored to a heading or character position. Idempotent per path+anchor. */
-  async function addBookmark(relativePath: string, anchor?: BookmarkAnchor) {
+  async function addBookmark(relativePath: string, anchor?: BookmarkAnchor, name?: string, context?: string) {
     const target = await resolveEntry(relativePath);
     if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') {
       throw new Error('Only notes and DOCX documents can be bookmarked.');
@@ -2046,6 +2076,10 @@ export function createVaultService(
             : path.basename(relativePath, path.extname(relativePath)),
         created: new Date().toISOString(),
         ...(cleanAnchor ? { anchor: cleanAnchor } : {}),
+        ...(name?.trim() ? { name: name.trim().slice(0, 200) } : {}),
+        ...(cleanAnchor?.kind === 'offset' && context?.trim()
+          ? { context: context.trim().slice(0, 200) }
+          : {}),
       },
     ];
     await writeBookmarksRaw(next);
@@ -2315,6 +2349,8 @@ export function createVaultService(
     saveBibliography,
     getTaskLinks,
     saveTaskLinks,
+    getDismissedTaskAutoLinks,
+    saveDismissedTaskAutoLinks,
     getCalendar,
     saveCalendar,
     getSyncState,

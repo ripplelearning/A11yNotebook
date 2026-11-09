@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
@@ -102,6 +102,9 @@ describe('bookmark jump from the side pane', () => {
       expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
     );
     expect(document.activeElement).toBe(setupHeading);
+    // Focus alone does not move the virtual cursor: the heading text is
+    // selected, mirroring Find.
+    expect(window.getSelection()?.toString()).toBe('Setup');
   });
 
   it('moves the edit caret to the bookmarked heading in edit mode', async () => {
@@ -118,7 +121,9 @@ describe('bookmark jump from the side pane', () => {
       expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
     );
     expect(document.activeElement).toBe(editor);
-    expect(editor.selectionStart).toBe(setupOffset);
+    // The heading text itself is selected, not a collapsed caret on it.
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
   });
 
   it('lands a position bookmark on its containing heading in reading mode', async () => {
@@ -137,6 +142,31 @@ describe('bookmark jump from the side pane', () => {
       expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
     );
     expect(document.activeElement).toBe(setupHeading);
+    expect(window.getSelection()?.toString()).toBe('Setup');
+  });
+
+  it('selects the line at a position bookmark in edit mode', async () => {
+    const positionBookmark: VaultBookmark = {
+      id: 'bm-position-edit',
+      path: 'Note.md',
+      title: 'Setup',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: content.indexOf('Details here.') },
+    };
+    setup([positionBookmark]);
+    await openNote();
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+    const editor = (await screen.findByRole('textbox', {
+      name: 'Markdown source',
+    })) as HTMLTextAreaElement;
+    fireEvent.click(screen.getByRole('button', { name: 'Setup (position)' }));
+    await waitFor(() =>
+      expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
+    );
+    expect(document.activeElement).toBe(editor);
+    const lineStart = content.indexOf('Details here.');
+    expect(editor.selectionStart).toBe(lineStart);
+    expect(editor.selectionEnd).toBe(lineStart + 'Details here.'.length);
   });
 
   it('announces setting a heading and a position bookmark', async () => {
@@ -150,12 +180,21 @@ describe('bookmark jump from the side pane', () => {
     editor.selectionStart = caret;
     editor.selectionEnd = caret;
     menu('bookmark-heading-at-cursor');
+    const headingDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(headingDialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
+    fireEvent.click(within(headingDialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('Bookmarked heading "Setup".'),
     );
     menu('bookmark-position-at-cursor');
+    const positionDialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(positionDialog).getByLabelText('Bookmark name')).toHaveValue('Details here.');
+    fireEvent.change(within(positionDialog).getByLabelText('Bookmark name'), {
+      target: { value: 'The details' },
+    });
+    fireEvent.click(within(positionDialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
-      expect(statusBar()).toHaveTextContent('Bookmarked this position.'),
+      expect(statusBar()).toHaveTextContent('Bookmarked "The details".'),
     );
   });
 
@@ -177,16 +216,18 @@ describe('bookmark jump from the side pane', () => {
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
     );
-    expect(editor.selectionStart).toBe(setupOffset);
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
     // Switching back to reading must keep the reader at the bookmarked
     // heading, not yank it back to the saved reading position.
     menu('toggle-read-only-mode');
     const setupHeading = screen.getByRole('heading', { name: 'Setup' });
     await waitFor(() => expect(document.activeElement).toBe(setupHeading));
     expect(statusBar()).toHaveTextContent('Jumped to Setup.');
+    expect(window.getSelection()?.toString()).toBe('Setup');
   });
 
-  it('lands focus at the top of the document for a position bookmark with no heading before it', async () => {
+  it('lands on the bookmarked line for a position bookmark with no heading before it', async () => {
     const plainContent = 'Intro text.\n\nMore text.\n';
     const positionBookmark: VaultBookmark = {
       id: 'bm-plain',
@@ -203,13 +244,15 @@ describe('bookmark jump from the side pane', () => {
     jumpButton.focus();
     fireEvent.click(jumpButton);
     await waitFor(() =>
-      expect(statusBar()).toHaveTextContent('Opened at the bookmarked place.'),
+      expect(statusBar()).toHaveTextContent('Jumped to the bookmarked place.'),
     );
-    // Focus lands on the reading document itself (the top of the note),
-    // not on the side-pane button or the body.
+    // Focus lands on the reading document with the bookmarked line
+    // selected — not on the side-pane button, the body, or the top of
+    // the note with no selection.
     expect(document.activeElement).not.toBe(document.body);
     expect(document.activeElement).not.toBe(jumpButton);
     expect(document.activeElement?.contains(screen.getByText('Intro text.'))).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('More text.');
   });
 
   it('lands on a formatted heading whose anchor stores the source text', async () => {
@@ -227,6 +270,29 @@ describe('bookmark jump from the side pane', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Hello world — Note.md' }));
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Hello world.'));
     expect(document.activeElement).toBe(heading);
+    expect(window.getSelection()?.toString()).toBe('Hello world');
+  });
+
+  it('shows a bookmark under its chosen name, with the heading as the reader sees it', async () => {
+    const namedBookmark: VaultBookmark = {
+      id: 'bm-named',
+      path: 'Note.md',
+      title: 'Hello *world*',
+      name: 'My section',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Hello *world*', occurrence: 0 },
+    };
+    const unnamedBookmark: VaultBookmark = {
+      id: 'bm-unnamed',
+      path: 'Note.md',
+      title: 'Hello *world*',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Hello *world*', occurrence: 0 },
+    };
+    setup([namedBookmark, unnamedBookmark], '# Title\n\n## Hello *world*\n');
+    await openNote();
+    expect(screen.getByRole('button', { name: 'My section — Note.md' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Hello world — Note.md' })).toBeInTheDocument();
   });
 
   it('moves the caret to the bookmarked heading in rich-text edit mode', async () => {
@@ -242,6 +308,9 @@ describe('bookmark jump from the side pane', () => {
     const selection = window.getSelection();
     expect(selection?.anchorNode?.textContent).toBe('Setup');
     expect(selection?.anchorOffset).toBe(0);
+    // The heading text is selected, not a collapsed caret on it.
+    expect(selection?.toString()).toBe('Setup');
+    expect(selection?.isCollapsed).toBe(false);
   });
 
   it('lands the caret in the editor when the bookmark opens a note in edit mode', async () => {
@@ -257,11 +326,13 @@ describe('bookmark jump from the side pane', () => {
     })) as HTMLTextAreaElement;
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
     expect(document.activeElement).toBe(editor);
-    expect(editor.selectionStart).toBe(setupOffset);
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
     // The landing sticks: focus is still in the editor after the mode
     // has settled and the view has re-rendered.
     await new Promise((resolve) => setTimeout(resolve, 200));
     expect(document.activeElement).toBe(editor);
-    expect(editor.selectionStart).toBe(setupOffset);
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
   });
 });

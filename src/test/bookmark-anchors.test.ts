@@ -6,11 +6,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
+  headingTextSpan,
+  lineSpanAt,
   listHeadings,
   normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
   sanitizeBookmarkAnchor,
+  surroundingText,
 } from '../shared/bookmark-anchors';
 
 let temporaryDirectory = '';
@@ -90,6 +93,34 @@ describe('bookmark anchors', () => {
     const migrated = await service.getBookmarks();
     expect(migrated.every((bookmark) => bookmark.path === 'Moved.md')).toBe(true);
   });
+
+  it('stores a chosen name and the surrounding text for a position bookmark', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-bookmarks-'));
+    const service = createVaultService(temporaryDirectory);
+    await service.initialize();
+    await service.createNote('Guide.md');
+    await service.saveNote('Guide.md', markdown);
+    const named = await service.addBookmark(
+      'Guide.md',
+      { kind: 'heading', text: 'Setup', occurrence: 0 },
+      'My setup section',
+    );
+    expect(named[0]).toMatchObject({ title: 'Setup', name: 'My setup section' });
+    const positioned = await service.addBookmark(
+      'Guide.md',
+      { kind: 'offset', offset: markdown.indexOf('Steps.') },
+      'Where the steps start',
+      'Steps.',
+    );
+    expect(positioned[1]).toMatchObject({
+      title: 'Guide',
+      name: 'Where the steps start',
+      context: 'Steps.',
+    });
+    const reloaded = await service.getBookmarks();
+    expect(reloaded[0]).toMatchObject({ name: 'My setup section' });
+    expect(reloaded[1]).toMatchObject({ name: 'Where the steps start', context: 'Steps.' });
+  });
 });
 
 describe('readingJumpHeading', () => {
@@ -127,5 +158,48 @@ describe('normalizeHeadingText', () => {
     expect(normalizeHeadingText('See [the guide][g]')).toBe('See the guide');
     expect(normalizeHeadingText('Plain heading')).toBe('Plain heading');
     expect(normalizeHeadingText('  Spaced  ')).toBe('Spaced');
+  });
+});
+
+describe('headingTextSpan and lineSpanAt', () => {
+  it('spans a heading anchor text, skipping the Markdown markers', () => {
+    const start = markdown.indexOf('## Setup');
+    const span = headingTextSpan(markdown, false, { kind: 'heading', text: 'Setup', occurrence: 0 });
+    expect(span).toEqual({ start: start + 3, end: start + 8 });
+    expect(markdown.slice(span!.start, span!.end)).toBe('Setup');
+  });
+
+  it('spans a formatted heading anchor text as written in source', () => {
+    const content = '# Title\n\n## Hello *world*\n';
+    const start = content.indexOf('## Hello *world*');
+    const span = headingTextSpan(content, false, { kind: 'heading', text: 'Hello *world*', occurrence: 0 });
+    expect(span).toEqual({ start: start + 3, end: start + 3 + 'Hello *world*'.length });
+  });
+
+  it('returns null for a position anchor or a missing heading', () => {
+    expect(headingTextSpan(markdown, false, { kind: 'offset', offset: 0 })).toBeNull();
+    expect(headingTextSpan(markdown, false, { kind: 'heading', text: 'Missing', occurrence: 0 })).toBeNull();
+  });
+
+  it('spans the trimmed line at an offset, and null for a blank line', () => {
+    const content = '# Title\n\n  Intro text.  \n\nMore text.\n';
+    const offset = content.indexOf('Intro text.');
+    const span = lineSpanAt(content, offset);
+    expect(span).not.toBeNull();
+    expect(content.slice(span!.start, span!.end)).toBe('Intro text.');
+    expect(lineSpanAt(content, content.indexOf('\nMore text.'))).toBeNull();
+    expect(lineSpanAt('No newlines here', 5)).toEqual({ start: 0, end: 16 });
+  });
+
+  it('returns the rendered text around an offset for a bookmark name', () => {
+    const content = '# Title\n\nIntro text.\n\n## **Setup** now\n\nDetails here.\n';
+    expect(surroundingText(content, content.indexOf('Details here.'))).toBe('Details here.');
+    expect(surroundingText(content, content.indexOf('## **Setup** now'))).toBe('Setup now');
+    // A blank line falls back to the nearest non-blank line above it.
+    expect(surroundingText(content, content.indexOf('\nDetails here.'))).toBe('Setup now');
+    expect(surroundingText('', 0)).toBe('');
+    expect(surroundingText('  \n\n  ', 1)).toBe('');
+    const long = `Intro.\n\n${'word '.repeat(30).trim()}\n`;
+    expect(surroundingText(long, long.indexOf('word'))).toBe(`${'word '.repeat(12).trim()}…`);
   });
 });

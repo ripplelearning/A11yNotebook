@@ -40,7 +40,7 @@ describe('accessible reminders UI', () => {
       privacy: 'hide-title' as const,
       notification: { reminders: false, flashcards: true },
     };
-    const { unmount } = render(
+    const firstRender = render(
       <CreateReminderDialog
         notePaths={['Study.md']}
         defaults={defaults}
@@ -64,8 +64,8 @@ describe('accessible reminders UI', () => {
       }),
     );
     expect(onSaveDefaults).not.toHaveBeenCalled();
-    unmount();
-    render(
+    firstRender.unmount();
+    const secondRender = render(
       <CreateReminderDialog
         notePaths={['Study.md']}
         defaults={defaults}
@@ -78,6 +78,57 @@ describe('accessible reminders UI', () => {
     fireEvent.click(screen.getByLabelText('Use these choices as future defaults'));
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() => expect(onSaveDefaults).toHaveBeenCalledWith(defaults));
+    secondRender.unmount();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        filePaths={['Report.pdf']}
+        initialPath="Report.pdf"
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    // A file passed in starts with the File kind and that file selected.
+    expect(screen.getByLabelText('Link to')).toHaveValue('file');
+    expect(screen.getByLabelText('File')).toHaveValue('Report.pdf');
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Review report' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith({
+        title: 'Review report',
+        path: 'Report.pdf',
+        scheduledAt: '2026-10-05 09:00',
+        privacy: 'show-title',
+        notification: true,
+      }),
+    );
+  });
+
+  it('switches the link target list between notes and files', async () => {
+    const onCreate = vi.fn();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md', 'Guide.md']}
+        filePaths={['Report.pdf']}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Link to')).toHaveValue('note');
+    expect(screen.getByLabelText('Note')).toHaveValue('Study.md');
+    fireEvent.change(screen.getByLabelText('Link to'), { target: { value: 'file' } });
+    expect(screen.getByLabelText('File')).toHaveValue('Report.pdf');
+    fireEvent.change(screen.getByLabelText('Link to'), { target: { value: 'note' } });
+    expect(screen.getByLabelText('Note')).toHaveValue('Study.md');
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Read guide' } });
+    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Read guide', path: 'Study.md' }),
+      ),
+    );
   });
 
   it('applies the AM/PM combobox to a bare 12-hour time', async () => {

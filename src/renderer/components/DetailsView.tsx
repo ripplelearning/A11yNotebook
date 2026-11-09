@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
+import { attachmentTypeLabel } from '../../shared/attachments';
 import type { VaultEntry } from '../../shared/types';
 
 export interface DetailsViewItem {
@@ -40,9 +41,14 @@ const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
 /** A note created as a task (dialog or Quick Task) shows Type "Task". Any
  * other note — including one that merely contains a checkbox task line —
- * shows its kind. */
+ * shows its kind. An attachment shows its real file type ("PDF", "Word
+ * document") instead of the generic "Attachment". */
 const typeLabel = (item: DetailsViewItem) =>
-  item.kind === 'note' && item.provenance === 'task' ? 'Task' : item.kind;
+  item.kind === 'note' && item.provenance === 'task'
+    ? 'Task'
+    : item.kind === 'attachment'
+      ? attachmentTypeLabel(item.path)
+      : item.kind;
 
 export default function DetailsView<T extends DetailsViewItem>({
   label,
@@ -191,7 +197,21 @@ export default function DetailsView<T extends DetailsViewItem>({
           openContextMenu(item, event.currentTarget);
         }
         return;
-      default:
+      default: {
+        // Type-ahead: a single printable character jumps to the next item
+        // whose name starts with it, searching in sorted order from the
+        // row after the focused one and wrapping around, so repeated
+        // presses cycle through every match. Mirrors VaultTree.
+        if (event.key.length === 1 && !event.ctrlKey && !event.altKey && !event.metaKey) {
+          event.preventDefault();
+          const query = event.key.toLocaleLowerCase();
+          const candidate = [...sortedItems.slice(index + 1), ...sortedItems.slice(0, index + 1)].find(
+            (entry) => entry.name.toLocaleLowerCase().startsWith(query),
+          );
+          if (candidate) focusCell(sortedItems.indexOf(candidate), focusedColumn);
+        }
+        return;
+      }
     }
   };
 

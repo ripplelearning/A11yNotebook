@@ -182,6 +182,42 @@ export function formatTaskDueDate(dueDate: string | undefined, dueTime: string |
 }
 
 /**
+ * Format a date-time as "MM/DD/YYYY, HH:MM AM/PM" — the format search
+ * results use for reminder (and appointment) times. A stored task marker
+ * ("YYYY-MM-DD HH:MM") is local time and is read field by field so no
+ * timezone conversion can shift it; anything else goes through Date.
+ * The format is pinned down here instead of relying on toLocaleString,
+ * whose output varies by locale.
+ */
+export function formatReminderDateTime(value: string | Date): string {
+  let year: number;
+  let month: number;
+  let day: number;
+  let hours: number;
+  let minutes: number;
+  const marker =
+    typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value) : null;
+  if (marker) {
+    year = Number(marker[1]);
+    month = Number(marker[2]);
+    day = Number(marker[3]);
+    hours = Number(marker[4]);
+    minutes = Number(marker[5]);
+  } else {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return typeof value === 'string' ? value : '';
+    year = date.getFullYear();
+    month = date.getMonth() + 1;
+    day = date.getDate();
+    hours = date.getHours();
+    minutes = date.getMinutes();
+  }
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  const hour12 = hours % 12 || 12;
+  return `${String(month).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}, ${hour12}:${String(minutes).padStart(2, '0')} ${meridiem}`;
+}
+
+/**
  * Compose the reminder dialog's time text plus its AM/PM combobox into
  * a normalized 24-hour time. Precedence, stated in the dialog so the
  * user can predict it: a typed AM/PM marker wins; an unambiguous
@@ -236,11 +272,15 @@ export function parseReminderDate(value: string): Date | null {
   return Number.isFinite(result.getTime()) ? result : null;
 }
 
+/** A reminder may link to any entry inside the library — a note or a file.
+ * The path must still be a safe relative path: no absolute paths, no
+ * traversal, nothing under .a11ynotebook. Task reminders are the one
+ * exception: parseTaskReminders only reads note content, so it keeps its
+ * own Markdown/HTML guard. */
 export function isReminderPath(path: string): boolean {
   return (
     typeof path === 'string' &&
     !/^[\\/]|^[a-z]:|[\0\r\n]/i.test(path) &&
-    /\.(?:md|html)$/i.test(path) &&
     path.split(/[\\/]/).every((part) => part !== '' && part !== '.' && part !== '..') &&
     path.split(/[\\/]/)[0].toLowerCase() !== '.a11ynotebook'
   );

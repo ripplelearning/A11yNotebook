@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Profiler } from 'react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import type { SpreadsheetWorkbook } from '../shared/spreadsheet';
 import type { VaultEntry, VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
 import { parseHtmlTasks, parseMarkdownTasks } from '../../electron/vault/tasks';
@@ -817,6 +818,32 @@ describe('contextual shell document workflows', () => {
     },
   );
 
+  it('opens a CSV file in the spreadsheet view, not Cognitive Tools', async () => {
+    const path = 'Budget.csv';
+    const { bridge } = setup({
+      entries: [{ name: path, path, kind: 'attachment', provenance: 'imported' }],
+    });
+    const workbook: SpreadsheetWorkbook = {
+      sourceFormat: 'csv',
+      sheets: [
+        {
+          name: 'Budget',
+          rows: [[{ text: 'Rent' }, { text: '1200', value: 1200 }]],
+          mergedCells: [],
+          columnWidths: [],
+        },
+      ],
+      unsupportedFeatures: [],
+      truncated: false,
+    };
+    bridge.vault.readAttachment.mockResolvedValue({ path, kind: '.csv', text: '' });
+    bridge.vault.readSpreadsheet.mockResolvedValue(structuredClone(workbook));
+    await screen.findByRole('heading', { name: 'Study' });
+    await openTreeLeaf(/Budget\.csv/);
+    expect(await screen.findByLabelText('Row 1, column A, Rent')).toBeInTheDocument();
+    expect(document.title).not.toContain('Cognitive Tools');
+  });
+
   it('keeps the tab panel labelled when note paths contain spaces and punctuation', async () => {
     setup({ entries: [{ name: 'A plan #1.md', path: 'A plan #1.md', kind: 'note', provenance: 'created' }] });
     await screen.findByRole('heading', { name: 'Study' });
@@ -887,5 +914,37 @@ describe('contextual shell document workflows', () => {
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     const editor = await screen.findByLabelText('Markdown source');
     expect(editor).toHaveFocus();
+  });
+
+  it('offers Create reminder from the context menu on a file and pre-selects it', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Report.pdf', path: 'Research/Report.pdf', kind: 'attachment', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Report.pdf' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create reminder' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create reminder' });
+    expect(within(dialog).getByLabelText('Link to')).toHaveValue('file');
+    expect(within(dialog).getByLabelText('File')).toHaveValue('Research/Report.pdf');
+    fireEvent.change(within(dialog).getByLabelText('Reminder title'), { target: { value: 'Review report' } });
+    fireEvent.change(within(dialog).getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-11-09' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(bridge.vault.createReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Review report', path: 'Research/Report.pdf' }),
+      ),
+    );
   });
 });
