@@ -123,6 +123,59 @@ describe('item dialog naming', () => {
     expect(screen.getByRole('textbox', { name: 'New Notebook Name' })).toBeInTheDocument();
     expect(document.title).toBe('New notebook | A11y Notebook');
   });
+
+  it('offers the Library root by default for a new notebook, with the selected notebook as an option', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    render(
+      <ItemDialog
+        request={{ action: 'new-notebook', currentNotebook: 'Archive' }}
+        notebooks={['Archive']}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />,
+    );
+    const location = screen.getByRole('combobox', { name: 'Location' });
+    expect(location).toHaveValue('');
+    expect(within(location).getByRole('option', { name: 'Library root' })).toBeInTheDocument();
+    expect(within(location).getByRole('option', { name: 'Inside Archive' })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'New Notebook Name' }), {
+      target: { value: 'Interview Instructions' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'New notebook' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Interview Instructions', '', 'markdown'));
+  });
+
+  it('passes the chosen parent notebook when the location is changed', async () => {
+    const onSubmit = vi.fn(async () => undefined);
+    render(
+      <ItemDialog
+        request={{ action: 'new-notebook', currentNotebook: 'Archive' }}
+        notebooks={['Archive']}
+        onSubmit={onSubmit}
+        onClose={vi.fn()}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Location' }), { target: { value: 'Archive' } });
+    fireEvent.change(screen.getByRole('textbox', { name: 'New Notebook Name' }), {
+      target: { value: 'Sub' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'New notebook' }));
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith('Sub', 'Archive', 'markdown'));
+  });
+
+  it('offers only the Library root when no notebook is selected', () => {
+    render(
+      <ItemDialog
+        request={{ action: 'new-notebook' }}
+        notebooks={[]}
+        onSubmit={vi.fn(async () => undefined)}
+        onClose={vi.fn()}
+      />,
+    );
+    const location = screen.getByRole('combobox', { name: 'Location' });
+    expect(within(location).getAllByRole('option')).toHaveLength(1);
+    expect(within(location).getByRole('option', { name: 'Library root' })).toBeInTheDocument();
+  });
 });
 
 describe('Markdown document', () => {

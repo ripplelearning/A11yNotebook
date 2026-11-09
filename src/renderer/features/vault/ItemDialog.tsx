@@ -5,6 +5,8 @@ export interface ItemDialogRequest {
   action: 'new-note' | 'new-notebook' | 'rename' | 'move';
   path?: string;
   name?: string;
+  /** Notebook selected when a new notebook is created; the Location picker offers it as a parent. */
+  currentNotebook?: string;
 }
 
 interface Props {
@@ -74,6 +76,17 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
               <option value="markdown">Markdown (.md)</option>
               <option value="html">HTML (.html)</option>
               <option value="txt">Plain text (.txt)</option>
+            </select>
+          </label>
+        ) : null}
+        {request.action === 'new-notebook' ? (
+          <label>
+            Location
+            <select value={notebook} onChange={(event) => setNotebook(event.target.value)}>
+              <option value="">Library root</option>
+              {request.currentNotebook ? (
+                <option value={request.currentNotebook}>Inside {request.currentNotebook}</option>
+              ) : null}
             </select>
           </label>
         ) : null}
