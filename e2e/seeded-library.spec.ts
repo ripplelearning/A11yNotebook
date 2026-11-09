@@ -6,8 +6,6 @@ import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { dismissTutorial } from './helpers';
 
-const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
-
 /**
  * Seeded-library end-to-end pass: the app launches with a library that
  * already holds a note (with tasks) and a calendar appointment, and the
@@ -125,8 +123,9 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
   let app: ElectronApplication | null = null;
   const paths = seedLibrary();
   try {
+    // No executablePath: Playwright defaults to node_modules/.bin/electron,
+    // the per-platform launcher (see e2e/helpers.ts).
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${paths.userDataDir}`],
     });
     const page = await app.firstWindow();

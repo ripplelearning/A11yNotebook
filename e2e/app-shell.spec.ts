@@ -5,8 +5,6 @@ import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { dismissTutorial } from './helpers';
 
-const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
-
 /**
  * Fresh Electron user-data dir per launch. Settings (including the theme)
  * persist to userData defaults, so sharing one dir across tests would leak
@@ -52,8 +50,9 @@ test('app shell is accessible end to end', async () => {
   let app: ElectronApplication | null = null;
   const { userDataDir, args } = launchOptions();
   try {
+    // No executablePath: Playwright defaults to node_modules/.bin/electron,
+    // the per-platform launcher (see e2e/helpers.ts).
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args,
     });
     const page = await app.firstWindow();
@@ -154,7 +153,6 @@ test('app shell is accessible in the light theme', async () => {
   const { userDataDir, args } = launchOptions();
   try {
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args,
     });
     const page = await app.firstWindow();
@@ -310,7 +308,6 @@ test('app shell is accessible in the high contrast theme', async () => {
   const { userDataDir, args } = launchOptions();
   try {
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args,
     });
     const page = await app.firstWindow();
@@ -433,7 +430,6 @@ test('focus mode hides chrome and leaves only header, search, and document tabba
   const { userDataDir, args } = launchOptions();
   try {
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args,
     });
     const page = await app.firstWindow();

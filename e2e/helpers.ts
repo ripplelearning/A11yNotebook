@@ -4,8 +4,6 @@ import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 
-const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
-
 /**
  * Dismiss the first-run Welcome Tutorial if it is open. The tour opens
  * on a fresh profile (or after an update, when the stored version is
@@ -101,9 +99,16 @@ export function seedLibrary(notebooks: SeedNotebook[]): SeedPaths {
   return { libraryDir, userDataDir, baseDir };
 }
 
+/**
+ * Launch the app. No executablePath is passed: Playwright defaults to
+ * node_modules/.bin/electron, the electron package's own launcher, which
+ * resolves the per-platform binary (electron.exe on Windows) and downloads
+ * it on demand if the postinstall step skipped it. A hardcoded
+ * node_modules/electron/dist/electron path is missing on Windows (no .exe)
+ * and breaks whenever the binary was never downloaded.
+ */
 export async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
-    executablePath: ELECTRON_PATH,
     args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`],
   });
   const page = await app.firstWindow();
