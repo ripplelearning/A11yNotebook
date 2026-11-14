@@ -14,7 +14,7 @@ function dayKey(date: Date): string {
 }
 
 function setup(appointment?: CalendarAppointment) {
-  const onSave = vi.fn(async () => undefined);
+  const onSave = vi.fn<(input: AppointmentInput) => Promise<void>>(async () => undefined);
   render(
     <AppointmentDialog
       appointment={appointment}
@@ -71,7 +71,7 @@ describe('appointment dialog AM/PM comboboxes', () => {
     fireEvent.change(within(dialog).getByLabelText('Start AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const input = onSave.mock.calls[0][0] as AppointmentInput;
+    const input = onSave.mock.calls[0][0];
     expect(savedStartHour(input)).toBe(21);
     expect(parseAppointmentTime(input.start)?.minute).toBe(30);
   });
@@ -89,7 +89,7 @@ describe('appointment dialog AM/PM comboboxes', () => {
     fireEvent.change(within(dialog).getByLabelText('End AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const input = onSave.mock.calls[0][0] as AppointmentInput;
+    const input = onSave.mock.calls[0][0];
     expect(savedStartHour(input)).toBe(9);
     expect(savedEndHour(input)).toBe(14);
   });
@@ -108,7 +108,7 @@ describe('appointment dialog AM/PM comboboxes', () => {
     fireEvent.change(within(dialog).getByLabelText('End AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
     await waitFor(() => expect(onSave).toHaveBeenCalled());
-    const input = onSave.mock.calls[0][0] as AppointmentInput;
+    const input = onSave.mock.calls[0][0];
     expect(savedStartHour(input)).toBe(0);
     expect(savedEndHour(input)).toBe(12);
   });
