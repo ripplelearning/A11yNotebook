@@ -94,6 +94,49 @@ describe('xlsx parser', () => {
       `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Copy" sheetId="2" r:id="rId1"/></sheets></workbook>`;
     expect(() => parseXlsxWorkbook(zip(entries))).toThrow('lists the same worksheet twice');
   });
+
+  it('imports a workbook whose chart sheet has no relationship in workbook.xml.rels', () => {
+    const entries = validEntries();
+    entries['xl/workbook.xml'] =
+      `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Chart1" sheetId="2" r:id="rId3"/><sheet name="Notes" sheetId="3" r:id="rId2"/></sheets></workbook>`;
+    // The rels file lists only the two worksheets: the chart sheet's
+    // relationship is missing, so the old positional guess stole the
+    // Notes part and the real worksheet tripped the duplicate check.
+    const workbook = parseXlsxWorkbook(zip(entries));
+    expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Budget', 'Notes']);
+    expect(workbook.sheets[1].rows).toEqual([[{ text: 'Groceries' }]]);
+  });
+
+  it('imports a workbook whose chart sheet element carries no relationship id', () => {
+    const entries = validEntries();
+    entries['xl/workbook.xml'] =
+      `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Chart1" sheetId="2"/><sheet name="Notes" sheetId="3" r:id="rId2"/></sheets></workbook>`;
+    const workbook = parseXlsxWorkbook(zip(entries));
+    expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Budget', 'Notes']);
+    expect(workbook.sheets[1].rows).toEqual([[{ text: 'Groceries' }]]);
+  });
+
+  it('imports a workbook whose part numbering is shifted and one relationship is missing', () => {
+    const entries = validEntries();
+    entries['xl/workbook.xml'] =
+      `<workbook xmlns="${mainNs}" xmlns:r="${relsNs}"><sheets><sheet name="Budget" sheetId="1" r:id="rId1"/><sheet name="Notes" sheetId="2" r:id="rId2"/></sheets></workbook>`;
+    entries['xl/_rels/workbook.xml.rels'] =
+      `<Relationships xmlns="${relNs}"><Relationship Id="rId1" Type="${relsNs}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+    // Excel does not renumber parts when a sheet is deleted: the Notes
+    // part is sheet3.xml, not sheet2.xml.
+    entries['xl/worksheets/sheet3.xml'] = entries['xl/worksheets/sheet2.xml'];
+    delete entries['xl/worksheets/sheet2.xml'];
+    const workbook = parseXlsxWorkbook(zip(entries));
+    expect(workbook.sheets.map((sheet) => sheet.name)).toEqual(['Budget', 'Notes']);
+    expect(workbook.sheets[1].rows).toEqual([[{ text: 'Groceries' }]]);
+  });
+
+  it('still rejects two worksheets that share one part through different relationships', () => {
+    const entries = validEntries();
+    entries['xl/_rels/workbook.xml.rels'] =
+      `<Relationships xmlns="${relNs}"><Relationship Id="rId1" Type="${relsNs}/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="${relsNs}/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+    expect(() => parseXlsxWorkbook(zip(entries))).toThrow('lists the same worksheet twice');
+  });
 });
 
 describe('spreadsheet cell references', () => {
