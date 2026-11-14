@@ -267,19 +267,62 @@ export function xlsxSheetParts(entries: Map<string, ZipEntry>): Array<{ name: st
   if (sheetElements.length > MAX_SHEETS) invalid(`The ${LABEL} workbook exceeds the ${MAX_SHEETS} sheet limit.`);
 
   const usedPartPaths = new Set<string>();
-  const parts: Array<{ name: string; partPath: string }> = [];
+  // Worksheet parts present in the package, for sheets whose
+  // relationship cannot be resolved (see the second pass below).
+  const worksheetParts = [...entries.keys()].filter(
+    (path) => path.startsWith('xl/worksheets/') && path.endsWith('.xml'),
+  );
+  // One slot per <sheet> element, filled in sheet order so the returned
+  // parts stay in tab order. A slot stays empty for a skipped
+  // non-worksheet sheet.
+  const slots: Array<{ name: string; partPath: string } | undefined> = sheetElements.map(() => undefined);
+  const unresolved: Array<{ name: string; index: number }> = [];
   sheetElements.forEach((sheetElement, index) => {
     const name = sheetElement.getAttribute('name') || 'Sheet';
     const id = relId(sheetElement);
     if (id && nonWorksheetIds.has(id)) return;
     const target = id ? relTargets.get(id) : undefined;
-    // Fall back to the conventional part order when relationships are absent.
-    const partPath = target ? `xl/${target}` : `xl/worksheets/sheet${index + 1}.xml`;
+    if (!target) {
+      unresolved.push({ name, index });
+      return;
+    }
+    const partPath = `xl/${target}`;
     if (usedPartPaths.has(partPath)) invalid(`The ${LABEL} workbook lists the same worksheet twice.`);
     usedPartPaths.add(partPath);
     if (!entries.has(partPath)) invalid(`The ${LABEL} part ${partPath} is missing.`);
-    parts.push({ name, partPath });
+    slots[index] = { name, partPath };
   });
+
+  // Resolve the sheets the relationships could not place. The old code
+  // guessed xl/worksheets/sheet${index + 1}.xml inline and checked it
+  // against the same set as the resolved parts, so a chart sheet whose
+  // relationship was missing from workbook.xml.rels stole the next
+  // worksheet's part and the real worksheet then tripped the duplicate
+  // check — the workbook was fine, the guess was wrong. A guessed part
+  // is only used when it exists and no other sheet claims it. Otherwise
+  // the sheet takes the single worksheet part still unclaimed (Excel
+  // does not renumber parts when a sheet is deleted, so the numbering
+  // can be shifted), and when neither identifies a part the sheet is a
+  // non-worksheet sheet the relationships failed to name — its part
+  // lives outside xl/worksheets/ — so it is skipped instead of failing
+  // the import.
+  for (const sheet of unresolved) {
+    const guessed = `xl/worksheets/sheet${sheet.index + 1}.xml`;
+    if (entries.has(guessed) && !usedPartPaths.has(guessed)) {
+      usedPartPaths.add(guessed);
+      slots[sheet.index] = { name: sheet.name, partPath: guessed };
+      continue;
+    }
+    const unclaimed = worksheetParts.filter((part) => !usedPartPaths.has(part));
+    if (unclaimed.length === 1) {
+      usedPartPaths.add(unclaimed[0]);
+      slots[sheet.index] = { name: sheet.name, partPath: unclaimed[0] };
+      continue;
+    }
+    if (entries.has(guessed)) continue;
+    invalid(`The ${LABEL} part ${guessed} is missing.`);
+  }
+  const parts = slots.filter((slot): slot is { name: string; partPath: string } => slot !== undefined);
   if (!parts.length) invalid(`The ${LABEL} workbook contains no worksheets.`);
   return parts;
 }
