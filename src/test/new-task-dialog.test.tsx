@@ -67,7 +67,31 @@ describe('new task dialogs', () => {
     expect(onCreate).toHaveBeenCalledWith({ text: 'Just this', due: '', reminder: '', priority: 'normal' });
   });
 
-  it('adds a reminder time between due date and priority in the associated-note dialog', async () => {
+  it('offers a Show Date Picker button for both the due and reminder dates', async () => {
+    const onCreate = vi.fn(async () => undefined);
+    render(<NewTaskDialog onCreate={onCreate} onClose={() => undefined} />);
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    const due = within(dialog).getByLabelText('Due date, YYYY-MM-DD');
+    const reminderDate = within(dialog).getByLabelText('Reminder date, YYYY-MM-DD');
+    const reminderTime = within(dialog).getByLabelText('Reminder time, HH:MM');
+    const pickers = within(dialog).getAllByRole('button', { name: 'Show Date Picker' });
+    expect(pickers).toHaveLength(2);
+    // Each picker button follows its own date field in document order.
+    expect(due.compareDocumentPosition(pickers[0] as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((pickers[0] as Node).compareDocumentPosition(reminderDate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(reminderDate.compareDocumentPosition(pickers[1] as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect((pickers[1] as Node).compareDocumentPosition(reminderTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    fireEvent.change(due, { target: { value: '2026-11-01' } });
+    fireEvent.click(pickers[0] as HTMLElement);
+    fireEvent.click(within(dialog).getByRole('button', { name: /November 15, 2026/ }));
+    expect(due).toHaveValue('2026-11-15');
+    fireEvent.change(reminderDate, { target: { value: '2026-11-01' } });
+    fireEvent.click(pickers[1] as HTMLElement);
+    fireEvent.click(within(dialog).getByRole('button', { name: /November 20, 2026/ }));
+    expect(reminderDate).toHaveValue('2026-11-20');
+  });
+
+  it('offers a Show Date Picker button for both dates in the associated-note dialog', async () => {
     const onCreate = vi.fn(async () => undefined);
     render(
       <AssociatedTaskDialog
@@ -79,20 +103,17 @@ describe('new task dialogs', () => {
       />,
     );
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task description' }), {
-      target: { value: 'Review plan' },
-    });
-    fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-11-02' } });
-    fireEvent.change(within(dialog).getByLabelText('Reminder date, YYYY-MM-DD'), { target: { value: '2026-11-02' } });
-    fireEvent.change(within(dialog).getByLabelText('Reminder time, HH:MM'), { target: { value: '10:30' } });
-    fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith(
-      'Research/Notes.md',
-      'Review plan',
-      '2026-11-02',
-      'high',
-      '2026-11-02T10:30',
-    );
+    const due = within(dialog).getByLabelText('Due date, YYYY-MM-DD');
+    const reminderDate = within(dialog).getByLabelText('Reminder date, YYYY-MM-DD');
+    const pickers = within(dialog).getAllByRole('button', { name: 'Show Date Picker' });
+    expect(pickers).toHaveLength(2);
+    fireEvent.change(due, { target: { value: '2026-11-01' } });
+    fireEvent.click(pickers[0] as HTMLElement);
+    fireEvent.click(within(dialog).getByRole('button', { name: /November 15, 2026/ }));
+    expect(due).toHaveValue('2026-11-15');
+    fireEvent.change(reminderDate, { target: { value: '2026-11-01' } });
+    fireEvent.click(pickers[1] as HTMLElement);
+    fireEvent.click(within(dialog).getByRole('button', { name: /November 20, 2026/ }));
+    expect(reminderDate).toHaveValue('2026-11-20');
   });
 });

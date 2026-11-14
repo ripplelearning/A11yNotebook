@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import Modal from '../../components/Modal';
+import DatePickerField from '../../components/DatePickerField';
 import { isValidDateText, isValidTimeText, normalizeTimeText } from '../../../shared/reminders';
 
 export interface NewTaskFields {
@@ -22,6 +23,7 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
   const [reminderDate, setReminderDate] = useState('');
   const [reminderTime, setReminderTime] = useState('');
   const [priority, setPriority] = useState('normal');
+  const id = useId();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const close = () => {
@@ -70,20 +72,20 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           Task text
           <input data-autofocus value={text} disabled={busy} onChange={(event) => setText(event.target.value)} />
         </label>
-        <label>
-          Due date, YYYY-MM-DD
-          <input type="text" placeholder="YYYY-MM-DD" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
-        </label>
-        <label>
-          Reminder date, YYYY-MM-DD
-          <input
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={reminderDate}
-            disabled={busy}
-            onChange={(event) => setReminderDate(event.target.value)}
-          />
-        </label>
+        <DatePickerField
+          id={`${id}-due-date`}
+          label="Due date, YYYY-MM-DD"
+          value={due}
+          onChange={setDue}
+          disabled={busy}
+        />
+        <DatePickerField
+          id={`${id}-reminder-date`}
+          label="Reminder date, YYYY-MM-DD"
+          value={reminderDate}
+          onChange={setReminderDate}
+          disabled={busy}
+        />
         <label>
           Reminder time, HH:MM
           <input
@@ -140,6 +142,7 @@ export function AssociatedTaskDialog({
   const [reminderDate, setReminderDate] = useState('');
   const [reminderTime, setReminderTime] = useState('');
   const [priority, setPriority] = useState(options.includes('medium') ? 'medium' : (options[0] ?? ''));
+  const id = useId();
   const [localError, setLocalError] = useState('');
   useEffect(() => {
     setPath((current) =>
@@ -209,20 +212,20 @@ export function AssociatedTaskDialog({
             onChange={(event) => setText(event.target.value)}
           />
         </label>
-        <label>
-          Due date, YYYY-MM-DD
-          <input type="text" placeholder="YYYY-MM-DD" value={due} disabled={busy} onChange={(event) => setDue(event.target.value)} />
-        </label>
-        <label>
-          Reminder date, YYYY-MM-DD
-          <input
-            type="text"
-            placeholder="YYYY-MM-DD"
-            value={reminderDate}
-            disabled={busy}
-            onChange={(event) => setReminderDate(event.target.value)}
-          />
-        </label>
+        <DatePickerField
+          id={`${id}-due-date`}
+          label="Due date, YYYY-MM-DD"
+          value={due}
+          onChange={setDue}
+          disabled={busy}
+        />
+        <DatePickerField
+          id={`${id}-reminder-date`}
+          label="Reminder date, YYYY-MM-DD"
+          value={reminderDate}
+          onChange={setReminderDate}
+          disabled={busy}
+        />
         <label>
           Reminder time, HH:MM
           <input
