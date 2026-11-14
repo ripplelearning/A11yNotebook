@@ -64,6 +64,32 @@ function formatSnippet(snippet: string): string {
     .trim();
 }
 
+/**
+ * The stored task markers formatSnippet understands, as spans. A snippet
+ * window must never start or end inside one: a cut marker survives
+ * formatting as raw text (a slice starting mid-marker reads "…22:03 …"),
+ * so the window is widened to the marker's start or cut back before it.
+ * The patterns mirror formatSnippet and the ones parseMarkdownTasks
+ * strips (electron/vault/tasks.ts).
+ */
+const MARKER_SPAN =
+  /(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}|(?:📅\s*|due:)\d{4}-\d{2}-\d{2}|due-time:\d{2}:\d{2}|priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}|\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->/gi;
+
+function snippetWindow(text: string, start: number, end: number): [number, number] {
+  let adjustedStart = start;
+  let adjustedEnd = end;
+  for (const marker of text.matchAll(MARKER_SPAN)) {
+    const markerStart = marker.index ?? 0;
+    const markerEnd = markerStart + marker[0].length;
+    if (markerStart >= adjustedEnd) break;
+    if (markerStart < adjustedStart && markerEnd > adjustedStart) adjustedStart = markerStart;
+    if (markerStart < adjustedEnd && markerEnd > adjustedEnd && markerStart > adjustedStart) {
+      adjustedEnd = markerStart;
+    }
+  }
+  return [adjustedStart, adjustedEnd];
+}
+
 /** Check every ancestor, including the private metadata folder, before accessing it. */
 export async function checkedVaultPath(root: string, relativePath: string, allowMissing = false) {
   const rootStat = await lstat(root);
@@ -529,9 +555,10 @@ export function createSearchIndex(root: string, protection?: SearchIndexProtecti
         0,
       );
       const match = terms.length ? text.indexOf(terms[0]) : 0;
-      const start = Math.max(0, match - 60);
+      const windowStart = Math.max(0, match - 60);
+      const [start, end] = snippetWindow(doc.text, windowStart, Math.min(doc.text.length, windowStart + 220));
       const snippet = formatSnippet(
-        `${start ? '…' : ''}${doc.text.slice(start, start + 220)}${doc.text.length > start + 220 ? '…' : ''}`,
+        `${start ? '…' : ''}${doc.text.slice(start, end)}${end < doc.text.length ? '…' : ''}`,
       );
       results.push({
         path: doc.path,
