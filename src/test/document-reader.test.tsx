@@ -18,6 +18,99 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', () => ({
 
 vi.mock('epubjs/src/index.js', () => ({ default: ePub }));
 
+interface EpubMockTocItem {
+  id: string;
+  href: string;
+  title: string;
+  children: EpubMockTocItem[];
+}
+
+interface EpubMockSection {
+  index: number;
+  href: string;
+  load: () => Promise<{ textContent: string }>;
+  hooks: {
+    serialize: {
+      register: (callback: (this: { output: string }, content: string) => void) => void;
+    };
+  };
+}
+
+// Models epubjs 0.4.2: ePub() with no arguments creates an Epub, opened with
+// epub.open(bytes); navigation/book/resources are assigned by the open, and
+// the Rendition is built from the classes attached to the factory.
+function mockEpubjs(input: {
+  navigation?: { toc: EpubMockTocItem[] };
+  sections: Array<{ index: number; href: string; text: string }>;
+  spineGet?: (target: string) => { index?: number; href?: string } | undefined;
+  onSerializeRegister?: (callback: (this: { output: string }, content: string) => void) => void;
+}) {
+  const display = vi.fn(async () => undefined);
+  let relocatedHandler: ((location: { start?: { cfi?: string } }) => void) | undefined;
+  const rendition = {
+    display,
+    destroy: vi.fn(),
+    attachTo: vi.fn((element: HTMLElement) => {
+      element.appendChild(document.createElement('iframe'));
+    }),
+    on: vi.fn((event: string, handler: (location: { start?: { cfi?: string } }) => void) => {
+      if (event === 'relocated') relocatedHandler = handler;
+    }),
+  };
+  // A function expression (not an arrow function): the adapter constructs
+  // the Rendition with `new`, and arrow functions cannot be constructed.
+  const Rendition = vi.fn(function MockRendition() {
+    return rendition;
+  });
+  const epub: {
+    open: ReturnType<typeof vi.fn>;
+    navigation?: { toc: EpubMockTocItem[] };
+    book: {
+      sections: {
+        spineItems: EpubMockSection[];
+        get?: (target: string) => { index?: number; href?: string } | undefined;
+      };
+      manifest: { spine: Array<{ href: string }> };
+      destroy: ReturnType<typeof vi.fn>;
+    };
+    resources: { resolve: (href: string) => string };
+    destroy: ReturnType<typeof vi.fn>;
+  } = {
+    open: vi.fn(async () => undefined),
+    navigation: input.navigation,
+    book: {
+      sections: {
+        spineItems: input.sections.map(({ index, href, text }) => ({
+          index,
+          href,
+          load: async () => ({ textContent: text }),
+          hooks: {
+            serialize: {
+              register: (callback: (this: { output: string }, content: string) => void) =>
+                input.onSerializeRegister?.(callback),
+            },
+          },
+        })),
+        get: input.spineGet,
+      },
+      manifest: { spine: input.sections.map(({ href }) => ({ href })) },
+      destroy: vi.fn(),
+    },
+    resources: { resolve: (href: string) => href },
+    destroy: vi.fn(),
+  };
+  (ePub as unknown as Record<string, unknown>).Rendition = Rendition;
+  (ePub as unknown as Record<string, unknown>).ViewManagers = { default: class {} };
+  (ePub as unknown as Record<string, unknown>).Views = { iframe: class {} };
+  ePub.mockResolvedValue(epub);
+  return {
+    display,
+    Rendition,
+    epub,
+    getRelocatedHandler: () => relocatedHandler,
+  };
+}
+
 function mockPdf() {
   return {
     numPages: 2,
@@ -164,57 +257,33 @@ describe('local accessible document reader', () => {
   });
 
   it('uses epub.js for section navigation and search', async () => {
-    const display = vi.fn(async () => undefined);
-    const rendition = { display, destroy: vi.fn() };
     const serializeCallbacks: Array<(this: { output: string }, content: string) => void> = [];
-    const book = {
-      spine: {
-        spineItems: [
-          {
-            index: 0,
-            href: 'Text/one.xhtml',
-            load: async () => ({ textContent: 'First chapter text' }),
-            hooks: {
-              serialize: {
-                register: (callback: (this: { output: string }, content: string) => void) =>
-                  serializeCallbacks.push(callback),
-              },
-            },
-          },
-          {
-            index: 1,
-            href: 'Text/two.xhtml',
-            load: async () => ({ textContent: 'Second chapter text' }),
-            hooks: {
-              serialize: {
-                register: (callback: (this: { output: string }, content: string) => void) =>
-                  serializeCallbacks.push(callback),
-              },
-            },
-          },
-        ],
-      },
+    const { display, Rendition, epub } = mockEpubjs({
       navigation: {
         toc: [
           {
-            label: 'First chapter',
+            id: 'np1',
             href: 'Text/one.xhtml',
-            subitems: [{ label: 'Second chapter', href: 'Text/two.xhtml#heading' }],
+            title: 'First chapter',
+            children: [{ id: 'np2', href: 'Text/two.xhtml#heading', title: 'Second chapter', children: [] }],
           },
         ],
       },
-      renderTo: vi.fn((container: HTMLElement) => {
-        container.appendChild(document.createElement('iframe'));
-        return rendition;
-      }),
-      destroy: vi.fn(),
-    };
-    ePub.mockResolvedValue(book);
+      sections: [
+        { index: 0, href: 'Text/one.xhtml', text: 'First chapter text' },
+        { index: 1, href: 'Text/two.xhtml', text: 'Second chapter text' },
+      ],
+      onSerializeRegister: (callback) => serializeCallbacks.push(callback),
+    });
     const reader = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
 
     expect(await screen.findByText('First chapter text')).toBeInTheDocument();
-    expect(ePub).toHaveBeenCalledWith(expect.any(ArrayBuffer));
-    expect(book.renderTo).toHaveBeenCalledWith(expect.any(HTMLElement), expect.objectContaining({ flow: 'paginated' }));
+    expect(ePub).toHaveBeenCalledWith();
+    expect(epub.open).toHaveBeenCalledWith(expect.any(ArrayBuffer));
+    expect(Rendition).toHaveBeenCalledWith(
+      epub.book.manifest,
+      expect.objectContaining({ flow: 'paginated' }),
+    );
     await waitFor(() =>
       expect(document.querySelector('.epub-rendition iframe')).toHaveAttribute('title', 'ePub content'),
     );
@@ -232,38 +301,36 @@ describe('local accessible document reader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Second chapter' }));
     await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml#heading'));
     reader.unmount();
-    expect(book.destroy).toHaveBeenCalledOnce();
+    expect(epub.book.destroy).toHaveBeenCalledOnce();
+    expect(epub.destroy).toHaveBeenCalledOnce();
+  });
+
+  it('renders the ePub reader without a table of contents until navigation arrives', async () => {
+    const { epub } = mockEpubjs({
+      // Navigation deliberately absent: the async open has not assigned it yet.
+      sections: [{ index: 0, href: 'Text/one.xhtml', text: 'First chapter text' }],
+    });
+    const reader = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+
+    expect(await screen.findByText('First chapter text')).toBeInTheDocument();
+    expect(screen.queryByRole('navigation', { name: 'ePub table of contents' })).not.toBeInTheDocument();
+
+    epub.navigation = {
+      toc: [{ id: 'np1', href: 'Text/one.xhtml', title: 'First chapter', children: [] }],
+    };
+    reader.rerender(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    expect(await screen.findByRole('navigation', { name: 'ePub table of contents' })).toBeInTheDocument();
   });
 
   it('restores the saved ePub reading position and saves new locations', async () => {
-    const display = vi.fn(async () => undefined);
-    let relocatedHandler: ((location: { start?: { cfi?: string } }) => void) | undefined;
-    const rendition = {
-      display,
-      destroy: vi.fn(),
-      on: vi.fn((event: string, handler: (location: { start?: { cfi?: string } }) => void) => {
-        if (event === 'relocated') relocatedHandler = handler;
-      }),
-    };
-    const section = (index: number, href: string) => ({
-      index,
-      href,
-      load: async () => ({ textContent: `Chapter ${index + 1} text` }),
-      hooks: { serialize: { register: vi.fn() } },
-    });
-    const book = {
-      spine: {
-        spineItems: [section(0, 'Text/one.xhtml'), section(1, 'Text/two.xhtml')],
-        get: vi.fn((cfi: string) => (cfi.includes('/6/8') ? { index: 1 } : { index: 0 })),
-      },
+    const { display, getRelocatedHandler } = mockEpubjs({
       navigation: { toc: [] },
-      renderTo: vi.fn((container: HTMLElement) => {
-        container.appendChild(document.createElement('iframe'));
-        return rendition;
-      }),
-      destroy: vi.fn(),
-    };
-    ePub.mockResolvedValue(book);
+      sections: [
+        { index: 0, href: 'Text/one.xhtml', text: 'Chapter 1 text' },
+        { index: 1, href: 'Text/two.xhtml', text: 'Chapter 2 text' },
+      ],
+      spineGet: (cfi: string) => (cfi.includes('/6/8') ? { index: 1 } : { index: 0 }),
+    });
     const getReadingPosition = vi.fn(async () => ({
       path: 'Books/Guide.epub',
       cfi: 'epubcfi(/6/8!/4/2)',
@@ -280,7 +347,7 @@ describe('local accessible document reader', () => {
     expect(getReadingPosition).toHaveBeenCalledWith('Books/Guide.epub');
     expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
 
-    relocatedHandler?.({ start: { cfi: 'epubcfi(/6/8!/4/10)' } });
+    getRelocatedHandler()?.({ start: { cfi: 'epubcfi(/6/8!/4/10)' } });
     await waitFor(() =>
       expect(setReadingPosition).toHaveBeenCalledWith('Books/Guide.epub', {
         cfi: 'epubcfi(/6/8!/4/10)',
