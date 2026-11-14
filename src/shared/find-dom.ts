@@ -38,19 +38,82 @@ export function selectDomMatch(matches: readonly DomMatch[], position: number): 
 }
 
 /**
- * Select the contents of an element — the bookmark-jump counterpart of
- * selectDomMatch. Focus alone does not move a screen reader's virtual
- * cursor; a live text selection does. Returns false when nothing ends up
- * selected.
+ * Select an element's text the way Find selects a match: a range anchored
+ * on the element's own text nodes (first text node's start to last text
+ * node's end), not on the element itself. A whole-element selection
+ * (range.selectNodeContents) leaves the selection anchored on the element,
+ * with no character position inside any text — a screen reader's virtual
+ * cursor does not follow it. A text-node range gives the caret an exact
+ * position, which is what moves the virtual cursor. Returns false when
+ * the element has no text to select.
  */
-export function selectElementContents(element: HTMLElement): boolean {
+export function selectElementText(element: HTMLElement): boolean {
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+  const nodes: Text[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    if (node.data.length > 0) nodes.push(node);
+  }
+  const first = nodes[0];
+  const last = nodes[nodes.length - 1];
+  if (!first || !last) return false;
+  const range = document.createRange();
+  range.setStart(first, 0);
+  range.setEnd(last, last.data.length);
   const selection = window.getSelection();
   if (!selection) return false;
-  const range = document.createRange();
-  range.selectNodeContents(element);
   selection.removeAllRanges();
   selection.addRange(range);
   return selection.rangeCount > 0 && selection.toString().length > 0;
+}
+
+/** Where the reader is in a rendered document, for bookmarking from it. */
+export interface RenderedHeadingPosition {
+  /** The rendered heading at or before the reading position, or null when the position is before the first heading. */
+  heading: HTMLElement | null;
+  /** True when there is a reading position in the document at all (a selection, or a focused heading). */
+  hasPosition: boolean;
+}
+
+/**
+ * The rendered heading at or before the reader's position in `root`:
+ * the selection anchor's containing or preceding heading, or the focused
+ * heading when there is no selection in the document. Screen-reader
+ * navigation keeps the DOM selection at the virtual cursor, so the
+ * selection is the reading position. Returns hasPosition false when
+ * neither a selection nor a focused heading is in the document — the
+ * note has just opened and reading has not started yet.
+ */
+export function renderedHeadingAtSelection(root: HTMLElement): RenderedHeadingPosition {
+  const headings = [...root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
+  const selection = window.getSelection();
+  const anchor = selection?.anchorNode ?? null;
+  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focusedHeading =
+    focused && root.contains(focused) && /^H[1-6]$/.test(focused.tagName) ? focused : null;
+  if (!anchor || !root.contains(anchor)) {
+    // No selection in the document: a focused heading is the position.
+    return { heading: focusedHeading, hasPosition: focusedHeading !== null };
+  }
+  // The last heading that contains the anchor or precedes it in
+  // document order; the first heading after the anchor ends the search.
+  // An anchor that is the heading itself (focusing a heading can leave
+  // the selection anchored on it) counts as that heading.
+  let current: HTMLElement | null = null;
+  for (const heading of headings) {
+    const position = heading.compareDocumentPosition(anchor);
+    if (
+      position === 0 ||
+      position & Node.DOCUMENT_POSITION_CONTAINED_BY ||
+      position & Node.DOCUMENT_POSITION_FOLLOWING
+    ) {
+      current = heading;
+    } else {
+      break;
+    }
+  }
+  if (current) return { heading: current, hasPosition: true };
+  return { heading: focusedHeading, hasPosition: true };
 }
 
 /**
@@ -70,7 +133,7 @@ export function selectRenderedLine(container: HTMLElement, lineText: string): bo
   const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const node = walker.nextNode() as Text | null;
   if (!node || !node.data.trim()) return false;
-  return selectElementContents(node.parentElement ?? container);
+  return selectElementText(node.parentElement ?? container);
 }
 
 /**
