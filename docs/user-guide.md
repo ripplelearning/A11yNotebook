@@ -335,7 +335,8 @@ missing. The right pane lists outgoing links and backlinks for the current note.
 bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. From
 edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at or before the cursor, and
 **Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
-menu and the command palette. Neither shortcut jumps anywhere: both only save a bookmark. To jump back
+menu and the command palette. In reading mode the same shortcuts bookmark the heading you are reading —
+the heading at or before the screen reader's position in the document — so they work there too. Neither shortcut jumps anywhere: both only save a bookmark. To jump back
 to a saved bookmark, activate it in the Bookmarks section of the right pane. Opening an anchored bookmark lands on its heading in the reading view, or
 at its position in edit mode — in plain source and in the rich-text editor alike — moves the reading cursor there, as a Find match does, so a screen reader follows the jump, and announces the heading
 it landed on. When you create a bookmark you are asked to name it: the name is pre-filled with the heading or the surrounding text, and you can accept it or type your own. The name is what the bookmark is listed under in the right pane. Bookmarks and

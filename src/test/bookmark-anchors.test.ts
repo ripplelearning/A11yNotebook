@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
+  headingAnchorForRenderedText,
   headingTextSpan,
   lineSpanAt,
   listHeadings,
@@ -201,5 +202,30 @@ describe('headingTextSpan and lineSpanAt', () => {
     expect(surroundingText('  \n\n  ', 1)).toBe('');
     const long = `Intro.\n\n${'word '.repeat(30).trim()}\n`;
     expect(surroundingText(long, long.indexOf('word'))).toBe(`${'word '.repeat(12).trim()}…`);
+  });
+});
+
+describe('headingAnchorForRenderedText', () => {
+  it('maps a rendered heading back to its source text and occurrence', () => {
+    const content = '# Title\n\nIntro text.\n\n## Hello *world*\n\nDetails here.\n';
+    // The reader sees "Hello world"; the anchor stores the source text.
+    expect(headingAnchorForRenderedText(content, false, 'Hello world', 0)).toEqual({
+      kind: 'heading',
+      text: 'Hello *world*',
+      occurrence: 0,
+    });
+  });
+
+  it('counts duplicate headings by occurrence', () => {
+    expect(headingAnchorForRenderedText(markdown, false, 'Setup', 1)).toEqual({
+      kind: 'heading',
+      text: 'Setup',
+      occurrence: 1,
+    });
+    expect(headingAnchorForRenderedText(markdown, false, 'Setup', 2)).toBeNull();
+  });
+
+  it('returns null when the rendered heading is gone', () => {
+    expect(headingAnchorForRenderedText(markdown, false, 'Missing', 0)).toBeNull();
   });
 });

@@ -57,6 +57,7 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import {
   headingAnchorAt,
+  headingAnchorForRenderedText,
   headingTextSpan,
   lineSpanAt,
   normalizeHeadingText,
@@ -68,8 +69,9 @@ import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-
 import {
   findDomMatches,
   focusReaderSearchBox,
+  renderedHeadingAtSelection,
   selectDomMatch,
-  selectElementContents,
+  selectElementText,
   selectRenderedLine,
 } from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
@@ -3298,31 +3300,107 @@ export default function App() {
     }
   };
 
+  /**
+   * The heading anchor at the reader's position in the rendered
+   * document, for bookmarking from reading mode or the rich-text
+   * editor, where there is no edit caret. The position is the heading
+   * at or before the selection or the focused heading; when the note
+   * has just opened and there is no position in the document yet, it
+   * is the saved reading position, then the first heading (the top of
+   * the note is where reading starts). Returns null only when the
+   * reader is before the first heading, or the note has no headings.
+   */
+  const readingPositionAnchor = async (
+    content: string,
+    isHtml: boolean,
+    path: string,
+  ): Promise<Extract<BookmarkAnchor, { kind: 'heading' }> | null> => {
+    const richEditor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    const root = mode === 'edit' ? richEditor : annotationTools.documentRef.current;
+    if (!root) return null;
+    const anchorForRenderedHeading = (heading: HTMLElement) => {
+      const headings = [...root.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
+      const wanted = normalizeHeadingText(heading.textContent?.trim() ?? '');
+      const occurrence = headings
+        .filter((candidate) => normalizeHeadingText(candidate.textContent?.trim() ?? '') === wanted)
+        .indexOf(heading);
+      return headingAnchorForRenderedText(content, isHtml, wanted, Math.max(0, occurrence));
+    };
+    const { heading, hasPosition } = renderedHeadingAtSelection(root);
+    if (heading) return anchorForRenderedHeading(heading);
+    // The reader is in the document but before the first heading: the
+    // saved position is stale, so there is no heading to bookmark.
+    if (hasPosition) return null;
+    try {
+      const bridge = window.a11yNotebook?.vault;
+      const saved = await bridge?.getReadingPosition?.(path);
+      if (saved?.heading) {
+        const anchor = headingAnchorForRenderedText(content, isHtml, saved.heading, saved.occurrence ?? 0);
+        if (anchor) return anchor;
+      }
+    } catch {
+      // A missing reading position just means no saved place to use.
+    }
+    const first = root.querySelector<HTMLElement>('h1, h2, h3, h4, h5, h6');
+    return first ? anchorForRenderedHeading(first) : null;
+  };
+
   const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note || !window.a11yNotebook) return;
-    const caret = editorRef.current?.selectionStart ?? 0;
-    if (kind === 'heading') {
-      const anchor = headingAnchorAt(note.content, /\.html?$/i.test(note.path), caret);
-      if (!anchor) {
-        setStatusMessage('No heading at or before the cursor to bookmark.');
-        return;
+    const isHtml = /\.html?$/i.test(note.path);
+    // The edit caret when there is a plain-text editor. Reading mode
+    // and the rich-text editor have no textarea, so a caret read there
+    // is always 0 — the first heading, or no heading at all — instead
+    // of the heading the reader is on. That is why Alt+Ctrl+H stopped
+    // creating the bookmark at the cursor: notes open in reading mode
+    // by default, so the shortcut usually ran with no edit caret. The
+    // reading position is used instead whenever there is no textarea.
+    const textareaCaret = editorRef.current?.selectionStart;
+    let anchor: BookmarkAnchor;
+    let offset: number;
+    if (textareaCaret !== undefined) {
+      offset = textareaCaret;
+      if (kind === 'heading') {
+        const headingAnchor = headingAnchorAt(note.content, isHtml, textareaCaret);
+        if (!headingAnchor) {
+          setStatusMessage('No heading at or before the cursor to bookmark.');
+          return;
+        }
+        anchor = headingAnchor;
+      } else {
+        anchor = { kind: 'offset', offset: textareaCaret };
       }
+    } else {
+      const readingAnchor = await readingPositionAnchor(note.content, isHtml, note.path);
+      if (kind === 'heading') {
+        if (!readingAnchor) {
+          setStatusMessage('No heading at or before the cursor to bookmark.');
+          return;
+        }
+        anchor = readingAnchor;
+      } else {
+        // A position bookmark lands on the section the reader is in.
+        anchor = { kind: 'offset', offset: readingAnchor ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0) : 0 };
+      }
+      offset = anchor.kind === 'offset' ? anchor.offset : (resolveBookmarkAnchor(note.content, isHtml, anchor) ?? 0);
+    }
+    if (kind === 'heading') {
+      const headingAnchor = anchor as Extract<BookmarkAnchor, { kind: 'heading' }>;
       // The name prompt is pre-filled with the heading as the reader sees
       // it; the user accepts it or types a better name.
       setBookmarkNameRequest({
         path: note.path,
-        anchor,
-        suggestedName: normalizeHeadingText(anchor.text),
+        anchor: headingAnchor,
+        suggestedName: normalizeHeadingText(headingAnchor.text),
       });
     } else {
-      const anchor: BookmarkAnchor = { kind: 'offset', offset: caret };
-      const context = surroundingText(note.content, caret, 200);
+      const context = surroundingText(note.content, offset, 200);
       setBookmarkNameRequest({
         path: note.path,
         anchor,
         suggestedName:
-          surroundingText(note.content, caret) ||
+          surroundingText(note.content, offset) ||
           note.path.split('/').pop()?.replace(/\.[^.]+$/, '') ||
           'Bookmark',
         ...(context ? { context } : {}),
@@ -3366,9 +3444,14 @@ export default function App() {
   // stores the heading as written in source (`Hello *world*`), while the
   // reading view shows it formatted (`Hello world`).
   // Focus alone does not move a screen reader's virtual cursor, so the
-  // heading's text is selected after focus lands — mirroring Find, which
-  // re-selects its match after focusing for the same reason. Returns the
-  // heading only when both focus and a live selection are in place.
+  // heading's text is selected after focus lands — exactly the way Find
+  // selects a match: a range anchored on the heading's own text nodes
+  // at an exact character offset. Selecting the whole element
+  // (range.selectNodeContents) anchors the selection on the element
+  // instead, with no character position for the virtual cursor to
+  // follow — that is why jumps moved focus but the reading position
+  // stayed put. Returns the heading only when both focus and a live
+  // text-node selection are in place.
   const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
     if (!jumpHeading) return null;
@@ -3384,7 +3467,7 @@ export default function App() {
     if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
-    const selected = selectElementContents(target);
+    const selected = selectElementText(target);
     try {
       target.scrollIntoView({ block: 'start' });
     } catch {
@@ -3394,6 +3477,7 @@ export default function App() {
     return document.activeElement === target &&
       selected &&
       !!selection?.anchorNode &&
+      selection.anchorNode.nodeType === Node.TEXT_NODE &&
       target.contains(selection.anchorNode)
       ? target
       : null;
@@ -3423,6 +3507,7 @@ export default function App() {
     return document.activeElement === container &&
       selected &&
       !!selection?.anchorNode &&
+      selection.anchorNode.nodeType === Node.TEXT_NODE &&
       container.contains(selection.anchorNode)
       ? container
       : null;
@@ -3433,8 +3518,10 @@ export default function App() {
   // A heading anchor selects the heading's text (a collapsed caret does
   // not move the virtual cursor); a position anchor selects the rendered
   // text of the line at its offset, falling back to the start of the
-  // editor only when that line cannot be found. Returns true when the
-  // editor has focus and a live selection is in place.
+  // editor only when that line cannot be found. The heading text is
+  // selected as a text-node range, the way Find selects a match — a
+  // whole-element selection leaves the virtual cursor where it was.
+  // Returns true when the editor has focus and a live selection is in place.
   const focusRichTextBookmark = (content: string, isHtml: boolean, anchor: BookmarkAnchor): boolean => {
     const editor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
     if (!editor) return false;
@@ -3451,7 +3538,7 @@ export default function App() {
       );
       const target = matches[jumpHeading.occurrence] ?? matches[0];
       if (!target) return false;
-      if (!selectElementContents(target)) return false;
+      if (!selectElementText(target)) return false;
     } else {
       const offset = resolveBookmarkAnchor(content, isHtml, anchor);
       const line = offset === null ? null : lineSpanAt(content, offset);
@@ -6160,8 +6247,10 @@ export default function App() {
       return undoTimelineRef.current.redo.length === 0;
     }
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
+    // Bookmarking at the cursor works from the reading position as
+    // well as the edit caret, so these are available in either mode.
     if (id === 'bookmark-heading-at-cursor' || id === 'bookmark-position-at-cursor')
-      return !currentNote || mode !== 'edit';
+      return !currentNote;
     if (id === 'toggle-focus-mode') return !currentNote;
     if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);
     if (id === 'save-current-note')

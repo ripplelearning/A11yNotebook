@@ -167,6 +167,26 @@ export function surroundingText(content: string, offset: number, maxLength = 60)
   return '';
 }
 
+/** The source anchor for a rendered heading: the source heading whose
+ * rendered text matches, at the same occurrence among same-text
+ * headings. A rendered heading reads `Hello world` while its source
+ * stores `Hello *world*`, so the match is on the normalized text.
+ * Null when no source heading matches (the heading is gone, or the
+ * rendered text came from elsewhere).
+ */
+export function headingAnchorForRenderedText(
+  content: string,
+  isHtml: boolean,
+  renderedText: string,
+  occurrence: number,
+): Extract<BookmarkAnchor, { kind: 'heading' }> | null {
+  const wanted = normalizeHeadingText(renderedText);
+  const matches = listHeadings(content, isHtml).filter((hit) => normalizeHeadingText(hit.text) === wanted);
+  const hit = matches[occurrence] ?? null;
+  if (!hit) return null;
+  return { kind: 'heading', text: hit.text, occurrence };
+}
+
 /** Validate an untrusted anchor value (bookmark files are user-editable JSON). */
 export function sanitizeBookmarkAnchor(value: unknown): BookmarkAnchor | undefined {
   if (!value || typeof value !== 'object') return undefined;
