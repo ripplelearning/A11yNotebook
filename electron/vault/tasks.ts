@@ -159,11 +159,22 @@ function htmlTaskRecords(content: string) {
     const dueTime = token.attributes.get('data-a11y-task-due-time')?.value ?? '';
     const priority = token.attributes.get('data-a11y-task-priority')?.value?.toLowerCase() ?? '';
     const reminder = token.attributes.get('data-a11y-task-remind')?.value ?? '';
+    // The structured values live in the data attributes; the visible text
+    // must not carry stored markers, exactly as the Markdown parser strips
+    // them — otherwise a task or its linked reminder surfaces raw marker
+    // text ("remind:YYYY-MM-DD HH:MM") in search results and the task list.
+    const text = taskText(content.slice(token.end, close))
+      .replace(/(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '')
+      .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+      .replace(/due-time:\d{2}:\d{2}/gi, '')
+      .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
+      .replace(/\s+/g, ' ')
+      .trim();
     return [
       {
         id,
         token,
-        text: taskText(content.slice(token.end, close)),
+        text,
         complete: complete === 'true',
         ...(validDate(due) ? { dueDate: due } : {}),
         ...(/^\d{2}:\d{2}$/.test(dueTime) ? { dueTime } : {}),

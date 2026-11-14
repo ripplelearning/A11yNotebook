@@ -199,6 +199,30 @@ describe('persistent vault search', () => {
     expect(result.snippet).not.toContain('due-time:');
   });
 
+  it('never shows a raw time fragment when the snippet window starts inside a marker', async () => {
+    const service = await open(await folder());
+    await service.createFolder('Work');
+    await service.createNote('Work/Note.md');
+    await service.saveNote(
+      'Work/Note.md',
+      '# Dentist\n\n- [ ] remind:2026-11-08 22:03 Call the dentist about the referral paperwork and the insurance forms for next week',
+    );
+    const [result] = await service.search({ text: 'insurance' });
+    expect(result.snippet).toContain('11/08/2026, 10:03 PM');
+    expect(result.snippet).not.toContain('22:03');
+    expect(result.snippet).not.toContain('remind:');
+  });
+
+  it('never shows a partial marker when the snippet window ends inside one', async () => {
+    const service = await open(await folder());
+    await service.createFolder('Work');
+    await service.createNote('Work/Note.md');
+    await service.saveNote('Work/Note.md', `# Dentist\n\n${'word '.repeat(40)}remind:2026-11-08 22:03 Call the dentist`);
+    const [result] = await service.search({ text: 'dentist' });
+    expect(result.snippet).not.toContain('remind:');
+    expect(result.snippet).not.toContain('2026-11-08');
+  });
+
   it('indexes task toggles, creates, saves, and folder renames immediately', async () => {
     const service = await open(await folder());
     await service.createFolder('Work');

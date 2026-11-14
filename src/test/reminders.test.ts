@@ -80,6 +80,15 @@ describe('reminder parsing and validation', () => {
     ]);
   });
 
+  it('strips stored markers from an HTML task reminder title', () => {
+    expect(
+      parseTaskReminders(
+        '<ul><li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="2026-10-04" data-a11y-task-remind="2026-10-04 09:30">Call the dentist remind:2026-10-04 09:30 due:2026-10-04 priority:high</li></ul>',
+        'Study.html',
+      ),
+    ).toMatchObject([{ title: 'Call the dentist' }]);
+  });
+
   it('normalizes typed 12-hour times to 24-hour storage and rejects bad ones', () => {
     expect(normalizeTimeText('14:30')).toBe('14:30');
     expect(normalizeTimeText('2:30 PM')).toBe('14:30');

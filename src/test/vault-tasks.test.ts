@@ -74,6 +74,19 @@ describe('Markdown task indexing', () => {
       ]);
     });
 
+    it('strips stored markers from the visible text, like Markdown tasks', () => {
+      const marked =
+        '<li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="2026-10-05" data-a11y-task-priority="high" data-a11y-task-remind="2026-10-05 09:30">Call the dentist remind:2026-10-05 09:30 due:2026-10-05 priority:high</li>';
+      expect(parseHtmlTasks(`<ul>${marked}</ul>`, 'Reading.html')).toMatchObject([
+        {
+          text: 'Call the dentist',
+          dueDate: '2026-10-05',
+          priority: 'high',
+          remindAt: '2026-10-05 09:30',
+        },
+      ]);
+    });
+
     it('toggles only the completion attribute and ignores duplicate task identities', () => {
       const source = `<article><h2>Keep</h2><ul>${task}</ul><p>Also keep</p></article>`;
       const toggled = toggleHtmlTask(source, 'task-1234', true);
