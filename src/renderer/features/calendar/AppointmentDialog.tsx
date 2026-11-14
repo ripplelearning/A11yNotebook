@@ -10,19 +10,20 @@ import {
   type CalendarRecurrence,
 } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
-import { normalizeTimeText } from '../../../shared/reminders';
+import { composeDialogTime, splitStoredTime, type Meridiem } from '../../../shared/reminders';
 import Modal from '../../components/Modal';
 import DatePickerField from '../../components/DatePickerField';
 
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 
-function splitDateTime(value: string): { date: string; time: string } {
+function splitDateTime(value: string): { date: string; time: string; meridiem: Meridiem } {
   const parts = parseAppointmentTime(value);
-  if (!parts) return { date: '', time: '' };
+  if (!parts) return { date: '', time: '', meridiem: 'AM' };
   const pad = (item: number) => String(item).padStart(2, '0');
   const date = `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { date, time: '' };
-  return { date, time: `${pad(parts.hour)}:${pad(parts.minute)}` };
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { date, time: '', meridiem: 'AM' };
+  const split = splitStoredTime(`${pad(parts.hour)}:${pad(parts.minute)}`);
+  return { date, time: split.time, meridiem: split.meridiem };
 }
 
 function taskOptionValue(task: VaultTask): string {
@@ -47,16 +48,18 @@ export default function AppointmentDialog({
   onClose: () => void;
 }) {
   const id = useId();
-  const startParts = appointment ? splitDateTime(appointment.start) : { date: '', time: '' };
-  const endParts = appointment?.end ? splitDateTime(appointment.end) : { date: '', time: '' };
+  const startParts = splitDateTime(appointment?.start ?? '');
+  const endParts = appointment?.end ? splitDateTime(appointment.end) : splitDateTime('');
   const [title, setTitle] = useState(appointment?.title ?? '');
   const [allDay, setAllDay] = useState(appointment?.allDay ?? false);
   const [startDate, setStartDate] = useState(startParts.date);
   const [startTime, setStartTime] = useState(startParts.time);
+  const [startMeridiem, setStartMeridiem] = useState<Meridiem>(startParts.meridiem);
   const [endDate, setEndDate] = useState(
     appointment?.allDay && appointment.end ? (shiftDateText(appointment.end, -1) ?? '') : endParts.date,
   );
   const [endTime, setEndTime] = useState(endParts.time);
+  const [endMeridiem, setEndMeridiem] = useState<Meridiem>(endParts.meridiem);
   const [location, setLocation] = useState(appointment?.location ?? '');
   const [description, setDescription] = useState(appointment?.description ?? '');
   const [frequency, setFrequency] = useState<CalendarRecurrence['frequency'] | 'none'>(
@@ -99,7 +102,7 @@ export default function AppointmentDialog({
     if (!title.trim()) return 'Enter an appointment title.';
     if (title.trim().length > 500) return 'Keep the title to 500 characters or fewer.';
     if (!parseDateOnly(startDate)) return 'Enter a valid start date.';
-    const startTimeNormalized = allDay ? null : normalizeTimeText(startTime);
+    const startTimeNormalized = allDay ? null : composeDialogTime(startTime, startMeridiem);
     const start = allDay ? startDate : startTimeNormalized ? combineDateTime(startDate, startTimeNormalized) : null;
     if (!start) return allDay ? 'Enter a valid start date.' : 'Enter a valid start date and time.';
     let end: string | undefined;
@@ -110,7 +113,7 @@ export default function AppointmentDialog({
         if (!end) return 'Enter a valid end date.';
       } else {
         if (!endTime) return 'Enter an end time when an end date is set.';
-        const endTimeNormalized = normalizeTimeText(endTime);
+        const endTimeNormalized = composeDialogTime(endTime, endMeridiem);
         end = endTimeNormalized ? (combineDateTime(endDate, endTimeNormalized) ?? undefined) : undefined;
         if (!end) return 'Enter a valid end date and time.';
       }
@@ -266,6 +269,16 @@ export default function AppointmentDialog({
                 onChange={(event) => setStartTime(event.target.value)}
                 required
               />
+              <label htmlFor={`${id}-start-meridiem`}>Start AM or PM</label>
+              <select
+                id={`${id}-start-meridiem`}
+                disabled={busy}
+                value={startMeridiem}
+                onChange={(event) => setStartMeridiem(event.target.value === 'PM' ? 'PM' : 'AM')}
+              >
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
             </>
           )}
           <DatePickerField
@@ -287,6 +300,16 @@ export default function AppointmentDialog({
                 onChange={(event) => setEndTime(event.target.value)}
                 required
               />
+              <label htmlFor={`${id}-end-meridiem`}>End AM or PM</label>
+              <select
+                id={`${id}-end-meridiem`}
+                disabled={busy}
+                value={endMeridiem}
+                onChange={(event) => setEndMeridiem(event.target.value === 'PM' ? 'PM' : 'AM')}
+              >
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
             </>
           )}
           <label htmlFor={`${id}-location`}>Location (optional)</label>
