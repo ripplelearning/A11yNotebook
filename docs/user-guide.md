@@ -23,7 +23,7 @@ or one that contains it.
 | Active view                                                       | New workflow                                                                                                                          |
 | ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Libraries                                                         | Create a **new local library**, choosing a parent folder and a new name in the native dialog; an existing folder is never overwritten |
-| Notebooks                                                         | Create a notebook in the open library                                                                                                 |
+| Notebooks                                                         | Create a notebook in the open library, choosing the Library root or the selected notebook as its location                             |
 | Notes and Files                                                   | Create a note in the selected notebook                                                                                                |
 | Tasks                                                             | Choose an associated note and add a persisted checkbox task, with optional due date and priority                                      |
 | Cognitive Tools                                                   | Choose Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, then name and create the tool at the library root                   |
@@ -37,12 +37,14 @@ that prerequisite rather than silently creating a different kind of item.
 
 ## Navigate files
 
-In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Typing a letter jumps to the next item whose name starts with it, wrapping around, so pressing the same letter again cycles through every match. Enter opens the selected item: a managed note, or a supported managed preview. The Type column shows the file's real type — PDF, ePub, Word document, Excel spreadsheet, CSV, PowerPoint presentation — instead of the generic "Attachment". External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently.
+In the main view, move through the Libraries, Notebooks, and Notes and Files grids with the arrow keys; Home and End move to the first and last row. Typing a letter jumps to the next item whose name starts with it, wrapping around, so pressing the same letter again cycles through every match. Enter opens the selected item: a managed note, a supported managed preview, or a notebook, which opens its Notes and Files view. A notebook's Notes and Files view shows its own notes and files plus the notebooks inside it; a sub-notebook's notes only appear when that sub-notebook is opened, so a note never shows under two notebooks at once. The Type column shows the file's real type — PDF, ePub, Word document, Excel spreadsheet, CSV, PowerPoint presentation — instead of the generic "Attachment". External or unknown-origin documents use Open With rather than being silently treated as app-created notes. F2 opens a rename dialog. Delete asks before moving an item to the Recycle Bin; Shift+Delete deletes permanently.
 Deleting a note or notebook that contains tasks first warns how many tasks will be deleted with it, since tasks
 live inside notes and have no separate copy. Space selects a row. To arrange notebooks, notes, and files in the library tree, use the Organize Library dialog below.
 
 Use **File → New note**, **File → New notebook**, or **Tools → Import file**. Imported files are copied into the
-selected notebook. Select an item before using **Tools → Reveal selected item in Explorer** or **Open selected item
+selected notebook. Creating a notebook asks where it goes: the Library root by default, or inside the notebook
+you have selected. The new notebook becomes the selected notebook, and the app announces where it was created.
+Select an item before using **Tools → Reveal selected item in Explorer** or **Open selected item
 in external app**. These commands use the current selection, not a previously selected item.
 
 ### Organize library
