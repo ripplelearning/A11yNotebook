@@ -48,6 +48,8 @@ export const IPC_CHANNELS = {
   vaultOpenExternal: 'vault:open-external',
   vaultOpenUrl: 'vault:open-url',
   vaultImport: 'vault:import',
+  vaultImportComplete: 'vault:import-complete',
+  vaultLocateAlius: 'vault:locate-alius',
   vaultImportAsNote: 'vault:import-as-note',
   vaultImportEntry: 'vault:import-entry',
   vaultAdoptEncrypted: 'vault:adopt-encrypted',

@@ -147,6 +147,7 @@ import {
   type TranscriptionModelOption,
 } from '../shared/audio';
 import { isAllowedLinkUrl, parseLinkUrl } from '../shared/links';
+import { isAliusPath, type ImportPending } from '../shared/alius';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
 import type { NoteTemplate } from '../shared/templates';
@@ -175,6 +176,7 @@ import TaskLinkDialog from './features/reminders/TaskLinkDialog';
 import type { TaskLink, TaskLinkKind } from '../shared/task-links';
 import { dropLinksToMissingTargets, reconcileTaskAutoLinks } from '../shared/task-links';
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
+import ImportAliusDialog, { type ImportDialogChoice } from './features/vault/ImportAliusDialog';
 import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
@@ -2117,7 +2119,21 @@ export default function App() {
       vaultGenerationRef.current === generation &&
       canContinue();
     selectEntry(entry);
-    if (entry.kind === 'link') {
+    // An Alius opens its original: dispatch on the original's type, but
+    // keep the record path as the identity for tabs, previews, and saves.
+    const isAlius = isAliusPath(entry.path);
+    const aliusTarget = isAlius ? entry.aliusTarget : undefined;
+    if (isAlius && (!aliusTarget || entry.aliusBroken)) {
+      setStatusMessage(
+        aliusTarget
+          ? `The original file is no longer available at ${aliusTarget}. Locate the file or remove the Alius.`
+          : 'This Alius does not point to a valid file. Locate the file or remove the Alius.',
+      );
+      return;
+    }
+    const dispatchPath = isAlius ? aliusTarget! : entry.path;
+    const dispatchKind = isAlius ? (/\.(?:md|html|htm|txt)$/i.test(dispatchPath) ? 'note' : 'attachment') : entry.kind;
+    if (entry.kind === 'link' && !isAlius) {
       await openLinkEntry(entry);
       return;
     }
@@ -2158,19 +2174,19 @@ export default function App() {
       // predate the provenance system, and cloud sync can replace a
       // file and drop its identity. Unsupported files still prompt
       // below; legacy encrypted notes were handled above.
-      if (!isInternallySupportedPath(entry.path)) {
+      if (!isInternallySupportedPath(dispatchPath)) {
         setExternalFile(entry);
         return;
       }
     }
-    if (entry.kind !== 'notebook' && !isInternallySupportedPath(entry.path)) {
+    if (entry.kind !== 'notebook' && !isInternallySupportedPath(dispatchPath)) {
       setExternalFile(entry);
       return;
     }
     // CSV files always open in the spreadsheet view, even though the Grid
     // cognitive tool also claims the .csv extension: Grid files stay
     // openable from the Assets tab, where readAsset resolves them by type.
-    if (!/\.csv$/i.test(entry.path) && assetRegistry.resolve(entry.path)) {
+    if (!isAlius && !/\.csv$/i.test(dispatchPath) && assetRegistry.resolve(dispatchPath)) {
       if (assetDirty || assetBusy) {
         setStatusMessage('Save cognitive asset changes and wait for pending operations before opening another asset.');
         return;
@@ -2182,24 +2198,24 @@ export default function App() {
       setPendingFocus('main');
       return;
     }
-    if (entry.kind === 'attachment') {
-      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc|xlsx|ods|xls|pptx|odp)$/i.test(entry.path)) {
+    if (dispatchKind === 'attachment') {
+      if (/\.(?:txt|csv|html?|pdf|epub|docx|rtf|doc|xlsx|ods|xls|pptx|odp)$/i.test(dispatchPath)) {
         const preview = await bridge.vault.readAttachment(entry.path);
         if (!canOpen()) return;
         setAttachment(preview);
         setSelectedTab('attachment');
-      } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(entry.path)) {
+      } else if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(dispatchPath)) {
         const alt = await bridge.vault.getImageAlt(entry.path);
         if (!canOpen()) return;
         setImageAlt(alt);
         setAttachment({ path: entry.path, text: '', kind: 'image' });
         setSelectedTab('attachment');
-      } else if (isAudioPath(entry.path)) {
+      } else if (isAudioPath(dispatchPath)) {
         if (!canOpen()) return;
         setAttachment({
           path: entry.path,
           text: '',
-          kind: entry.path.slice(entry.path.lastIndexOf('.')).toLowerCase(),
+          kind: dispatchPath.slice(dispatchPath.lastIndexOf('.')).toLowerCase(),
         });
         setSelectedTab('attachment');
       } else {
@@ -2208,7 +2224,7 @@ export default function App() {
       }
       return;
     }
-    if (entry.kind !== 'note') return;
+    if (dispatchKind !== 'note') return;
     const existingNote = openNotes.find((item) => item.id === entry.path);
     if (existingNote) {
       onOpened?.();
@@ -2222,7 +2238,7 @@ export default function App() {
     let content: string;
     try {
       const loaded = await bridge.vault.readNote(entry.path, notePassword);
-      content = /\.html?$/i.test(entry.path) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
+      content = /\.html?$/i.test(dispatchPath) ? sanitizeNoteHtml(loaded, entry.path) : loaded;
     } catch (error) {
       if (!canOpen()) return;
       if (!notePassword && error instanceof Error && /note’s password/i.test(error.message)) {
@@ -2235,9 +2251,12 @@ export default function App() {
     const note: OpenNote = {
       id: entry.path,
       path: entry.path,
-      title: entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
+      title: isAlius
+        ? (aliusTarget!.split(/[\\/]/).at(-1) ?? entry.name).replace(/\.(?:md|html|htm|txt)$/i, '')
+        : entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
       content,
       saved: content,
+      ...(isAlius ? { aliusTarget: aliusTarget! } : {}),
     };
     setOpenNotes((current) =>
       current.some((item) => item.id === note.id)
@@ -2257,9 +2276,11 @@ export default function App() {
       throw new Error('Open and unlock a library before importing.');
     const root = vaultPathRef.current;
     const generation = externalOperationGeneration.current;
-    const imported = await bridge.importEntry(entry.path);
+    const pending = await bridge.importEntry(entry.path);
     const isCurrent = () =>
       generation === externalOperationGeneration.current && vaultPathRef.current === root && !switchingRef.current;
+    if (!isCurrent() || !pending) return;
+    const imported = await completePendingImport(pending, isCurrent);
     if (!isCurrent() || !imported) return;
     if (imported.vault.path !== root) throw new Error('The library changed during import.');
     const copy = findEntry(imported.vault.entries, imported.path);
@@ -2267,7 +2288,12 @@ export default function App() {
       throw new Error('The imported copy is unavailable. Refresh the library before opening it.');
     setVault(imported.vault);
     await openEntry(copy, undefined, isCurrent);
-    if (isCurrent()) setStatusMessage(`Imported ${entry.name} as ${copy.name}.`);
+    if (isCurrent())
+      setStatusMessage(
+        isAliusPath(copy.path)
+          ? `Imported ${entry.name} as an Alius. The original file was kept.`
+          : `Imported ${entry.name} as ${copy.name}.`,
+      );
   };
 
   const [reminderCreateRequest, setReminderCreateRequest] = useState(0);
@@ -2942,6 +2968,37 @@ export default function App() {
       pasteOrphanResolver.current = resolve;
       setPasteOrphanPrompt({ files });
     });
+
+  const [importChoicePrompt, setImportChoicePrompt] = useState<ImportPending | null>(null);
+  const importChoiceResolver = useRef<((choice: ImportDialogChoice) => void) | null>(null);
+
+  /** Ask copy or Alius for a pending import; resolves 'cancel' when the dialog is dismissed. */
+  const askImportChoice = (pending: ImportPending): Promise<ImportDialogChoice> =>
+    new Promise((resolve) => {
+      importChoiceResolver.current = resolve;
+      setImportChoicePrompt(pending);
+    });
+
+  /**
+   * Finish a pending import with the user's copy-or-Alius choice. Returns
+   * the created item and the updated view, or null when cancelled. The
+   * optional currency check runs after the dialog (the library may have
+   * changed while it was open) and before anything is written.
+   */
+  const completePendingImport = async (
+    pending: ImportPending,
+    isCurrent?: () => boolean,
+  ): Promise<{ vault: VaultInfo; path: string } | null> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.importComplete) {
+      setStatusMessage('Finishing this import is unavailable.');
+      return null;
+    }
+    const choice = await askImportChoice(pending);
+    if (choice === 'cancel') return null;
+    if (isCurrent && !isCurrent()) return null;
+    return bridge.importComplete(pending, choice);
+  };
 
   const openPastedLibrary = async (libraryPath: string): Promise<boolean> => {
     const bridge = window.a11yNotebook?.vault;
@@ -4304,19 +4361,23 @@ export default function App() {
       }
       const root = vaultPathRef.current;
       const generation = vaultGenerationRef.current;
+      const isCurrent = () =>
+        !switchingRef.current &&
+        vaultPathRef.current === root &&
+        !securityLockedRef.current &&
+        vaultGenerationRef.current === generation;
       try {
-        const imported = await importer.importEntry(entry.path);
-        if (
-          switchingRef.current ||
-          vaultPathRef.current !== root ||
-          securityLockedRef.current ||
-          vaultGenerationRef.current !== generation
-        )
-          return;
-        if (!imported) return;
+        const pending = await importer.importEntry(entry.path);
+        if (!isCurrent() || !pending) return;
+        const imported = await completePendingImport(pending, isCurrent);
+        if (!isCurrent() || !imported) return;
         setVault(imported.vault);
         const created = findEntry(imported.vault.entries, imported.path);
         if (created) await openEntry(created);
+        if (created && isAliusPath(created.path)) {
+          setStatusMessage('Document imported as an Alius. The original file was kept.');
+          return;
+        }
         const kind =
           created && /\.csv$/i.test(created.path)
             ? 'a spreadsheet'
@@ -4409,8 +4470,22 @@ export default function App() {
       } catch {
         setStatusMessage('Could not open the mail app.');
       }
-    } else if (commandId === 'edit-link' && entry?.kind === 'link') {
+    } else if (commandId === 'edit-link' && entry?.kind === 'link' && !isAliusPath(entry.path)) {
       await openEditLinkDialog(entry);
+    } else if (commandId === 'alius-locate' && entry && isAliusPath(entry.path)) {
+      const bridge = window.a11yNotebook?.vault;
+      if (!bridge?.locateAlius) {
+        setStatusMessage('Locating the original file is unavailable.');
+        return;
+      }
+      try {
+        const located = await bridge.locateAlius(entry.path);
+        if (!located) return;
+        setVault(located.vault);
+        setStatusMessage('Located the original file. The Alius is available again.');
+      } catch {
+        setStatusMessage('Could not locate the original file.');
+      }
     } else if (
       entry &&
       (request.context.startsWith('tree-') || request.context === 'attachment' || request.context === 'link') &&
@@ -4606,8 +4681,21 @@ export default function App() {
     if (!note) return;
     const bridge = window.a11yNotebook.vault;
     if (choice === 'copy') {
-      const extension = /\.html?$/i.test(note.path) ? '.html' : '.md';
-      const copyPath = note.path.replace(/\.(?:md|html|htm|txt)$/i, ` (conflict copy ${Date.now()})${extension}`);
+      let copyPath: string;
+      if (note.aliusTarget) {
+        // An Alius note's content lives in the original file, not the
+        // record: the copy is a new library note named after the
+        // original, in the record's notebook.
+        const targetName = note.aliusTarget.split(/[\\/]/).at(-1) ?? 'Note';
+        const extension = /\.html?$/i.test(note.aliusTarget) ? '.html' : '.md';
+        const base = targetName.replace(/\.(?:md|html|htm|txt)$/i, '') || 'Note';
+        const directory = note.path.split('/').slice(0, -1).join('/');
+        const copyName = `${base} (conflict copy ${Date.now()})${extension}`;
+        copyPath = directory ? `${directory}/${copyName}` : copyName;
+      } else {
+        const extension = /\.html?$/i.test(note.path) ? '.html' : '.md';
+        copyPath = note.path.replace(/\.(?:md|html|htm|txt)$/i, ` (conflict copy ${Date.now()})${extension}`);
+      }
       setVault(await bridge.createNote(copyPath, note.content));
       setOpenNotes((items) => items.filter((item) => item.path !== note.path));
       synchronization.clearConflict(note.path);
@@ -5558,7 +5646,7 @@ export default function App() {
       if (targetNotebook && window.a11yNotebook)
         void window.a11yNotebook.vault
           .importFile(targetNotebook)
-          .then((updated) => {
+          .then(async (updated) => {
             if (!updated) return;
             if ('pointer' in updated) {
               // A Google link-pointer file: offer "Add as link" with the
@@ -5587,7 +5675,16 @@ export default function App() {
               });
               return;
             }
-            setVault(updated);
+            const completed = await completePendingImport(updated);
+            if (!completed) return;
+            setVault(completed.vault);
+            const created = findEntry(completed.vault.entries, completed.path);
+            if (created) await openEntry(created);
+            if (created && isAliusPath(created.path)) {
+              setStatusMessage(`Imported ${updated.sourceName} as an Alius. The original file was kept.`);
+            } else if (created) {
+              setStatusMessage(`Imported ${created.name}. The original file was kept.`);
+            }
           })
           .catch((failure) => {
             // Surface the .gdoc and export-guidance messages, not a
@@ -5924,6 +6021,10 @@ export default function App() {
       const entry = findEntry(vault?.entries ?? [], treeSelection);
       if (!entry || entry.kind !== 'link') {
         setStatusMessage('Select a link to edit it.');
+        return;
+      }
+      if (isAliusPath(entry.path)) {
+        setStatusMessage('An Alius has no web address to edit.');
         return;
       }
       void openEditLinkDialog(entry);
@@ -6360,6 +6461,25 @@ export default function App() {
               !contextEntry ||
               isInternallySupportedPath(contextEntry.path),
         )
+        .filter((command) => {
+          const entryIsAlius = Boolean(contextEntry && isAliusPath(contextEntry.path));
+          if (!entryIsAlius) {
+            // Plain web links never get Alius actions, and never get
+            // "Open With…" (there is no file to open).
+            if (command.id === 'alius-locate') return false;
+            if (
+              (command.id === 'context-open-with' || command.id === 'context-open-with-default') &&
+              contextEntry?.kind === 'link'
+            )
+              return false;
+            return true;
+          }
+          // Alius records: no link editing, and "Locate the file" only
+          // while the original is missing.
+          if (command.id === 'edit-link') return false;
+          if (command.id === 'alius-locate') return Boolean(contextEntry?.aliusBroken);
+          return true;
+        })
         .map((command) =>
           command.id === 'annotate-pdf-selection'
             ? { ...command, label: 'Add note' }
@@ -6367,7 +6487,12 @@ export default function App() {
               ? { ...command, label: 'Unpin tab' }
               : command.id === 'context-protect' && contextEntry?.protected
                 ? { ...command, label: 'Unprotect selected item' }
-                : command,
+                : command.id === 'context-delete' &&
+                    contextEntry &&
+                    isAliusPath(contextEntry.path) &&
+                    contextEntry.aliusBroken
+                  ? { ...command, label: 'Remove the Alius' }
+                  : command,
         )
     : [];
   const disabledContextCommands = new Set<CommandId>();
@@ -6554,6 +6679,16 @@ export default function App() {
             setPasteLibraryPrompt(null);
             pasteLibraryResolver.current?.(choice);
             pasteLibraryResolver.current = null;
+          }}
+        />
+      ) : null}
+      {importChoicePrompt ? (
+        <ImportAliusDialog
+          pending={importChoicePrompt}
+          onChoice={(choice) => {
+            setImportChoicePrompt(null);
+            importChoiceResolver.current?.(choice);
+            importChoiceResolver.current = null;
           }}
         />
       ) : null}

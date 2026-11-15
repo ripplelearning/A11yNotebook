@@ -19,6 +19,7 @@ import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf
 import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './docx-annotations';
 import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
 import type { AttachmentPreview } from './attachments';
+import type { ImportChoice, ImportPending } from './alius';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
 import type { ReminderDefaults } from './reminder-defaults';
@@ -174,9 +175,17 @@ export interface VaultBridge {
     options?: { makeDefault?: boolean },
   ): Promise<{ cancelled: boolean; settingsOpened?: boolean }>;
   openUrl(url: string): Promise<void>;
-  importFile(notebookPath: string): Promise<VaultInfo | { pointer: PointerImport } | { pointerFailed: PointerImportFailure } | null>;
+  /** Pick a file for import: validates it and returns the pending choice, or a link-pointer outcome. Nothing is written yet. */
+  importFile(
+    notebookPath: string,
+  ): Promise<ImportPending | { pointer: PointerImport } | { pointerFailed: PointerImportFailure } | null>;
+  /** Finish a pending import with the user's copy-or-Alius choice; returns the created item and the updated view. */
+  importComplete?(pending: ImportPending, choice: ImportChoice): Promise<{ vault: VaultInfo; path: string }>;
+  /** Pick a replacement original for a broken Alius record; returns the retargeted item and the updated view. */
+  locateAlius?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
   importAsNote?(path: string): Promise<{ vault: VaultInfo; path: string }>;
-  importEntry?(path: string): Promise<{ vault: VaultInfo; path: string } | null>;
+  /** Pick an in-library file for import: validates it and returns the pending choice. Nothing is written yet. */
+  importEntry?(path: string): Promise<ImportPending | null>;
   adoptEncrypted?(path: string, password?: string): Promise<VaultInfo | null>;
   delete(path: string): Promise<VaultInfo>;
   deletePermanently(path: string, hasUnsavedChanges: boolean): Promise<VaultInfo>;

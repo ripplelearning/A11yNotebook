@@ -42,7 +42,17 @@ export function useVaultChanges(
           entries.some((entry) => entry.path === relative || (entry.children && exists(entry.children, relative)));
         for (const snapshot of [...notesRef.current]) {
           if (notePath && snapshot.path !== notePath) continue;
-          const disk = exists(latest.entries, snapshot.path) ? await bridge.readNote(snapshot.path) : null;
+          let disk: string | null;
+          try {
+            disk = exists(latest.entries, snapshot.path) ? await bridge.readNote(snapshot.path) : null;
+          } catch (failure) {
+            // An Alius whose original is gone cannot be read: surface the
+            // conflict dialog (with a Save copy option) instead of only
+            // announcing a refresh failure. Other notes keep the
+            // fail-closed announce below.
+            if (!snapshot.aliusTarget) throw failure;
+            disk = null;
+          }
           if (rootRef.current !== root) return;
           const current = notesRef.current.find((note) => note.path === snapshot.path);
           if (!current || disk === current.saved) continue;
@@ -59,7 +69,7 @@ export function useVaultChanges(
           } else {
             setConflicts((items) => [
               ...items.filter((item) => item.path !== current.path),
-              { path: current.path, disk },
+              { path: current.path, disk, ...(current.aliusTarget ? { aliusTarget: current.aliusTarget } : {}) },
             ]);
             announce(`External changes conflict with ${current.title}. Choose how to resolve them.`);
           }

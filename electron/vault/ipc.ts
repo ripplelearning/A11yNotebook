@@ -41,6 +41,7 @@ import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { ReadingPositionInput, VaultEntry, VaultInfo } from '../../src/shared/types';
+import type { ImportPending } from '../../src/shared/alius';
 import type { SyncStateFile } from '../../src/shared/calendar-sync';
 import { createLockedDueWatcher, type DueSnapshotEntry } from './locked-due';
 import {
@@ -440,6 +441,37 @@ function requireService() {
 }
 
 async function externalDocument(vault: VaultService, relative: string) {
+  // An Alius opens its original, not the record: the target lives
+  // outside the library and is never library-encrypted, so the
+  // encryption guard does not apply — the allowlist applies to the
+  // target's type instead.
+  const alius = await vault.resolveAlius(relative);
+  if (alius) {
+    const target = alius.target;
+    let stat: Awaited<ReturnType<typeof lstat>> | null = null;
+    try {
+      stat = await lstat(target);
+    } catch {
+      stat = null;
+    }
+    if (!stat || !stat.isFile() || stat.isSymbolicLink())
+      throw new Error(
+        `The original file is no longer available at ${target}. Locate the file or remove the Alius.`,
+      );
+    if (!isExternalDocumentPath(target))
+      throw new Error(
+        'Only supported office, text, document, and image files can be opened externally. Executables, scripts, and shortcuts are not supported.',
+      );
+    if (/\.(?:md|markdown|html?)$/i.test(target)) {
+      if (stat.size > 40 * 1024 * 1024)
+        throw new Error(
+          'This note is too large to safely check for encrypted content. Use Reveal in Explorer to inspect it.',
+        );
+      if (isEncryptedNoteSource(await readBoundedMetadata(target, 40 * 1024 * 1024)))
+        throw new Error('Encrypted notes cannot be opened externally. Export with explicit consent instead.');
+    }
+    return target;
+  }
   if (vault.libraryEncryptionCovers(relative))
     throw new Error(
       'This file is encrypted by whole-library encryption and cannot be opened externally. Turn off whole-library encryption in Settings first, or use the file inside the app.',
@@ -460,6 +492,16 @@ async function externalDocument(vault: VaultService, relative: string) {
       throw new Error('Encrypted notes cannot be opened externally. Export with explicit consent instead.');
   }
   return target;
+}
+
+/**
+ * The path to check an extension against: an Alius record's original, or
+ * the library-relative path itself. The service methods resolve the
+ * record again internally; this is only for the handler's extension gate.
+ */
+async function effectiveContentPath(vault: VaultService, relative: string): Promise<string> {
+  const alius = await vault.resolveAlius(relative);
+  return alius ? alius.target : relative;
 }
 
 async function copyImportedDocument(
@@ -2559,13 +2601,18 @@ export function setupVaultIpc(
       const vault = requireService();
       const generation = securityGeneration;
       const relative = protocolPath(request.url);
-      const extension = path.extname(relative).toLowerCase();
+      // An Alius serves its original's bytes, with the MIME type of the
+      // original's format; the record file itself is never served.
+      const alius = await vault.resolveAlius(relative);
+      const effectivePath = alius ? alius.target : relative;
+      const extension = path.extname(effectivePath).toLowerCase();
       const mime = IMAGE_TYPES[extension] ?? AUDIO_TYPES[extension] ?? DOCUMENT_TYPES[extension];
       if (!mime) return new Response('Unsupported preview.', { status: 415 });
-      const target = await vault.resolveEntry(relative);
+      const target = alius ? alius.target : await vault.resolveEntry(relative);
       const stat = await lstat(target);
-      if (!stat.isFile() || stat.size > 40 * 1024 * 1024) return new Response('Attachment too large.', { status: 413 });
-      const bytes = vault.decodeFileBytes(relative, await readFile(target));
+      if (!stat.isFile() || stat.isSymbolicLink() || stat.size > 40 * 1024 * 1024)
+        return new Response('Attachment too large.', { status: 413 });
+      const bytes = alius ? await readFile(target) : vault.decodeFileBytes(relative, await readFile(target));
       if (service !== vault || securityGeneration !== generation || (securityConfig && !masterKey))
         return new Response('Library access changed.', { status: 423 });
       return new Response(new Uint8Array(bytes), {
@@ -2825,6 +2872,10 @@ export function setupVaultIpc(
     const access = captureVaultAccess(event, isTrustedSender);
     const content = await access.vault.readNote(relativePath, 16 * 1024 * 1024);
     access.assertCurrent();
+    // An Alius note's content is the original's plaintext: it is never a
+    // library- or password-encrypted note, so the unwrap below must not
+    // run on it.
+    if (await access.vault.resolveAlius(relativePath)) return content;
     let parsed: unknown;
     try {
       parsed = JSON.parse(content);
@@ -3292,28 +3343,52 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReadAttachment, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relative !== 'string') throw new Error('Invalid attachment path.');
-    const decode = (entry: string, bytes: Buffer) => requireService().decodeFileBytes(entry, bytes);
-    if (/\.(?:pdf|epub)$/i.test(relative)) return readDocumentAttachment(requireService().resolveEntry, relative, decode);
-    if (/\.docx$/i.test(relative)) {
-      await requireService().resolveEntry(relative);
+    const service = requireService();
+    // An Alius preview reads its original: dispatch on the original's
+    // type, read its bytes raw, and keep the record path as the preview
+    // identity so the renderer keeps working with the grid item.
+    const alius = await service.resolveAlius(relative);
+    const effective = alius ? alius.target : relative;
+    if (alius) {
+      const stat = await lstat(alius.target).catch(() => null);
+      if (!stat || !stat.isFile() || stat.isSymbolicLink())
+        throw new Error(
+          `The original file is no longer available at ${alius.target}. Locate the file or remove the Alius.`,
+        );
+    }
+    const decode = alius
+      ? (_entry: string, bytes: Buffer) => bytes
+      : (entry: string, bytes: Buffer) => service.decodeFileBytes(entry, bytes);
+    const resolve = alius ? async () => alius.target : service.resolveEntry;
+    if (/\.(?:pdf|epub)$/i.test(effective)) {
+      const preview = await readDocumentAttachment(resolve, effective, decode);
+      return { ...preview, path: relative };
+    }
+    if (/\.docx$/i.test(effective)) {
+      await resolve(effective);
       return { path: relative, kind: '.docx', text: '' };
     }
-    if (/\.(?:xlsx|ods|csv|xls|pptx|odp)$/i.test(relative)) {
+    if (/\.(?:xlsx|ods|csv|xls|pptx|odp)$/i.test(effective)) {
       // Spreadsheets and slide decks load their own structured data;
       // the preview carries no text.
-      await requireService().resolveEntry(relative);
-      return { path: relative, kind: path.extname(relative).toLowerCase(), text: '' };
+      await resolve(effective);
+      return { path: relative, kind: path.extname(effective).toLowerCase(), text: '' };
     }
-    if (/\.(?:rtf|doc)$/i.test(relative)) return readConvertedAttachment(requireService().resolveEntry, relative, decode);
-    if (/\.(?:webm|mp3|wav|m4a|ogg|flac)$/i.test(relative)) {
-      await requireService().resolveEntry(relative);
-      return { path: relative, kind: path.extname(relative).toLowerCase(), text: '' };
+    if (/\.(?:rtf|doc)$/i.test(effective)) {
+      const preview = await readConvertedAttachment(resolve, effective, decode);
+      return { ...preview, path: relative };
     }
-    return readTextAttachment(requireService().resolveEntry, relative, decode);
+    if (/\.(?:webm|mp3|wav|m4a|ogg|flac)$/i.test(effective)) {
+      await resolve(effective);
+      return { path: relative, kind: path.extname(effective).toLowerCase(), text: '' };
+    }
+    const preview = await readTextAttachment(resolve, effective, decode);
+    return { ...preview, path: relative };
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadDocxStructure, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || !/\.docx$/i.test(relative)) {
+    if (typeof relative !== 'string') throw new Error('DOCX structure requests require a .docx path.');
+    if (!/\.docx$/i.test(await effectiveContentPath(requireService(), relative))) {
       throw new Error('DOCX structure requests require a .docx path.');
     }
     const access = captureVaultAccess(event, isTrustedSender);
@@ -3326,7 +3401,8 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadSpreadsheet, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || !/\.(?:xlsx|ods|csv|xls)$/i.test(relative)) {
+    if (typeof relative !== 'string') throw new Error('Spreadsheet requests require a spreadsheet path.');
+    if (!/\.(?:xlsx|ods|csv|xls)$/i.test(await effectiveContentPath(requireService(), relative))) {
       throw new Error('Spreadsheet requests require a spreadsheet path.');
     }
     const access = captureVaultAccess(event, isTrustedSender);
@@ -3339,7 +3415,8 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultReadSlideDeck, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || !/\.(?:pptx|odp)$/i.test(relative)) {
+    if (typeof relative !== 'string') throw new Error('Slide requests require a slide-deck path.');
+    if (!/\.(?:pptx|odp)$/i.test(await effectiveContentPath(requireService(), relative))) {
       throw new Error('Slide requests require a slide-deck path.');
     }
     const access = captureVaultAccess(event, isTrustedSender);
@@ -3352,7 +3429,8 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultSaveSpreadsheet, async (event, relative: unknown, workbook: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || !/\.(?:xlsx|ods|csv)$/i.test(relative)) {
+    if (typeof relative !== 'string') throw new Error('Spreadsheet saving requires a spreadsheet path.');
+    if (!/\.(?:xlsx|ods|csv)$/i.test(await effectiveContentPath(requireService(), relative))) {
       throw new Error('Spreadsheet saving requires a spreadsheet path.');
     }
     const access = captureVaultAccess(event, isTrustedSender);
@@ -3366,7 +3444,8 @@ export function setupVaultIpc(
     IPC_CHANNELS.vaultSaveSpreadsheetAsXlsx,
     async (event, relative: unknown, workbook: unknown) => {
       assertTrusted(event, isTrustedSender);
-      if (typeof relative !== 'string' || !/\.xls$/i.test(relative)) {
+      if (typeof relative !== 'string') throw new Error('Save as .xlsx requires an .xls path.');
+      if (!/\.xls$/i.test(await effectiveContentPath(requireService(), relative))) {
         throw new Error('Save as .xlsx requires an .xls path.');
       }
       const access = captureVaultAccess(event, isTrustedSender);
@@ -3380,9 +3459,12 @@ export function setupVaultIpc(
   );
   ipcMain.handle(IPC_CHANNELS.vaultImageAlt, async (event, relative: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (typeof relative !== 'string' || !IMAGE_TYPES[path.extname(relative).toLowerCase()])
-      throw new Error('Invalid image path.');
+    if (typeof relative !== 'string') throw new Error('Invalid image path.');
     const vault = requireService();
+    // An Alius image is described by its original's type; the
+    // description is still stored under the record path.
+    if (!IMAGE_TYPES[path.extname(await effectiveContentPath(vault, relative)).toLowerCase()])
+      throw new Error('Invalid image path.');
     await vault.resolveEntry(relative);
     const saved = await routedMetadataFor(vault).read('image-alts.json');
     const alt = saved && typeof saved === 'object' ? (saved as Record<string, unknown>)[relative] : '';
@@ -3390,14 +3472,11 @@ export function setupVaultIpc(
   });
   ipcMain.handle(IPC_CHANNELS.vaultSaveImageAlt, async (event, relative: unknown, alt: unknown) => {
     assertTrusted(event, isTrustedSender);
-    if (
-      typeof relative !== 'string' ||
-      !IMAGE_TYPES[path.extname(relative).toLowerCase()] ||
-      typeof alt !== 'string' ||
-      alt.length > 2000
-    )
+    if (typeof relative !== 'string' || typeof alt !== 'string' || alt.length > 2000)
       throw new Error('Invalid image description.');
     const vault = requireService();
+    if (!IMAGE_TYPES[path.extname(await effectiveContentPath(vault, relative)).toLowerCase()])
+      throw new Error('Invalid image description.');
     await vault.resolveEntry(relative);
     const store = routedMetadataFor(vault);
     const saved = await store.read('image-alts.json');
@@ -3476,7 +3555,19 @@ export function setupVaultIpc(
   ipcMain.handle(IPC_CHANNELS.vaultReveal, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Path must be text.');
-    shell.showItemInFolder(await requireService().resolveEntry(relativePath));
+    const service = requireService();
+    // An Alius reveals its original, not the record file.
+    const alius = await service.resolveAlius(relativePath);
+    if (alius) {
+      const stat = await lstat(alius.target).catch(() => null);
+      if (!stat || !stat.isFile())
+        throw new Error(
+          `The original file is no longer available at ${alius.target}. Locate the file or remove the Alius.`,
+        );
+      shell.showItemInFolder(alius.target);
+      return;
+    }
+    shell.showItemInFolder(await service.resolveEntry(relativePath));
   });
   ipcMain.handle(IPC_CHANNELS.vaultOpenExternal, async (event, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
@@ -3512,7 +3603,7 @@ export function setupVaultIpc(
         const consent = await dialog.showMessageBox({
           type: 'question',
           title: 'Choose a default application in Windows',
-          message: `Open Windows Default Apps settings for ${path.extname(relativePath)} files?`,
+          message: `Open Windows Default Apps settings for ${path.extname(await effectiveContentPath(access.vault, relativePath))} files?`,
           detail:
             'Only you can choose the default application in Windows settings. This app cannot confirm or change that choice.',
           buttons: ['Cancel', 'Open Windows settings'],
@@ -3553,7 +3644,7 @@ export function setupVaultIpc(
     if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder for the import.');
     access.assertCurrent();
     const result = await dialog.showOpenDialog({
-      title: 'Import a copy into this library',
+      title: 'Import into this library',
       properties: ['openFile'],
       filters: [
         {
@@ -3629,18 +3720,112 @@ export function setupVaultIpc(
       const sourceBase = path.basename(source);
       const destinationName =
         sourceBase.slice(0, sourceBase.length - path.extname(sourceBase).length) + converted.extension;
-      return (
-        await copyImportedDocument(
-          vault,
-          path.posix.join(notebookPath, destinationName),
-          converted.bytes,
-          false,
-          access.assertCurrent,
-        )
-      ).vault;
+      // Nothing is written yet: the renderer asks copy or Alius first
+      // (always ask, no remembered default), then finishes the import
+      // with vault:import-complete.
+      return {
+        source,
+        sourceInLibrary: false,
+        notebookPath,
+        destinationName,
+        sourceName: sourceBase,
+        libraryEncrypted: vault.libraryEncryptionManifest() !== null,
+      } satisfies ImportPending;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultImportComplete, async (event, pending: unknown, choice: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!pending || typeof pending !== 'object') throw new Error('Invalid import request.');
+    const { source, sourceInLibrary, notebookPath, destinationName } = pending as {
+      source?: unknown;
+      sourceInLibrary?: unknown;
+      notebookPath?: unknown;
+      destinationName?: unknown;
+    };
+    if (
+      typeof source !== 'string' ||
+      !source ||
+      typeof sourceInLibrary !== 'boolean' ||
+      typeof notebookPath !== 'string' ||
+      typeof destinationName !== 'string' ||
+      !destinationName ||
+      (choice !== 'copy' && choice !== 'alius')
+    )
+      throw new Error('Invalid import request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      // Resolve the picked file again: it may have moved or changed
+      // since the prompt, and both paths re-validate it before writing.
+      const absolute = sourceInLibrary ? await vault.resolveEntry(source) : path.resolve(source);
+      if (choice === 'alius') {
+        return vault.createAlius({ source: absolute, notebookPath }, access.assertCurrent);
+      }
+      const bytes = await readImportSource(absolute, access.assertCurrent);
+      access.assertCurrent();
+      const converted = convertImportedBytes(absolute, bytes);
+      const absoluteBase = path.basename(absolute);
+      const expectedName =
+        absoluteBase.slice(0, absoluteBase.length - path.extname(absoluteBase).length) + converted.extension;
+      if (expectedName !== destinationName) throw new Error('The selected file changed. Select it again.');
+      return copyImportedDocument(
+        vault,
+        path.posix.join(notebookPath, destinationName),
+        converted.bytes,
+        false,
+        access.assertCurrent,
+      );
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultLocateAlius, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Alius path must be text.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    const record = await vault.resolveAlius(relativePath);
+    if (!record) throw new Error('Choose an Alius to retarget.');
+    const result = await dialog.showOpenDialog({
+      title: 'Locate the original file',
+      properties: ['openFile'],
+    });
+    if (result.canceled || !result.filePaths[0]) return null;
+    const target = result.filePaths[0];
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      return vault.saveAlius({ path: relativePath, target }, access.assertCurrent);
     });
   });
   const importSelectedEntry = async (event: IpcMainInvokeEvent, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Document path must be text.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const source = await access.vault.resolveEntry(relativePath);
+      // Validate the file; the bytes are discarded — nothing is written
+      // until the renderer asks copy or Alius (always ask, no remembered
+      // default), then finishes with vault:import-complete.
+      const bytes = await readImportSource(source, access.assertCurrent);
+      access.assertCurrent();
+      const converted = convertImportedBytes(source, bytes);
+      const fileName = path.posix.basename(relativePath);
+      const destinationName =
+        fileName.slice(0, fileName.length - path.posix.extname(fileName).length) + converted.extension;
+      const notebookPath = path.posix.dirname(relativePath) === '.' ? '' : path.posix.dirname(relativePath);
+      return {
+        source: relativePath,
+        sourceInLibrary: true,
+        notebookPath,
+        destinationName,
+        sourceName: fileName,
+        libraryEncrypted: access.vault.libraryEncryptionManifest() !== null,
+      } satisfies ImportPending;
+    });
+  };
+  // Import-as-note keeps the previous behavior exactly (native consent,
+  // managed copy): it has no renderer prompt to answer copy or Alius.
+  const importSelectedEntryCopy = async (event: IpcMainInvokeEvent, relativePath: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string') throw new Error('Document path must be text.');
     const access = captureVaultAccess(event, isTrustedSender);
@@ -3670,7 +3855,7 @@ export function setupVaultIpc(
   };
   ipcMain.handle(IPC_CHANNELS.vaultImportEntry, importSelectedEntry);
   ipcMain.handle(IPC_CHANNELS.vaultImportAsNote, async (event, relativePath: unknown) => {
-    const result = await importSelectedEntry(event, relativePath);
+    const result = await importSelectedEntryCopy(event, relativePath);
     if (!result) throw new Error('Import cancelled. The original document was not changed.');
     return result;
   });

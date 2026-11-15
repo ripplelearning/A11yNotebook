@@ -49,7 +49,7 @@ export function importedCopyPath(relative: string, attempt: number) {
   );
 }
 
-async function validatePdfImport(bytes: Buffer) {
+export async function validatePdfImport(bytes: Buffer) {
   // Reuse the same PDF.js permission/password boundary as PDF annotations.
   extractPdfPages(bytes);
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
@@ -199,7 +199,7 @@ export function isSupportedDocument(filename: string) {
 }
 
 /** The caller supplies a path chosen by a native main-process dialog, never IPC data. */
-async function assertNoSymlinks(absolute: string) {
+export async function assertNoSymlinks(absolute: string) {
   let ancestor = absolute;
   while (true) {
     if ((await lstat(ancestor)).isSymbolicLink())

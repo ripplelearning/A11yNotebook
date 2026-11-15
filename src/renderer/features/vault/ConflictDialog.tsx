@@ -19,15 +19,18 @@ export default function ConflictDialog({
   };
   return (
     <Modal
-      title="Note changed on disk"
+      title={conflict.aliusTarget ? 'The original changed outside the app' : 'Note changed on disk'}
       titleId="conflict-title"
       onClose={() => {
         setError('Choose Keep mine, Load disk version, or Save copy to resolve the conflict.');
       }}
     >
       <p>
-        {conflict.path} {conflict.disk === null ? 'was removed from the library.' : 'changed outside the app.'} Your
-        unsaved text is preserved.
+        {conflict.aliusTarget
+          ? conflict.disk === null
+            ? `The original file ${conflict.aliusTarget} is no longer available. Your unsaved text is preserved.`
+            : `The original file ${conflict.aliusTarget} changed outside the app. Your unsaved text is preserved.`
+          : `${conflict.path} ${conflict.disk === null ? 'was removed from the library.' : 'changed outside the app.'} Your unsaved text is preserved.`}
       </p>
       {error ? <p role="alert">{error}</p> : null}
       <button data-autofocus type="button" disabled={busy || conflict.disk === null} onClick={() => resolve('mine')}>

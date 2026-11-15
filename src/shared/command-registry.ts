@@ -20,6 +20,7 @@ export type CommandId =
   | 'quick-task'
   | 'add-link'
   | 'edit-link'
+  | 'alius-locate'
   | 'dictate'
   | 'record-audio-note'
   | 'new-asset'
@@ -324,6 +325,12 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['link'],
   },
   {
+    id: 'alius-locate',
+    label: 'Locate the file',
+    description: 'Choose the original file again for a broken Alius.',
+    contexts: ['link'],
+  },
+  {
     // Registry order is menu order: Import file sits right after Open so
     // note menus keep Open first, as they did when the managed-copy
     // command held this slot.
@@ -338,13 +345,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-open-with',
     label: 'Open With…',
     description: 'Choose an external application for this file.',
-    contexts: ['tree-note', 'attachment'],
+    contexts: ['tree-note', 'attachment', 'link'],
   },
   {
     id: 'context-open-with-default',
     label: 'Choose default application…',
     description: 'Choose the Windows default application for this file type.',
-    contexts: ['tree-note', 'attachment'],
+    contexts: ['tree-note', 'attachment', 'link'],
   },
   {
     id: 'context-rename',
