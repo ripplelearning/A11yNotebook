@@ -1,7 +1,9 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { useRef, useState } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import MarkdownDocument from '../renderer/features/vault/MarkdownDocument';
 import { continueMarkdownList } from '../renderer/features/vault/smart-formatting';
+import { createStatusAnnouncer, type StatusAnnouncer } from '../renderer/status-announcer';
 
 describe('markdown list continuation', () => {
   it('continues an unordered item on Enter', () => {
@@ -81,5 +83,68 @@ describe('markdown source textarea', () => {
     area.setSelectionRange(7, 7);
     fireEvent.keyDown(area, { key: 'Enter' });
     expect(announce).toHaveBeenCalledWith('3.');
+  });
+});
+
+describe('repeated task announcements', () => {
+  it('announces "task" after every Enter in a task list, not just the first', async () => {
+    // A polite live region only speaks when its text changes, so the
+    // second Enter must clear "task" and set it again for the screen
+    // reader to hear it a second time.
+    function Harness() {
+      const [content, setContent] = useState('- [ ] first task');
+      const [message, setMessage] = useState('Ready');
+      const announceRef = useRef<StatusAnnouncer | null>(null);
+      if (announceRef.current === null) {
+        announceRef.current = createStatusAnnouncer(setMessage);
+      }
+      return (
+        <>
+          <span role="status" aria-live="polite">
+            {message}
+          </span>
+          <MarkdownDocument
+            content={content}
+            mode="edit"
+            format="markdown"
+            links={[]}
+            onChange={setContent}
+            onNavigate={() => undefined}
+            announce={announceRef.current}
+          />
+        </>
+      );
+    }
+
+    vi.useFakeTimers();
+    try {
+      render(<Harness />);
+      const area = screen.getByLabelText('Markdown source') as HTMLTextAreaElement;
+      const status = screen.getByRole('status');
+
+      area.setSelectionRange(16, 16);
+      fireEvent.keyDown(area, { key: 'Enter' });
+      // The region is cleared synchronously; the announcement lands after
+      // the delay. Without the clear, the second Enter below would set the
+      // identical text and the screen reader would stay silent.
+      expect(status.textContent).toBe('');
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(status.textContent).toBe('task');
+
+      // Type the second task on the auto-created line, then press Enter again.
+      fireEvent.change(area, { target: { value: '- [ ] first task\n- [ ] second task' } });
+      area.setSelectionRange(34, 34);
+      fireEvent.keyDown(area, { key: 'Enter' });
+      // The region must clear again, or the identical "task" never re-announces.
+      expect(status.textContent).toBe('');
+      await act(async () => {
+        vi.advanceTimersByTime(50);
+      });
+      expect(status.textContent).toBe('task');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

@@ -51,6 +51,7 @@ import { AboutDialog, FeedbackDialog, KeyboardShortcutsDialog } from './componen
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
 import FindDialog, { type FindMatchJump } from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
+import { createStatusAnnouncer, type StatusAnnouncer } from './status-announcer';
 import UpdateDialog from './components/UpdateDialog';
 import MarkdownDocument from './features/vault/MarkdownDocument';
 import { sanitizeNoteHtml } from './features/vault/sanitize-html';
@@ -392,7 +393,14 @@ export default function App() {
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
-  const navigationAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
+  // One shared announcer for navigation and editor status messages: the
+  // clear-then-set delay makes identical messages announce every time,
+  // which a plain setStatusMessage cannot do (see status-announcer.ts).
+  const announceStatusRef = useRef<StatusAnnouncer | null>(null);
+  if (announceStatusRef.current === null) {
+    announceStatusRef.current = createStatusAnnouncer(setStatusMessage);
+  }
+  const announceStatus = announceStatusRef.current;
   const focusAnnouncementTimer = useRef<ReturnType<typeof setTimeout>>();
   const announceFocusMode = (message: string) => {
     // Delay past the focus move in toggleFocusMode: a live-region update
@@ -403,17 +411,9 @@ export default function App() {
     clearTimeout(focusAnnouncementTimer.current);
     focusAnnouncementTimer.current = setTimeout(() => setFocusAnnouncement(message), 50);
   };
-  const announceNavigation = (message: string) => {
-    clearTimeout(navigationAnnouncementTimer.current);
-    setStatusMessage('');
-    navigationAnnouncementTimer.current = setTimeout(() => {
-      if (!document.querySelector('[role="dialog"], [role="alertdialog"], [role="menu"]'))
-        setStatusMessage((current) => (current === '' ? message : current));
-    }, 50);
-  };
   useEffect(
     () => () => {
-      clearTimeout(navigationAnnouncementTimer.current);
+      announceStatusRef.current?.cancel();
       clearTimeout(focusAnnouncementTimer.current);
     },
     [],
@@ -4266,7 +4266,7 @@ export default function App() {
     if (returnsToGrid) {
       const notebook = findEntry(vault?.entries ?? [], selectedNotebookPath ?? null);
       setSelectedTab('notes-files');
-      announceNavigation(notebook ? `Notes and Files in ${notebook.name}` : 'Notes and Files');
+      announceStatus(notebook ? `Notes and Files in ${notebook.name}` : 'Notes and Files');
       setPendingGridFocusPath(gridReturnPath ?? null);
     } else {
       if (selectedTab === tabId) setSelectedTab('notes-files');
@@ -4885,7 +4885,7 @@ export default function App() {
       assets: 'Cognitive Tools',
       reminders: 'Reminders',
     };
-    if (labels[screen]) announceNavigation(labels[screen]);
+    if (labels[screen]) announceStatus(labels[screen]);
   };
 
   const refreshRecentLibraries = () => {
@@ -5398,7 +5398,7 @@ export default function App() {
 
   const handleCommand = (commandId: CommandId) => {
     if (switchingRef.current || securityLockedRef.current) return;
-    clearTimeout(navigationAnnouncementTimer.current);
+    announceStatus.cancel();
     // While the citation dialog is open, its own view commands still work:
     // they switch the dialog between the generator and the bibliography.
     // Its switch-to-edit action also works: it flips the mode from inside
@@ -5663,7 +5663,7 @@ export default function App() {
       }
       setCalendarTabOpen(true);
       setSelectedTab('calendar');
-      if (document.activeElement === tabPanelRef.current) announceNavigation('Calendar');
+      if (document.activeElement === tabPanelRef.current) announceStatus('Calendar');
       else setPendingFocus('main');
       return;
     }
@@ -6225,7 +6225,7 @@ export default function App() {
     if (entry.kind === 'notebook') {
       selectEntry(entry);
       setSelectedTab('notes-files');
-      announceNavigation(`Notes and Files in ${entry.name}`);
+      announceStatus(`Notes and Files in ${entry.name}`);
       return;
     }
     void openEntry(entry).catch(() => setStatusMessage('Could not open the selected file.'));
@@ -7293,7 +7293,7 @@ export default function App() {
                     mode={mode}
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
-                    announce={setStatusMessage}
+                    announce={announceStatus}
                     hideModeToggle={focusMode}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
