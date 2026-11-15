@@ -30,15 +30,24 @@ describe('DatePickerField', () => {
   });
 
   it('moves focus with arrow keys and closes on Escape back to the button', () => {
-    render(<DatePickerField id="test-date" label="Start date" value="2026-11-15" onChange={() => undefined} />);
+    // The 15th of the month two months out, so the selected day is never
+    // today: CalendarGrid appends "today" to today's button name, and a
+    // fixed value date breaks the moment the calendar reaches it.
+    const target = new Date();
+    target.setMonth(target.getMonth() + 2);
+    target.setDate(15);
+    const monthName = target.toLocaleDateString('en-US', { month: 'long' });
+    const year = target.getFullYear();
+    const value = `${year}-${String(target.getMonth() + 1).padStart(2, '0')}-15`;
+    render(<DatePickerField id="test-date" label="Start date" value={value} onChange={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: 'Show Date Picker' }));
-    const day15 = screen.getByRole('button', { name: 'November 15, 2026, selected' });
+    const day15 = screen.getByRole('button', { name: `${monthName} 15, ${year}, selected` });
     day15.focus();
     expect(day15).toHaveFocus();
     fireEvent.keyDown(day15, { key: 'ArrowRight' });
-    expect(screen.getByRole('button', { name: 'November 16, 2026' })).toHaveFocus();
-    fireEvent.keyDown(screen.getByRole('button', { name: 'November 16, 2026' }), { key: 'Escape' });
-    expect(screen.queryByText('November 2026')).toBeNull();
+    expect(screen.getByRole('button', { name: `${monthName} 16, ${year}` })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('button', { name: `${monthName} 16, ${year}` }), { key: 'Escape' });
+    expect(screen.queryByText(`${monthName} ${year}`)).toBeNull();
     expect(screen.getByRole('button', { name: 'Show Date Picker' })).toHaveFocus();
   });
 
