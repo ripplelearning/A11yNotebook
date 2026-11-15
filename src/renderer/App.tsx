@@ -6452,7 +6452,7 @@ export default function App() {
     : searchResults.filter((result) => !hiddenPaths.has(result.path));
   const contextEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
   const propertiesEntry = propertiesPath ? findEntryInTree(vault?.entries ?? [], propertiesPath) : undefined;
-  const contextCommands = contextMenu
+  const baseContextCommands = contextMenu
     ? getContextMenuCommands(contextMenu.context, Boolean(contextMenu.selection))
         .filter((command, index, commands) => commands.findIndex((item) => item.id === command.id) === index)
         .filter(
@@ -6461,25 +6461,12 @@ export default function App() {
               !contextEntry ||
               isInternallySupportedPath(contextEntry.path),
         )
-        .filter((command) => {
-          const entryIsAlius = Boolean(contextEntry && isAliusPath(contextEntry.path));
-          if (!entryIsAlius) {
-            // Plain web links never get Alius actions, and never get
-            // "Open With…" (there is no file to open).
-            if (command.id === 'alius-locate') return false;
-            if (
-              (command.id === 'context-open-with' || command.id === 'context-open-with-default') &&
-              contextEntry?.kind === 'link'
-            )
-              return false;
-            return true;
-          }
-          // Alius records: no link editing, and "Locate the file" only
-          // while the original is missing.
-          if (command.id === 'edit-link') return false;
-          if (command.id === 'alius-locate') return Boolean(contextEntry?.aliusBroken);
-          return true;
-        })
+        .filter(
+          (command) =>
+            // An Alius is a shortcut, not a web link: it has no address
+            // to edit.
+            command.id !== 'edit-link' || !contextEntry || !isAliusPath(contextEntry.path),
+        )
         .map((command) =>
           command.id === 'annotate-pdf-selection'
             ? { ...command, label: 'Add note' }
@@ -6495,6 +6482,26 @@ export default function App() {
                   : command,
         )
     : [];
+  // Alius records share the link context, but their extra actions live
+  // outside the plain-link menu: a broken Alius gets "Locate the file",
+  // and any Alius gets "Open With…" for its original. They are injected
+  // here, right after "Open selected item", so plain links never see them.
+  const contextCommands = (() => {
+    if (!contextEntry || !isAliusPath(contextEntry.path)) return baseContextCommands;
+    const extra: NonNullable<ReturnType<typeof getCommandById>>[] = [];
+    if (contextEntry.aliusBroken) {
+      const locate = getCommandById('alius-locate');
+      if (locate) extra.push(locate);
+    }
+    const openWith = getCommandById('context-open-with');
+    if (openWith) extra.push(openWith);
+    const openWithDefault = getCommandById('context-open-with-default');
+    if (openWithDefault) extra.push(openWithDefault);
+    if (!extra.length) return baseContextCommands;
+    const openIndex = baseContextCommands.findIndex((command) => command.id === 'context-open');
+    const at = openIndex >= 0 ? openIndex + 1 : 0;
+    return [...baseContextCommands.slice(0, at), ...extra, ...baseContextCommands.slice(at)];
+  })();
   const disabledContextCommands = new Set<CommandId>();
   if (
     contextEntry &&

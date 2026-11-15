@@ -181,7 +181,8 @@ describe('creation IPC authorization and dialogs', () => {
   it('imports a byte-preserving copy through narrow IPC without changing the original', async () => {
     const content = '<h1>Imported</h1><script>bad()</script>';
     await writeFile(path.join(mock.root, 'External.html'), content);
-    const result = await invoke<{ vault: VaultInfo; path: string }>(IPC_CHANNELS.vaultImportEntry, 'External.html');
+    const pending = await invoke(IPC_CHANNELS.vaultImportEntry, 'External.html');
+    const result = await invoke<{ vault: VaultInfo; path: string }>(IPC_CHANNELS.vaultImportComplete, pending, 'copy');
     const imported = result.vault.entries.find((entry) => entry.provenance === 'imported')!;
     expect(result.path).toBe(imported.path);
     expect(imported.kind).toBe('note');
@@ -194,8 +195,9 @@ describe('creation IPC authorization and dialogs', () => {
     mock.importSource = path.join(workspace, 'Selected.html');
     await writeFile(mock.importSource, original);
     await invoke(IPC_CHANNELS.vaultCreateNotebook, 'Destination');
-    const result = await invoke<VaultInfo>(IPC_CHANNELS.vaultImport, 'Destination');
-    expect(result.entries[0].children?.[0]).toMatchObject({
+    const pending = await invoke(IPC_CHANNELS.vaultImport, 'Destination');
+    const result = await invoke<{ vault: VaultInfo; path: string }>(IPC_CHANNELS.vaultImportComplete, pending, 'copy');
+    expect(result.vault.entries[0].children?.[0]).toMatchObject({
       path: 'Destination/Selected.html',
       kind: 'note',
       provenance: 'imported',

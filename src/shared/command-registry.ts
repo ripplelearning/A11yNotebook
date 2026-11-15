@@ -328,7 +328,9 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'alius-locate',
     label: 'Locate the file',
     description: 'Choose the original file again for a broken Alius.',
-    contexts: ['link'],
+    // No contexts: a plain link must never see this. App.tsx injects it
+    // into the menu for broken Alius records only.
+    contexts: [],
   },
   {
     // Registry order is menu order: Import file sits right after Open so
@@ -345,13 +347,13 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'context-open-with',
     label: 'Open With…',
     description: 'Choose an external application for this file.',
-    contexts: ['tree-note', 'attachment', 'link'],
+    contexts: ['tree-note', 'attachment'],
   },
   {
     id: 'context-open-with-default',
     label: 'Choose default application…',
     description: 'Choose the Windows default application for this file type.',
-    contexts: ['tree-note', 'attachment', 'link'],
+    contexts: ['tree-note', 'attachment'],
   },
   {
     id: 'context-rename',

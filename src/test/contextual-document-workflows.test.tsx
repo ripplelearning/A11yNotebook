@@ -863,7 +863,16 @@ describe('contextual shell document workflows', () => {
         },
       ],
     });
-    bridge.vault.importEntry.mockResolvedValue({
+    const pending = {
+      source: 'Research/External.md',
+      sourceInLibrary: true,
+      notebookPath: 'Research',
+      destinationName: 'External (imported).md',
+      sourceName: 'External.md',
+      libraryEncrypted: false,
+    };
+    bridge.vault.importEntry.mockResolvedValue(pending);
+    bridge.vault.importComplete.mockResolvedValue({
       vault: {
         ...vault,
         entries: [...vault.entries, { name: 'Imported.md', path: 'Imported.md', kind: 'note', provenance: 'imported' }],
@@ -876,6 +885,9 @@ describe('contextual shell document workflows', () => {
     fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'External.md' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Import file' }));
     await waitFor(() => expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/External.md'));
+    await screen.findByRole('dialog', { name: 'Import file' });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+    await waitFor(() => expect(bridge.vault.importComplete).toHaveBeenCalledWith(pending, 'copy'));
     await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledWith('Imported.md', undefined));
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
     const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
