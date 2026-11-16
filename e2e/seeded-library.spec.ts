@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dismissTutorial } from './helpers';
+import { dismissTutorial, platformShortcut } from './helpers';
 
 /**
  * Seeded-library end-to-end pass: the app launches with a library that
@@ -145,7 +145,7 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
     async function switchView(shortcut: string, content: () => Promise<number>) {
       for (let attempt = 0; attempt < 6; attempt++) {
         if ((await content()) > 0) return;
-        await page.keyboard.press(shortcut);
+        await page.keyboard.press(platformShortcut(shortcut));
         await page.waitForTimeout(500);
       }
       expect(await content()).toBeGreaterThan(0);
