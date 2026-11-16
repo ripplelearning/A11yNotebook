@@ -10,9 +10,12 @@ export default defineConfig({
   reporter: 'list',
   // Keep a screenshot when a test fails: the CI failure evidence
   // otherwise contains only the error context, with no visual record of
-  // what the app was showing when the step failed.
+  // what the app was showing when the step failed. Keep a trace too:
+  // the Windows-only notebook-silo failure needs click coordinates and
+  // grid state at the moment of the double-click to diagnose.
   use: {
     screenshot: 'only-on-failure',
+    trace: 'retain-on-failure',
   },
   webServer: {
     command: 'npm run dev:renderer',
