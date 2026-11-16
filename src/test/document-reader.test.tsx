@@ -242,7 +242,7 @@ describe('local accessible document reader', () => {
     expect(await screen.findByText('Page 1 searchable text')).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('.pdf-text-layer')).toBeInTheDocument());
     expect(getDocument).toHaveBeenCalledWith(
-      expect.objectContaining({ disableAutoFetch: true, disableRange: true, disableStream: true, enableXfa: false }),
+      expect.objectContaining({ disableAutoFetch: true, disableRange: true, disableStream: true, enableXfa: true }),
     );
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByText('Page 2 searchable text')).toBeInTheDocument();

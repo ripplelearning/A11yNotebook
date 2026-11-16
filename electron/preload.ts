@@ -123,6 +123,10 @@ const CHANNELS: typeof SharedChannels = {
   vaultPdfAnnotationAdd: 'vault:pdf-annotation-add',
   vaultPdfAnnotationUpdate: 'vault:pdf-annotation-update',
   vaultPdfAnnotationDelete: 'vault:pdf-annotation-delete',
+  vaultPdfFormValues: 'vault:pdf-form-values',
+  vaultPdfFormValuesSave: 'vault:pdf-form-values-save',
+  vaultPdfFilledDownload: 'vault:pdf-filled-download',
+  vaultPdfFilledCopy: 'vault:pdf-filled-copy',
   vaultDocxAnnotations: 'vault:docx-annotations',
   vaultDocxAnnotationAdd: 'vault:docx-annotation-add',
   vaultDocxAnnotationUpdate: 'vault:docx-annotation-update',
@@ -282,6 +286,11 @@ const bridge: NotebookBridge = {
     updatePdfAnnotation: (relativePath, id, update) =>
       ipcRenderer.invoke(CHANNELS.vaultPdfAnnotationUpdate, relativePath, id, update),
     deletePdfAnnotation: (relativePath, id) => ipcRenderer.invoke(CHANNELS.vaultPdfAnnotationDelete, relativePath, id),
+    getPdfFormValues: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFormValues, relativePath),
+    savePdfFormValues: (relativePath, values, identity) =>
+      ipcRenderer.invoke(CHANNELS.vaultPdfFormValuesSave, relativePath, values, identity),
+    downloadFilledPdf: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledDownload, relativePath),
+    saveFilledPdfCopy: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledCopy, relativePath),
     listDocxAnnotations: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDocxAnnotations, relativePath),
     addDocxAnnotation: (annotation) => ipcRenderer.invoke(CHANNELS.vaultDocxAnnotationAdd, annotation),
     updateDocxAnnotation: (relativePath, id, update) =>

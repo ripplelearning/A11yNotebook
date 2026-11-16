@@ -2,7 +2,18 @@ import type { EpubBook, EpubTocItem } from 'epubjs/src/index.js';
 import DOMPurify from 'dompurify';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { imageUrl } from '../../../shared/attachments';
+import { isAliusPath } from '../../../shared/alius';
+import {
+  describePdfFormFillState,
+  detectPdfXfa,
+  missingRequiredPdfFormFields,
+  validatePdfFormValue,
+  type PdfFormField,
+  type PdfFormValue,
+  type PdfFormValues,
+} from '../../../shared/pdf-form';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
+import { syncFormFieldValues } from '../../pdf-semantic/pdf-form-dom';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
 import { openEpubBook } from './epub-book';
@@ -98,6 +109,13 @@ const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
 const MAX_SEARCHABLE_TEXT = 20 * 1024 * 1024;
 
+/**
+ * Passwords for protected PDFs, kept only in memory for the session so
+ * a PDF asks for its password once instead of on every open. Never
+ * persisted, never sent anywhere but the PDF opener.
+ */
+const pdfPasswords = new Map<string, string>();
+
 interface Props {
   path: string;
   kind: '.pdf' | '.epub' | '.docx';
@@ -157,6 +175,27 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const preferences = usePdfReadingPreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
+  // Fillable forms: fields sit inline in the reading view, values are
+  // stored in the app, and a filled file comes from an export.
+  const isAlius = isAliusPath(path);
+  const hasXfa = useMemo(() => detectPdfXfa(bytes), [bytes]);
+  const [formFields, setFormFields] = useState<PdfFormField[]>([]);
+  const [formValues, setFormValues] = useState<PdfFormValues>({});
+  const [formValuesLoaded, setFormValuesLoaded] = useState(false);
+  const [formErrors, setFormErrors] = useState<ReadonlyMap<string, string>>(new Map());
+  const [formStatus, setFormStatus] = useState('');
+  const [needsPassword, setNeedsPassword] = useState(false);
+  const [passwordAttempt, setPasswordAttempt] = useState(0);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [wasPasswordProtected, setWasPasswordProtected] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
+  const valuesRef = useRef<PdfFormValues>({});
+  const errorsRef = useRef<ReadonlyMap<string, string>>(new Map());
+  const valuesDirtyRef = useRef(false);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingFieldFocus = useRef<string | null>(null);
+  const passwordAttemptedRef = useRef(false);
 
   useEffect(() => {
     document?.setReadingPreferences(preferences);
@@ -173,9 +212,11 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       .then((hash) => Array.from(new Uint8Array(hash), (byte) => byte.toString(16).padStart(2, '0')).join(''))
       .then(async (fileHash) => {
         if (cancelled) return;
-        pdf = new PdfDocument(bytes, fileHash, path, preferencesRef.current);
+        const password = pdfPasswords.get(path);
+        pdf = new PdfDocument(bytes, fileHash, path, preferencesRef.current, password ? { password } : {});
         await pdf.ready;
         if (cancelled) return;
+        if (password) setWasPasswordProtected(true);
         const sections: Array<{ label: string; text: string }> = [];
         let size = 0;
         for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, MAX_SEARCHABLE_PAGES); pageNumber += 1) {
@@ -193,19 +234,202 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           setPageCount(pdf.numPages);
           setReaderModel(createDocumentReaderModel(sections));
           setLoadingText(false);
+          const fields = (await pdf.getFormFields?.().catch(() => [] as PdfFormField[])) ?? [];
+          if (!cancelled) setFormFields(fields);
         }
       })
-      .catch(() => {
-        if (!cancelled) {
-          setRenderError('This PDF could not be read. Use Open in external app to continue.');
+      .catch((reason: unknown) => {
+        if (cancelled) return;
+        // A password-protected PDF asks for its password once instead of
+        // failing the open; a wrong password reports as such.
+        if (reason instanceof Error && reason.name === 'PasswordException') {
+          if (passwordAttemptedRef.current) {
+            pdfPasswords.delete(path);
+            setPasswordError('That password did not open the PDF. Try again.');
+          }
+          setNeedsPassword(true);
           setLoadingText(false);
+          return;
         }
+        setRenderError('This PDF could not be read. Use Open in external app to continue.');
+        setLoadingText(false);
       });
     return () => {
       cancelled = true;
       void pdf?.destroy().catch(() => undefined);
     };
-  }, [bytes, path]);
+  }, [bytes, path, passwordAttempt]);
+
+  // Filled values live in the app, keyed by this document's path, and
+  // load when the reader opens.
+  useEffect(() => {
+    let cancelled = false;
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.getPdfFormValues) {
+      setFormValuesLoaded(true);
+      return;
+    }
+    void vault
+      .getPdfFormValues(path)
+      .then((saved) => {
+        if (cancelled) return;
+        valuesRef.current = saved;
+        setFormValues(saved);
+        setFormValuesLoaded(true);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setFormValuesLoaded(true);
+          setFormStatus('The saved filled values could not be loaded.');
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [path]);
+
+  // Debounced save of filled values, flushed when the reader closes.
+  useEffect(() => {
+    if (!formValuesLoaded || !document || !valuesDirtyRef.current) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      const vault = window.a11yNotebook?.vault;
+      if (!vault?.savePdfFormValues) return;
+      valuesDirtyRef.current = false;
+      void vault
+        .savePdfFormValues(path, valuesRef.current, document.documentIdentity)
+        .then(() => setFormStatus('Filled values saved.'))
+        .catch(() => {
+          valuesDirtyRef.current = true;
+          setFormStatus('The filled values could not be saved.');
+        });
+    }, 600);
+    return () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    };
+  }, [formValues, formValuesLoaded, document, path]);
+
+  useEffect(
+    () => () => {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      const vault = window.a11yNotebook?.vault;
+      if (valuesDirtyRef.current && vault?.savePdfFormValues && document) {
+        valuesDirtyRef.current = false;
+        void vault.savePdfFormValues(path, valuesRef.current, document.documentIdentity).catch(() => undefined);
+      }
+    },
+    [document, path],
+  );
+
+  const handleFormFieldChange = useCallback(
+    (name: string, value: PdfFormValue) => {
+      const next = { ...valuesRef.current, [name]: value };
+      valuesRef.current = next;
+      valuesDirtyRef.current = true;
+      setFormValues(next);
+      const field = formFields.find((candidate) => candidate.name === name);
+      if (field) {
+        const problem = validatePdfFormValue(field, value);
+        const errors = new Map(errorsRef.current);
+        if (problem) errors.set(name, problem);
+        else errors.delete(name);
+        errorsRef.current = errors;
+        setFormErrors(errors);
+      }
+    },
+    [formFields],
+  );
+  const formChangeRef = useRef(handleFormFieldChange);
+  formChangeRef.current = handleFormFieldChange;
+
+  const submitPassword = useCallback(() => {
+    if (!passwordInput) {
+      setPasswordError('Enter the PDF password.');
+      return;
+    }
+    pdfPasswords.set(path, passwordInput);
+    passwordAttemptedRef.current = true;
+    setPasswordError('');
+    setNeedsPassword(false);
+    setPasswordAttempt((attempt) => attempt + 1);
+  }, [passwordInput, path]);
+
+  // Keep already-rendered inline controls in step with stored values
+  // and errors without rebuilding the page (canvas, text layer).
+  useEffect(() => {
+    if (!semanticRef.current || !activePage) return;
+    syncFormFieldValues(semanticRef.current, activePage.formFields ?? [], formValues, formErrors);
+    const pending = pendingFieldFocus.current;
+    if (pending) {
+      const control = semanticRef.current.querySelector<HTMLElement>(
+        `[data-pdf-form-field="${CSS.escape(pending)}"] input, [data-pdf-form-field="${CSS.escape(pending)}"] select, [data-pdf-form-field="${CSS.escape(pending)}"] textarea`,
+      );
+      if (control) {
+        control.focus();
+        pendingFieldFocus.current = null;
+      }
+    }
+  }, [formValues, formErrors, activePage]);
+
+  const goToFormField = useCallback((field: PdfFormField) => {
+    pendingFieldFocus.current = field.name;
+    setPageNumber(field.page);
+  }, []);
+
+  const missingRequired = useMemo(
+    () => missingRequiredPdfFormFields(formFields, formValues),
+    [formFields, formValues],
+  );
+  const unsupportedFields = useMemo(
+    () => formFields.filter((field) => field.type === 'unsupported'),
+    [formFields],
+  );
+
+  /** Required fields must be filled before a filled file is produced. */
+  const validateForExport = useCallback((): boolean => {
+    if (!missingRequired.length) return true;
+    const errors = new Map(errorsRef.current);
+    for (const field of missingRequired) errors.set(field.name, 'This field is required.');
+    errorsRef.current = errors;
+    setFormErrors(errors);
+    setFormStatus(
+      `${missingRequired.length} required field${missingRequired.length === 1 ? '' : 's'} still empty: ${missingRequired.map((field) => field.label).join(', ')}.`,
+    );
+    goToFormField(missingRequired[0]);
+    return false;
+  }, [missingRequired, goToFormField]);
+
+  const downloadFilledPdf = useCallback(async () => {
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.downloadFilledPdf || !validateForExport()) return;
+    setExportBusy(true);
+    try {
+      const result = await vault.downloadFilledPdf(path);
+      setFormStatus(
+        result.saved
+          ? `Downloaded filled PDF${result.fileName ? ` as ${result.fileName}` : ''}.`
+          : 'Download cancelled.',
+      );
+    } catch (reason) {
+      setFormStatus(reason instanceof Error ? reason.message : 'The filled PDF could not be downloaded.');
+    } finally {
+      setExportBusy(false);
+    }
+  }, [path, validateForExport]);
+
+  const saveFilledPdfCopy = useCallback(async () => {
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.saveFilledPdfCopy || !validateForExport()) return;
+    setExportBusy(true);
+    try {
+      const created = await vault.saveFilledPdfCopy(path);
+      setFormStatus(`Saved filled copy as ${created.name}. The original file was not changed.`);
+    } catch (reason) {
+      setFormStatus(reason instanceof Error ? reason.message : 'The filled copy could not be saved.');
+    } finally {
+      setExportBusy(false);
+    }
+  }, [path, validateForExport]);
 
   useEffect(() => {
     let cancelled = false;
@@ -237,7 +461,13 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           layer.style.height = `${(transform.rotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]) * renderScale}px`;
           visual.append(layer);
           layer.setAttribute('aria-hidden', 'true');
-          semantic.replaceChildren(page.getSemanticDOM(zoom, rotation));
+          semantic.replaceChildren(
+            page.getSemanticDOM(zoom, rotation, undefined, {
+              values: valuesRef.current,
+              errors: errorsRef.current,
+              onChange: (name, value) => formChangeRef.current(name, value),
+            }),
+          );
           for (const block of semantic.querySelectorAll<HTMLElement>(
             'p,h1,h2,h3,h4,h5,h6,td,th,li,blockquote,[role="heading"],[role="cell"]',
           )) {
@@ -276,6 +506,33 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
 
   const matchingPages = readerModel.findSections(search);
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
+
+  if (needsPassword) {
+    return (
+      <section ref={readerRef} tabIndex={-1} aria-label="PDF document reader" data-pdf-path={path}>
+        <h3>Password-protected PDF</h3>
+        <p>This PDF needs a password to open. Enter it once; it is kept only in memory for this session.</p>
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            submitPassword();
+          }}
+        >
+          <label>
+            PDF password
+            <input
+              type="password"
+              autoComplete="off"
+              value={passwordInput}
+              onChange={(event) => setPasswordInput(event.target.value)}
+            />
+          </label>
+          {passwordError ? <p role="alert">{passwordError}</p> : null}
+          <button type="submit">Unlock PDF</button>
+        </form>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -348,6 +605,77 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
             (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
         </div>
       </section>
+      {document && (formFields.length > 0 || hasXfa) ? (
+        <section aria-label="Form fields">
+          <h4>Form fields</h4>
+          <p role="status">
+            {formStatus ||
+              (formFields.length
+                ? describePdfFormFillState(formFields, formValues)
+                : 'No fillable fields were found in this PDF.')}
+          </p>
+          {hasXfa ? (
+            <p>
+              {formFields.length
+                ? 'This form uses XFA. The fields below could be loaded; dynamic XFA features may not work.'
+                : 'This form uses XFA and no fields could be loaded in the app.'}
+            </p>
+          ) : null}
+          {unsupportedFields.length ? (
+            <ul>
+              {unsupportedFields.map((field) => (
+                <li key={field.name}>
+                  {field.label}: {field.unsupportedReason}
+                </li>
+              ))}
+            </ul>
+          ) : null}
+          {missingRequired.length ? (
+            <>
+              <p>Required fields still empty:</p>
+              <ul>
+                {missingRequired.map((field) => (
+                  <li key={field.name}>
+                    <button type="button" onClick={() => goToFormField(field)}>
+                      Go to {field.label} (page {field.page})
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : null}
+          {isAlius ? (
+            <p>
+              Filling this Alius never changes the original file. Saving a filled copy creates a new file in the
+              library.
+            </p>
+          ) : null}
+          {wasPasswordProtected ? (
+            <p>
+              This PDF is password-protected, so a filled file cannot be created. The filled values stay saved in
+              the app.
+            </p>
+          ) : null}
+          <div role="group" aria-label="Filled PDF export">
+            <button
+              type="button"
+              disabled={exportBusy || !formFields.length || wasPasswordProtected}
+              onClick={() => void downloadFilledPdf()}
+            >
+              Download filled PDF
+            </button>
+            {isAlius ? (
+              <button
+                type="button"
+                disabled={exportBusy || !formFields.length || wasPasswordProtected}
+                onClick={() => void saveFilledPdfCopy()}
+              >
+                Save filled copy in library
+              </button>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
       {document ? (
         <PdfNotes
           document={document}

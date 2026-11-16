@@ -22,6 +22,7 @@ export const PROTECTED_STORE_NAMES = [
   'settings',
   'search-index',
   'flashcard-schedules',
+  'pdf-form-values',
 ] as const;
 
 export type ProtectedStoreName = (typeof PROTECTED_STORE_NAMES)[number];
@@ -69,4 +70,5 @@ export const EXTENDABLE_PROTECTED_STORES: readonly ProtectedStoreName[] = [
   'reminders',
   'settings',
   'search-index',
+  'pdf-form-values',
 ];

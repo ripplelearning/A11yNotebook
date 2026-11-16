@@ -12,6 +12,9 @@ import pdfWorkerUrl from 'pdfjs-dist/legacy/build/pdf.worker.min.mjs?url';
 import type { PdfReadingPreferences } from '../../shared/pdf-reading-preferences';
 import { DEFAULT_PDF_READING_PREFERENCES } from '../../shared/pdf-reading-preferences';
 import { applyPdfReadingPreferences } from './reading-preferences';
+import { extractPageFormFields } from './pdf-form-fields';
+import { insertFormFieldsIntoSemanticDOM, type PdfFormDomOptions } from './pdf-form-dom';
+import type { PdfFormField, PdfWidgetAnnotation } from '../../shared/pdf-form';
 
 let pdfModule: Promise<typeof import('pdfjs-dist/legacy/build/pdf.mjs')> | undefined;
 
@@ -45,6 +48,7 @@ export class PdfDocument {
     fileHash: string,
     vaultPath: string,
     private readingPreferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
+    options: { password?: string } = {},
   ) {
     this.fileHash = fileHash;
     this.vaultPath = vaultPath;
@@ -57,7 +61,12 @@ export class PdfDocument {
           disableRange: true,
           disableStream: true,
           useSystemFonts: false,
-          enableXfa: false,
+          // XFA forms are attempted, not refused: static XFA fields
+          // surface through the same field APIs as AcroForm fields,
+          // and dynamic XFA simply yields no fields (reported by the
+          // reader instead of failing the open).
+          enableXfa: true,
+          ...(options.password ? { password: options.password } : {}),
         });
       },
     );
@@ -180,6 +189,16 @@ export class PdfDocument {
     return created;
   }
 
+  /** Every fillable field in the document, in reading order. */
+  async getFormFields(): Promise<PdfFormField[]> {
+    await this.ready;
+    const fields: PdfFormField[] = [];
+    for (let pageNum = 1; pageNum <= this.numPages; pageNum += 1) {
+      fields.push(...(await this.getPage(pageNum)).formFields);
+    }
+    return fields;
+  }
+
   async classifyUntaggedPages(pageNumbers: number[]): Promise<void> {
     const pages = await Promise.all(pageNumbers.map((pageNumber) => this.getPage(pageNumber)));
     const classified = new HeuristicClassifier().classifyPages(pages.map((page) => page.textModel));
@@ -203,6 +222,8 @@ export class PdfPage {
   readonly textModel: TextModel;
   readonly semanticTree: SemanticNode | null;
   readonly nativeAnnotations: PdfAnnotation[];
+  /** Fillable form fields on this page, in reading order. */
+  readonly formFields: PdfFormField[];
   readonly canRotate: number;
   readonly view: [number, number, number, number];
   private readonly page: PDFPageProxy;
@@ -217,6 +238,7 @@ export class PdfPage {
     textModel: TextModel,
     structure: Awaited<ReturnType<PDFPageProxy['getStructTree']>>,
     nativeAnnotations: PdfAnnotation[],
+    formFields: PdfFormField[],
     private readingPreferences: PdfReadingPreferences = DEFAULT_PDF_READING_PREFERENCES,
   ) {
     this.page = page;
@@ -226,6 +248,7 @@ export class PdfPage {
     this.structure = structure;
     this.semanticTree = structure ? new StructAdapter(structure, textModel).adapt() : null;
     this.nativeAnnotations = nativeAnnotations;
+    this.formFields = formFields;
     this.canRotate = [0, 90, 180, 270].includes(page.rotate) ? page.rotate : 0;
     this.view = page.view as [number, number, number, number];
     this.textModel.setView(this.view);
@@ -268,7 +291,15 @@ export class PdfPage {
         },
       ];
     });
-    return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links, preferences);
+    const rotation = [0, 90, 180, 270].includes(page.rotate) ? page.rotate : 0;
+    const formFields = extractPageFormFields(
+      annotations as PdfWidgetAnnotation[],
+      pageNum,
+      model,
+      page.view as [number, number, number, number],
+      rotation,
+    );
+    return new PdfPage(page, pageNum, label || `Page ${pageNum}`, model, structure, links, formFields, preferences);
   }
 
   get documentIdentity(): PdfAnnotationTarget['documentIdentity'] | undefined {
@@ -321,9 +352,16 @@ export class PdfPage {
   getSemanticDOM(preferences?: PdfReadingPreferences): HTMLElement;
   getSemanticDOM(zoom?: number, rotation?: number, preferences?: PdfReadingPreferences): HTMLElement;
   getSemanticDOM(
+    zoom?: number,
+    rotation?: number,
+    preferences?: PdfReadingPreferences,
+    form?: PdfFormDomOptions,
+  ): HTMLElement;
+  getSemanticDOM(
     zoomOrPreferences: number | PdfReadingPreferences = 1,
     rotation = 0,
     preferences?: PdfReadingPreferences,
+    form?: PdfFormDomOptions,
   ): HTMLElement {
     const zoom = typeof zoomOrPreferences === 'number' ? zoomOrPreferences : 1;
     const updatedPreferences = typeof zoomOrPreferences === 'number' ? preferences : zoomOrPreferences;
@@ -334,6 +372,17 @@ export class PdfPage {
     root.dataset.pageNumber = String(this.pageNum);
     root.dataset.zoom = String(zoom);
     root.dataset.rotation = String((this.canRotate + rotation) % 360);
+    if (form && this.formFields.length) {
+      insertFormFieldsIntoSemanticDOM(
+        root,
+        this.formFields,
+        this.textModel,
+        this.view,
+        zoom,
+        (this.canRotate + rotation) % 360,
+        form,
+      );
+    }
     return root;
   }
 
