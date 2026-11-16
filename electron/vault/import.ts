@@ -13,6 +13,7 @@ import { parseOdpDeck } from './odp-parser';
 import { convertRtfToHtml, isRtfSource } from './rtf';
 import { createAssetRegistry, assetTypes } from '../../src/shared/assets';
 import { isAudioPath } from '../../src/shared/audio';
+import { detectPdfXfa } from '../../src/shared/pdf-form';
 import { isEncryptedRecord, isPasswordEncryptedNote } from './security';
 import { isInternallySupportedPath } from '../../src/shared/file-provenance';
 import { sanitizeHtmlFragment, standaloneHtml } from './html-sanitize';
@@ -49,18 +50,38 @@ export function importedCopyPath(relative: string, attempt: number) {
   );
 }
 
-export async function validatePdfImport(bytes: Buffer) {
+/** What import learned about a PDF: whether it holds fillable fields, XFA, or a password. */
+export interface PdfImportInfo {
+  /** True when the PDF holds at least one AcroForm field. */
+  fillable: boolean;
+  /** Number of AcroForm fields found (0 when the file could not be opened). */
+  fieldCount: number;
+  /** True when the AcroForm dictionary references XFA. */
+  hasXfa: boolean;
+  /** True when the PDF needs a password to open; the reader asks for it once at open. */
+  passwordProtected: boolean;
+}
+
+export async function validatePdfImport(bytes: Buffer): Promise<PdfImportInfo> {
   // Reuse the same PDF.js permission/password boundary as PDF annotations.
   extractPdfPages(bytes);
+  const hasXfa = detectPdfXfa(new Uint8Array(bytes));
   const { getDocument } = await import('pdfjs-dist/legacy/build/pdf.mjs');
   const loading = getDocument({ data: new Uint8Array(bytes), useSystemFonts: false, enableXfa: false, verbosity: 0 });
   try {
     const document = await loading.promise;
     if ((await document.getPermissions()) !== null)
       throw new Error('Protected PDFs cannot be imported as managed documents.');
+    const fields = await document.getFieldObjects();
+    const fieldCount = fields ? [...fields.values()].reduce((total, entries) => total + entries.length, 0) : 0;
+    return { fillable: fieldCount > 0, fieldCount, hasXfa, passwordProtected: false };
   } catch (error) {
     if (error instanceof Error && error.name === 'PasswordException')
-      throw new Error('Password-protected PDFs cannot be imported. Export an authorized unprotected copy first.');
+      // A password-protected PDF is imported as-is: the reader asks for
+      // the password once when the file is opened, and the filled
+      // values live in the app. Only permission-protected PDFs are
+      // refused outright.
+      return { fillable: false, fieldCount: 0, hasXfa, passwordProtected: true };
     throw error;
   } finally {
     await loading.destroy();

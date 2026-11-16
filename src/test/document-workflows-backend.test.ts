@@ -94,15 +94,17 @@ describe('document provenance and original imports', () => {
     }
   });
 
-  it('validates genuine PDF structure and refuses password or permission protected originals', async () => {
+  it('validates genuine PDF structure, still refuses permission-protected originals, and imports password-protected originals for the reader to unlock', async () => {
     const source = path.join(root, 'Original.pdf');
     const bytes = Buffer.from(untaggedReport(1));
     await writeFile(source, bytes);
     expect(await readImportSource(source)).toEqual(bytes);
-    for (const protectedPdf of ['password', 'permissions']) {
-      mock.protectedPdf = protectedPdf;
-      await expect(readImportSource(source)).rejects.toThrow(/protected|Protected/);
-    }
+    mock.protectedPdf = 'permissions';
+    await expect(readImportSource(source)).rejects.toThrow(/protected|Protected/);
+    // A password-protected PDF imports as-is: the reader asks for the
+    // password once at open, and the filled values live in the app.
+    mock.protectedPdf = 'password';
+    expect(await readImportSource(source)).toEqual(bytes);
     mock.protectedPdf = '';
     await writeFile(source, '%PDF-1.7\nNot a real document');
     await expect(readImportSource(source)).rejects.toThrow();

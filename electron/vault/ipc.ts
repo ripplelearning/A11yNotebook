@@ -1,5 +1,6 @@
 // Owns the narrow, validated IPC boundary for local vault filesystem operations.
-import { copyFile, lstat, mkdir, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { copyFile, lstat, mkdir, open, readFile, readdir, realpath, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -7,6 +8,8 @@ import { app, dialog, ipcMain, Notification, protocol, shell, type IpcMainInvoke
 import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService, NoteReadSizeLimitError } from './service';
 import { createAnnotationStore } from './annotations';
+import { createPdfFormValueStore } from './pdf-form-values';
+import { applyPdfFormValues } from './pdf-form-export';
 import { createMetadataStore } from './metadata';
 import {
   createProtectedMetadataStore,
@@ -38,6 +41,7 @@ import { dropLinksForDeletedPath, dropLinksToDeletedPath } from '../../src/share
 import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
+import type { PdfFormValues, PdfFormValuesRecord } from '../../src/shared/pdf-form';
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { ReadingPositionInput, VaultEntry, VaultInfo } from '../../src/shared/types';
@@ -117,6 +121,7 @@ const recentFile = () => path.join(app.getPath('userData'), 'recent-vault.json')
 let service: VaultService | null = null;
 let metadata: ReturnType<typeof createMetadataStore> | null = null;
 let annotations: ReturnType<typeof createAnnotationStore> | null = null;
+let pdfFormValues: ReturnType<typeof createPdfFormValueStore> | null = null;
 let protectedMetadata: ReturnType<typeof createProtectedMetadataStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
@@ -504,6 +509,20 @@ async function effectiveContentPath(vault: VaultService, relative: string): Prom
   return alius ? alius.target : relative;
 }
 
+/**
+ * Read a PDF's bytes for a filled export: an Alius reads its original
+ * raw, a managed file is decrypted by record path. The caller never
+ * writes these bytes back to the source.
+ */
+async function readPdfBytesForExport(vault: VaultService, relative: string): Promise<Buffer> {
+  const alius = await vault.resolveAlius(relative);
+  const target = alius ? alius.target : await vault.resolveEntry(relative);
+  const stat = await lstat(target);
+  if (!stat.isFile() || stat.size > 40 * 1024 * 1024) throw new Error('This PDF is too large to export.');
+  const bytes = await readFile(target);
+  return alius ? bytes : vault.decodeFileBytes(relative, bytes);
+}
+
 async function copyImportedDocument(
   vault: VaultService,
   relative: string,
@@ -655,6 +674,7 @@ async function recoverInterruptedMove(vaultService: VaultService, vault: VaultIn
       } else if (action.kind === 'migrate') {
         await vaultService.migrateMoveMetadata(journal.source, journal.destination).catch(() => undefined);
         await annotations?.migratePaths(journal.source, journal.destination).catch(() => undefined);
+        await pdfFormValues?.migratePaths(journal.source, journal.destination).catch(() => undefined);
         if (protectedMetadata?.enabled()) {
           await draftStore(() => {
             if (service !== vaultService) throw new Error('The open library changed.');
@@ -973,6 +993,52 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     validateDocx: (relative) => nextService.validateDocxAnnotationDocument(relative),
     validateEpub: (relative) => nextService.validateEpubAnnotationDocument(relative),
   });
+  // Filled form values live in their own metadata file, routed through
+  // encrypted protection like image descriptions when the library has
+  // migrated that store. Unlike annotations, a password-protected PDF
+  // can hold filled values: the reader unlocks it at open, so the
+  // validator only checks that the file exists and is a PDF.
+  pdfFormValues = createPdfFormValueStore({
+    read: () => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
+      return routedMetadataFor(nextService).read('pdf-form-values.json');
+    },
+    write: (value) => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
+      return routedMetadataFor(nextService).write('pdf-form-values.json', value);
+    },
+    captureAuthorization: () => {
+      const key = masterKey;
+      const generation = securityGeneration;
+      return () => {
+        if (
+          service !== nextService ||
+          generation !== securityGeneration ||
+          masterKey !== key ||
+          (securityConfig && !key)
+        )
+          throw new Error('The open library or lock state changed.');
+      };
+    },
+    validatePdf: async (relative) => {
+      const effective = await effectiveContentPath(nextService, relative);
+      if (!/\.pdf$/i.test(effective)) throw new Error('Filled form values require a PDF document.');
+      const alius = await nextService.resolveAlius(relative);
+      const absolute = alius ? alius.target : await nextService.resolveEntry(relative);
+      const stat = await lstat(absolute);
+      if (!stat.isFile() || stat.size > 40 * 1024 * 1024)
+        throw new Error('Filled form values require a PDF document.');
+      const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const header = Buffer.alloc(5);
+        const { bytesRead } = await file.read(header, 0, header.length, 0);
+        if (!header.subarray(0, bytesRead).equals(Buffer.from('%PDF-')))
+          throw new Error('Filled form values require a PDF document.');
+      } finally {
+        await file.close();
+      }
+    },
+  });
   if (masterKey || !securityConfig) await startReminders(nextService, vault);
   else {
     reminderService = null;
@@ -1207,6 +1273,7 @@ const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'flashcards.json': 'flashcard-schedules',
   'reminders.json': 'reminders',
   'settings.json': 'settings',
+  'pdf-form-values.json': 'pdf-form-values',
 };
 
 /**
@@ -1339,6 +1406,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
     throw new Error('Choose a different, library-relative destination using forward slashes.');
   const vault = requireService();
   const currentAnnotations = annotations;
+  const currentFormValues = pdfFormValues;
   const currentReminders = reminderService;
   const currentProtected = protectedMetadata;
   assertCurrent();
@@ -1430,6 +1498,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
         await vault.saveNote(item.nextPath, item.after, item.before);
       }
       await currentAnnotations?.migratePaths(relative, destination);
+      await currentFormValues?.migratePaths(relative, destination);
       if (currentProtected?.enabled()) await draftStore(assertCurrent).migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
@@ -3371,6 +3440,85 @@ export function setupVaultIpc(
       access.assertCurrent();
       await current.pdf.delete(relative, id);
       access.assertCurrent();
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfFormValues, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !pdfFormValues) throw new Error('Invalid filled form request.');
+    const current = pdfFormValues;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.get(relative);
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfFormValuesSave, async (event, relative: unknown, values: unknown, identity: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !pdfFormValues) throw new Error('Invalid filled form request.');
+    const current = pdfFormValues;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.save(
+        relative,
+        values as PdfFormValues,
+        identity as PdfFormValuesRecord['documentIdentity'],
+      );
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfFilledDownload, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !pdfFormValues) throw new Error('Invalid filled form request.');
+    const current = pdfFormValues;
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    const effective = await effectiveContentPath(vault, relative);
+    const baseName = path.basename(effective).replace(/\.alius$/i, '').replace(/\.pdf$/i, '') || 'Filled form';
+    const choice = await dialog.showSaveDialog({
+      title: 'Download filled PDF',
+      defaultPath: `${baseName} (filled).pdf`,
+      filters: [{ name: 'PDF', extensions: ['pdf'] }],
+    });
+    if (choice.canceled || !choice.filePath) return { saved: false };
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const values = await current.get(relative);
+      const bytes = await readPdfBytesForExport(vault, relative);
+      const filled = await applyPdfFormValues(new Uint8Array(bytes), values);
+      await writeFile(choice.filePath, filled, { mode: 0o600 });
+      access.assertCurrent();
+      return { saved: true, fileName: path.basename(choice.filePath) };
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultPdfFilledCopy, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !pdfFormValues) throw new Error('Invalid filled form request.');
+    const current = pdfFormValues;
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      // Filling an Alius never touches the original: the filled file is
+      // always a new managed copy in the same notebook.
+      const values = await current.get(relative);
+      const bytes = await readPdfBytesForExport(vault, relative);
+      const filled = await applyPdfFormValues(new Uint8Array(bytes), values);
+      const notebookPath = path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative);
+      const baseName =
+        path.posix.basename(relative).replace(/\.alius$/i, '').replace(/\.pdf$/i, '') || 'Filled form';
+      const created = await copyImportedDocument(
+        vault,
+        path.posix.join(notebookPath, `${baseName} (filled).pdf`),
+        Buffer.from(filled),
+        false,
+        access.assertCurrent,
+      );
+      access.assertCurrent();
+      return { path: created.path, name: created.path.split('/').at(-1)! };
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultDocxAnnotations, async (event, relative: unknown) => {
