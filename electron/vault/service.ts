@@ -59,6 +59,8 @@ import { createProvenanceStore, type Provenance } from './provenance';
 import { createProtectionStore } from './protection';
 import { createSupersededStore } from './superseded';
 import { formatLinkFile, isAllowedLinkUrl, isLinkPath, linkFileName, parseLinkUrl } from '../../src/shared/links';
+import { aliusFileName, formatAliusFile, isAliusPath, parseAliusTarget } from '../../src/shared/alius';
+import { readAliusTargetBytes, validateAliusTarget, writeAliusTargetBytes } from './alius';
 import {
   decryptLibraryFile,
   encryptLibraryFile,
@@ -395,15 +397,18 @@ export function createVaultService(
   }
 
   async function validatePdfAnnotationDocument(relativePath: string) {
-    if (!/\.pdf$/i.test(relativePath)) throw new Error('PDF annotations require a PDF document.');
-    const absolute = await resolveEntry(relativePath);
+    // An Alius record is validated against its original: the annotation
+    // itself stays keyed by the record path in the annotation store.
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    if (!/\.pdf$/i.test(effectivePath)) throw new Error('PDF annotations require a PDF document.');
+    const absolute = isAlius ? effectivePath : await resolveEntry(relativePath);
     const stat = await lstat(absolute);
     if (!stat.isFile()) throw new Error('Annotations require a document file.');
     const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const openedStat = await file.stat();
       if (!openedStat.isFile()) throw new Error('Annotations require a document file.');
-      if (/\.pdf$/i.test(relativePath)) {
+      if (/\.pdf$/i.test(effectivePath)) {
         const header = Buffer.alloc(1024);
         const { bytesRead } = await file.read(header, 0, header.length, 0);
         if (!header.subarray(0, bytesRead).includes(Buffer.from('%PDF-')))
@@ -438,8 +443,9 @@ export function createVaultService(
   }
 
   async function validateDocxAnnotationDocument(relativePath: string) {
-    if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX annotations require a Word document.');
-    const absolute = await resolveEntry(relativePath);
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    if (!/\.docx$/i.test(effectivePath)) throw new Error('DOCX annotations require a Word document.');
+    const absolute = isAlius ? effectivePath : await resolveEntry(relativePath);
     const stat = await lstat(absolute);
     if (!stat.isFile()) throw new Error('Annotations require a document file.');
     // The reader's bounded parser is the structural gate: a file it
@@ -449,8 +455,9 @@ export function createVaultService(
   }
 
   async function validateEpubAnnotationDocument(relativePath: string) {
-    if (!/\.epub$/i.test(relativePath)) throw new Error('ePub annotations require an ePub book.');
-    const absolute = await resolveEntry(relativePath);
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    if (!/\.epub$/i.test(effectivePath)) throw new Error('ePub annotations require an ePub book.');
+    const absolute = isAlius ? effectivePath : await resolveEntry(relativePath);
     const stat = await lstat(absolute);
     if (!stat.isFile()) throw new Error('Annotations require a document file.');
     const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
@@ -467,15 +474,18 @@ export function createVaultService(
   }
 
   async function readDocxStructure(relativePath: string): Promise<DocxStructure> {
-    if (!/\.docx$/i.test(relativePath)) throw new Error('DOCX reading requires a .docx document.');
-    const absolute = await resolveEntry(relativePath);
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    if (!/\.docx$/i.test(effectivePath)) throw new Error('DOCX reading requires a .docx document.');
+    const absolute = isAlius ? effectivePath : await resolveEntry(relativePath);
     const file = await open(absolute, constants.O_RDONLY | constants.O_NOFOLLOW);
     try {
       const stat = await file.stat();
       if (!stat.isFile() || stat.size > 40 * 1024 * 1024) {
         throw new Error('This DOCX exceeds the 40 MiB archive limit.');
       }
-      const bytes = decodeFileBytes(relativePath, await file.readFile());
+      // An Alius target is never library-encrypted, so its bytes are
+      // read raw; a library file is decrypted by relative path.
+      const bytes = isAlius ? await file.readFile() : decodeFileBytes(relativePath, await file.readFile());
       if (bytes.length > 40 * 1024 * 1024) throw new Error('This DOCX exceeds the 40 MiB archive limit.');
       const structure = parseDocxStructure(bytes);
       if (disposed || !root) throw new Error('This library is closed.');
@@ -531,60 +541,75 @@ export function createVaultService(
   }
 
   async function readSpreadsheet(relativePath: string): Promise<SpreadsheetWorkbook> {
-    if (/\.xlsx$/i.test(relativePath)) {
-      return parseXlsxWorkbook(await readVaultFileBytes(relativePath, 'XLSX'));
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    const read = (label: string) =>
+      isAlius ? readAliusTargetBytes(effectivePath, label) : readVaultFileBytes(relativePath, label);
+    if (/\.xlsx$/i.test(effectivePath)) {
+      return parseXlsxWorkbook(await read('XLSX'));
     }
-    if (/\.ods$/i.test(relativePath)) {
-      return parseOdsWorkbook(await readVaultFileBytes(relativePath, 'ODS'));
+    if (/\.ods$/i.test(effectivePath)) {
+      return parseOdsWorkbook(await read('ODS'));
     }
-    if (/\.csv$/i.test(relativePath)) {
-      const text = (await readVaultFileBytes(relativePath, 'CSV')).toString('utf8');
-      const name = path.basename(relativePath).replace(/\.csv$/i, '') || 'Sheet';
+    if (/\.csv$/i.test(effectivePath)) {
+      const text = (await read('CSV')).toString('utf8');
+      const name = effectivePath.split(/[\\/]/).at(-1)?.replace(/\.csv$/i, '') || 'Sheet';
       return parseCsvWorkbook(text, name);
     }
-    if (/\.xls$/i.test(relativePath)) {
-      return parseXlsWorkbook(await readVaultFileBytes(relativePath, 'XLS'));
+    if (/\.xls$/i.test(effectivePath)) {
+      return parseXlsWorkbook(await read('XLS'));
     }
     throw new Error('Spreadsheet reading requires an .xlsx, .ods, .csv, or .xls file.');
   }
 
   async function readSlideDeck(relativePath: string): Promise<SlideDeck> {
-    if (/\.pptx$/i.test(relativePath)) {
-      return parsePptxDeck(await readVaultFileBytes(relativePath, 'PPTX'));
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    const read = (label: string) =>
+      isAlius ? readAliusTargetBytes(effectivePath, label) : readVaultFileBytes(relativePath, label);
+    if (/\.pptx$/i.test(effectivePath)) {
+      return parsePptxDeck(await read('PPTX'));
     }
-    if (/\.odp$/i.test(relativePath)) {
-      return parseOdpDeck(await readVaultFileBytes(relativePath, 'ODP'));
+    if (/\.odp$/i.test(effectivePath)) {
+      return parseOdpDeck(await read('ODP'));
     }
     throw new Error('Slide reading requires a .pptx or .odp file.');
   }
 
   async function saveSpreadsheet(relativePath: string, value: unknown): Promise<void> {
     const workbook = validateSpreadsheetWorkbook(value);
-    const originalBytes = await readVaultFileBytes(relativePath, 'spreadsheet');
+    const { effectivePath, isAlius } = await effectiveContentPath(relativePath);
+    const originalBytes = isAlius
+      ? await readAliusTargetBytes(effectivePath, 'spreadsheet')
+      : await readVaultFileBytes(relativePath, 'spreadsheet');
     let bytes: Buffer;
-    if (/\.xlsx$/i.test(relativePath)) {
+    if (/\.xlsx$/i.test(effectivePath)) {
       if (workbook.sourceFormat !== 'xlsx') throw new Error('This spreadsheet is not an .xlsx file.');
       bytes = writeXlsxWorkbook(originalBytes, workbook);
-    } else if (/\.ods$/i.test(relativePath)) {
+    } else if (/\.ods$/i.test(effectivePath)) {
       if (workbook.sourceFormat !== 'ods') throw new Error('This spreadsheet is not an .ods file.');
       bytes = writeOdsWorkbook(originalBytes, workbook);
-    } else if (/\.csv$/i.test(relativePath)) {
+    } else if (/\.csv$/i.test(effectivePath)) {
       if (workbook.sourceFormat !== 'csv') throw new Error('This spreadsheet is not a .csv file.');
       bytes = Buffer.from(writeCsvWorkbook(workbook), 'utf8');
     } else {
       throw new Error('Spreadsheet saving requires an .xlsx, .ods, or .csv file.');
     }
-    await rewriteRawBytes(relativePath, bytes);
+    // A spreadsheet save has no expected-content guard (library files
+    // do not have one either); the write goes back to the original.
+    if (isAlius) await writeAliusTargetBytes(effectivePath, bytes);
+    else await rewriteRawBytes(relativePath, bytes);
     await refreshSearchIndex();
   }
 
   async function saveSpreadsheetAsXlsx(relativePath: string, value: unknown): Promise<string> {
     const workbook = validateSpreadsheetWorkbook(value);
-    if (!/\.xls$/i.test(relativePath)) throw new Error('Save as .xlsx requires an .xls file.');
+    const { effectivePath } = await effectiveContentPath(relativePath);
+    if (!/\.xls$/i.test(effectivePath)) throw new Error('Save as .xlsx requires an .xls file.');
     if (workbook.sourceFormat !== 'xls') throw new Error('This spreadsheet is not an .xls file.');
     const bytes = writeXlsxWorkbookFresh(workbook);
     const directory = path.posix.dirname(relativePath);
-    const base = path.basename(relativePath).replace(/\.xls$/i, '');
+    // The new .xlsx lives in the library beside the record, named after
+    // the original (for an Alius) or the library file itself.
+    const base = effectivePath.split(/[\\/]/).at(-1)?.replace(/\.xls$/i, '') ?? '';
     let candidate = path.posix.join(directory, `${base}.xlsx`);
     for (let attempt = 2; attempt <= 100; attempt += 1) {
       try {
@@ -626,17 +651,40 @@ export function createVaultService(
       } else if (entry.isFile()) {
         const isNote = isNotePath(entry.name);
         const isLink = isLinkPath(entry.name);
+        const isAlius = isAliusPath(entry.name);
         const origin = await provenance.get(childPath, origins);
         const fileIdentity = await provenance.identity(childPath);
         if (fileIdentity) live.add(fileIdentity);
-        result.push({
+        const record: VaultEntry = {
           name: entry.name,
           path: childRelative,
-          kind: isLink ? 'link' : isNote ? 'note' : 'attachment',
+          kind: isAlius || isLink ? 'link' : isNote ? 'note' : 'attachment',
           ...(origin ? { provenance: origin } : {}),
           ...(fileIdentity && fileIdentity in supersededRecords ? { superseded: true } : {}),
           ...(fileIdentity && fileIdentity in protectionRecords ? { protected: true } : {}),
-        });
+        };
+        if (isAlius) {
+          // Resolve the original for the grid (Type "Alius", broken
+          // state). A record that cannot be read leaves the fields
+          // unset; opening it reports the problem instead of breaking
+          // the whole library view.
+          try {
+            const resolved = await readAliusRecord(childRelative);
+            if (resolved) {
+              record.aliusTarget = resolved.target;
+              let targetStat: Awaited<ReturnType<typeof lstat>> | null = null;
+              try {
+                targetStat = await lstat(resolved.target);
+              } catch {
+                targetStat = null;
+              }
+              record.aliusBroken = !targetStat || !targetStat.isFile() || targetStat.isSymbolicLink();
+            }
+          } catch {
+            // Unreadable record: no target, not marked broken.
+          }
+        }
+        result.push(record);
       }
     }
     return result;
@@ -678,6 +726,11 @@ export function createVaultService(
   }
 
   async function readNote(relativePath: string, maximumBytes?: number) {
+    const aliusTarget = await requireAliusTarget(relativePath);
+    if (aliusTarget) {
+      if (!isNotePath(aliusTarget)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
+      return readAliusNoteText(aliusTarget, maximumBytes);
+    }
     const target = await resolveEntry(relativePath);
     if (!isNotePath(target)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
     if (maximumBytes === undefined) return decodeNoteBytes(relativePath, await readFile(target));
@@ -760,6 +813,14 @@ export function createVaultService(
       if (typeof content !== 'string') throw new Error('Note content must be text.');
       if (expectedContent !== undefined && typeof expectedContent !== 'string')
         throw new Error('Expected note content must be text.');
+      const aliusTarget = await requireAliusTarget(relativePath);
+      if (aliusTarget) {
+        if (!isNotePath(aliusTarget)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
+        await saveAliusNoteText(aliusTarget, content, expectedContent);
+        await refreshSearchIndex();
+        await pruneLinksForSavedNote(relativePath, content).catch(() => undefined);
+        return;
+      }
       if (!isNotePath(relativePath)) throw new Error('Only Markdown, HTML, and plain-text notes can be edited.');
       let target: string;
       try {
@@ -1135,6 +1196,169 @@ export function createVaultService(
     });
   }
 
+  /**
+   * Alius records: one `.alius` file per shortcut, holding the original
+   * file's absolute path. The record itself is an ordinary library file
+   * (created with createDocument, so whole-library encryption applies to
+   * the record — never to the target, which lives outside the library).
+   * The grid shows the record with Type "Alius" and the target's path in
+   * its properties.
+   */
+  async function readAliusRecord(relativePath: string): Promise<{ target: string } | null> {
+    if (!isAliusPath(relativePath)) return null;
+    const text = (await readVaultFileBytes(relativePath, 'Alius')).toString('utf8');
+    const target = parseAliusTarget(text);
+    if (!target || (!path.isAbsolute(target) && !path.win32.isAbsolute(target)))
+      throw new Error('This Alius does not point to a valid file. Remove it or locate the file again.');
+    return { target };
+  }
+
+  /**
+   * The original an Alius record points at, or null when the path is not
+   * an Alius record. Throws when the record is unreadable or does not
+   * point to a valid file. A missing original is not an error here — the
+   * caller decides whether that is broken (grid) or fatal (open).
+   */
+  async function resolveAlius(relativePath: string): Promise<{ target: string } | null> {
+    return readAliusRecord(relativePath);
+  }
+
+  /**
+   * The original an Alius record points at, when it still exists as a
+   * regular file. Null for non-Alius paths. Throws a clear error when
+   * the original is gone, so an open or save can say what happened
+   * instead of failing on a missing file.
+   */
+  async function requireAliusTarget(relativePath: string): Promise<string | null> {
+    const record = await readAliusRecord(relativePath);
+    if (!record) return null;
+    let stat: Awaited<ReturnType<typeof lstat>> | null = null;
+    try {
+      stat = await lstat(record.target);
+    } catch {
+      stat = null;
+    }
+    if (!stat || !stat.isFile() || stat.isSymbolicLink())
+      throw new Error(
+        `The original file is no longer available at ${record.target}. Locate the file or remove the Alius.`,
+      );
+    return record.target;
+  }
+
+  /**
+   * The path to dispatch on and read from: the original's absolute path
+   * for an Alius record, the library-relative path otherwise.
+   */
+  async function effectiveContentPath(relativePath: string): Promise<{ effectivePath: string; isAlius: boolean }> {
+    const aliusTarget = await requireAliusTarget(relativePath);
+    return aliusTarget ? { effectivePath: aliusTarget, isAlius: true } : { effectivePath: relativePath, isAlius: false };
+  }
+
+  /** Read a note's text from an Alius target: plaintext, never library-decrypted, with the same size limit as notes. */
+  async function readAliusNoteText(target: string, maximumBytes?: number): Promise<string> {
+    const file = await open(target, constants.O_RDONLY | constants.O_NOFOLLOW);
+    try {
+      const stat = await file.stat();
+      if (!stat.isFile()) throw new Error('The original file is not a regular file.');
+      if (maximumBytes !== undefined && stat.size > maximumBytes) throw new NoteReadSizeLimitError();
+      const text = (await file.readFile()).toString('utf8');
+      if (maximumBytes !== undefined && Buffer.byteLength(text, 'utf8') > maximumBytes)
+        throw new NoteReadSizeLimitError();
+      return text;
+    } finally {
+      await file.close();
+    }
+  }
+
+  /**
+   * Save a note's text back to an Alius target. Q4: when the original
+   * changed outside the app since it was opened, refuse to save so the
+   * conflict dialog can offer Reload or Save anyway.
+   */
+  async function saveAliusNoteText(target: string, content: string, expectedContent?: string): Promise<void> {
+    if (expectedContent !== undefined) {
+      const current = await readAliusNoteText(target);
+      if (current !== expectedContent)
+        throw new Error('Note changed on disk. Resolve the conflict before saving.');
+    }
+    await writeAliusTargetBytes(target, Buffer.from(content, 'utf8'));
+  }
+
+  /**
+   * Create an Alius record: one `.alius` file in a notebook pointing at
+   * the original's absolute path. The original is validated and never
+   * copied. The record is created with origin 'imported', like an
+   * imported copy, so the import flows accept it as their result.
+   */
+  async function createAlius(
+    input: unknown,
+    assertCurrent: () => void = () => undefined,
+  ): Promise<{ path: string; vault: VaultInfo }> {
+    return serializeNoteWrite(async () => {
+      if (!input || typeof input !== 'object') throw new Error('Invalid Alius request.');
+      const { source, notebookPath = '' } = input as { source?: unknown; notebookPath?: unknown };
+      if (
+        typeof source !== 'string' ||
+        !source.trim() ||
+        (!path.isAbsolute(source.trim()) && !path.win32.isAbsolute(source.trim())) ||
+        typeof notebookPath !== 'string'
+      )
+        throw new Error('Choose a file to create an Alius for.');
+      assertCurrent();
+      const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
+      if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
+      const target = path.resolve(source.trim());
+      await validateAliusTarget(target);
+      assertCurrent();
+      const base = aliusFileName(path.basename(target));
+      const stem = base.slice(0, -'.alius'.length);
+      let candidate = path.posix.join(notebookPath, base);
+      for (let attempt = 2; attempt <= 100; attempt += 1) {
+        try {
+          await resolveEntry(candidate);
+          candidate = path.posix.join(notebookPath, `${stem} ${attempt}.alius`);
+        } catch {
+          break;
+        }
+      }
+      const created = await createDocument(candidate, formatAliusFile(target), 'imported', assertCurrent);
+      await refreshSearchIndex();
+      return { path: candidate, vault: created };
+    });
+  }
+
+  /**
+   * Retarget an Alius record ("Locate the file"): point it at a new
+   * original. The record itself is rewritten in the library; the old
+   * original is never touched.
+   */
+  async function saveAlius(
+    input: unknown,
+    assertCurrent: () => void = () => undefined,
+  ): Promise<{ path: string; vault: VaultInfo }> {
+    return serializeNoteWrite(async () => {
+      if (!input || typeof input !== 'object') throw new Error('Invalid Alius request.');
+      const { path: relativePath, target } = input as { path?: unknown; target?: unknown };
+      if (
+        typeof relativePath !== 'string' ||
+        !isAliusPath(relativePath) ||
+        typeof target !== 'string' ||
+        !target.trim()
+      )
+        throw new Error('Choose an Alius and a replacement file.');
+      assertCurrent();
+      await assertNotProtected(relativePath);
+      const record = await resolveEntry(relativePath);
+      if (!(await lstat(record)).isFile()) throw new Error('Choose an Alius to retarget.');
+      const resolved = path.resolve(target.trim());
+      await validateAliusTarget(resolved);
+      assertCurrent();
+      await replaceNote(relativePath, formatAliusFile(resolved), undefined, assertCurrent);
+      await refreshSearchIndex();
+      return { path: relativePath, vault: await getVault() };
+    });
+  }
+
   function importFileCopy(
     source: string,
     notebookPath = '',
@@ -1435,6 +1659,12 @@ export function createVaultService(
 
   /** File bytes with whole-library decryption applied, for sending by email. */
   async function readItemBytes(relativePath: string): Promise<{ name: string; bytes: Buffer }> {
+    // An Alius emails its original, not the record file.
+    const aliusTarget = await requireAliusTarget(relativePath);
+    if (aliusTarget) {
+      const name = aliusTarget.split(/[\\/]/).at(-1) ?? relativePath.split('/').at(-1)!;
+      return { name, bytes: await readAliusTargetBytes(aliusTarget, 'file') };
+    }
     const absolute = await resolveEntry(relativePath);
     const stat = await lstat(absolute);
     if (!stat.isFile() || stat.isSymbolicLink()) throw new Error('Only files can be sent by email.');
@@ -2315,6 +2545,9 @@ export function createVaultService(
     createNote,
     createLink,
     saveLink,
+    resolveAlius,
+    createAlius,
+    saveAlius,
     createTask,
     importFile,
     importEntry,

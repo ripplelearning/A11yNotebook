@@ -257,6 +257,10 @@ test('importing a workbook with a chart sheet imports successfully', async () =>
     const fixturePath = writeFixture(paths, 'Chart workbook.xlsx', zip(chartSheetEntries()));
     await stubImportDialog(app, [fixturePath]);
     await runPaletteCommand(page, 'Import file');
+    // The copy-or-Alius prompt appears for every import: choose the
+    // default "Make a copy" to store a copy in the library.
+    const importDialog = page.getByRole('dialog', { name: 'Import file' });
+    await importDialog.getByRole('button', { name: 'Import', exact: true }).click();
     // The 1.9.14 false positive: a chart sheet used to collide with a real
     // sheet and report a duplicate. The import must succeed now.
     await expect(page.getByRole('gridcell', { name: 'Chart workbook.xlsx' })).toBeVisible({

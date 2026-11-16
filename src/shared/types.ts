@@ -61,6 +61,10 @@ export interface VaultEntry {
   superseded?: boolean;
   /** True when the item is protected: renaming, moving, deleting, and editing are blocked until it is unprotected. */
   protected?: boolean;
+  /** Absolute path of the original file, for Alius records only. */
+  aliusTarget?: string;
+  /** True when an Alius record's original file cannot be found. */
+  aliusBroken?: boolean;
 }
 
 /** File details for the properties dialog, measured by the main process. */

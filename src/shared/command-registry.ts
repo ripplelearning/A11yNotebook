@@ -20,6 +20,7 @@ export type CommandId =
   | 'quick-task'
   | 'add-link'
   | 'edit-link'
+  | 'alius-locate'
   | 'dictate'
   | 'record-audio-note'
   | 'new-asset'
@@ -322,6 +323,14 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Edit link',
     description: 'Change the selected link title or web address.',
     contexts: ['link'],
+  },
+  {
+    id: 'alius-locate',
+    label: 'Locate the file',
+    description: 'Choose the original file again for a broken Alius.',
+    // No contexts: a plain link must never see this. App.tsx injects it
+    // into the menu for broken Alius records only.
+    contexts: [],
   },
   {
     // Registry order is menu order: Import file sits right after Open so

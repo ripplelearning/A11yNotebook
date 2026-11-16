@@ -4,6 +4,7 @@ import type { ItemStats, VaultBookmark, VaultEntry, VaultLink, VaultTask } from 
 import type { Reminder } from '../../../shared/reminders';
 import { assetTypes, createAssetRegistry } from '../../../shared/assets';
 import { attachmentTypeLabel } from '../../../shared/attachments';
+import { isAliusPath } from '../../../shared/alius';
 
 const assetRegistry = createAssetRegistry(assetTypes);
 
@@ -94,14 +95,16 @@ export default function ItemPropertiesDialog({
     if (!livePath) return;
     let cancelled = false;
     const bridge = window.a11yNotebook?.vault;
-    const lower = livePath.toLowerCase();
+    // An Alius annotation is stored under the record path but describes
+    // the original, so the type check uses the original's extension.
+    const effectivePath = (entry.aliusTarget ?? livePath).toLowerCase();
     const query = entry.kind === 'note'
       ? bridge?.getAnnotations?.(livePath)
-      : lower.endsWith('.pdf')
+      : effectivePath.endsWith('.pdf')
         ? bridge?.listPdfAnnotations?.(livePath)
-        : lower.endsWith('.docx')
+        : effectivePath.endsWith('.docx')
           ? bridge?.listDocxAnnotations?.(livePath)
-          : lower.endsWith('.epub')
+          : effectivePath.endsWith('.epub')
             ? bridge?.listEpubAnnotations?.(livePath)
             : undefined;
     if (!query) return;
@@ -115,16 +118,18 @@ export default function ItemPropertiesDialog({
     return () => {
       cancelled = true;
     };
-  }, [livePath, entry.kind]);
+  }, [livePath, entry.kind, entry.aliusTarget]);
 
   const kindLabel =
     entry.kind === 'notebook'
       ? 'Notebook'
       : entry.kind === 'note'
         ? 'Note'
-        : entry.kind === 'link'
-          ? 'Link'
-          : attachmentTypeLabel(entry.path);
+        : isAliusPath(entry.path)
+          ? 'Alius'
+          : entry.kind === 'link'
+            ? 'Link'
+            : attachmentTypeLabel(entry.path);
   const liveEntry = livePath ? findLiveEntry(liveEntries, livePath) : undefined;
   const descendants = liveEntry?.children ? collectDescendants(liveEntry) : [];
   const taskCount = livePath
@@ -192,6 +197,20 @@ export default function ItemPropertiesDialog({
                 </div>
               </>
             ) : null}
+          {isAliusPath(entry.path) ? (
+            <>
+              <div>
+                <dt>Original file</dt>
+                <dd>{entry.aliusTarget ?? 'Unknown'}</dd>
+              </div>
+              {entry.aliusBroken ? (
+                <div>
+                  <dt>Status</dt>
+                  <dd>The original file is no longer available at that location.</dd>
+                </div>
+              ) : null}
+            </>
+          ) : null}
           <div>
             <dt>Protected</dt>
             <dd>{liveEntry?.protected ? 'Protected' : 'Not protected'}</dd>

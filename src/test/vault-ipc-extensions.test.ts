@@ -339,16 +339,27 @@ describe('extended vault IPC integration', () => {
     mock.openSelection = path.join(temporary, 'Imported.html');
     const original = '<h1>Original</h1>\r\n<script>retained but not executed by import</script>';
     await writeFile(mock.openSelection, original);
-    const imported = (await invoke(IPC_CHANNELS.vaultImport, 'Folder')) as import('../shared/types').VaultInfo;
+    const pending = await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    const imported = (
+      (await invoke(IPC_CHANNELS.vaultImportComplete, pending, 'copy')) as {
+        vault: import('../shared/types').VaultInfo;
+      }
+    ).vault;
     expect(imported.entries.find((entry) => entry.path === 'Folder')?.children?.[0]).toMatchObject({
       path: 'Folder/Imported.html',
       provenance: 'imported',
     });
     expect(await readFile(path.join(mock.root, 'Folder', 'Imported.html'), 'utf8')).toBe(original);
     expect(await readFile(mock.openSelection, 'utf8')).toBe(original);
-    await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    const secondPending = await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    await invoke(IPC_CHANNELS.vaultImportComplete, secondPending, 'copy');
     expect(await readFile(path.join(mock.root, 'Folder', 'Imported (imported).html'), 'utf8')).toBe(original);
-    const rootImport = (await invoke(IPC_CHANNELS.vaultImport, '')) as import('../shared/types').VaultInfo;
+    const rootPending = await invoke(IPC_CHANNELS.vaultImport, '');
+    const rootImport = (
+      (await invoke(IPC_CHANNELS.vaultImportComplete, rootPending, 'copy')) as {
+        vault: import('../shared/types').VaultInfo;
+      }
+    ).vault;
     expect(rootImport.entries.find((entry) => entry.path === 'Imported.html')?.provenance).toBe('imported');
     await expect(invoke(IPC_CHANNELS.vaultImport, '../outside')).rejects.toThrow();
     await expect(invoke(IPC_CHANNELS.vaultImport, 'Topic.md')).rejects.toThrow('folder');
@@ -367,6 +378,10 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, 'Topic.md'), 'utf8')).toBe(original);
     const second = (await invoke(IPC_CHANNELS.vaultImportAsNote, 'Topic.md')) as { path: string };
     expect(second.path).toBe('Topic (imported 2).md');
+    mock.confirm = 0;
+    await expect(invoke(IPC_CHANNELS.vaultImportAsNote, 'Topic.md')).rejects.toThrow('Import cancelled');
+    expect(await readdir(mock.root)).not.toContain('Topic (imported 3).md');
+    mock.confirm = 1;
     await expect(invoke(IPC_CHANNELS.vaultImportAsNote, '../outside.md')).rejects.toThrow();
     await expect(invoke(IPC_CHANNELS.vaultImportAsNote, path.join(mock.root, 'Topic.md'))).rejects.toThrow();
     await writeFile(path.join(mock.root, 'Legacy.md'), '{"format":"a11ynotebook-encrypted-v1","ciphertext":"private"}');
@@ -377,16 +392,29 @@ describe('extended vault IPC integration', () => {
     expect(await readdir(mock.root)).not.toContain('Legacy (imported).md');
   });
 
-  it('imports precisely the selected entry after native consent, with cancellation returning null and no picker', async () => {
+  it('imports precisely the selected entry after the copy-or-Alius prompt, with no picker', async () => {
     mock.openDialogGate = () => {
       throw new Error('Selected-entry import must not show a picker');
     };
     const source = await readFile(path.join(mock.root, 'Topic.md'), 'utf8');
-    mock.confirm = 0;
-    expect(await invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md')).toBeNull();
+    const pending = (await invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md')) as {
+      source: string;
+      sourceInLibrary: boolean;
+      notebookPath: string;
+      destinationName: string;
+      sourceName: string;
+      libraryEncrypted: boolean;
+    };
+    expect(pending).toMatchObject({
+      source: 'Topic.md',
+      sourceInLibrary: true,
+      notebookPath: '',
+      destinationName: 'Topic.md',
+      sourceName: 'Topic.md',
+      libraryEncrypted: false,
+    });
     expect(await readdir(mock.root)).not.toContain('Topic (imported).md');
-    mock.confirm = 1;
-    const result = (await invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md')) as {
+    const result = (await invoke(IPC_CHANNELS.vaultImportComplete, pending, 'copy')) as {
       vault: import('../shared/types').VaultInfo;
       path: string;
     };
@@ -413,7 +441,7 @@ describe('extended vault IPC integration', () => {
         release = resolve;
       });
     };
-    const importing = invoke(IPC_CHANNELS.vaultImportEntry, 'Topic.md');
+    const importing = invoke(IPC_CHANNELS.vaultImportAsNote, 'Topic.md');
     await ready;
     const locking = invoke(IPC_CHANNELS.vaultSecurityLock);
     release();
@@ -431,7 +459,8 @@ describe('extended vault IPC integration', () => {
     mock.openSelection = path.join(temporary, 'Original.md');
     await writeFile(mock.openSelection, '# Original');
     mock.failIndexRefreshAt = mock.refreshCount + 1;
-    await expect(invoke(IPC_CHANNELS.vaultImport, '')).rejects.toThrow('Index write failed');
+    const pending = await invoke(IPC_CHANNELS.vaultImport, '');
+    await expect(invoke(IPC_CHANNELS.vaultImportComplete, pending, 'copy')).rejects.toThrow('Index write failed');
     expect(await readdir(mock.root)).not.toContain('Original.md');
     const handler = mock.handlers.get(IPC_CHANNELS.vaultImport)!;
     await expect(handler({}, '')).rejects.toThrow('Untrusted');
@@ -441,7 +470,8 @@ describe('extended vault IPC integration', () => {
     const { shell } = await import('electron');
     mock.openSelection = path.join(temporary, 'Imported.md');
     await writeFile(mock.openSelection, '# Original');
-    await invoke(IPC_CHANNELS.vaultImport, '');
+    const importedPending = await invoke(IPC_CHANNELS.vaultImport, '');
+    await invoke(IPC_CHANNELS.vaultImportComplete, importedPending, 'copy');
     // Delete is the first (default) button in the confirmation dialog,
     // and Escape maps to the second button, Cancel.
     mock.confirm = 0;
@@ -585,7 +615,8 @@ describe('extended vault IPC integration', () => {
     mock.confirm = 0;
     mock.openSelection = path.join(temporary, 'Original.md');
     await writeFile(mock.openSelection, '# Original');
-    await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    const originPending = await invoke(IPC_CHANNELS.vaultImport, 'Folder');
+    await invoke(IPC_CHANNELS.vaultImportComplete, originPending, 'copy');
     await invoke(IPC_CHANNELS.vaultRename, 'Folder/Original.md', 'Renamed.md');
     await invoke(IPC_CHANNELS.vaultSecuritySetup, 'vault password 123');
     await invoke(IPC_CHANNELS.vaultNoteEncrypt, 'Folder/Renamed.md', '# Original', 'note password 123');

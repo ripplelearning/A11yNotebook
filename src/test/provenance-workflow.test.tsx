@@ -46,7 +46,7 @@ function installBridge() {
       reveal: vi.fn(),
       openExternal: vi.fn(),
       openUrl: vi.fn(),
-      importFile: vi.fn(async () => library),
+      importFile: vi.fn(async () => null),
       getTasks: vi.fn(async () => []),
       toggleTask: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
@@ -113,14 +113,26 @@ describe('provenance-aware row activation', () => {
       ...library,
       entries: [{ ...library.entries[0], children: [...library.entries[0].children!, copy] }],
     };
-    vi.mocked(bridge.vault.importEntry!).mockResolvedValue({ vault: importedLibrary, path: copy.path });
+    const pending = {
+      source: 'Research/Outside.md',
+      sourceInLibrary: true,
+      notebookPath: 'Research',
+      destinationName: 'Outside imported.md',
+      sourceName: 'Outside.md',
+      libraryEncrypted: false,
+    };
+    vi.mocked(bridge.vault.importEntry!).mockResolvedValue(pending);
+    vi.mocked(bridge.vault.importComplete!).mockResolvedValue({ vault: importedLibrary, path: copy.path });
     render(<App />);
     const grid = await showFiles();
     const row = within(grid).getByRole('gridcell', { name: 'Outside.md' });
     fireEvent.contextMenu(row);
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
+    await screen.findByRole('dialog', { name: 'Import file' });
+    fireEvent.click(screen.getByRole('button', { name: 'Import' }));
     await screen.findByRole('heading', { name: 'Outside imported', level: 2 });
     expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/Outside.md');
+    expect(bridge.vault.importComplete).toHaveBeenCalledWith(pending, 'copy');
     expect(bridge.vault.readNote).toHaveBeenCalledWith(copy.path, undefined);
     expect(bridge.vault.readNote).not.toHaveBeenCalledWith('Research/Outside.md', undefined);
   });
@@ -150,7 +162,16 @@ describe('provenance-aware row activation', () => {
     fireEvent.contextMenu(row);
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
     await act(async () => lock());
-    await act(async () => finish({ vault: library, path: 'Research/Imported.md' }));
+    await act(async () =>
+      finish({
+        source: 'Research/Outside.md',
+        sourceInLibrary: true,
+        notebookPath: 'Research',
+        destinationName: 'Outside imported.md',
+        sourceName: 'Outside.md',
+        libraryEncrypted: false,
+      }),
+    );
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(screen.queryByRole('dialog', { name: 'Open external file' })).not.toBeInTheDocument();
     expect(screen.getByLabelText('Status bar')).toHaveTextContent('Library locked.');

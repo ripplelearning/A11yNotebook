@@ -54,6 +54,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultOpenExternal: 'vault:open-external',
   vaultOpenUrl: 'vault:open-url',
   vaultImport: 'vault:import',
+  vaultImportComplete: 'vault:import-complete',
+  vaultLocateAlius: 'vault:locate-alius',
   vaultImportAsNote: 'vault:import-as-note',
   vaultImportEntry: 'vault:import-entry',
   vaultAdoptEncrypted: 'vault:adopt-encrypted',
@@ -350,6 +352,8 @@ const bridge: NotebookBridge = {
     openExternal: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultOpenExternal, relativePath),
     openUrl: (url) => ipcRenderer.invoke(CHANNELS.vaultOpenUrl, url),
     importFile: (notebookPath) => ipcRenderer.invoke(CHANNELS.vaultImport, notebookPath),
+    importComplete: (pending, choice) => ipcRenderer.invoke(CHANNELS.vaultImportComplete, pending, choice),
+    locateAlius: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultLocateAlius, relativePath),
     importAsNote: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportAsNote, relativePath),
     importEntry: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultImportEntry, relativePath),
     adoptEncrypted: (relativePath, password) =>

@@ -5,6 +5,7 @@ import App from '../renderer/App';
 import EditorTools, { type EditorToolsHandle } from '../renderer/features/editor/EditorTools';
 import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
+import type { ImportPending } from '../shared/alius';
 import type { VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
@@ -41,7 +42,7 @@ function installBridge(showCommandButtons?: boolean) {
       getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons, autosaveDelay: 0 })),
       readNote: vi.fn(async () => '# Idea'),
       saveNote: vi.fn(async () => undefined),
-      importFile: vi.fn(async (): Promise<VaultInfo | null> => null),
+      importFile: vi.fn(async (): Promise<ImportPending | null> => null),
       openExternal: vi.fn(async () => undefined),
       getTasks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
@@ -135,7 +136,15 @@ describe('command surface visibility', () => {
       await screen.findByRole('heading', { name: 'Study library' });
       if (surface !== 'sidebar') expect(container.querySelector('.vault-actions')).toBeNull();
       fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
-      bridge.vault.importFile.mockResolvedValueOnce({
+      const pending: ImportPending = {
+        source: '/tmp/External.pdf',
+        sourceInLibrary: false,
+        notebookPath: 'Research',
+        destinationName: 'External.pdf',
+        sourceName: 'External.pdf',
+        libraryEncrypted: false,
+      };
+      const importedVault: VaultInfo = {
         ...vault,
         entries: [
           vault.entries[0],
@@ -146,7 +155,9 @@ describe('command surface visibility', () => {
             ],
           },
         ],
-      });
+      };
+      bridge.vault.importFile.mockResolvedValueOnce(pending);
+      bridge.vault.importComplete.mockResolvedValueOnce({ vault: importedVault, path: 'Research/External.pdf' });
       const runImport = () => {
         if (surface === 'menu') menu('import-file');
         else if (surface === 'palette') {
@@ -160,6 +171,9 @@ describe('command surface visibility', () => {
       };
       runImport();
       await waitFor(() => expect(bridge.vault.importFile).toHaveBeenCalledExactlyOnceWith('Research'));
+      await screen.findByRole('dialog', { name: 'Import file' });
+      fireEvent.click(screen.getByRole('button', { name: 'Import' }));
+      await waitFor(() => expect(bridge.vault.importComplete).toHaveBeenCalledWith(pending, 'copy'));
       menu('show-notes-files');
       expect(await screen.findByRole('gridcell', { name: 'External.pdf' })).toBeInTheDocument();
       expect(screen.queryByRole('dialog')).not.toBeInTheDocument();

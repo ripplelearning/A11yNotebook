@@ -59,7 +59,7 @@ function setup() {
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),
       openUrl: vi.fn(async () => undefined),
-      importFile: vi.fn(async () => vault),
+      importFile: vi.fn(async () => null),
       delete: vi.fn(async () => vault),
       deletePermanently: vi.fn(async () => vault),
       getTasks: vi.fn(async () => [

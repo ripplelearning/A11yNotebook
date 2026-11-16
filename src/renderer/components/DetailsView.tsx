@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react';
 import { attachmentTypeLabel } from '../../shared/attachments';
+import { isAliusPath } from '../../shared/alius';
 import type { VaultEntry } from '../../shared/types';
 
 export interface DetailsViewItem {
@@ -8,6 +9,10 @@ export interface DetailsViewItem {
   kind: string;
   /** Creation marker: a note created as a task renders as Type "Task". */
   provenance?: 'created' | 'imported' | 'task' | 'unknown';
+  /** Absolute path of the original file, for Alius records only. */
+  aliusTarget?: string;
+  /** True when an Alius record's original file cannot be found. */
+  aliusBroken?: boolean;
 }
 
 type Column = 'name' | 'kind' | 'path';
@@ -42,13 +47,18 @@ const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 /** A note created as a task (dialog or Quick Task) shows Type "Task". Any
  * other note — including one that merely contains a checkbox task line —
  * shows its kind. An attachment shows its real file type ("PDF", "Word
- * document") instead of the generic "Attachment". */
+ * document") instead of the generic "Attachment". An Alius record shows
+ * Type "Alius", with "(broken)" when its original cannot be found. */
 const typeLabel = (item: DetailsViewItem) =>
   item.kind === 'note' && item.provenance === 'task'
     ? 'Task'
-    : item.kind === 'attachment'
-      ? attachmentTypeLabel(item.path)
-      : item.kind;
+    : isAliusPath(item.path)
+      ? item.aliusBroken
+        ? 'Alius (broken)'
+        : 'Alius'
+      : item.kind === 'attachment'
+        ? attachmentTypeLabel(item.path)
+        : item.kind;
 
 export default function DetailsView<T extends DetailsViewItem>({
   label,
