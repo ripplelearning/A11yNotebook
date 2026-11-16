@@ -156,12 +156,30 @@ export async function switchView(page: Page, shortcut: string, content: () => Pr
  * selects it and switches to Notes & Files for that notebook. `name` is
  * the leaf name shown in the row; `notebookPath` is the full relative path
  * shown in the "Items in …" text (they differ for nested notebooks).
+ *
+ * The double-click is retried once: a watcher-driven re-render can shift
+ * the grid between the locator resolving and the click landing, so the
+ * click can open a neighbouring notebook instead (seen twice on Windows
+ * CI, both times at the second openNotebook call of the silo test). The
+ * wrong notebook appears immediately, so a short first wait is enough to
+ * tell a misdirected click from a slow render; on retry the Notebooks
+ * grid is shown again first, because after a misdirected click the grid
+ * holds the wrong notebook's files, not the notebook list.
  */
 export async function openNotebook(page: Page, name: string, notebookPath: string = name): Promise<void> {
   const row = page.getByRole('row', { name: new RegExp(`${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s+notebook`) });
-  await expect(row).toBeVisible({ timeout: 30000 });
-  await row.dblclick();
-  await expect(page.getByText(`Items in ${notebookPath}`, { exact: true })).toBeVisible({ timeout: 30000 });
+  const items = page.getByText(`Items in ${notebookPath}`, { exact: true });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await expect(row).toBeVisible({ timeout: 30000 });
+    await row.dblclick();
+    try {
+      await expect(items).toBeVisible({ timeout: attempt === 0 ? 5000 : 30000 });
+      return;
+    } catch (error) {
+      if (attempt === 1) throw error;
+      await switchView(page, 'Control+2', async () => row.count());
+    }
+  }
 }
 
 /** Open a row in the Notes & Files grid by its file name. */
