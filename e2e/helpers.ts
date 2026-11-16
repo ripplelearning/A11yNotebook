@@ -192,6 +192,35 @@ export async function switchView(page: Page, shortcut: string, content: () => Pr
 }
 
 /**
+ * Put a real file on the OS clipboard, the way Explorer or Finder does
+ * when the user copies a file: the app's paste handler reads it back
+ * through the paste event's files and Electron's getPathForFile. The
+ * clipboard format is per-platform: Windows takes the FileNameW buffer,
+ * macOS the filenames pasteboard type, and Linux the uri list a file
+ * manager writes. This Electron version's clipboard API writes
+ * ClipboardItems (no writeBuffer), so each format is written as one
+ * item under its platform MIME type. The formats are verified by the
+ * paste E2E spec on each platform's CI runner.
+ */
+export async function copyFileToClipboard(app: ElectronApplication, filePath: string): Promise<void> {
+  await app.evaluate(({ clipboard, ClipboardItem }, file: string) => {
+    if (process.platform === 'win32') {
+      const payload = new Blob([Buffer.from(`${file}\0`, 'utf16le')], { type: 'application/octet-stream' });
+      return clipboard.write([new ClipboardItem({ FileNameW: payload })]);
+    }
+    if (process.platform === 'darwin') {
+      const escaped = file.replace(/&/g, '&amp;').replace(/</g, '&lt;');
+      const plist =
+        '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">\n' +
+        `<plist version="1.0">\n<array>\n<string>${escaped}</string>\n</array>\n</plist>\n`;
+      return clipboard.write([new ClipboardItem({ NSFilenamesPboardType: plist })]);
+    }
+    return clipboard.write([new ClipboardItem({ 'text/uri-list': `file://${file}\r\n` })]);
+  }, filePath);
+}
+
+/**
  * Open a notebook from the Notes & Files grid (double-click its row), which
  * selects it and switches to Notes & Files for that notebook. `name` is
  * the leaf name shown in the row; `notebookPath` is the full relative path

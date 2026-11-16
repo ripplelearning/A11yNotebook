@@ -22,10 +22,17 @@ function dropNonBibliographyStyles(
   }
 }
 
-export function sanitizeNoteHtml(content: string, notePath = '') {
+export function sanitizeNoteHtml(
+  content: string,
+  notePath = '',
+  options: { keepDataImages?: boolean } = {},
+) {
   DOMPurify.addHook('uponSanitizeAttribute', dropNonBibliographyStyles);
   let clean: string;
   try {
+    const dataImagePattern = options.keepDataImages
+      ? 'data:image/(?:png|jpe?g|gif|webp|bmp);base64,|'
+      : '';
     clean = DOMPurify.sanitize(content, {
       ADD_ATTR: [
         'data-a11y-task-id',
@@ -39,7 +46,10 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
         'display',
       ],
       ADD_URI_SAFE_ATTR: [],
-      ALLOWED_URI_REGEXP: /^(?:(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i,
+      ALLOWED_URI_REGEXP: new RegExp(
+        `^(?:${dataImagePattern}(?:vault-file|https?|mailto):|#|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))`,
+        'i',
+      ),
     FORBID_ATTR: ['srcset', 'action', 'poster', 'background'],
     FORBID_TAGS: [
       'script',
@@ -68,6 +78,14 @@ export function sanitizeNoteHtml(content: string, notePath = '') {
   documentFragment.content.querySelectorAll('img').forEach((image) => {
     const alt = image.getAttribute('alt')?.trim();
     const source = image.getAttribute('src')?.trim() ?? '';
+    if (options.keepDataImages && /^data:image\/(?:png|jpe?g|gif|webp|bmp);base64,/i.test(source)) {
+      // A pasted data-URL image stays inline in the HTML note (Q11),
+      // with its description kept when the source provides one. An
+      // image with no description gets an empty description so a screen
+      // reader skips it instead of reading the data URL aloud.
+      if (!image.hasAttribute('alt')) image.setAttribute('alt', '');
+      return;
+    }
     if (!alt || !source) {
       image.remove();
       return;

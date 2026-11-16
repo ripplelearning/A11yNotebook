@@ -178,6 +178,19 @@ import { dropLinksToMissingTargets, reconcileTaskAutoLinks } from '../shared/tas
 import PasteLibraryDialog, { type PasteLibraryChoice } from './features/vault/PasteLibraryDialog';
 import ImportAliusDialog, { type ImportDialogChoice } from './features/vault/ImportAliusDialog';
 import PasteOrphanDialog, { type PasteOrphanResult } from './features/vault/PasteOrphanDialog';
+import PasteNotebookDialog from './features/vault/PasteNotebookDialog';
+import PasteContentDialog, {
+  type PasteContentChoice,
+  type PasteContentSource,
+} from './features/vault/PasteContentDialog';
+import { htmlPlainText, htmlToMarkdown } from './features/vault/html-to-markdown';
+import {
+  PASTE_IMAGE_LIMIT_BYTES,
+  PASTE_TEXT_LIMIT_BYTES,
+  pasteContentExtension,
+  pasteImageExtension,
+  plainTextToHtml,
+} from '../shared/paste-content';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
 import { assetTypes, createAssetRegistry } from '../shared/assets';
@@ -1391,7 +1404,10 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setNoteAnnotations([]);
-    if (currentNote?.path)
+    // The annotation store only accepts Markdown and HTML notes; asking
+    // for annotations on a plain-text note is rejected, so skip it
+    // instead of reporting a load failure.
+    if (currentNote?.path && /\.(?:md|html)$/i.test(currentNote.path))
       void window.a11yNotebook?.vault
         .getAnnotations?.(currentNote.path)
         .then((items) => {
@@ -2970,13 +2986,46 @@ export default function App() {
     });
 
   const [importChoicePrompt, setImportChoicePrompt] = useState<ImportPending | null>(null);
-  const importChoiceResolver = useRef<((choice: ImportDialogChoice) => void) | null>(null);
+  /** Pasted files also ask for the file name in the copy-or-Alius dialog; imports never do. */
+  const [importChoiceAskName, setImportChoiceAskName] = useState(false);
+  const importChoiceResolver = useRef<((result: { choice: ImportDialogChoice; name?: string }) => void) | null>(null);
 
   /** Ask copy or Alius for a pending import; resolves 'cancel' when the dialog is dismissed. */
-  const askImportChoice = (pending: ImportPending): Promise<ImportDialogChoice> =>
+  const askImportChoice = (
+    pending: ImportPending,
+    askName = false,
+  ): Promise<{ choice: ImportDialogChoice; name?: string }> =>
     new Promise((resolve) => {
       importChoiceResolver.current = resolve;
+      setImportChoiceAskName(askName);
       setImportChoicePrompt(pending);
+    });
+
+  const [pasteNotebookPrompt, setPasteNotebookPrompt] = useState<{ notebooks: string[]; current?: string } | null>(
+    null,
+  );
+  const pasteNotebookResolver = useRef<((notebookPath: string | null) => void) | null>(null);
+  const [pasteContentPrompt, setPasteContentPrompt] = useState<{
+    source: PasteContentSource;
+    notebookPath: string;
+  } | null>(null);
+  const pasteContentResolver = useRef<((choice: PasteContentChoice | null) => void) | null>(null);
+
+  /** Ask which notebook a paste goes into (Q9); resolves null when the dialog is dismissed. */
+  const askPasteNotebook = (notebooks: string[], current?: string): Promise<string | null> =>
+    new Promise((resolve) => {
+      pasteNotebookResolver.current = resolve;
+      setPasteNotebookPrompt({ notebooks, current });
+    });
+
+  /** Ask the guided paste questions (note or attachment, format, name); resolves null on cancel. */
+  const askPasteContentChoice = (
+    source: PasteContentSource,
+    notebookPath: string,
+  ): Promise<PasteContentChoice | null> =>
+    new Promise((resolve) => {
+      pasteContentResolver.current = resolve;
+      setPasteContentPrompt({ source, notebookPath });
     });
 
   /**
@@ -2994,7 +3043,7 @@ export default function App() {
       setStatusMessage('Finishing this import is unavailable.');
       return null;
     }
-    const choice = await askImportChoice(pending);
+    const { choice } = await askImportChoice(pending);
     if (choice === 'cancel') return null;
     if (isCurrent && !isCurrent()) return null;
     return bridge.importComplete(pending, choice);
@@ -3040,10 +3089,158 @@ export default function App() {
     }
   };
 
-  /** Paste OS-copied files/folders into the current view. Text pastes and editor pastes are untouched. */
+  /**
+   * Destination notebook for a paste: the selected notebook, or the open
+   * Notes & Files notebook. With none selected, ask (Q9) — the notebook
+   * the user worked in most recently is offered first.
+   */
+  const resolvePasteNotebook = async (): Promise<string | null> => {
+    if (!vault || securityLocked) {
+      setStatusMessage('Open and unlock a library before pasting into it.');
+      return null;
+    }
+    const current = linkTargetNotebook();
+    if (current) return current;
+    if (!notebooks.length) {
+      setStatusMessage('Create a notebook first, then paste into it.');
+      return null;
+    }
+    return askPasteNotebook(notebooks, settings.lastNotebookPath);
+  };
+
+  /** Paste one whole OS-copied file: validate, ask copy or Alius and the file name, then finish. */
+  const pasteWholeFile = async (source: string): Promise<void> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.pasteFileStart || !bridge.pasteFileComplete) {
+      setStatusMessage('Pasting files is unavailable in this build.');
+      return;
+    }
+    const notebookPath = await resolvePasteNotebook();
+    if (!notebookPath) return;
+    const pending = await bridge.pasteFileStart(source, notebookPath);
+    const { choice, name } = await askImportChoice(pending, true);
+    if (choice === 'cancel' || !name) return;
+    const created = await bridge.pasteFileComplete(pending, choice, name);
+    setVault(created.vault);
+    if (isAliusPath(created.path)) {
+      setStatusMessage(`Imported ${name} as an Alius. The original file was kept.`);
+      return;
+    }
+    setStatusMessage(`Pasted ${created.path.split('/').at(-1)} into ${notebookPath.split('/').at(-1)}.`);
+  };
+
+  /** Store pasted clipboard text or HTML after the guided questions. */
+  const pasteClipboardContent = async (html: string, text: string): Promise<void> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.pasteContent) {
+      setStatusMessage('Pasting text is unavailable in this build.');
+      return;
+    }
+    const hasHtml = html.trim().length > 0;
+    const raw = hasHtml ? html : text;
+    if (new TextEncoder().encode(raw).length > PASTE_TEXT_LIMIT_BYTES) {
+      setStatusMessage('The pasted text is larger than 5 MB.');
+      return;
+    }
+    const notebookPath = await resolvePasteNotebook();
+    if (!notebookPath) return;
+    // One sanitization serves every format: scripts and unsafe content
+    // are gone, data-URL images stay for HTML notes, and the Markdown
+    // and plain-text forms are derived from the clean HTML.
+    const cleanHtml = hasHtml ? sanitizeNoteHtml(html, '', { keepDataImages: true }) : '';
+    const plainText = hasHtml ? htmlPlainText(cleanHtml) : text;
+    const source: PasteContentSource = {
+      kind: hasHtml ? 'html' : 'text',
+      text: plainText,
+      ...(hasHtml ? { html } : {}),
+    };
+    const choice = await askPasteContentChoice(source, notebookPath);
+    if (!choice) return;
+    let stored: string;
+    if (choice.format === 'markdown') {
+      stored = hasHtml ? htmlToMarkdown(cleanHtml) : text;
+      if (!stored.trim()) stored = plainText;
+    } else if (choice.format === 'html') {
+      stored = hasHtml ? cleanHtml : plainTextToHtml(text);
+    } else {
+      stored = plainText;
+    }
+    if (!stored.trim()) {
+      setStatusMessage('Nothing to paste.');
+      return;
+    }
+    const fileName = `${choice.name}${pasteContentExtension(choice.format)}`;
+    const created = await bridge.pasteContent({
+      notebookPath,
+      fileName,
+      kind: choice.storeAs,
+      text: stored,
+    });
+    setVault(created.vault);
+    if (choice.storeAs === 'note') {
+      await openEntry({ name: fileName, path: created.path, kind: 'note', provenance: 'imported' });
+    }
+    setStatusMessage(`Pasted ${fileName} into ${notebookPath.split('/').at(-1)}.`);
+  };
+
+  /** Store a pasted picture as a picture attachment, keeping its description when the source provides one. */
+  const pasteClipboardImage = async (file: File, html: string): Promise<void> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.pasteContent) {
+      setStatusMessage('Pasting pictures is unavailable in this build.');
+      return;
+    }
+    const extension = pasteImageExtension(file.type);
+    if (!extension) {
+      setStatusMessage('Only PNG, JPEG, GIF, WebP, or BMP pictures can be pasted.');
+      return;
+    }
+    if (file.size > PASTE_IMAGE_LIMIT_BYTES) {
+      setStatusMessage('The pasted picture is larger than 20 MB.');
+      return;
+    }
+    const notebookPath = await resolvePasteNotebook();
+    if (!notebookPath) return;
+    // A picture copied from a page may carry its description in the
+    // copied HTML: keep it as the picture's description (Q13).
+    let sourceAlt: string | undefined;
+    if (html.trim()) {
+      const template = document.createElement('template');
+      template.innerHTML = html;
+      const alt = template.content.querySelector('img')?.getAttribute('alt')?.trim();
+      if (alt) sourceAlt = alt;
+    }
+    const source: PasteContentSource = {
+      kind: 'image',
+      text: '',
+      imageMimeType: file.type,
+      imageName: file.name || undefined,
+      ...(sourceAlt ? { altText: sourceAlt } : {}),
+    };
+    const choice = await askPasteContentChoice(source, notebookPath);
+    if (!choice) return;
+    const created = await bridge.pasteContent({
+      notebookPath,
+      fileName: `${choice.name}${extension}`,
+      kind: 'attachment',
+      image: await file.arrayBuffer(),
+      imageMimeType: file.type,
+      ...(choice.altText ? { altText: choice.altText } : {}),
+    });
+    setVault(created.vault);
+    setStatusMessage(`Pasted ${created.path.split('/').at(-1)} into ${notebookPath.split('/').at(-1)}.`);
+  };
+
+  /**
+   * Paste into the current panel. OS-copied files and folders keep their
+   * existing paths (a folder becomes a notebook or a library); a whole
+   * file now goes through the guided flow — validation, copy or Alius,
+   * and file name — and clipboard text, HTML, or pictures start the
+   * guided content flow instead of being dropped. Editor pastes are
+   * untouched: the guard below leaves anything inside an editor alone.
+   */
   const handlePanelPaste = async (event: ReactClipboardEvent<HTMLElement>) => {
-    const files = event.clipboardData?.files;
-    if (!files?.length || pasteBusy) return;
+    if (pasteBusy) return;
     const target = event.target as HTMLElement;
     if (target.closest('[contenteditable="true"], textarea, input, select')) return;
     if (selectedTab !== 'libraries' && selectedTab !== 'notebooks' && selectedTab !== 'notes-files') return;
@@ -3052,18 +3249,31 @@ export default function App() {
       setStatusMessage('Pasting files is not available in this build.');
       return;
     }
+    const files = event.clipboardData?.files;
+    // OS-copied files carry a filesystem path; a pasted picture does
+    // not, so it falls through to the clipboard-content flow below.
     const paths: string[] = [];
-    for (const file of Array.from(files)) {
+    let pastedImage: File | null = null;
+    for (const file of Array.from(files ?? [])) {
       const resolved = bridge.getPathForFile(file);
       if (resolved) paths.push(resolved);
+      else if (file.type.startsWith('image/')) pastedImage = file;
     }
-    if (!paths.length) {
+    const html = event.clipboardData?.getData('text/html') ?? '';
+    const text = event.clipboardData?.getData('text/plain') ?? '';
+    if (files?.length && !paths.length && !pastedImage) {
       setStatusMessage('Could not read the pasted file paths.');
       return;
     }
+    if (!paths.length && !pastedImage && !html.trim() && !text.trim()) return;
     event.preventDefault();
     setPasteBusy(true);
     try {
+      if (!paths.length) {
+        if (pastedImage) await pasteClipboardImage(pastedImage, html);
+        else await pasteClipboardContent(html, text);
+        return;
+      }
       for (const source of paths) {
         const info = await bridge.pasteInspect(source);
         if (selectedTab === 'libraries') {
@@ -3122,19 +3332,11 @@ export default function App() {
             const result = await bridge.pasteNotebook(source);
             await refreshVault();
             setStatusMessage(`Pasted folder as notebook ${result.notebook}.`);
-          } else if (selectedNotebookPath) {
-            if (!bridge.pasteFiles) {
-              setStatusMessage('Pasting files is unavailable.');
-              continue;
-            }
-            await bridge.pasteFiles([source], selectedNotebookPath);
-            await refreshVault();
-            setStatusMessage(`Pasted ${info.name} into the selected notebook.`);
           } else {
-            setStatusMessage('Select a notebook first, or paste the file in Notes and Files.');
+            await pasteWholeFile(source);
           }
         } else {
-          if (!vault || securityLocked || !selectedNotebookPath) {
+          if (!vault || securityLocked) {
             setStatusMessage('Select a notebook in Notes and Files before pasting files.');
             continue;
           }
@@ -3142,13 +3344,7 @@ export default function App() {
             setStatusMessage('Only files can be pasted into Notes and Files. Paste folders into Notebooks.');
             continue;
           }
-          if (!bridge.pasteFiles) {
-            setStatusMessage('Pasting files is unavailable.');
-            continue;
-          }
-          await bridge.pasteFiles([source], selectedNotebookPath);
-          await refreshVault();
-          setStatusMessage(`Pasted ${info.name} into the selected notebook.`);
+          await pasteWholeFile(source);
         }
       }
     } catch (failure) {
@@ -6692,10 +6888,38 @@ export default function App() {
       {importChoicePrompt ? (
         <ImportAliusDialog
           pending={importChoicePrompt}
-          onChoice={(choice) => {
+          askName={importChoiceAskName}
+          onChoice={(choice, name) => {
             setImportChoicePrompt(null);
-            importChoiceResolver.current?.(choice);
+            importChoiceResolver.current?.({ choice, name });
             importChoiceResolver.current = null;
+          }}
+        />
+      ) : null}
+      {pasteNotebookPrompt ? (
+        <PasteNotebookDialog
+          notebooks={pasteNotebookPrompt.notebooks}
+          currentNotebook={pasteNotebookPrompt.current}
+          onChoice={(notebookPath) => {
+            setPasteNotebookPrompt(null);
+            pasteNotebookResolver.current?.(notebookPath);
+            pasteNotebookResolver.current = null;
+          }}
+        />
+      ) : null}
+      {pasteContentPrompt ? (
+        <PasteContentDialog
+          source={pasteContentPrompt.source}
+          notebookName={pasteContentPrompt.notebookPath.split('/').at(-1) ?? pasteContentPrompt.notebookPath}
+          onSubmit={(choice) => {
+            setPasteContentPrompt(null);
+            pasteContentResolver.current?.(choice);
+            pasteContentResolver.current = null;
+          }}
+          onClose={() => {
+            setPasteContentPrompt(null);
+            pasteContentResolver.current?.(null);
+            pasteContentResolver.current = null;
           }}
         />
       ) : null}

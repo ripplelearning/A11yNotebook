@@ -43,3 +43,33 @@ describe('note HTML sanitizer and bibliography styles', () => {
     expect(safe).toContain('text-indent:');
   });
 });
+
+describe('pasted data-URL images', () => {
+  const dataImage = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  it('drops a data-URL image by default, as editor pastes do', () => {
+    const safe = sanitizeNoteHtml(`<p><img src="${dataImage}" alt="A dot"></p>`);
+    expect(safe).not.toContain('data:image');
+    expect(safe).not.toContain('<img');
+  });
+
+  it('keeps a data-URL image inline with its description when pasting into a notebook', () => {
+    const safe = sanitizeNoteHtml(`<p><img src="${dataImage}" alt="A dot"></p>`, '', { keepDataImages: true });
+    expect(safe).toContain('data:image/png;base64,');
+    expect(safe).toContain('alt="A dot"');
+  });
+
+  it('gives a kept data-URL image an empty description when the source provides none', () => {
+    const safe = sanitizeNoteHtml(`<p><img src="${dataImage}"></p>`, '', { keepDataImages: true });
+    expect(safe).toContain('data:image/png;base64,');
+    expect(safe).toContain('alt=""');
+  });
+
+  it('still drops a data-URL image that is not a picture', () => {
+    const safe = sanitizeNoteHtml('<p><img src="data:text/html;base64,PGgxPmhpPC9oMT4=" alt="Not a picture"></p>', '', {
+      keepDataImages: true,
+    });
+    expect(safe).not.toContain('data:text/html');
+    expect(safe).not.toContain('<img');
+  });
+});

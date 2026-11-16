@@ -20,6 +20,7 @@ import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './
 import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
 import type { AttachmentPreview } from './attachments';
 import type { ImportChoice, ImportPending } from './alius';
+import type { PasteContentInput } from './paste-content';
 import type { NotebookSettings } from './settings';
 import type { CreateReminderInput, Reminder, SnoozeDuration, VaultReminderEvent } from './reminders';
 import type { ReminderDefaults } from './reminder-defaults';
@@ -50,6 +51,19 @@ export interface VaultBridge {
   pasteLibraryOpen?(source: string): Promise<import('./types').VaultInfo>;
   pasteNotebook?(source: string): Promise<{ notebook: string; files: number }>;
   pasteFiles?(sources: string[], notebookPath: string): Promise<{ files: string[] }>;
+  /**
+   * Validate a pasted file like an import and return the pending copy-or-Alius choice.
+   * Nothing is written yet; the user chooses first, then `pasteFileComplete` finishes it.
+   */
+  pasteFileStart?(source: string, notebookPath: string): Promise<ImportPending>;
+  /** Finish a pasted file with the user's copy-or-Alius choice and file name. */
+  pasteFileComplete?(
+    pending: ImportPending,
+    choice: ImportChoice,
+    fileName: string,
+  ): Promise<{ vault: VaultInfo; path: string }>;
+  /** Store pasted clipboard content (text, HTML, or an image) as a note or a file attachment. */
+  pasteContent?(input: PasteContentInput): Promise<{ vault: VaultInfo; path: string }>;
   pasteOrganize?(libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file', notebookName?: string): Promise<string[]>;
   getRecentLibraries?(): Promise<RecentLibrary[]>;
   openLibraryPath?(path: string): Promise<VaultInfo | null>;
