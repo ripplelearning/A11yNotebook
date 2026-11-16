@@ -40,7 +40,7 @@ describe('Tutorial dialog', () => {
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument();
-    expect(screen.getByText(/Mac builds are back/)).toBeInTheDocument();
+    expect(screen.getByText(/Download filled PDF/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });
