@@ -100,6 +100,7 @@ a:focus-visible,
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  min-width: 0;
 }
 
 .title-block h1 {
@@ -109,6 +110,11 @@ a:focus-visible,
 
 .current-item {
   color: #cbd5e1;
+  display: block;
+  max-width: 10rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .global-search {
@@ -123,6 +129,30 @@ a:focus-visible,
   margin: 0;
   padding: 0;
   border: 0;
+  min-width: 0;
+}
+
+.global-search-scope label {
+  display: inline-flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* The notebook name in the search-scope label is visually shortened with
+ * an ellipsis so selecting a long-named notebook cannot widen the header
+ * enough to wrap it: a wrapping header pushes the grids below it down
+ * mid-click, so the second click of a double-click lands on the row
+ * above instead of opening the notebook. The full name stays the radio's
+ * accessible name; only its visual rendering is shortened. The current
+ * item is capped the same way: a long note or library name must not wrap
+ * the header either. */
+.search-scope-notebook {
+  display: inline-block;
+  min-width: 0;
+  max-width: 6rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .global-search input,

@@ -6592,7 +6592,14 @@ export default function App() {
               onChange={() => setSearchScope('current')}
               disabled={!vault}
             />
-            {selectedNotebookName ? `Current notebook: ${selectedNotebookName}` : 'Current notebook (none selected)'}
+            {selectedNotebookName ? (
+              <>
+                Current notebook:{' '}
+                <span className="search-scope-notebook">{selectedNotebookName}</span>
+              </>
+            ) : (
+              'Current notebook (none selected)'
+            )}
           </label>
           <label>
             <input

@@ -61,6 +61,28 @@ jobs:
       - name: Test
         run: npm test
 
+      # The electron package downloads its binary in a postinstall step
+      # that CI does not reliably run, so install it explicitly and print
+      # the resolved path (requiring the package also downloads the binary
+      # if it is still missing). Without this, Playwright cannot launch
+      # the app: Linux fails with ENOENT and Windows with "cannot find
+      # the path specified".
+      - name: Ensure Electron binary is installed for end-to-end tests
+        run: |
+          node node_modules/electron/install.js
+          node -e "console.log(require('electron'))"
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload end-to-end failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failures-windows-${{ env.RELEASE_TAG }}
+          path: test-results/
+          if-no-files-found: ignore
+
       - name: Verify release-tool formatting and generated shortcuts
         shell: pwsh
         run: |
@@ -285,6 +307,28 @@ jobs:
 
       - name: Test
         run: npm test
+
+      # The electron package downloads its binary in a postinstall step
+      # that CI does not reliably run, so install it explicitly and print
+      # the resolved path (requiring the package also downloads the binary
+      # if it is still missing). Without this, Playwright cannot launch
+      # the app: Linux fails with ENOENT and Windows with "cannot find
+      # the path specified".
+      - name: Ensure Electron binary is installed for end-to-end tests
+        run: |
+          node node_modules/electron/install.js
+          node -e "console.log(require('electron'))"
+
+      - name: End-to-end tests
+        run: npm run test:e2e
+
+      - name: Upload end-to-end failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-failures-macos-${{ env.RELEASE_TAG }}
+          path: test-results/
+          if-no-files-found: ignore
 
       - name: Verify release-tool formatting and generated shortcuts
         run: |

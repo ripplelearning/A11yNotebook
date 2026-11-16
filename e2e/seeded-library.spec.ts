@@ -4,8 +4,7 @@ import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-
-const ELECTRON_PATH = path.join(__dirname, '..', 'node_modules', 'electron', 'dist', 'electron');
+import { dismissTutorial } from './helpers';
 
 /**
  * Seeded-library end-to-end pass: the app launches with a library that
@@ -101,9 +100,7 @@ function seedLibrary(): SeedPaths {
     JSON.stringify(
       {
         lastOpened: libraryDir,
-        recent: [
-          { path: libraryDir, name: 'library', lastOpenedAt: now.toISOString() },
-        ],
+        recent: [{ path: libraryDir, name: 'library', lastOpenedAt: now.toISOString() }],
       },
       null,
       2,
@@ -126,8 +123,9 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
   let app: ElectronApplication | null = null;
   const paths = seedLibrary();
   try {
+    // No executablePath: Playwright defaults to node_modules/.bin/electron,
+    // the per-platform launcher (see e2e/helpers.ts).
     app = await electron.launch({
-      executablePath: ELECTRON_PATH,
       args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${paths.userDataDir}`],
     });
     const page = await app.firstWindow();
@@ -153,29 +151,30 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
       expect(await content()).toBeGreaterThan(0);
     }
 
-    // Notes & Files: the seeded notebook is in the navigation tree
-    // collapsed, so expand it, then open the note and check its heading
-    // in reading view. The tree waits for the library itself to finish
-    // opening, which lags the banner on a cold start, so these waits
-    // use the full auto-wait instead of the shortcut retry below.
-    // The treeitem name carries a space before the kind suffix
-    // ("Seeded , notebook"), so the match allows that space.
-    const notebookItem = page.getByRole('treeitem', { name: /Seeded\s*,\s*notebook/ });
-    await expect(notebookItem).toBeVisible({ timeout: 30000 });
-    await notebookItem.click();
-    const noteItem = page.getByRole('treeitem', { name: /Seeded note\.md/ });
-    await expect(noteItem).toBeVisible();
-    await noteItem.click();
+    // Notes & Files: open the seeded notebook from the Notebooks grid,
+    // then open the note from the Notes & Files grid and check its heading
+    // in reading view. There is no persistent navigation tree anymore
+    // (the tree lives in the Organize Library dialog), so grid navigation
+    // is the user path here: Enter or double-click opens a row.
+    // The first-run tour only opens once the library switch finishes,
+    // so dismiss it after the Notebooks grid shows the seeded notebook
+    // (the library-open gate) and before touching the grid: its modal
+    // makes the rest of the shell inert.
+    await expect(page.getByRole('gridcell', { name: 'Seeded' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
+    const notebookRow = page.getByRole('row', { name: /Seeded\s+notebook/ });
+    await expect(notebookRow).toBeVisible();
+    await notebookRow.dblclick();
+    const noteCell = page.getByRole('gridcell', { name: 'Seeded note.md' });
+    await expect(noteCell).toBeVisible({ timeout: 30000 });
+    await noteCell.dblclick();
     // The note tab carries its own h2 title as well as the rendered
     // Markdown h1; the h1 is the note content itself.
-    await expect(
-      page.getByRole('heading', { name: 'Seeded note', level: 1 }),
-    ).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Seeded note', level: 1 })).toBeVisible();
 
     // Tasks: the open task is unchecked. The status filter defaults to
     // Open, so switch it to All before checking the completed task.
-    const taskRow = (text: string) =>
-      page.locator('tr[data-context="task-row"]', { hasText: text });
+    const taskRow = (text: string) => page.locator('tr[data-context="task-row"]', { hasText: text });
     await switchView('Control+4', async () => taskRow('Call the dentist').count());
     await expect(taskRow('Call the dentist').getByRole('checkbox')).not.toBeChecked();
     await expect(taskRow('Water the plants')).toHaveCount(0);
@@ -183,9 +182,7 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
     await expect(taskRow('Water the plants').getByRole('checkbox')).toBeChecked();
 
     // Calendar: the agenda shows today's seeded appointment.
-    await switchView('Control+6', async () =>
-      page.getByText('Seeded dentist appointment', { exact: true }).count(),
-    );
+    await switchView('Control+6', async () => page.getByText('Seeded dentist appointment', { exact: true }).count());
     await expect(page.getByRole('region', { name: 'Agenda' })).toBeVisible();
     await expect(page.getByText('Seeded dentist appointment', { exact: true })).toBeVisible();
     await expect(page.getByText(/Seeded clinic/)).toBeVisible();
