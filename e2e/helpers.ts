@@ -139,13 +139,40 @@ export function statusLine(page: Page) {
 }
 
 /**
+ * The platform's Ctrl-equivalent modifier for app shortcuts: on macOS the
+ * app listens for Command (Meta) where the shortcut string says Ctrl
+ * (src/shared/command-registry.ts: on Mac the Ctrl slot is event.metaKey,
+ * and a physical Ctrl press never triggers a command). Playwright's
+ * keyboard.press sends exactly the modifiers named, so a literal
+ * 'Control+…' press on macOS reaches the app but matches nothing — that
+ * is why 9 of 15 E2E tests failed the first time they ran on macOS
+ * (release 1.9.15). Alt and Shift stay as named; never send Control and
+ * Meta together — the app requires the other modifier clear on Mac.
+ *
+ * One exception: 'Control+Home' is not an app shortcut. In the bookmark
+ * test it is the browser's native "caret to start of document" in a
+ * textarea, and on macOS that binding is Command+Up, so it maps to
+ * 'Meta+ArrowUp' instead of the mechanical 'Meta+Home'.
+ */
+export function platformShortcut(shortcut: string): string {
+  if (process.platform !== 'darwin') return shortcut;
+  if (shortcut === 'Control+Home') return 'Meta+ArrowUp';
+  return shortcut.replace(/^Control(?=\+|$)/, 'Meta');
+}
+
+/** Press a shortcut string, translated to the platform's modifier. */
+export async function pressShortcut(page: Page, shortcut: string): Promise<void> {
+  await page.keyboard.press(platformShortcut(shortcut));
+}
+
+/**
  * View shortcuts race the keydown listener attaching after mount, so
  * retry the switch until the view's content actually appears.
  */
 export async function switchView(page: Page, shortcut: string, content: () => Promise<number>): Promise<void> {
   for (let attempt = 0; attempt < 6; attempt++) {
     if ((await content()) > 0) return;
-    await page.keyboard.press(shortcut);
+    await page.keyboard.press(platformShortcut(shortcut));
     await page.waitForTimeout(500);
   }
   expect(await content()).toBeGreaterThan(0);
@@ -198,7 +225,7 @@ export async function openGridEntry(page: Page, name: string): Promise<void> {
 export async function runPaletteCommand(page: Page, label: string): Promise<void> {
   for (let attempt = 0; attempt < 6; attempt++) {
     if ((await page.getByRole('dialog', { name: 'Command palette' }).count()) > 0) break;
-    await page.keyboard.press('Control+Shift+P');
+    await pressShortcut(page, 'Control+Shift+P');
     await page.waitForTimeout(500);
   }
   const palette = page.getByRole('dialog', { name: 'Command palette' });

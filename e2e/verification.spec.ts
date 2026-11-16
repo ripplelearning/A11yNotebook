@@ -11,6 +11,7 @@ import {
   launchApp,
   openGridEntry,
   openNotebook,
+  pressShortcut,
   runPaletteCommand,
   seedLibrary,
   statusLine,
@@ -167,10 +168,10 @@ async function createNote(page: import('@playwright/test').Page, name: string, c
   await expect(editor).toBeVisible({ timeout: 30000 });
   await expect(editor).toBeFocused();
   await editor.fill(content);
-  await page.keyboard.press('Control+S');
+  await pressShortcut(page, 'Control+S');
   await expect(statusLine(page)).toContainText(`Saved ${name}.`, { timeout: 30000 });
   // View shortcuts do not fire while the editor has focus in edit mode.
-  await page.keyboard.press('Control+E');
+  await pressShortcut(page, 'Control+E');
   await expect(statusLine(page)).toContainText('Mode switched to read-only.', {
     timeout: 30000,
   });
@@ -347,16 +348,16 @@ test('tasks created in a note show the note in the Links column', async () => {
     await waitForNoteOpen(page, 'Task note');
     // Edit mode, then write two checkbox tasks and save. Tasks are parsed
     // from the saved file, so the save must land before checking Tasks.
-    await page.keyboard.press('Control+E');
+    await pressShortcut(page, 'Control+E');
     const editor = page.getByRole('textbox', { name: 'Markdown source' });
     await expect(editor).toBeFocused();
     await editor.fill('# Task note\n\nTasks for the week.\n\n- [ ] Call the dentist\n- [ ] Water the plants\n');
-    await page.keyboard.press('Control+S');
+    await pressShortcut(page, 'Control+S');
     await expect(statusLine(page)).toContainText('Saved Task note.', { timeout: 30000 });
 
     // View-switch shortcuts do not fire while the Markdown editor has focus
     // in edit mode, so toggle back to reading mode first.
-    await page.keyboard.press('Control+E');
+    await pressShortcut(page, 'Control+E');
     await expect(statusLine(page)).toContainText('Mode switched to read-only.', {
       timeout: 30000,
     });
@@ -383,7 +384,7 @@ test('Ctrl+E moves focus into the editor textbox', async () => {
     await openGridEntry(page, 'Seeded note.md');
     await waitForNoteOpen(page, 'Seeded note');
     // A freshly opened note is in reading mode; Ctrl+E switches to edit.
-    await page.keyboard.press('Control+E');
+    await pressShortcut(page, 'Control+E');
     await expect(page.getByRole('textbox', { name: 'Markdown source' })).toBeFocused();
     await expect(statusLine(page)).toContainText('Mode switched to edit.', { timeout: 30000 });
     expect(pageErrors).toEqual([]);
@@ -398,15 +399,15 @@ test('bookmark jump moves focus to the bookmarked heading', async () => {
     await openNotebook(page, 'Seeded');
     await openGridEntry(page, 'Seeded note.md');
     await waitForNoteOpen(page, 'Seeded note');
-    await page.keyboard.press('Control+E');
+    await pressShortcut(page, 'Control+E');
     const editor = page.getByRole('textbox', { name: 'Markdown source' });
     await expect(editor).toBeFocused();
     // Caret to the start of the note, inside the "# Seeded note" heading.
-    await page.keyboard.press('Control+Home');
+    await pressShortcut(page, 'Control+Home');
     await expect
       .poll(() => page.evaluate(() => (document.activeElement as HTMLTextAreaElement).selectionStart))
       .toBe(0);
-    await page.keyboard.press('Control+Alt+H');
+    await pressShortcut(page, 'Control+Alt+H');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
     await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Seeded note');
@@ -415,7 +416,7 @@ test('bookmark jump moves focus to the bookmarked heading', async () => {
     // while the dialog is still closing is swallowed, leaving the app in
     // edit mode (where the jump focuses the textarea instead of the heading).
     await expect(nameDialog).toBeHidden({ timeout: 30000 });
-    await page.keyboard.press('Control+E');
+    await pressShortcut(page, 'Control+E');
     await expect(statusLine(page)).toContainText('Mode switched to read-only.', {
       timeout: 30000,
     });

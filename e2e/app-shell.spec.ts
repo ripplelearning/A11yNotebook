@@ -3,7 +3,7 @@ import type { ElectronApplication } from '@playwright/test';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { dismissTutorial } from './helpers';
+import { dismissTutorial, pressShortcut } from './helpers';
 
 /**
  * Fresh Electron user-data dir per launch. Settings (including the theme)
@@ -174,7 +174,7 @@ test('app shell is accessible in the light theme', async () => {
     // the dialog actually opens instead of racing it.
     for (let attempt = 0; attempt < 6; attempt++) {
       if ((await page.getByRole('dialog', { name: 'Settings' }).count()) > 0) break;
-      await page.keyboard.press('Control+Alt+S');
+      await pressShortcut(page, 'Control+Alt+S');
       await page.waitForTimeout(500);
     }
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
@@ -327,7 +327,7 @@ test('app shell is accessible in the high contrast theme', async () => {
     // was a dead control for High contrast in ordinary mode.
     for (let attempt = 0; attempt < 6; attempt++) {
       if ((await page.getByRole('dialog', { name: 'Settings' }).count()) > 0) break;
-      await page.keyboard.press('Control+Alt+S');
+      await pressShortcut(page, 'Control+Alt+S');
       await page.waitForTimeout(500);
     }
     await expect(page.getByRole('dialog', { name: 'Settings' })).toBeVisible();
