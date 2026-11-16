@@ -37,6 +37,9 @@ const CHANNELS: typeof SharedChannels = {
   vaultPasteLibraryOpen: 'vault:paste-library-open',
   vaultPasteNotebook: 'vault:paste-notebook',
   vaultPasteFiles: 'vault:paste-files',
+  vaultPasteFileStart: 'vault:paste-file-start',
+  vaultPasteFileComplete: 'vault:paste-file-complete',
+  vaultPasteContent: 'vault:paste-content',
   vaultPasteOrganize: 'vault:paste-organize',
   vaultCreateTask: 'vault:create-task',
   vaultOpenWith: 'vault:open-with',
@@ -237,6 +240,11 @@ const bridge: NotebookBridge = {
     pasteNotebook: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteNotebook, source),
     pasteFiles: (sources: string[], notebookPath: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteFiles, sources, notebookPath),
+    pasteFileStart: (source: string, notebookPath: string) =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteFileStart, source, notebookPath),
+    pasteFileComplete: (pending, choice, fileName) =>
+      ipcRenderer.invoke(CHANNELS.vaultPasteFileComplete, pending, choice, fileName),
+    pasteContent: (input) => ipcRenderer.invoke(CHANNELS.vaultPasteContent, input),
     pasteOrganize: (libraryPath: string, orphanFiles: string[], mode: 'one' | 'per-file', notebookName?: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteOrganize, libraryPath, orphanFiles, mode, notebookName),
     createTask: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateTask, input),

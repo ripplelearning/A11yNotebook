@@ -2810,6 +2810,11 @@ export function setupVaultIpc(
         for (const source of sources as string[]) {
           const info = await inspectPasteSource(source);
           if (info.kind !== 'file') throw new Error('Only files can be pasted into a notebook.');
+          // Pasted files get the same validation as imports (Q15):
+          // supported format, size limit, no symlinks, and a clear
+          // reason when the file is refused. The bytes are discarded;
+          // the copy below stores the file unchanged, as paste always has.
+          await readImportSource(source, access.assertCurrent);
           let candidate = path.join(notebook, info.name);
           for (let attempt = 0; ; attempt += 1) {
             try {
@@ -2833,6 +2838,175 @@ export function setupVaultIpc(
       });
     },
   );
+  /**
+   * Validate a pasted whole file like an import (Q15) and return the
+   * pending copy-or-Alius choice. Nothing is written yet: the renderer
+   * asks copy or Alius (and the file name) first, then finishes with
+   * vault:paste-file-complete.
+   */
+  ipcMain.handle(IPC_CHANNELS.vaultPasteFileStart, async (event, source: unknown, notebookPath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof source !== 'string' || !source || typeof notebookPath !== 'string')
+      throw new Error('Pasted files need a file path and a notebook.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const notebook = notebookPath ? await vault.resolveEntry(notebookPath) : (await vault.getVault()).path;
+      if (!(await lstat(notebook)).isDirectory())
+        throw new Error('The destination notebook is no longer available.');
+      const bytes = await readImportSource(source, access.assertCurrent);
+      access.assertCurrent();
+      const converted = convertImportedBytes(source, bytes);
+      const sourceBase = path.basename(source);
+      const destinationName =
+        sourceBase.slice(0, sourceBase.length - path.extname(sourceBase).length) + converted.extension;
+      return {
+        source,
+        sourceInLibrary: false,
+        notebookPath,
+        destinationName,
+        sourceName: sourceBase,
+        libraryEncrypted: vault.libraryEncryptionManifest() !== null,
+      } satisfies ImportPending;
+    });
+  });
+  ipcMain.handle(
+    IPC_CHANNELS.vaultPasteFileComplete,
+    async (event, pending: unknown, choice: unknown, fileName: unknown) => {
+      assertTrusted(event, isTrustedSender);
+      if (!pending || typeof pending !== 'object') throw new Error('Invalid paste request.');
+      const { source, sourceInLibrary, notebookPath, destinationName } = pending as {
+        source?: unknown;
+        sourceInLibrary?: unknown;
+        notebookPath?: unknown;
+        destinationName?: unknown;
+      };
+      if (
+        typeof source !== 'string' ||
+        !source ||
+        typeof sourceInLibrary !== 'boolean' ||
+        typeof notebookPath !== 'string' ||
+        typeof destinationName !== 'string' ||
+        !destinationName ||
+        (choice !== 'copy' && choice !== 'alius') ||
+        typeof fileName !== 'string' ||
+        !fileName.trim() ||
+        fileName !== path.posix.basename(fileName) ||
+        /[\\/:]/.test(fileName) ||
+        fileName === '.' ||
+        fileName === '..'
+      )
+        throw new Error('Invalid paste request.');
+      const access = captureVaultAccess(event, isTrustedSender);
+      const vault = access.vault;
+      return serializeVaultOperation(async () => {
+        access.assertCurrent();
+        // Resolve the pasted file again: it may have moved or changed
+        // since the prompt, and both paths re-validate it before writing.
+        const absolute = sourceInLibrary ? await vault.resolveEntry(source) : path.resolve(source);
+        const bytes = await readImportSource(absolute, access.assertCurrent);
+        access.assertCurrent();
+        const converted = convertImportedBytes(absolute, bytes);
+        // The user's name is the stem; the converted extension always
+        // wins, so an RTF paste still becomes an HTML note and a Word
+        // .doc still becomes a text note, whatever was typed.
+        const typedStem = fileName.trim().replace(/\.[^.]*$/, '');
+        const destination = `${typedStem || 'Pasted file'}${converted.extension}`;
+        if (choice === 'alius') {
+          return vault.createAlius(
+            { source: absolute, notebookPath, name: destination },
+            access.assertCurrent,
+          );
+        }
+        return copyImportedDocument(
+          vault,
+          path.posix.join(notebookPath, destination),
+          converted.bytes,
+          false,
+          access.assertCurrent,
+        );
+      });
+    },
+  );
+  /**
+   * Store pasted clipboard content as a new note or a file attachment.
+   * Text is capped at 5 MB and images at 20 MB, the same limits import
+   * enforces; a name collision keeps the "(imported)" suffix.
+   */
+  ipcMain.handle(IPC_CHANNELS.vaultPasteContent, async (event, input: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (!input || typeof input !== 'object') throw new Error('Invalid paste request.');
+    const { notebookPath, fileName, kind, text, image, imageMimeType, altText } = input as {
+      notebookPath?: unknown;
+      fileName?: unknown;
+      kind?: unknown;
+      text?: unknown;
+      image?: unknown;
+      imageMimeType?: unknown;
+      altText?: unknown;
+    };
+    if (
+      typeof notebookPath !== 'string' ||
+      !notebookPath ||
+      typeof fileName !== 'string' ||
+      !fileName.trim() ||
+      fileName !== path.posix.basename(fileName) ||
+      /[\\/:]/.test(fileName) ||
+      (kind !== 'note' && kind !== 'attachment') ||
+      (text !== undefined && typeof text !== 'string') ||
+      (image !== undefined && !(image instanceof Uint8Array) && !(image instanceof ArrayBuffer)) ||
+      (imageMimeType !== undefined && typeof imageMimeType !== 'string') ||
+      (altText !== undefined && typeof altText !== 'string')
+    )
+      throw new Error('Invalid paste request.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const notebook = await vault.resolveEntry(notebookPath);
+      if (!(await lstat(notebook)).isDirectory())
+        throw new Error('The destination notebook is no longer available.');
+      let bytes: Buffer;
+      if (image !== undefined) {
+        const mimeType = typeof imageMimeType === 'string' ? imageMimeType.toLowerCase() : '';
+        const extension = path.posix.extname(fileName).toLowerCase();
+        if (!IMAGE_TYPES[extension] || IMAGE_TYPES[extension] !== mimeType)
+          throw new Error('Pasted pictures must be PNG, JPEG, GIF, WebP, or BMP images.');
+        bytes = Buffer.from(image as ArrayBuffer);
+        if (bytes.length === 0 || bytes.length > 20 * 1024 * 1024)
+          throw new Error('The pasted picture is empty or larger than 20 MB.');
+      } else if (typeof text === 'string') {
+        const extension = path.posix.extname(fileName).toLowerCase();
+        if (!['.md', '.html', '.htm', '.txt'].includes(extension))
+          throw new Error('Pasted text must use the .md, .html, or .txt extension.');
+        bytes = Buffer.from(text, 'utf8');
+        if (bytes.length === 0 || bytes.length > 5 * 1024 * 1024)
+          throw new Error('The pasted text is empty or larger than 5 MB.');
+      } else {
+        throw new Error('Nothing was pasted.');
+      }
+      const created = await copyImportedDocument(
+        vault,
+        path.posix.join(notebookPath, fileName.trim()),
+        bytes,
+        false,
+        access.assertCurrent,
+      );
+      access.assertCurrent();
+      // A picture description travels with the picture (Q13), in the
+      // same store as descriptions set from the picture itself.
+      if (image !== undefined && typeof altText === 'string' && altText.trim()) {
+        const store = routedMetadataFor(vault);
+        const saved = await store.read('image-alts.json');
+        await store.write('image-alts.json', {
+          ...(saved && typeof saved === 'object' && !Array.isArray(saved) ? saved : {}),
+          [created.path]: altText.trim(),
+        });
+      }
+      return created;
+    });
+  });
   ipcMain.handle(
     IPC_CHANNELS.vaultPasteOrganize,
     async (event, libraryPath: unknown, orphanFiles: unknown, mode: unknown, notebookName: unknown) => {

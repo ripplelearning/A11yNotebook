@@ -1296,12 +1296,17 @@ export function createVaultService(
   ): Promise<{ path: string; vault: VaultInfo }> {
     return serializeNoteWrite(async () => {
       if (!input || typeof input !== 'object') throw new Error('Invalid Alius request.');
-      const { source, notebookPath = '' } = input as { source?: unknown; notebookPath?: unknown };
+      const { source, notebookPath = '', name } = input as {
+        source?: unknown;
+        notebookPath?: unknown;
+        name?: unknown;
+      };
       if (
         typeof source !== 'string' ||
         !source.trim() ||
         (!path.isAbsolute(source.trim()) && !path.win32.isAbsolute(source.trim())) ||
-        typeof notebookPath !== 'string'
+        typeof notebookPath !== 'string' ||
+        (name !== undefined && typeof name !== 'string')
       )
         throw new Error('Choose a file to create an Alius for.');
       assertCurrent();
@@ -1310,7 +1315,9 @@ export function createVaultService(
       const target = path.resolve(source.trim());
       await validateAliusTarget(target);
       assertCurrent();
-      const base = aliusFileName(path.basename(target));
+      // A pasted file may carry a user-chosen name: the record keeps that
+      // name (with its converted extension) instead of the original's.
+      const base = aliusFileName(typeof name === 'string' && name.trim() ? name.trim() : path.basename(target));
       const stem = base.slice(0, -'.alius'.length);
       let candidate = path.posix.join(notebookPath, base);
       for (let attempt = 2; attempt <= 100; attempt += 1) {
