@@ -2,9 +2,8 @@ import { test, expect, _electron as electron } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { tmpdir } from 'node:os';
 import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
-import { dismissTutorial, platformShortcut } from './helpers';
+import { canonicalTempDir, dismissTutorial, platformShortcut } from './helpers';
 
 /**
  * Seeded-library end-to-end pass: the app launches with a library that
@@ -45,7 +44,7 @@ function localOffsetString(date: Date): string {
 }
 
 function seedLibrary(): SeedPaths {
-  const base = mkdtempSync(path.join(tmpdir(), 'a11y-e2e-seeded-'));
+  const base = mkdtempSync(path.join(canonicalTempDir(), 'a11y-e2e-seeded-'));
   const libraryDir = path.join(base, 'library');
   const userDataDir = path.join(base, 'user-data');
   mkdirSync(path.join(libraryDir, 'Seeded'), { recursive: true });

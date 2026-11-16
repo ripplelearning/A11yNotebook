@@ -2,7 +2,7 @@ import { expect, _electron as electron, type ElectronApplication, type Page } fr
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { tmpdir } from 'node:os';
-import { mkdtempSync, mkdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 
 /**
  * Dismiss the first-run Welcome Tutorial if it is open. The tour opens
@@ -46,6 +46,19 @@ export interface SeedPaths {
 }
 
 /**
+ * The platform temp dir, canonicalized. On macOS tmpdir() returns a path
+ * under /var/folders/…, and /var is a symlink to /private/var, so any
+ * path built on it traverses a symlink. The app rejects symlink ancestors
+ * on import (electron/vault/import.ts: assertNoSymlinks), so E2E fixtures
+ * handed to Import must live under the canonical path instead. realpathSync
+ * is a no-op where the temp dir holds no symlink (Linux /tmp, Windows),
+ * so this changes nothing on those platforms.
+ */
+export function canonicalTempDir(): string {
+  return realpathSync(tmpdir());
+}
+
+/**
  * Seed a throwaway library on disk and point a fresh user-data dir at it,
  * so the app launches with the library open exactly as a returning user
  * would. Notes (Markdown/HTML/text) are recorded as app-created in the
@@ -56,7 +69,7 @@ export interface SeedPaths {
  * provenance record: the vault scan picks them up as attachments.
  */
 export function seedLibrary(notebooks: SeedNotebook[]): SeedPaths {
-  const baseDir = mkdtempSync(path.join(tmpdir(), 'a11y-e2e-verify-'));
+  const baseDir = mkdtempSync(path.join(canonicalTempDir(), 'a11y-e2e-verify-'));
   const libraryDir = path.join(baseDir, 'library');
   const userDataDir = path.join(baseDir, 'user-data');
   mkdirSync(path.join(libraryDir, '.a11ynotebook'), { recursive: true });
