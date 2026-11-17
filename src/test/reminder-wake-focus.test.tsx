@@ -60,7 +60,6 @@ function setup(focus: { libraryPath: string; reminderId: string } | null, remind
       check: vi.fn(async () => undefined),
       download: vi.fn(async () => undefined),
       installNow: vi.fn(async () => undefined),
-      installOnExit: vi.fn(async () => undefined),
       onStatus: () => () => undefined,
     },
     onMenuCommand: () => () => undefined,

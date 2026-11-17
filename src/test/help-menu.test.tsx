@@ -16,7 +16,6 @@ function installBridge() {
       check: vi.fn(async () => undefined),
       download: vi.fn(async () => undefined),
       installNow: vi.fn(async () => undefined),
-      installOnExit: vi.fn(async () => undefined),
       onStatus: (callback) => {
         statusListener = callback;
         return () => {
@@ -229,35 +228,28 @@ describe('Check for Updates', () => {
     emit({ state: 'update-downloaded', version: '9.9.9' });
     const restart = within(dialog).getByRole('button', { name: 'Restart and install' });
     expect(restart).toHaveFocus();
-    expect(within(dialog).getByRole('button', { name: 'Install on exit' })).toBeInTheDocument();
+    expect(within(dialog).getByRole('button', { name: 'Close' })).toBeInTheDocument();
+    // There is no install-on-exit option: electron-updater only consults
+    // autoInstallOnAppQuit when a download finishes, so a button that flips it
+    // afterwards could never install anything. The dialog must not offer it.
+    expect(within(dialog).queryByRole('button', { name: 'Install on exit' })).not.toBeInTheDocument();
     fireEvent.click(restart);
     expect(bridge.updater.installNow).toHaveBeenCalledTimes(1);
   });
 
-  it('confirms "Install on exit" only after the main process accepts it', async () => {
-    const { bridge, emit, menu } = installBridge();
+  it('lets a downloaded update wait until the next check instead of installing on exit', async () => {
+    const { emit, menu } = installBridge();
     render(<App />);
     menu('check-for-updates');
     emit({ state: 'update-downloaded', version: '9.9.9' });
     const dialog = screen.getByRole('dialog', { name: 'Software update' });
+    expect(dialog).toHaveTextContent('close this dialog and install it later from Help → Check for Updates.');
+    expect(within(dialog).queryByRole('button', { name: 'Install on exit' })).not.toBeInTheDocument();
 
-    vi.mocked(bridge.updater.installOnExit).mockImplementationOnce(async () => {
-      emit({ state: 'error', message: 'No downloaded update is ready to install.' });
-    });
     await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Install on exit' }));
-    });
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('No downloaded update is ready to install.');
-    expect(screen.getByLabelText('Status bar')).not.toHaveTextContent('installed when you exit');
-
-    emit({ state: 'update-downloaded', version: '9.9.9' });
-    await act(async () => {
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Install on exit' }));
+      fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }));
     });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByLabelText('Status bar')).toHaveTextContent(
-      'The update will be installed when you exit A11y Notebook.',
-    );
   });
 
   it('keeps the readable main-process error when the IPC call also rejects', async () => {

@@ -48,7 +48,6 @@ function renderTwoLibraries() {
       check: vi.fn(async () => undefined),
       download: vi.fn(async () => undefined),
       installNow: vi.fn(async () => undefined),
-      installOnExit: vi.fn(async () => undefined),
       onStatus: vi.fn(() => () => undefined),
     },
     vault: {
@@ -92,7 +91,6 @@ describe('reopen landing restore', () => {
         check: vi.fn(async () => undefined),
         download: vi.fn(async () => undefined),
         installNow: vi.fn(async () => undefined),
-        installOnExit: vi.fn(async () => undefined),
         onStatus: vi.fn(() => () => undefined),
       },
       vault: {

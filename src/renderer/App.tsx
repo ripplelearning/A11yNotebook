@@ -8386,14 +8386,6 @@ export default function App() {
           currentVersion={__APP_VERSION__}
           onDownload={updater.download}
           onInstallNow={updater.installNow}
-          onInstallOnExit={() => {
-            void updater.installOnExit().then((accepted) => {
-              if (accepted) {
-                closeDialog();
-                setStatusMessage('The update will be installed when you exit A11y Notebook.');
-              }
-            });
-          }}
           onRetry={updater.check}
           onClose={closeDialog}
         />

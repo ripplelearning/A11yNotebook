@@ -13,7 +13,6 @@ const CHANNELS: typeof SharedChannels = {
   updaterCheck: 'updater:check',
   updaterDownload: 'updater:download',
   updaterInstallNow: 'updater:install-now',
-  updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   shortcutCaptureActive: 'menu:shortcut-capture-active',
@@ -221,7 +220,6 @@ const bridge: NotebookBridge = {
     check: () => ipcRenderer.invoke(CHANNELS.updaterCheck),
     download: () => ipcRenderer.invoke(CHANNELS.updaterDownload),
     installNow: () => ipcRenderer.invoke(CHANNELS.updaterInstallNow),
-    installOnExit: () => ipcRenderer.invoke(CHANNELS.updaterInstallOnExit),
     onStatus: (callback) => subscribe<UpdaterStatus>(CHANNELS.updaterStatus, callback),
   },
   vault: {

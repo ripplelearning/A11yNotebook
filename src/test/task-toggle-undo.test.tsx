@@ -44,7 +44,6 @@ describe('task toggle undo', () => {
         check: vi.fn(async () => undefined),
         download: vi.fn(async () => undefined),
         installNow: vi.fn(async () => undefined),
-        installOnExit: vi.fn(async () => undefined),
         onStatus: vi.fn(() => () => undefined),
       },
       vault: {
@@ -106,7 +105,6 @@ describe('task toggle undo', () => {
         check: vi.fn(async () => undefined),
         download: vi.fn(async () => undefined),
         installNow: vi.fn(async () => undefined),
-        installOnExit: vi.fn(async () => undefined),
         onStatus: vi.fn(() => () => undefined),
       },
       vault: {

@@ -116,7 +116,8 @@ The app icon is `build/icon.ico` (256×256 plus smaller sizes). To use a differe
 3. If a newer version exists, a dialog shows the version and a summary of its release notes. Choose **Download**
    or **Not now**. Nothing downloads without your choice.
 4. Download progress appears in the dialog and in the status bar. Screen readers hear it every 10 percent.
-5. When the download finishes, choose **Restart and install** or **Install on exit**.
+5. When the download finishes, choose **Restart and install**, or close the dialog and install later
+   from **Help → Check for Updates**. There is no install-on-exit option.
 
 Updates do not run from `npm run dev`. That build says "Updates are only available in the installed build."
 

@@ -31,7 +31,7 @@
 - [ ] Check for Updates opens a labelled modal update dialog that describes the current state in text.
 - [ ] Update download progress is exposed as a progress bar with its value and announced politely about every 10 percent, never on every tick and never twice.
 - [ ] Update errors are announced as alerts and shown as readable text, never only visually.
-- [ ] The update dialog's buttons (Download, Not now, Hide, Restart and install, Install on exit, Try again, Close) have clear, unique accessible names.
+- [ ] The update dialog's buttons (Download, Not now, Hide, Restart and install, Try again, Close) have clear, unique accessible names.
 - [ ] The library tree exposes tree/treeitem/group roles, expansion and selection state, and a single roving tab stop.
 - [ ] The tree supports arrows, Home/End, Enter, F2, Delete, type-ahead, and sibling expansion with `*`.
 - [ ] Library file operations remain in the main process and reject traversal and symlink paths.

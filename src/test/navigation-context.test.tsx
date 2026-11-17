@@ -30,7 +30,6 @@ function setup(hasLibrary = true, editByDefault = false) {
       check: vi.fn(),
       download: vi.fn(),
       installNow: vi.fn(),
-      installOnExit: vi.fn(),
       onStatus: vi.fn(() => () => undefined),
     },
     vault: {

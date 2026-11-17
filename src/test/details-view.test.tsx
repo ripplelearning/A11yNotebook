@@ -72,7 +72,6 @@ function renderLibrary() {
       check: vi.fn(async () => undefined),
       download: vi.fn(async () => undefined),
       installNow: vi.fn(async () => undefined),
-      installOnExit: vi.fn(async () => undefined),
       onStatus: vi.fn(() => () => undefined),
     },
     vault: {
@@ -489,7 +488,6 @@ describe('accessible details view', () => {
         check: vi.fn(async () => undefined),
         download: vi.fn(async () => undefined),
         installNow: vi.fn(async () => undefined),
-        installOnExit: vi.fn(async () => undefined),
         onStatus: vi.fn(() => () => undefined),
       },
       vault: {

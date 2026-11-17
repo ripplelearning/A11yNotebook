@@ -9,7 +9,6 @@ function setup(options: { isPackaged?: boolean; isPortable?: boolean; engine?: P
     checkForUpdates: vi.fn(async () => undefined),
     downloadUpdate: vi.fn(async () => undefined),
     quitAndInstall: vi.fn(),
-    setAutoInstallOnAppQuit: vi.fn(),
     ...options.engine,
   };
   const controller = createUpdaterController({
@@ -84,13 +83,6 @@ describe('updater controller', () => {
 
     controller.installNow();
     expect(engine.quitAndInstall).toHaveBeenCalledWith(false, true);
-  });
-
-  it('can schedule installation for when the app exits', () => {
-    const { controller, engine } = setup();
-    controller.handleUpdateDownloaded({ version: '0.2.0' });
-    controller.installOnExit();
-    expect(engine.setAutoInstallOnAppQuit).toHaveBeenCalledWith(true);
   });
 
   it('refuses to download or install without an available update', async () => {

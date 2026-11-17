@@ -136,7 +136,6 @@ function setup(
       check: vi.fn(async () => undefined),
       download: vi.fn(async () => undefined),
       installNow: vi.fn(async () => undefined),
-      installOnExit: vi.fn(async () => undefined),
       onStatus: () => () => undefined,
     },
     onMenuCommand: (callback) => {

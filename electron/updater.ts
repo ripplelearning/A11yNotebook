@@ -15,6 +15,10 @@ type UpdaterWiringOptions = {
 
 export function setupUpdater({ send, isTrustedSender }: UpdaterWiringOptions) {
   // Updates are strictly user-initiated: never download or install without consent.
+  // autoInstallOnAppQuit stays false on purpose. electron-updater defaults it to true
+  // and only consults it when a download finishes, so there is no install-on-exit
+  // option: a downloaded update installs only through the explicit "Restart and
+  // install" action, never silently on a later quit.
   autoUpdater.autoDownload = false;
   autoUpdater.autoInstallOnAppQuit = false;
   autoUpdater.allowDowngrade = false;
@@ -35,9 +39,6 @@ export function setupUpdater({ send, isTrustedSender }: UpdaterWiringOptions) {
       checkForUpdates: () => autoUpdater.checkForUpdates(),
       downloadUpdate: () => autoUpdater.downloadUpdate(),
       quitAndInstall: (isSilent, isForceRunAfter) => autoUpdater.quitAndInstall(isSilent, isForceRunAfter),
-      setAutoInstallOnAppQuit: (value) => {
-        autoUpdater.autoInstallOnAppQuit = value;
-      },
     },
   });
 
@@ -51,7 +52,6 @@ export function setupUpdater({ send, isTrustedSender }: UpdaterWiringOptions) {
     [IPC_CHANNELS.updaterCheck]: () => controller.check(),
     [IPC_CHANNELS.updaterDownload]: () => controller.download(),
     [IPC_CHANNELS.updaterInstallNow]: () => controller.installNow(),
-    [IPC_CHANNELS.updaterInstallOnExit]: () => controller.installOnExit(),
   };
 
   for (const channel of UPDATER_INVOKE_CHANNELS) {

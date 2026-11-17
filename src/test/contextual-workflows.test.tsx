@@ -37,7 +37,6 @@ function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
       check: vi.fn(),
       download: vi.fn(),
       installNow: vi.fn(),
-      installOnExit: vi.fn(),
       onStatus: vi.fn(() => () => undefined),
     },
     onMenuCommand: vi.fn(() => () => undefined),
