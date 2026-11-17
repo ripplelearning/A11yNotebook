@@ -168,6 +168,16 @@ interface MarkdownDocumentProps {
   onToggleMarkdownTask?: (line: number) => void;
   /** Status announcements for automatic edits, such as list continuation. */
   announce?: (message: string) => void;
+  /**
+   * Store a picture pasted into an HTML note beside the note and return
+   * its inline reference; only wired for HTML notes, where the inline
+   * image survives the editor's sanitizer as a library-relative picture.
+   */
+  onPasteImage?: (
+    notePath: string,
+    file: File,
+    description: string | undefined,
+  ) => Promise<{ src: string; alt: string } | null>;
   /** Focus Mode shows only the document: hide the editing-mode toggle. */
   hideModeToggle?: boolean;
 }
@@ -188,6 +198,7 @@ export default function MarkdownDocument({
   onToggleHtmlTask,
   onToggleMarkdownTask,
   announce,
+  onPasteImage,
   hideModeToggle = false,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
@@ -230,6 +241,11 @@ export default function MarkdownDocument({
                 : markdownToHtml(content, (source) => createMarkdown(links, notePath).render(source))
             }
             notePath={notePath ?? ''}
+            onPasteImage={
+              format === 'html' && onPasteImage
+                ? (file, description) => onPasteImage(notePath ?? '', file, description)
+                : undefined
+            }
             onChange={(value) =>
               onChange(format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value))
             }

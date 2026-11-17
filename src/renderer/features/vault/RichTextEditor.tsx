@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { asciiToMathML, findTrailingMathExpression } from '../../../shared/ascii-math';
+import { extractPastedImageDescription } from '../../../shared/paste-content';
 import { sanitizeNoteHtml } from './sanitize-html';
 import { detectSmartTrigger } from './smart-formatting';
 
@@ -18,6 +19,13 @@ interface Props {
   content: string;
   notePath: string;
   onChange: (content: string) => void;
+  /**
+   * Store a picture pasted into the note beside it and return its inline
+   * reference (the path relative to the note, and its description).
+   * Absent, an image paste falls through to the text/HTML handling below
+   * — which drops a remote-source picture, as before.
+   */
+  onPasteImage?: (file: File, description: string | undefined) => Promise<{ src: string; alt: string } | null>;
 }
 
 const tools = [
@@ -37,7 +45,7 @@ const tools = [
   { label: 'Mathematics', command: 'math' },
 ];
 
-export default function RichTextEditor({ content, notePath, onChange }: Props) {
+export default function RichTextEditor({ content, notePath, onChange, onPasteImage }: Props) {
   const editor = useRef<HTMLDivElement>(null);
   const [activeTool, setActiveTool] = useState(0);
   const [showMath, setShowMath] = useState(false);
@@ -407,9 +415,28 @@ export default function RichTextEditor({ content, notePath, onChange }: Props) {
           if (editor.current.innerHTML !== next) editor.current.innerHTML = next;
           onChange(next);
         }}
-        onPaste={(event) => {
+        onPaste={async (event) => {
           event.preventDefault();
           const clipboard = event.clipboardData;
+          // A pasted picture carries its pixels as a file, while the
+          // copied HTML only points at the remote original — the
+          // sanitizer drops that remote image, so a picture paste used
+          // to land nothing at all. Store the picture beside the note
+          // and insert it inline instead, keeping the description the
+          // source provides (alt text, or its figure's caption).
+          const imageFile = Array.from(clipboard.files ?? []).find((file) => file.type.startsWith('image/'));
+          if (imageFile && onPasteImage) {
+            const description = extractPastedImageDescription(clipboard.getData('text/html'));
+            const inserted = await onPasteImage(imageFile, description);
+            if (inserted && editor.current) {
+              const image = document.createElement('img');
+              image.setAttribute('src', inserted.src);
+              image.setAttribute('alt', inserted.alt);
+              document.execCommand('insertHTML', false, image.outerHTML);
+              emitChange();
+            }
+            return;
+          }
           const html = clipboard.getData('text/html');
           const value = html ? sanitizeNoteHtml(html, notePath) : clipboard.getData('text/plain');
           document.execCommand(html ? 'insertHTML' : 'insertText', false, value);
