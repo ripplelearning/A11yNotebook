@@ -45,3 +45,44 @@ export async function plainPdfFixture(): Promise<Uint8Array> {
   page.drawText('A plain document with no form.', { x: 50, y: 700, size: 12, font });
   return doc.save();
 }
+
+/**
+ * A PDF with a rich-text text field left unfilled, as XFA-era producers
+ * ship them: the RichText flag is set, the field holds no value, and its
+ * widget has no appearance stream, so pdf-lib's appearance builder must
+ * read it before the export can save.
+ */
+export async function richTextPdfFixture(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const form = doc.getForm();
+  const rich = form.createTextField('GM_Name');
+  rich.addToPage(page, { x: 150, y: 700, width: 200, height: 20 });
+  // Enable rich formatting only after the widget exists: pdf-lib builds
+  // the appearance on addToPage, and reading an empty rich-text field
+  // throws. Real producers ship the flag already set, value or not.
+  rich.enableRichFormatting();
+  const plain = form.createTextField('plainName');
+  plain.addToPage(page, { x: 150, y: 650, width: 200, height: 20 });
+  const bytes = await doc.save();
+  const reloaded = await PDFDocument.load(bytes);
+  const widget = reloaded.getForm().getTextField('GM_Name').acroField.getWidgets()[0];
+  widget.dict.delete(PDFName.of('AP'));
+  return reloaded.save({ updateFieldAppearances: false });
+}
+
+/**
+ * The rich-text fixture with a plain-text value already in the field:
+ * the value lives in /V while the RichText flag stays set, as a form
+ * pre-filled by another producer would ship.
+ */
+export async function richTextWithValuePdfFixture(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const form = doc.getForm();
+  const rich = form.createTextField('GM_Name');
+  rich.addToPage(page, { x: 150, y: 700, width: 200, height: 20 });
+  rich.setText('Grace Hopper');
+  rich.enableRichFormatting();
+  return doc.save({ updateFieldAppearances: false });
+}

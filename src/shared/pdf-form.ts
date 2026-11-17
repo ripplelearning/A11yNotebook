@@ -57,6 +57,14 @@ export interface PdfFormField {
 /** A filled value: text (or the selected option) or a checkbox state. */
 export type PdfFormValue = string | boolean;
 
+/** One field the filled-PDF export could not write, with a human-readable reason. */
+export interface PdfFormSkippedField {
+  /** Fully qualified field name, as stored values are keyed. */
+  name: string;
+  /** Why the field could not be written into the filled file. */
+  reason: string;
+}
+
 /** All filled values for one document, keyed by field name. */
 export type PdfFormValues = Record<string, PdfFormValue>;
 

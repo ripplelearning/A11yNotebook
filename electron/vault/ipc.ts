@@ -3489,9 +3489,9 @@ export function setupVaultIpc(
       const values = await current.get(relative);
       const bytes = await readPdfBytesForExport(vault, relative);
       const filled = await applyPdfFormValues(new Uint8Array(bytes), values);
-      await writeFile(choice.filePath, filled, { mode: 0o600 });
+      await writeFile(choice.filePath, filled.bytes, { mode: 0o600 });
       access.assertCurrent();
-      return { saved: true, fileName: path.basename(choice.filePath) };
+      return { saved: true, fileName: path.basename(choice.filePath), skippedFields: filled.skippedFields };
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultPdfFilledCopy, async (event, relative: unknown) => {
@@ -3513,12 +3513,12 @@ export function setupVaultIpc(
       const created = await copyImportedDocument(
         vault,
         path.posix.join(notebookPath, `${baseName} (filled).pdf`),
-        Buffer.from(filled),
+        Buffer.from(filled.bytes),
         false,
         access.assertCurrent,
       );
       access.assertCurrent();
-      return { path: created.path, name: created.path.split('/').at(-1)! };
+      return { path: created.path, name: created.path.split('/').at(-1)!, skippedFields: filled.skippedFields };
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultDocxAnnotations, async (event, relative: unknown) => {
