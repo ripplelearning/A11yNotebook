@@ -930,8 +930,18 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         const texts = new Map<string, string>();
         let size = 0;
         for (const section of items) {
-          const content = await section.load();
-          const text = content.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+          // One section that cannot be loaded must not fail the whole
+          // book: its accessible text stays empty and the section still
+          // lists (and reports no extractable text) instead of the
+          // reader showing "could not be opened" for a book that is
+          // otherwise readable.
+          let text = '';
+          try {
+            const content = await section.load();
+            text = content.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+          } catch {
+            text = '';
+          }
           size += text.length;
           if (size > MAX_SEARCHABLE_TEXT) break;
           loaded.push({ label: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
@@ -943,7 +953,10 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           setSectionTexts(texts);
         }
       })
-      .catch(() => {
+      .catch((reason: unknown) => {
+        // Log the underlying reason: the user-facing message alone gives
+        // no diagnostic when a book fails to open.
+        console.error('The ePub could not be opened:', reason);
         if (!cancelled) setError('This ePub could not be opened. Use Open in external app to continue.');
       });
     return () => {
