@@ -88,6 +88,38 @@ function epubEntries(): Record<string, string> {
   };
 }
 
+// EPUB 3 books for the repair scenarios: each variant is missing or
+// carries an entry that made epubjs 0.4.2 fail the whole open on main
+// (missing nav/NCX/chapter file, or an SVG cover in the spine). The
+// reader must open them and show the chapters that are present.
+function epub3Entries(variant: 'valid' | 'missing-nav' | 'missing-chapter' | 'svg-cover'): Record<string, string> {
+  const opf =
+    variant === 'svg-cover'
+      ? `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="verification-book-3" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Verification Guide 3</dc:title><dc:language>en</dc:language><dc:identifier id="verification-book-3">urn:uuid:verification-guide-3</dc:identifier></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="cover" href="cover.svg" media-type="image/svg+xml"/><item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/><item id="chapter2" href="chapter2.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="cover"/><itemref idref="chapter1"/><itemref idref="chapter2"/></spine></package>`
+      : `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="verification-book-3" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Verification Guide 3</dc:title><dc:language>en</dc:language><dc:identifier id="verification-book-3">urn:uuid:verification-guide-3</dc:identifier></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="chapter1" href="chapter1.xhtml" media-type="application/xhtml+xml"/><item id="chapter2" href="chapter2.xhtml" media-type="application/xhtml+xml"/></manifest><spine><itemref idref="chapter1"/><itemref idref="chapter2"/></spine></package>`;
+  const entries: Record<string, string> = {
+    mimetype: 'application/epub+zip',
+    'META-INF/container.xml': `<?xml version="1.0" encoding="UTF-8"?><container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><rootfiles><rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/></rootfiles></container>`,
+    'OEBPS/content.opf': opf,
+    'OEBPS/nav.xhtml': `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>Navigation</title></head><body><nav epub:type="toc"><ol><li><a href="chapter1.xhtml">Chapter One</a></li><li><a href="chapter2.xhtml">Chapter Two</a></li></ol></nav></body></html>`,
+    'OEBPS/chapter1.xhtml': `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter One</title></head><body><h1>Chapter One</h1><p>This is the first chapter of the verification book.</p></body></html>`,
+    'OEBPS/chapter2.xhtml': `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter Two</title></head><body><h1>Chapter Two</h1><p>This is the second chapter of the verification book.</p></body></html>`,
+  };
+  if (variant === 'missing-nav') delete entries['OEBPS/nav.xhtml'];
+  if (variant === 'missing-chapter') delete entries['OEBPS/chapter2.xhtml'];
+  if (variant === 'svg-cover') {
+    entries['OEBPS/cover.svg'] =
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text x="10" y="50">Cover art</text></svg>';
+  }
+  return entries;
+}
+
+function epub2MissingNcxEntries(): Record<string, string> {
+  const entries = epubEntries();
+  delete entries['OEBPS/toc.ncx'];
+  return entries;
+}
+
 function seedVerificationLibrary(): SeedPaths {
   return seedLibrary([
     {
@@ -101,6 +133,11 @@ function seedVerificationLibrary(): SeedPaths {
         { name: 'Budget.xlsx', content: zip(validXlsxEntries()) },
         { name: 'Report.pdf', content: Buffer.from(untaggedReport(1)) },
         { name: 'Guide.epub', content: zip(epubEntries()) },
+        { name: 'Guide3.epub', content: zip(epub3Entries('valid')) },
+        { name: 'BrokenNav.epub', content: zip(epub3Entries('missing-nav')) },
+        { name: 'BrokenNcx.epub', content: zip(epub2MissingNcxEntries()) },
+        { name: 'BrokenChapter.epub', content: zip(epub3Entries('missing-chapter')) },
+        { name: 'SvgCover.epub', content: zip(epub3Entries('svg-cover')) },
       ],
     },
     {
@@ -471,6 +508,62 @@ test('epub opens as readable content', async () => {
     await expect(
       reader.locator('article', { hasText: 'This is the first chapter of the verification book.' }),
     ).toBeVisible({ timeout: 30000 });
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('epub with missing or unrenderable entries still opens and reads', async () => {
+  const { app, page, paths, pageErrors } = await launchVerificationApp();
+  try {
+    await openNotebook(page, 'Data');
+    // Each of these books failed to open on main with "This ePub could not
+    // be opened": a missing navigation file, a missing NCX, a missing spine
+    // chapter, and an SVG cover in the spine. The reader must open each one
+    // and show the chapter text that is present, with no error alert.
+    const files = ['BrokenNav.epub', 'BrokenNcx.epub', 'BrokenChapter.epub', 'SvgCover.epub'];
+    for (let index = 0; index < files.length; index++) {
+      if (index > 0) {
+        await switchView(page, 'Control+2', async () =>
+          page.getByRole('gridcell', { name: files[index], exact: true }).count(),
+        );
+      }
+      await openGridEntry(page, files[index]);
+      const reader = page.getByRole('region', { name: 'ePub document reader' });
+      await expect(reader).toBeVisible({ timeout: 30000 });
+      await expect(
+        reader.locator('article', { hasText: 'This is the first chapter of the verification book.' }),
+      ).toBeVisible({ timeout: 30000 });
+      await expect(page.getByRole('alert')).toHaveCount(0);
+    }
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('epub section navigation moves between chapters', async () => {
+  const { app, page, paths, pageErrors } = await launchVerificationApp();
+  try {
+    await openNotebook(page, 'Data');
+    await openGridEntry(page, 'Guide3.epub');
+    const reader = page.getByRole('region', { name: 'ePub document reader' });
+    await expect(reader).toBeVisible({ timeout: 30000 });
+    await expect(
+      reader.locator('article', { hasText: 'This is the first chapter of the verification book.' }),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Section 1 of 2')).toBeVisible({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Next section' }).click();
+    await expect(
+      reader.locator('article', { hasText: 'This is the second chapter of the verification book.' }),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Section 2 of 2')).toBeVisible({ timeout: 30000 });
+    await page.getByRole('button', { name: 'Chapter One' }).click();
+    await expect(
+      reader.locator('article', { hasText: 'This is the first chapter of the verification book.' }),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.getByText('Section 1 of 2')).toBeVisible({ timeout: 30000 });
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);

@@ -305,6 +305,26 @@ describe('local accessible document reader', () => {
     expect(epub.destroy).toHaveBeenCalledOnce();
   });
 
+  it('still opens the book when one section cannot load its text', async () => {
+    const { epub } = mockEpubjs({
+      sections: [
+        { index: 0, href: 'Text/one.xhtml', text: 'First chapter text' },
+        { index: 1, href: 'Text/two.xhtml', text: 'Second chapter text' },
+      ],
+    });
+    epub.book.sections.spineItems[0].load = async () => {
+      throw new Error('section unloadable');
+    };
+    render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+
+    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
+    expect(await screen.findByText('Second chapter text')).toBeInTheDocument();
+    fireEvent.change(screen.getByRole('textbox', { name: 'Find in ePub' }), { target: { value: 'second' } });
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Go to two.xhtml' })).toBeInTheDocument());
+  });
+
   it('renders the ePub reader without a table of contents until navigation arrives', async () => {
     const { epub } = mockEpubjs({
       // Navigation deliberately absent: the async open has not assigned it yet.
