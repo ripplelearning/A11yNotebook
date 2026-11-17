@@ -9,7 +9,6 @@ type UpdateDialogProps = {
   currentVersion: string;
   onDownload: () => void;
   onInstallNow: () => void;
-  onInstallOnExit: () => void;
   onRetry: () => void;
   onClose: () => void;
 };
@@ -22,7 +21,6 @@ export default function UpdateDialog({
   currentVersion,
   onDownload,
   onInstallNow,
-  onInstallOnExit,
   onRetry,
   onClose,
 }: UpdateDialogProps) {
@@ -102,14 +100,14 @@ export default function UpdateDialog({
       );
       break;
     case 'update-downloaded':
-      message = `Version ${status.version} has been downloaded. Restart now to install it, or install it automatically when you exit.`;
+      message = `Version ${status.version} has been downloaded. Restart now to install it, or close this dialog and install it later from Help → Check for Updates.`;
       actions = (
         <>
           <button type="button" data-autofocus onClick={onInstallNow}>
             Restart and install
           </button>
-          <button type="button" onClick={onInstallOnExit}>
-            Install on exit
+          <button type="button" onClick={onClose}>
+            Close
           </button>
         </>
       );

@@ -26,7 +26,6 @@ are never downloaded or installed without the user's explicit choice.
 window.a11yNotebook.updater.check(): Promise<void>
 window.a11yNotebook.updater.download(): Promise<void>
 window.a11yNotebook.updater.installNow(): Promise<void>
-window.a11yNotebook.updater.installOnExit(): Promise<void>
 window.a11yNotebook.updater.onStatus(callback): () => void  // returns unsubscribe
 window.a11yNotebook.onMenuCommand(callback): () => void      // native Help menu items
 ```
@@ -44,7 +43,6 @@ library-specific operations and their data model. Internal `vault` identifiers r
 | `updater:check`           | renderer → main | none                                                               |
 | `updater:download`        | renderer → main | none                                                               |
 | `updater:install-now`     | renderer → main | none                                                               |
-| `updater:install-on-exit` | renderer → main | none                                                               |
 | `updater:status`          | main → renderer | `UpdaterStatus`                                                    |
 | `menu:command`            | main → renderer | `'check-for-updates' \| 'show-keyboard-shortcuts' \| 'show-about'` |
 
@@ -63,19 +61,22 @@ library-specific operations and their data model. Internal `vault` identifiers r
 | `update-available`     | `version`, `releaseName?`, `releaseNotes` (plain text) | New version, current version, release-note summary, **Download** / **Not now** |
 | `update-not-available` | current `version`                                      | "You are using the latest version" and **Close**                               |
 | `download-progress`    | `percent` (0–100 integer)                              | Progress bar and **Hide** (the download continues)                             |
-| `update-downloaded`    | `version`                                              | **Restart and install** / **Install on exit**                                  |
+| `update-downloaded`    | `version`                                              | **Restart and install** / **Close** (install later from Help → Check for Updates) |
 | `unsupported`          | `message`                                              | Explanation (development or portable build) and **Close**                      |
 | `error`                | readable `message`                                     | Alert with the message, **Try again** / **Close**                              |
 
 5. **Download** calls `autoUpdater.downloadUpdate()`. The controller refuses to download unless an update was
    reported as available.
 6. **Restart and install** calls `autoUpdater.quitAndInstall(false, true)`: the installer runs and A11y Notebook
-   restarts. **Install on exit** sets `autoInstallOnAppQuit = true`, so the update is installed when the user exits.
+   restarts. Closing the dialog leaves the downloaded update in place: checking again in the
+   same session offers **Restart and install** at once, and after a restart the next Download
+   reuses the cached installer instead of downloading it again. There is deliberately no
+   install-on-exit option (see Limitations).
 
 ## Security decisions
 
-- **User consent.** `autoDownload = false` and `autoInstallOnAppQuit = false` until the user picks
-  **Install on exit**. There are no background checks.
+- **User consent.** `autoDownload = false` and `autoInstallOnAppQuit = false`. A downloaded update installs
+  only through the explicit **Restart and install** action, never on a later quit. There are no background checks.
 - **Fixed feed.** The packaged app pins the feed with
   `setFeedURL({ provider: 'github', owner: 'ripplelearning', repo: 'A11yNotebook' })`, which matches the
   `publish` block in `electron-builder.yml`. The renderer cannot change the feed URL.
@@ -139,6 +140,14 @@ certificate secrets are absent; that capability is not evidence of production re
 - Only the Windows NSIS installer supports in-app updates. macOS targets (dmg, zip) ship unsigned, so macOS
   in-app updates do not run; Mac users download new releases from the release page and install via right-click
   → Open until signing is set up.
+- There is no install-on-exit option. `electron-updater` only consults `autoInstallOnAppQuit` at the moment a
+  download finishes (Windows: `BaseUpdater.addQuitHandler` runs once from the download-completion callback;
+  macOS: `MacUpdater` consults the flag while serving the download to Squirrel), so flipping the flag after
+  the download — when the user would actually choose it — registers nothing and the update never installs.
+  A previous **Install on exit** button did exactly that and silently did nothing, so it was removed rather
+  than left promising what it could not do. Do not re-add it by setting the flag in the dialog handler;
+  making it work would need the flag true from startup (installing every downloaded update on the next
+  quit, consent or not) or a custom quit-time install path on both platforms.
 
 ## Preparing a downloadable Windows release candidate
 

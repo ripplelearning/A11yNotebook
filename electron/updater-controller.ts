@@ -20,7 +20,6 @@ export type UpdaterEngine = {
   checkForUpdates: () => Promise<UpdateCheckResultLike | undefined | void>;
   downloadUpdate: () => Promise<unknown>;
   quitAndInstall: (isSilent: boolean, isForceRunAfter: boolean) => void;
-  setAutoInstallOnAppQuit: (value: boolean) => void;
 };
 
 export type UpdaterControllerOptions = {
@@ -140,14 +139,6 @@ export function createUpdaterController({
         return;
       }
       engine.quitAndInstall(false, true);
-    },
-
-    installOnExit() {
-      if (phase !== 'downloaded') {
-        emitError('No downloaded update is ready to install.');
-        return;
-      }
-      engine.setAutoInstallOnAppQuit(true);
     },
 
     handleUpdateAvailable(info: UpdateInfoLike) {

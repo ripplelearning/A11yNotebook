@@ -296,8 +296,6 @@ export interface UpdaterBridge {
   download: () => Promise<void>;
   /** Quit, install the downloaded update, and restart the application. */
   installNow: () => Promise<void>;
-  /** Install the downloaded update when the application next exits. */
-  installOnExit: () => Promise<void>;
   /** Subscribe to updater status changes. Returns an unsubscribe function. */
   onStatus: (callback: (status: UpdaterStatus) => void) => () => void;
 }

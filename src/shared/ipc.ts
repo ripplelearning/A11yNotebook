@@ -7,7 +7,6 @@ export const IPC_CHANNELS = {
   updaterCheck: 'updater:check',
   updaterDownload: 'updater:download',
   updaterInstallNow: 'updater:install-now',
-  updaterInstallOnExit: 'updater:install-on-exit',
   updaterStatus: 'updater:status',
   menuCommand: 'menu:command',
   shortcutCaptureActive: 'menu:shortcut-capture-active',
@@ -187,7 +186,6 @@ export const INVOKE_CHANNELS = [
   IPC_CHANNELS.updaterCheck,
   IPC_CHANNELS.updaterDownload,
   IPC_CHANNELS.updaterInstallNow,
-  IPC_CHANNELS.updaterInstallOnExit,
   IPC_CHANNELS.getPdfReadingPreferences,
   IPC_CHANNELS.setPdfReadingPreferences,
   IPC_CHANNELS.vaultOpen,
@@ -354,7 +352,6 @@ export const UPDATER_INVOKE_CHANNELS = [
   IPC_CHANNELS.updaterCheck,
   IPC_CHANNELS.updaterDownload,
   IPC_CHANNELS.updaterInstallNow,
-  IPC_CHANNELS.updaterInstallOnExit,
 ] as const;
 export type UpdaterInvokeChannel = (typeof UPDATER_INVOKE_CHANNELS)[number];
 

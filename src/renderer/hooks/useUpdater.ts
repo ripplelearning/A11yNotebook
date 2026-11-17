@@ -90,7 +90,5 @@ export function useUpdater() {
     check,
     download: useCallback(() => void run(bridge?.download), [bridge, run]),
     installNow: useCallback(() => void run(bridge?.installNow), [bridge, run]),
-    /** Resolves to true once the main process has accepted "install on exit". */
-    installOnExit: useCallback(() => run(bridge?.installOnExit), [bridge, run]),
   };
 }
