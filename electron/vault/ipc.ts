@@ -992,6 +992,12 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
     validatePdf: (relative) => nextService.validatePdfAnnotationDocument(relative),
     validateDocx: (relative) => nextService.validateDocxAnnotationDocument(relative),
     validateEpub: (relative) => nextService.validateEpubAnnotationDocument(relative),
+    // An Alius record is validated against its original, while the
+    // annotation stays keyed by the record path: without this, the
+    // `.alius` record fails the format check and an Alius document
+    // never opens (its reader lists annotations on open).
+    resolveEffectivePath: async (relative) =>
+      (await nextService.resolveAlius(relative))?.target ?? relative,
   });
   // Filled form values live in their own metadata file, routed through
   // encrypted protection like image descriptions when the library has

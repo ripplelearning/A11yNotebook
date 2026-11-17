@@ -37,6 +37,13 @@ export interface AnnotationStoreOptions {
   validatePdf?: (path: string) => Promise<void>;
   validateDocx?: (path: string) => Promise<void>;
   validateEpub?: (path: string) => Promise<void>;
+  /**
+   * Resolve an Alius record path to the original it points at, for format
+   * validation only. The annotation itself stays keyed by the record path;
+   * only the extension check reads the target. Without it, an Alius record
+   * (`Report.docx.alius`) fails the format check and the document never opens.
+   */
+  resolveEffectivePath?: (path: string) => Promise<string>;
   captureAuthorization?: () => () => void;
 }
 
@@ -261,7 +268,7 @@ function pdfRecord(value: unknown): PdfAnnotation {
   const modifiedAt = text(data.modifiedAt, 30, true);
   if (
     data.schemaVersion !== PDF_ANNOTATION_SCHEMA_VERSION ||
-    !/\.pdf$/i.test(path) ||
+    !/\.pdf(\.alius)?$/i.test(path) ||
     path.split('/')[0].toLowerCase() === '.a11ynotebook' ||
     !/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i.test(id) ||
     !Number.isFinite(Date.parse(createdAt)) ||
@@ -376,6 +383,7 @@ export function createAnnotationStore({
   validatePdf,
   validateDocx,
   validateEpub,
+  resolveEffectivePath,
   captureAuthorization,
 }: AnnotationStoreOptions) {
   let queue: Promise<unknown> = Promise.resolve();
@@ -430,10 +438,18 @@ export function createAnnotationStore({
     await validateNote(safe);
     return safe;
   }
+  /**
+   * The path to check a document format against: the original an Alius
+   * record points at, the library-relative path otherwise. The returned
+   * store key is always the record path.
+   */
+  async function effectivePath(safe: string): Promise<string> {
+    return resolveEffectivePath ? await resolveEffectivePath(safe) : safe;
+  }
   async function validatePdfPath(path: unknown) {
     const safe = notePath(path);
     if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid PDF annotation path.');
-    if (!/\.pdf$/i.test(safe)) throw new Error('PDF annotations require a PDF document.');
+    if (!/\.pdf$/i.test(await effectivePath(safe))) throw new Error('PDF annotations require a PDF document.');
     if (!validatePdf) throw new Error('PDF annotation validation is unavailable.');
     await validatePdf(safe);
     return safe;
@@ -441,7 +457,7 @@ export function createAnnotationStore({
   async function validateDocxPath(path: unknown) {
     const safe = notePath(path);
     if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid DOCX annotation path.');
-    if (!/\.docx$/i.test(safe)) throw new Error('DOCX annotations require a Word document.');
+    if (!/\.docx$/i.test(await effectivePath(safe))) throw new Error('DOCX annotations require a Word document.');
     if (!validateDocx) throw new Error('DOCX annotation validation is unavailable.');
     await validateDocx(safe);
     return safe;
@@ -510,7 +526,7 @@ export function createAnnotationStore({
   async function validateEpubPath(path: unknown) {
     const safe = notePath(path);
     if (safe.split('/')[0].toLowerCase() === '.a11ynotebook') throw new Error('Invalid ePub annotation path.');
-    if (!/\.epub$/i.test(safe)) throw new Error('ePub annotations require an ePub book.');
+    if (!/\.epub$/i.test(await effectivePath(safe))) throw new Error('ePub annotations require an ePub book.');
     if (!validateEpub) throw new Error('ePub annotation validation is unavailable.');
     await validateEpub(safe);
     return safe;

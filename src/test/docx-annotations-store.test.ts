@@ -12,7 +12,7 @@ const input: NewDocxAnnotation = {
   comment: 'Verify against the spreadsheet.',
 };
 
-function fixture(initial?: unknown) {
+function fixture(initial?: unknown, resolveEffectivePath?: (path: string) => Promise<string>) {
   let metadata: unknown = initial;
   const read = vi.fn(async () => structuredClone(metadata));
   const write = vi.fn(async (value: unknown) => {
@@ -21,9 +21,28 @@ function fixture(initial?: unknown) {
   const validateNote = vi.fn(async () => undefined);
   const validatePdf = vi.fn(async () => undefined);
   const validateDocx = vi.fn(async () => undefined);
-  const store = createAnnotationStore({ read, write, validateNote, validatePdf, validateDocx });
+  const store = createAnnotationStore({
+    read,
+    write,
+    validateNote,
+    validatePdf,
+    validateDocx,
+    resolveEffectivePath,
+  });
   return { store, write, validateDocx, snapshot: () => metadata };
 }
+
+/**
+ * An Alius record resolves to its original for format validation, the
+ * way the main process wires resolveEffectivePath to the service's
+ * resolveAlius. The annotation itself stays keyed by the record path.
+ */
+const aliusResolver = async (path: string) =>
+  path === 'Docs/Report.docx.alius'
+    ? '/outside/Report.docx'
+    : path === 'Docs/Report.pdf.alius'
+      ? '/outside/Report.pdf'
+      : path;
 
 describe('DOCX annotation persistence', () => {
   it('supports CRUD in the shared v3 envelope alongside the other formats', async () => {
@@ -61,6 +80,36 @@ describe('DOCX annotation persistence', () => {
     const added = await store.docx.add(input);
     await store.migratePaths('Docs/Report.docx', 'Archive/Report.docx');
     expect(await store.docx.list('Archive/Report.docx')).toEqual([{ ...added, path: 'Archive/Report.docx' }]);
+  });
+
+  it('accepts an Alius record path, keyed by the record path', async () => {
+    const { store, snapshot } = fixture(undefined, aliusResolver);
+    const record = 'Docs/Report.docx.alius';
+    expect(await store.docx.list(record)).toEqual([]);
+    const added = await store.docx.add({ ...input, path: record });
+    expect(added.path).toBe(record);
+    expect(await store.docx.list(record)).toEqual([added]);
+    expect(snapshot()).toMatchObject({ docxAnnotations: [expect.objectContaining({ path: record })] });
+    const updated = await store.docx.update(record, added.id, { label: 'Updated' });
+    expect(updated.label).toBe('Updated');
+    await store.docx.delete(record, added.id);
+    expect(await store.docx.list(record)).toEqual([]);
+  });
+
+  it('rejects an Alius record whose original is the wrong format', async () => {
+    const { store, write } = fixture(undefined, aliusResolver);
+    await expect(store.docx.add({ ...input, path: 'Docs/Report.pdf.alius' })).rejects.toThrow(
+      'DOCX annotations require a Word document.',
+    );
+    expect(write).not.toHaveBeenCalled();
+  });
+
+  it('rejects an Alius record path without a resolver', async () => {
+    const { store, write } = fixture();
+    await expect(store.docx.list('Docs/Report.docx.alius')).rejects.toThrow(
+      'DOCX annotations require a Word document.',
+    );
+    expect(write).not.toHaveBeenCalled();
   });
 });
 

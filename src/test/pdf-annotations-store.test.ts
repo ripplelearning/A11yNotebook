@@ -79,6 +79,27 @@ describe('PDF annotation persistence', () => {
     expect(await store.pdf.list(input.path)).toEqual([]);
   });
 
+  it('accepts an Alius record path, keyed by the record path', async () => {
+    const { options, snapshot } = fixture();
+    const record = 'Docs/Research.pdf.alius';
+    const recordTarget = {
+      ...target,
+      documentIdentity: { ...target.documentIdentity, vaultPath: record },
+    };
+    const store = createAnnotationStore({
+      ...options,
+      resolveEffectivePath: async (path) => (path === record ? '/outside/Research.pdf' : path),
+    });
+    expect(await store.pdf.list(record)).toEqual([]);
+    const added = await store.pdf.add({ ...input, path: record, target: recordTarget });
+    expect(added.path).toBe(record);
+    expect(await store.pdf.list(record)).toEqual([added]);
+    expect(snapshot()).toMatchObject({ pdfAnnotations: [expect.objectContaining({ path: record })] });
+    await expect(store.pdf.add({ ...input, path: 'Docs/Research.docx.alius', target: recordTarget })).rejects.toThrow(
+      'PDF annotations require a PDF document.',
+    );
+  });
+
   it('persists an explicitly chosen duplicated occurrence and its hash without guessing another location', async () => {
     const { store, options } = fixture();
     const repeated = {
