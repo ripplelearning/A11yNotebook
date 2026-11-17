@@ -102,6 +102,66 @@ export function defaultPasteImageName(clipboardName?: string): string {
   return sanitizePasteFileStem(stem) || 'Pasted image';
 }
 
+/** Longest picture description kept from a clipboard source; the paste dialog field caps at 2000. */
+export const PASTE_IMAGE_DESCRIPTION_LIMIT = 2000;
+
+/**
+ * Decode the entities a browser writes into copied HTML attribute values
+ * and captions, so "A &amp; B" is kept as "A & B". Only the entities a
+ * clipboard fragment realistically carries; anything else stays literal.
+ */
+function decodeClipboardEntities(value: string): string {
+  return value
+    .replace(/&#x([0-9a-fA-F]+);/g, (_match, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_match, decimal: string) => String.fromCodePoint(Number.parseInt(decimal, 10)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&amp;/g, '&');
+}
+
+/**
+ * The picture description a copied image carries: the copied <img>
+ * element's alt text first, then the caption of its <figure> when the
+ * image itself has none (Q13: captions and alt text are both kept).
+ * Returns undefined when the source provides neither — a screenshot or
+ * a copied file has no description anywhere on the clipboard, so the
+ * user supplies one in the paste dialog instead. Plain string parsing,
+ * no DOM: this module is shared with the main process, which has none.
+ */
+export function extractPastedImageDescription(html: string): string | undefined {
+  if (!html.trim()) return undefined;
+  const imageTag = /<img\b[^>]*>/i.exec(html)?.[0];
+  if (imageTag) {
+    const alt = /\salt\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+))/i.exec(imageTag);
+    const value = decodeClipboardEntities(alt?.[1] ?? alt?.[2] ?? alt?.[3] ?? '').trim();
+    if (value) return value.slice(0, PASTE_IMAGE_DESCRIPTION_LIMIT);
+  }
+  const figure = /<figure\b[^>]*>([\s\S]*?)<\/figure>/i.exec(html)?.[1] ?? html;
+  const caption = /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i.exec(figure)?.[1];
+  if (caption) {
+    const value = decodeClipboardEntities(caption.replace(/<[^>]*>/g, '')).trim();
+    if (value) return value.slice(0, PASTE_IMAGE_DESCRIPTION_LIMIT);
+  }
+  return undefined;
+}
+
+/**
+ * A library-relative path expressed from another library-relative
+ * directory, for an image stored beside its note: from "Seeded" to
+ * "Seeded/Pasted image.png" is "Pasted image.png"; across notebooks it
+ * climbs with ".." segments.
+ */
+export function relativeLibraryPath(fromDirectory: string, toPath: string): string {
+  const from = fromDirectory.split('/').filter(Boolean);
+  const to = toPath.split('/').filter(Boolean);
+  let common = 0;
+  while (common < from.length && common < to.length && from[common] === to[common]) common += 1;
+  const ups = Array.from({ length: from.length - common }, () => '..');
+  return [...ups, ...to.slice(common)].join('/');
+}
+
 /** Wrap plain text as simple HTML paragraphs, for a pasted-text rich-text (HTML) note. */
 export function plainTextToHtml(text: string): string {
   const escape = (value: string) =>

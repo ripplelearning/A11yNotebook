@@ -1,12 +1,13 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import path from 'node:path';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import {
   closeApp,
   copyFileToClipboard,
   dismissTutorial,
   launchApp,
+  openGridEntry,
   openNotebook,
   pressShortcut,
   seedLibrary,
@@ -36,7 +37,13 @@ interface LaunchedApp {
 
 async function launchPasteApp(): Promise<LaunchedApp> {
   const paths = seedLibrary([
-    { name: 'Seeded', files: [{ name: 'Seeded note.md', content: '# Seeded note\n' }] },
+    {
+      name: 'Seeded',
+      files: [
+        { name: 'Seeded note.md', content: '# Seeded note\n' },
+        { name: 'Page.html', content: '<h1>Page</h1><p>Some text.</p>' },
+      ],
+    },
     { name: 'Second', files: [] },
   ]);
   const { app, page } = await launchApp(paths.userDataDir);
@@ -80,6 +87,28 @@ async function writeImageClipboard(app: ElectronApplication): Promise<void> {
     const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
     return clipboard.write([new ClipboardItem({ 'image/png': new Blob([bytes], { type: 'image/png' }) })]);
   });
+}
+
+/**
+ * What a browser puts on the clipboard for "Copy image": the picture
+ * bytes plus HTML carrying the <img> tag (and its alt text, when the
+ * source provides one) — and, for a figure, its caption.
+ */
+async function writeWebImageClipboard(app: ElectronApplication, html: string, plain?: string): Promise<void> {
+  await app.evaluate(
+    ({ clipboard, ClipboardItem }, { htmlValue, plainValue }) => {
+      const base64 =
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+      const bytes = Uint8Array.from(atob(base64), (character) => character.charCodeAt(0));
+      const types: Record<string, Blob> = {
+        'image/png': new Blob([bytes], { type: 'image/png' }),
+        'text/html': new Blob([htmlValue], { type: 'text/html' }),
+      };
+      if (plainValue !== undefined) types['text/plain'] = new Blob([plainValue], { type: 'text/plain' });
+      return clipboard.write([new ClipboardItem(types)]);
+    },
+    { htmlValue: html, plainValue: plain },
+  );
 }
 
 function pasteDialog(page: Page) {
@@ -276,6 +305,124 @@ test('paste a picture as an attachment, keeping its description', async () => {
     await dialog.getByRole('button', { name: 'Paste' }).click();
     await expect(page.getByRole('gridcell', { name: 'Pasted image.png' })).toBeVisible({ timeout: 30000 });
     await expect(statusLine(page)).toContainText('Pasted Pasted image.png into Seeded.');
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste dialog opens with focus on the New Note radio, not the file name', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page } = launched;
+    await openNotebook(page, 'Seeded');
+    await writeTextClipboard(app, 'Shopping list\n- milk\n- bread');
+    await focusPanel(page);
+    await pressShortcut(page, 'Control+V');
+    const dialog = pasteDialog(page);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('radio', { name: 'New note' })).toBeFocused();
+    await expect(dialog.getByRole('textbox', { name: 'File name' })).not.toBeFocused();
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste a web-copied picture keeps the alt text the source provides', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page, paths } = launched;
+    await openNotebook(page, 'Seeded');
+    await writeWebImageClipboard(
+      app,
+      '<html><body><!--StartFragment-->' +
+        '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Example.jpg/320px-Example.jpg" alt="A red dot on white">' +
+        '<!--EndFragment--></body></html>',
+      'https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Example.jpg/320px-Example.jpg',
+    );
+    await focusPanel(page);
+    await pressShortcut(page, 'Control+V');
+    const dialog = pasteDialog(page);
+    await expect(dialog).toBeVisible();
+    // The alt text arrives pre-filled from the copied image: the user
+    // keeps it by pasting, and the stored picture carries it.
+    await expect(dialog.getByRole('textbox', { name: /Alt text/ })).toHaveValue('A red dot on white');
+    await dialog.getByRole('button', { name: 'Paste' }).click();
+    await expect(page.getByRole('gridcell', { name: 'Pasted image.png' })).toBeVisible({ timeout: 30000 });
+    await expect(statusLine(page)).toContainText('Pasted Pasted image.png into Seeded.');
+    await openGridEntry(page, 'Pasted image.png');
+    const savedAlt = page.getByRole('textbox', { name: /Image description/ });
+    await expect(savedAlt).toBeVisible({ timeout: 30000 });
+    await expect(savedAlt).toHaveValue('A red dot on white');
+    expect(readFileSync(path.join(paths.libraryDir, 'Seeded', 'Pasted image.png')).length).toBeGreaterThan(0);
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste a web-copied picture without alt text keeps its figure caption', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page } = launched;
+    await openNotebook(page, 'Seeded');
+    await writeWebImageClipboard(
+      app,
+      '<html><body><!--StartFragment-->' +
+        '<figure><img src="https://example.com/dot.jpg">' +
+        '<figcaption>A red dot, captioned</figcaption></figure>' +
+        '<!--EndFragment--></body></html>',
+    );
+    await focusPanel(page);
+    await pressShortcut(page, 'Control+V');
+    const dialog = pasteDialog(page);
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole('textbox', { name: /Alt text/ })).toHaveValue('A red dot, captioned');
+    await dialog.getByRole('button', { name: 'Paste' }).click();
+    await expect(page.getByRole('gridcell', { name: 'Pasted image.png' })).toBeVisible({ timeout: 30000 });
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste a web-copied picture into an open HTML note inserts it inline', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page, paths } = launched;
+    await openNotebook(page, 'Seeded');
+    await openGridEntry(page, 'Page.html');
+    await expect(page.getByRole('heading', { name: 'Page', level: 1 })).toBeVisible({ timeout: 30000 });
+    await pressShortcut(page, 'Control+E');
+    await page.getByRole('button', { name: 'Rich text', exact: true }).click();
+    const editor = page.getByRole('textbox', { name: 'Rich text editor' });
+    await expect(editor).toBeVisible({ timeout: 30000 });
+    await editor.click();
+    await writeWebImageClipboard(
+      app,
+      '<html><body><!--StartFragment-->' +
+        '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Example.jpg/320px-Example.jpg" alt="A red dot on white">' +
+        '<!--EndFragment--></body></html>',
+    );
+    await pressShortcut(page, 'Control+V');
+    const inserted = editor.locator('img[alt="A red dot on white"]');
+    await expect(inserted).toHaveCount(1, { timeout: 30000 });
+    await expect(inserted).toHaveAttribute('src', /vault-file:\/\/attachment\/Seeded\/Pasted%20image\.png/);
+    await pressShortcut(page, 'Control+S');
+    await expect(statusLine(page)).toContainText('Saved Page.', { timeout: 30000 });
+    // The picture survives the save: the note file holds the inline
+    // image with its description, and the reading view shows it.
+    const saved = readFileSync(path.join(paths.libraryDir, 'Seeded', 'Page.html'), 'utf8');
+    expect(saved).toContain('alt="A red dot on white"');
+    expect(saved).toContain('vault-file://attachment/Seeded/Pasted%20image.png');
+    await pressShortcut(page, 'Control+E');
+    await expect(statusLine(page)).toContainText('Mode switched to read-only.', { timeout: 30000 });
+    await expect(page.getByRole('img', { name: 'A red dot on white' })).toBeVisible({ timeout: 30000 });
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);

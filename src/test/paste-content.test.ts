@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   defaultPasteImageName,
+  extractPastedImageDescription,
   firstLinePasteName,
   pasteContentExtension,
   pasteImageExtension,
   plainTextToHtml,
+  relativeLibraryPath,
   sanitizePasteFileStem,
 } from '../shared/paste-content';
 
@@ -45,5 +47,45 @@ describe('paste-content helpers', () => {
       '<p>Hello &lt;world&gt;</p>\n<p>Second paragraph<br>with two lines</p>',
     );
     expect(plainTextToHtml('   ')).toBe('');
+  });
+
+  it('keeps a copied picture description from the image alt text', () => {
+    expect(
+      extractPastedImageDescription(
+        '<html><body><!--StartFragment--><img src="https://example.com/dot.jpg" alt="A red dot on white"><!--EndFragment--></body></html>',
+      ),
+    ).toBe('A red dot on white');
+    expect(extractPastedImageDescription('<p><img src="dot.png" alt="  Spaced out  "></p>')).toBe('Spaced out');
+    expect(extractPastedImageDescription('<p><img src="dot.png" alt="Fish &amp; Chips"></p>')).toBe('Fish & Chips');
+    expect(extractPastedImageDescription('<p>No picture here.</p>')).toBeUndefined();
+    expect(extractPastedImageDescription('')).toBeUndefined();
+  });
+
+  it('falls back to the figure caption when the image has no alt text', () => {
+    expect(
+      extractPastedImageDescription(
+        '<figure><img src="https://example.com/dot.jpg"><figcaption>A red dot on white, captioned</figcaption></figure>',
+      ),
+    ).toBe('A red dot on white, captioned');
+    // An empty alt means decorative: the caption is the description.
+    expect(
+      extractPastedImageDescription(
+        '<figure><img src="dot.jpg" alt=""><figcaption>Caption wins</figcaption></figure>',
+      ),
+    ).toBe('Caption wins');
+    // Alt text wins over the caption when the source provides both.
+    expect(
+      extractPastedImageDescription(
+        '<figure><img src="dot.jpg" alt="Alt wins"><figcaption>Caption loses</figcaption></figure>',
+      ),
+    ).toBe('Alt wins');
+    // No alt and no caption anywhere: nothing to keep.
+    expect(extractPastedImageDescription('<p><img src="dot.jpg"></p>')).toBeUndefined();
+  });
+
+  it('expresses a stored picture path relative to its note', () => {
+    expect(relativeLibraryPath('Seeded', 'Seeded/Pasted image.png')).toBe('Pasted image.png');
+    expect(relativeLibraryPath('Seeded/Sub', 'Seeded/Pasted image.png')).toBe('../Pasted image.png');
+    expect(relativeLibraryPath('Seeded', 'Other/Pasted image.png')).toBe('../Other/Pasted image.png');
   });
 });

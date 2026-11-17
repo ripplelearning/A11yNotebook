@@ -75,6 +75,7 @@ export default function PasteContentDialog({ source, notebookName, onSubmit, onC
                 type="radio"
                 name="paste-content-store"
                 value="note"
+                data-autofocus
                 checked={storeAs === 'note'}
                 onChange={() => setStoreAs('note')}
               />
@@ -109,7 +110,7 @@ export default function PasteContentDialog({ source, notebookName, onSubmit, onC
         )}
         <label>
           File name
-          <input data-autofocus value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
+          <input value={name} maxLength={100} onChange={(event) => setName(event.target.value)} />
         </label>
         {isImage ? (
           <label>

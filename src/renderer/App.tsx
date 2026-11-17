@@ -187,9 +187,12 @@ import { htmlPlainText, htmlToMarkdown } from './features/vault/html-to-markdown
 import {
   PASTE_IMAGE_LIMIT_BYTES,
   PASTE_TEXT_LIMIT_BYTES,
+  defaultPasteImageName,
+  extractPastedImageDescription,
   pasteContentExtension,
   pasteImageExtension,
   plainTextToHtml,
+  relativeLibraryPath,
 } from '../shared/paste-content';
 import { useReminders } from './hooks/useReminders';
 import AssetsWorkspace from './features/assets/AssetsWorkspace';
@@ -3204,14 +3207,9 @@ export default function App() {
     const notebookPath = await resolvePasteNotebook();
     if (!notebookPath) return;
     // A picture copied from a page may carry its description in the
-    // copied HTML: keep it as the picture's description (Q13).
-    let sourceAlt: string | undefined;
-    if (html.trim()) {
-      const template = document.createElement('template');
-      template.innerHTML = html;
-      const alt = template.content.querySelector('img')?.getAttribute('alt')?.trim();
-      if (alt) sourceAlt = alt;
-    }
+    // copied HTML: the <img> alt text, or its figure's caption when the
+    // image itself has none. Keep it as the picture's description (Q13).
+    const sourceAlt = extractPastedImageDescription(html);
     const source: PasteContentSource = {
       kind: 'image',
       text: '',
@@ -3231,6 +3229,59 @@ export default function App() {
     });
     setVault(created.vault);
     setStatusMessage(`Pasted ${created.path.split('/').at(-1)} into ${notebookPath.split('/').at(-1)}.`);
+  };
+
+  /**
+   * Store a picture pasted into an open HTML note as an attachment beside
+   * the note, and return the inline reference for the editor: the path
+   * relative to the note, and the description the source provides (the
+   * picture's file name when it provides none, so the inline image keeps
+   * a description instead of being stripped as undescribed). Returns null
+   * when the picture cannot be stored, after announcing why.
+   */
+  const insertPastedImageIntoNote = async (
+    notePath: string,
+    file: File,
+    description: string | undefined,
+  ): Promise<{ src: string; alt: string } | null> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.pasteContent) {
+      setStatusMessage('Pasting pictures is unavailable in this build.');
+      return null;
+    }
+    const extension = pasteImageExtension(file.type);
+    if (!extension) {
+      setStatusMessage('Only PNG, JPEG, GIF, WebP, or BMP pictures can be pasted.');
+      return null;
+    }
+    if (file.size > PASTE_IMAGE_LIMIT_BYTES) {
+      setStatusMessage('The pasted picture is larger than 20 MB.');
+      return null;
+    }
+    const notebookPath = notePath.split('/').slice(0, -1).join('/');
+    if (!notebookPath) {
+      setStatusMessage('Could not paste the picture into this note.');
+      return null;
+    }
+    const stem = defaultPasteImageName(file.name);
+    const alt = description?.trim() || stem;
+    try {
+      const created = await bridge.pasteContent({
+        notebookPath,
+        fileName: `${stem}${extension}`,
+        kind: 'attachment',
+        image: await file.arrayBuffer(),
+        imageMimeType: file.type,
+        altText: alt,
+      });
+      setVault(created.vault);
+      const storedName = created.path.split('/').pop() ?? `${stem}${extension}`;
+      setStatusMessage(`Pasted ${storedName} into ${notebookPath.split('/').at(-1)}.`);
+      return { src: relativeLibraryPath(notebookPath, created.path), alt };
+    } catch {
+      setStatusMessage('Could not paste the picture.');
+      return null;
+    }
   };
 
   /**
@@ -7670,6 +7721,9 @@ export default function App() {
                     links={links.filter((link) => link.sourcePath === currentNote.path)}
                     onChange={(content) => updateNoteContent(currentNote.id, content)}
                     announce={announceStatus}
+                    onPasteImage={(notePath, file, description) =>
+                      insertPastedImageIntoNote(notePath, file, description)
+                    }
                     hideModeToggle={focusMode}
                     onNavigate={(href) => void openLinkTarget(href)}
                     onOpenExternal={(url) => void window.a11yNotebook?.vault.openUrl(url)}
