@@ -228,13 +228,17 @@ test('jump to a heading bookmark while the markdown note is in edit mode', async
       .poll(
         () =>
           page.evaluate(() => {
-            const area = document.activeElement as HTMLTextAreaElement | null;
+            // The active element is the bookmark button until the jump
+            // lands, so a null textarea must read as "not there yet"
+            // (a throw fails the poll at once instead of retrying).
+            const area =
+              document.activeElement instanceof HTMLTextAreaElement ? document.activeElement : null;
             return {
               tag: area?.tagName ?? '',
               label: area?.getAttribute('aria-label') ?? '',
               start: area?.selectionStart ?? -1,
               end: area?.selectionEnd ?? -1,
-              selected: area?.value.slice(area?.selectionStart ?? 0, area?.selectionEnd ?? 0) ?? '',
+              selected: area ? area.value.slice(area.selectionStart ?? 0, area.selectionEnd ?? 0) : '',
             };
           }),
         { timeout: 10000 },
