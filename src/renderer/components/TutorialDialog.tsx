@@ -72,13 +72,19 @@ const PAGES: { heading: string; body: string[]; sections?: { heading: string; it
   },
 ];
 
-export default function TutorialDialog({ onClose }: { onClose: () => void }) {
-  const [page, setPage] = useState(0);
+export default function TutorialDialog({
+  onClose,
+  whatsNewOnly = false,
+}: {
+  onClose: () => void;
+  whatsNewOnly?: boolean;
+}) {
+  const lastPage = PAGES.length - 1;
+  const [page, setPage] = useState(whatsNewOnly ? lastPage : 0);
   const [suppressed, setSuppressed] = useState(() => readTutorialState().suppressed);
   const [announcement, setAnnouncement] = useState('');
   const headingRef = useRef<HTMLHeadingElement>(null);
   const firstPageRef = useRef(true);
-  const lastPage = PAGES.length - 1;
   const current = PAGES[page];
 
   // The shared Modal names the dialog in the window title, so a screen
@@ -99,7 +105,7 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
   }, [page, current.heading]);
 
   return (
-    <Modal titleId="tutorial-title" title="Welcome Tutorial" onClose={onClose}>
+    <Modal titleId="tutorial-title" title={whatsNewOnly ? "What's New" : 'Welcome Tutorial'} onClose={onClose}>
       <h3 ref={headingRef} tabIndex={-1} data-autofocus>
         {current.heading}
       </h3>
@@ -116,38 +122,44 @@ export default function TutorialDialog({ onClose }: { onClose: () => void }) {
           </ul>
         </section>
       ))}
-      <p>
-        Page {page + 1} of {PAGES.length}
-      </p>
+      {whatsNewOnly ? null : (
+        <p>
+          Page {page + 1} of {PAGES.length}
+        </p>
+      )}
       <div aria-live="polite" className="sr-only">
         {announcement}
       </div>
-      <div>
-        {page < lastPage ? (
-          <button type="button" onClick={() => setPage((value) => Math.min(lastPage, value + 1))}>
-            Next
+      {whatsNewOnly ? null : (
+        <div>
+          {page < lastPage ? (
+            <button type="button" onClick={() => setPage((value) => Math.min(lastPage, value + 1))}>
+              Next
+            </button>
+          ) : (
+            <button type="button" onClick={onClose}>
+              Finish
+            </button>
+          )}
+          <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
+            Previous
           </button>
-        ) : (
-          <button type="button" onClick={onClose}>
-            Finish
-          </button>
-        )}
-        <button type="button" disabled={page === 0} onClick={() => setPage((value) => Math.max(0, value - 1))}>
-          Previous
-        </button>
-      </div>
-      <label>
-        <input
-          type="checkbox"
-          checked={suppressed}
-          onChange={(event) => {
-            const next = event.target.checked;
-            setSuppressed(next);
-            writeTutorialState({ ...readTutorialState(), suppressed: next });
-          }}
-        />
-        Don&apos;t show this again
-      </label>
+        </div>
+      )}
+      {whatsNewOnly ? null : (
+        <label>
+          <input
+            type="checkbox"
+            checked={!suppressed}
+            onChange={(event) => {
+              const showAfterUpdates = event.target.checked;
+              setSuppressed(!showAfterUpdates);
+              writeTutorialState({ ...readTutorialState(), suppressed: !showAfterUpdates });
+            }}
+          />
+          Show the tutorial after each update
+        </label>
+      )}
       <div>
         <button type="button" onClick={onClose}>
           Close

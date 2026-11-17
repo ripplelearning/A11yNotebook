@@ -51,6 +51,7 @@ export type CommandId =
   | 'show-about'
   | 'show-feedback'
   | 'show-tutorial'
+  | 'show-whats-new'
   | 'show-settings'
   | 'check-spelling-grammar'
   | 'open-thesaurus'
@@ -154,6 +155,7 @@ export type CommandActionContext = {
   showAbout: () => void;
   showFeedback: () => void;
   showTutorial: () => void;
+  showWhatsNew: () => void;
   startFind: () => void;
   repeatFind: (direction: 'next' | 'prev') => string | undefined;
   navigateBack?: () => void;
@@ -907,6 +909,11 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Tutorial',
     description: 'Show the guided tour of A11y Notebook.',
   },
+  {
+    id: 'show-whats-new',
+    label: "What's New",
+    description: 'Show what changed in this version of A11y Notebook.',
+  },
 ];
 
 /** Pane order used by F6 (forward) and Shift+F6 (backward). */
@@ -1191,6 +1198,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return undefined;
     case 'show-tutorial':
       context.showTutorial();
+      return undefined;
+    case 'show-whats-new':
+      context.showWhatsNew();
       return undefined;
     default:
       return 'Command not recognized.';

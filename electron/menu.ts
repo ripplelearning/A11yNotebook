@@ -162,6 +162,7 @@ export function buildApplicationMenu(
         { ...commandItem('check-for-updates'), label: 'Check for &Updates' },
         commandItem('show-keyboard-shortcuts'),
         commandItem('show-tutorial'),
+        commandItem('show-whats-new'),
         { type: 'separator' },
         commandItem('show-about'),
       ],

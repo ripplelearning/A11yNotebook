@@ -53,13 +53,19 @@ describe('guided tour', () => {
     expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
   });
 
-  it('does not show again after "Don\'t show this again" is checked', () => {
+  it('does not show again after "Show the tutorial after each update" is unchecked', () => {
     window.localStorage.removeItem('a11y-notebook.tutorial');
     const { unmount } = render(<App />);
-    fireEvent.click(screen.getByLabelText("Don't show this again"));
+    fireEvent.click(screen.getByLabelText('Show the tutorial after each update'));
     fireEvent.click(screen.getByRole('button', { name: 'Close' }));
     expect(JSON.parse(window.localStorage.getItem('a11y-notebook.tutorial') ?? '{}').suppressed).toBe(true);
     unmount();
+    render(<App />);
+    expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
+  });
+
+  it('stays suppressed across a version change while the box is unchecked', () => {
+    setTutorialState({ suppressed: true, lastVersionSeen: '9.9.8-test' });
     render(<App />);
     expect(screen.queryByRole('dialog', { name: 'Welcome Tutorial' })).not.toBeInTheDocument();
   });
@@ -82,5 +88,11 @@ describe('guided tour', () => {
     const showTutorial = vi.fn();
     dispatchCommand('show-tutorial', { showTutorial } as unknown as CommandActionContext);
     expect(showTutorial).toHaveBeenCalledTimes(1);
+  });
+
+  it("opens What's New from the Help command", () => {
+    const showWhatsNew = vi.fn();
+    dispatchCommand('show-whats-new', { showWhatsNew } as unknown as CommandActionContext);
+    expect(showWhatsNew).toHaveBeenCalledTimes(1);
   });
 });
