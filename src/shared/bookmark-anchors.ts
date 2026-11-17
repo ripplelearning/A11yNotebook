@@ -29,13 +29,25 @@ function stripHtml(text: string): string {
  * stripped. A heading stored from source (`# Hello *world*`) anchors as
  * `Hello *world*` but renders as `Hello world`, so the two forms must be
  * compared in their rendered shape or the jump never matches.
+ *
+ * Wiki links and images need the same treatment: `[[Usage]]` renders as
+ * a link reading `Usage` (or its label when written `[[Target|label]]`),
+ * and an image contributes no text to the rendered heading at all, so
+ * keeping the `[[...]]` markup or the image's alt text leaves the
+ * stored form unable to match the rendered heading. The bookmark then
+ * cannot be created from reading mode, and a jump to it falls back to
+ * the top of the note while still announcing the jump.
  */
 export function normalizeHeadingText(text: string): string {
   return stripHtml(
     text
-      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '$1')
+      .replace(/\[\[([^\]|]+)\|([^\]]+)\]\]/g, '$2')
+      .replace(/\[\[([^\]]+)\]\]/g, '$1')
+      .replace(/!\[([^\]]*)\]\([^)]*\)/g, '')
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
+      .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/g, '$1')
+      .replace(/<([^<>\s]+@[^<>\s]+)>/g, '$1')
       .replace(/(`{1,3})([^`]*?)\1/g, '$2')
       .replace(/(\*\*|__)(.*?)\1/g, '$2')
       .replace(/(\*|_)(.*?)\1/g, '$2')

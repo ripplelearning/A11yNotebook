@@ -160,6 +160,22 @@ describe('normalizeHeadingText', () => {
     expect(normalizeHeadingText('Plain heading')).toBe('Plain heading');
     expect(normalizeHeadingText('  Spaced  ')).toBe('Spaced');
   });
+
+  it('renders wiki links as their label, or their target without one', () => {
+    expect(normalizeHeadingText('[[Usage]]')).toBe('Usage');
+    expect(normalizeHeadingText('[[Guide|the guide]]')).toBe('the guide');
+    expect(normalizeHeadingText('Notes on [[Setup]] today')).toBe('Notes on Setup today');
+  });
+
+  it('drops images, which contribute no text to the rendered heading', () => {
+    expect(normalizeHeadingText('![logo](logo.png) Usage')).toBe('Usage');
+    expect(normalizeHeadingText('Usage ![chart](chart.png)')).toBe('Usage');
+  });
+
+  it('renders autolinks as their address', () => {
+    expect(normalizeHeadingText('See <https://example.com> for details')).toBe('See https://example.com for details');
+    expect(normalizeHeadingText('Mail <help@example.com>')).toBe('Mail help@example.com');
+  });
 });
 
 describe('headingTextSpan and lineSpanAt', () => {
@@ -227,5 +243,30 @@ describe('headingAnchorForRenderedText', () => {
 
   it('returns null when the rendered heading is gone', () => {
     expect(headingAnchorForRenderedText(markdown, false, 'Missing', 0)).toBeNull();
+  });
+
+  it('maps a rendered wiki-link heading back to its source text', () => {
+    const content = '# Title\n\nIntro text.\n\n## [[Usage]]\n\nDetails here.\n';
+    // The reader sees "Usage"; the anchor stores the source text.
+    expect(headingAnchorForRenderedText(content, false, 'Usage', 0)).toEqual({
+      kind: 'heading',
+      text: '[[Usage]]',
+      occurrence: 0,
+    });
+    const labelled = '# Title\n\n## [[Guide|the guide]]\n';
+    expect(headingAnchorForRenderedText(labelled, false, 'the guide', 0)).toEqual({
+      kind: 'heading',
+      text: '[[Guide|the guide]]',
+      occurrence: 0,
+    });
+  });
+
+  it('maps a rendered image heading back to its source text', () => {
+    const content = '# Title\n\n## ![logo](logo.png) Usage\n';
+    expect(headingAnchorForRenderedText(content, false, 'Usage', 0)).toEqual({
+      kind: 'heading',
+      text: '![logo](logo.png) Usage',
+      occurrence: 0,
+    });
   });
 });
