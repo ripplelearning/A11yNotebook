@@ -59,6 +59,36 @@ async function openFillablePdf(page: Page, notebookName = 'Forms', fileName = 'A
   await expect(page.getByRole('heading', { name: 'Form fields' })).toBeVisible({ timeout: 30000 });
 }
 
+/**
+ * A form with an unfilled rich-text text field, as XFA-era producers
+ * ship them: the RichText flag is set, the field holds no value, and
+ * its widget has no appearance stream. A plain required field sits
+ * beside it so the download can be driven the way Tristen drove it.
+ */
+async function richTextPdf(): Promise<Uint8Array> {
+  const doc = await PDFDocument.create();
+  const page = doc.addPage([612, 792]);
+  const font = await doc.embedFont(StandardFonts.Helvetica);
+  page.drawText('Full name:', { x: 50, y: 705, size: 12, font });
+  const form = doc.getForm();
+  const rich = form.createTextField('GM_Name');
+  rich.addToPage(page, { x: 150, y: 700, width: 200, height: 20 });
+  rich.acroField.getWidgets()[0].dict.set(PDFName.of('TU'), PDFString.of('GM name'));
+  // Enable rich formatting only after the widget exists: pdf-lib builds
+  // the appearance on addToPage, and reading an empty rich-text field
+  // throws. Real producers ship the flag already set, value or not.
+  rich.enableRichFormatting();
+  const name = form.createTextField('plainName');
+  name.addToPage(page, { x: 150, y: 650, width: 200, height: 20 });
+  name.acroField.getWidgets()[0].dict.set(PDFName.of('TU'), PDFString.of('Your full name'));
+  name.acroField.dict.set(PDFName.of('Ff'), PDFNumber.of(2));
+  const bytes = await doc.save();
+  const reloaded = await PDFDocument.load(bytes);
+  const widget = reloaded.getForm().getTextField('GM_Name').acroField.getWidgets()[0];
+  widget.dict.delete(PDFName.of('AP'));
+  return reloaded.save({ updateFieldAppearances: false });
+}
+
 function formSection(page: Page) {
   return page.getByRole('region', { name: 'Form fields' });
 }
@@ -255,5 +285,53 @@ test('filling an Alius saves a filled copy and never touches the original', asyn
     } catch {
       // Best effort: a leftover temp dir never fails the test.
     }
+  }
+});
+
+test('rich-text field downloads a filled PDF, filled or left empty', async () => {
+  let app: ElectronApplication | null = null;
+  const paths = seedLibrary([{ name: 'Forms', files: [{ name: 'RichText.pdf', content: await richTextPdf() }] }]);
+  try {
+    const launched = await launchApp(paths.userDataDir);
+    app = launched.app;
+    const page = launched.page;
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+    await openFillablePdf(page, 'Forms', 'RichText.pdf');
+
+    await expect(page.getByLabel('GM name')).toBeVisible();
+    await expect(page.getByLabel('Your full name (required)')).toBeVisible();
+
+    // Tristen's report: the rich-text field left empty, the plain field
+    // filled, and Download filled PDF failed with a rich-text read
+    // error. The download must now succeed with the filled value in it.
+    await page.getByLabel('Your full name (required)').fill('Ada Lovelace');
+    await expect(formSection(page).getByRole('status')).toContainText('Filled values saved.', { timeout: 10000 });
+    const outPath = path.join(paths.baseDir, 'RichText (filled).pdf');
+    await app.evaluate(async ({ dialog }, filePath: string) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+    }, outPath);
+    await page.getByRole('button', { name: 'Download filled PDF' }).click();
+    await expect(formSection(page).getByRole('status')).toContainText('Downloaded filled PDF', { timeout: 10000 });
+    const downloaded = await PDFDocument.load(readFileSync(outPath));
+    expect(downloaded.getForm().getTextField('plainName').getText()).toBe('Ada Lovelace');
+    expect(downloaded.getForm().getTextField('GM_Name').getText()).toBeUndefined();
+
+    // Fill the rich-text field too: its value must land in the file.
+    await page.getByLabel('GM name').fill('Grace Hopper');
+    await expect(formSection(page).getByRole('status')).toContainText('Filled values saved.', { timeout: 10000 });
+    const outPathFilled = path.join(paths.baseDir, 'RichText (filled again).pdf');
+    await app.evaluate(async ({ dialog }, filePath: string) => {
+      dialog.showSaveDialog = async () => ({ canceled: false, filePath });
+    }, outPathFilled);
+    await page.getByRole('button', { name: 'Download filled PDF' }).click();
+    await expect(formSection(page).getByRole('status')).toContainText('Downloaded filled PDF', { timeout: 10000 });
+    const downloadedAgain = await PDFDocument.load(readFileSync(outPathFilled));
+    expect(downloadedAgain.getForm().getTextField('GM_Name').getText()).toBe('Grace Hopper');
+    expect(downloadedAgain.getForm().getTextField('plainName').getText()).toBe('Ada Lovelace');
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
   }
 });

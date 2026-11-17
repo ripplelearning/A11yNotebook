@@ -16,7 +16,7 @@ import type {
 import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './search';
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
-import type { PdfFormValues, PdfFormValuesRecord } from './pdf-form';
+import type { PdfFormSkippedField, PdfFormValues, PdfFormValuesRecord } from './pdf-form';
 import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './docx-annotations';
 import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
 import type { AttachmentPreview } from './attachments';
@@ -120,9 +120,13 @@ export interface VaultBridge {
     identity: PdfFormValuesRecord['documentIdentity'],
   ): Promise<PdfFormValuesRecord>;
   /** Write the stored values into a filled file chosen with a save dialog. */
-  downloadFilledPdf(path: string): Promise<{ saved: boolean; fileName?: string }>;
+  downloadFilledPdf(path: string): Promise<{
+    saved: boolean;
+    fileName?: string;
+    skippedFields?: PdfFormSkippedField[];
+  }>;
   /** Write the stored values into a filled copy inside the same notebook. */
-  saveFilledPdfCopy(path: string): Promise<{ path: string; name: string }>;
+  saveFilledPdfCopy(path: string): Promise<{ path: string; name: string; skippedFields?: PdfFormSkippedField[] }>;
   listDocxAnnotations(path: string): Promise<DocxAnnotation[]>;
   addDocxAnnotation(annotation: NewDocxAnnotation): Promise<DocxAnnotation>;
   updateDocxAnnotation(path: string, id: string, update: DocxAnnotationUpdate): Promise<DocxAnnotation>;

@@ -9,6 +9,7 @@ import {
   missingRequiredPdfFormFields,
   validatePdfFormValue,
   type PdfFormField,
+  type PdfFormSkippedField,
   type PdfFormValue,
   type PdfFormValues,
 } from '../../../shared/pdf-form';
@@ -190,6 +191,8 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [passwordError, setPasswordError] = useState('');
   const [wasPasswordProtected, setWasPasswordProtected] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
+  /** Fields the last filled-PDF export could not write, with their reasons. */
+  const [exportSkippedFields, setExportSkippedFields] = useState<PdfFormSkippedField[]>([]);
   const valuesRef = useRef<PdfFormValues>({});
   const errorsRef = useRef<ReadonlyMap<string, string>>(new Map());
   const valuesDirtyRef = useRef(false);
@@ -385,6 +388,11 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     [formFields],
   );
 
+  // A skipped field belongs to the document it was exported from.
+  useEffect(() => {
+    setExportSkippedFields([]);
+  }, [path]);
+
   /** Required fields must be filled before a filled file is produced. */
   const validateForExport = useCallback((): boolean => {
     if (!missingRequired.length) return true;
@@ -405,9 +413,15 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     setExportBusy(true);
     try {
       const result = await vault.downloadFilledPdf(path);
+      const skipped = result.skippedFields ?? [];
+      setExportSkippedFields(skipped);
       setFormStatus(
         result.saved
-          ? `Downloaded filled PDF${result.fileName ? ` as ${result.fileName}` : ''}.`
+          ? `Downloaded filled PDF${result.fileName ? ` as ${result.fileName}` : ''}.${
+              skipped.length
+                ? ` ${skipped.length} field${skipped.length === 1 ? '' : 's'} could not be written: ${skipped.map((field) => field.name).join(', ')}.`
+                : ''
+            }`
           : 'Download cancelled.',
       );
     } catch (reason) {
@@ -423,7 +437,15 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     setExportBusy(true);
     try {
       const created = await vault.saveFilledPdfCopy(path);
-      setFormStatus(`Saved filled copy as ${created.name}. The original file was not changed.`);
+      const skipped = created.skippedFields ?? [];
+      setExportSkippedFields(skipped);
+      setFormStatus(
+        `Saved filled copy as ${created.name}. The original file was not changed.${
+          skipped.length
+            ? ` ${skipped.length} field${skipped.length === 1 ? '' : 's'} could not be written: ${skipped.map((field) => field.name).join(', ')}.`
+            : ''
+        }`,
+      );
     } catch (reason) {
       setFormStatus(reason instanceof Error ? reason.message : 'The filled copy could not be saved.');
     } finally {
@@ -621,11 +643,17 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
                 : 'This form uses XFA and no fields could be loaded in the app.'}
             </p>
           ) : null}
-          {unsupportedFields.length ? (
+          {unsupportedFields.length || exportSkippedFields.length ? (
             <ul>
               {unsupportedFields.map((field) => (
                 <li key={field.name}>
                   {field.label}: {field.unsupportedReason}
+                </li>
+              ))}
+              {exportSkippedFields.map((skipped) => (
+                <li key={`export-skipped-${skipped.name}`}>
+                  {formFields.find((field) => field.name === skipped.name)?.label ?? skipped.name}:{' '}
+                  {skipped.reason}
                 </li>
               ))}
             </ul>
