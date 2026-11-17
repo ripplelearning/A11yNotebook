@@ -54,6 +54,29 @@ describe('ePub annotation persistence', () => {
     expect(snapshot()).toMatchObject({ version: 4, epubAnnotations: [expect.objectContaining({ label: 'Opening' })] });
   });
 
+  it('accepts an Alius record path, keyed by the record path', async () => {
+    let metadata: unknown;
+    const read = vi.fn(async () => structuredClone(metadata));
+    const write = vi.fn(async (value: unknown) => {
+      metadata = structuredClone(value);
+    });
+    const record = 'Books/Novel.epub.alius';
+    const store = createAnnotationStore({
+      read,
+      write,
+      validateNote: vi.fn(async () => undefined),
+      validatePdf: vi.fn(async () => undefined),
+      validateDocx: vi.fn(async () => undefined),
+      validateEpub: vi.fn(async () => undefined),
+      resolveEffectivePath: async (path) => (path === record ? '/outside/Novel.epub' : path),
+    });
+    expect(await store.epub.list(record)).toEqual([]);
+    const added = await store.epub.add({ ...input, path: record });
+    expect(added.path).toBe(record);
+    expect(await store.epub.list(record)).toEqual([added]);
+    expect(metadata).toMatchObject({ epubAnnotations: [expect.objectContaining({ path: record })] });
+  });
+
   it('rejects unsafe paths, wrong extensions, and malformed CFIs before writing', async () => {
     const { store, write } = fixture();
     await expect(store.epub.add({ ...input, path: '../Novel.epub' })).rejects.toThrow();
