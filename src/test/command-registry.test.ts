@@ -33,6 +33,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     showAbout: vi.fn(),
     showFeedback: vi.fn(),
     showTutorial: vi.fn(),
+    showWhatsNew: vi.fn(),
     startFind: vi.fn(),
     repeatFind: vi.fn(),
     ...overrides,

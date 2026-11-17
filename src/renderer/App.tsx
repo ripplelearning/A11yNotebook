@@ -371,7 +371,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'focus-search',
     ],
   },
-  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-about', 'show-feedback'] },
+  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-whats-new', 'show-about', 'show-feedback'] },
 ];
 
 export default function App() {
@@ -405,6 +405,7 @@ export default function App() {
   }, [focusAnnouncement]);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
   const [tutorialOpen, setTutorialOpen] = useState(false);
+  const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
   const [statusMessage, setStatusMessage] = useState('Ready');
@@ -2020,9 +2021,10 @@ export default function App() {
   }, [selectedTab]);
 
   // Show the guided tour the first time the app runs after an install or
-  // an update, unless the user checked "Don't show this again". The tour
-  // waits until no library switch, lock prompt, or password dialog is in
-  // flight, so it never stacks on top of another dialog.
+  // an update, unless the user unchecked "Show the tutorial after each
+  // update". The tour waits until no library switch, lock prompt, or
+  // password dialog is in flight, so it never stacks on top of another
+  // dialog.
   const tutorialDecidedRef = useRef(false);
   useEffect(() => {
     if (tutorialDecidedRef.current) return;
@@ -6278,6 +6280,7 @@ export default function App() {
       showAbout: () => setActiveDialog('about'),
       showFeedback: () => setActiveDialog('feedback'),
       showTutorial: () => setTutorialOpen(true),
+      showWhatsNew: () => setWhatsNewOpen(true),
       startFind,
       repeatFind,
     });
@@ -7862,6 +7865,7 @@ export default function App() {
         <FeedbackDialog onClose={closeDialog} announce={setStatusMessage} />
       ) : null}
       {tutorialOpen ? <TutorialDialog onClose={() => setTutorialOpen(false)} /> : null}
+      {whatsNewOpen ? <TutorialDialog whatsNewOnly onClose={() => setWhatsNewOpen(false)} /> : null}
       {vault && !securityLocked && settingsVaultPath === vault.path ? (
         <ReminderAlerts
           key={vault.path}

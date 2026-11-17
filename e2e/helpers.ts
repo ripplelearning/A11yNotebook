@@ -275,3 +275,31 @@ export async function runPaletteCommand(page: Page, label: string): Promise<void
   await palette.getByPlaceholder('Search Command Palette').fill(label);
   await palette.getByRole('button', { name: label, exact: true }).click();
 }
+
+/**
+ * Click a native application-menu item by registry id, from the main
+ * process — the same dispatch path a user clicking the menu takes.
+ * Playwright cannot click native menus directly, so the item is found in
+ * the real application menu (top level or one submenu deep) and its click
+ * handler is invoked.
+ */
+export async function clickNativeMenuItem(app: ElectronApplication, id: string): Promise<void> {
+  await app.evaluate(async ({ Menu }, menuId) => {
+    const menu = Menu.getApplicationMenu();
+    const all = (menu?.items ?? []).flatMap((item) => (item.submenu ? item.submenu.items : [item]));
+    all.find((item) => item.id === menuId)?.click();
+  }, id);
+}
+
+/** Read a native application-menu item's state from the main process. */
+export async function nativeMenuItemState(
+  app: ElectronApplication,
+  id: string,
+): Promise<{ found: boolean; enabled: boolean; label?: string }> {
+  return app.evaluate(async ({ Menu }, menuId) => {
+    const menu = Menu.getApplicationMenu();
+    const all = (menu?.items ?? []).flatMap((item) => (item.submenu ? item.submenu.items : [item]));
+    const target = all.find((item) => item.id === menuId);
+    return { found: Boolean(target), enabled: target?.enabled ?? false, label: target?.label };
+  }, id);
+}
