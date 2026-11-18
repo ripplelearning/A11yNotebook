@@ -38,13 +38,13 @@ are registered by `electron/vault/ipc.ts`; it accepts relative paths only and re
 library. It does not expose generic IPC or Node filesystem methods. See [architecture](architecture.md) for the
 library-specific operations and their data model. Internal `vault` identifiers remain compatible.
 
-| Channel                   | Direction       | Payload                                                            |
-| ------------------------- | --------------- | ------------------------------------------------------------------ |
-| `updater:check`           | renderer → main | none                                                               |
-| `updater:download`        | renderer → main | none                                                               |
-| `updater:install-now`     | renderer → main | none                                                               |
-| `updater:status`          | main → renderer | `UpdaterStatus`                                                    |
-| `menu:command`            | main → renderer | `'check-for-updates' \| 'show-keyboard-shortcuts' \| 'show-about'` |
+| Channel               | Direction       | Payload                                                            |
+| --------------------- | --------------- | ------------------------------------------------------------------ |
+| `updater:check`       | renderer → main | none                                                               |
+| `updater:download`    | renderer → main | none                                                               |
+| `updater:install-now` | renderer → main | none                                                               |
+| `updater:status`      | main → renderer | `UpdaterStatus`                                                    |
+| `menu:command`        | main → renderer | `'check-for-updates' \| 'show-keyboard-shortcuts' \| 'show-about'` |
 
 ## Message flow
 
@@ -55,15 +55,15 @@ library-specific operations and their data model. Internal `vault` identifiers r
    `autoUpdater.checkForUpdates()`.
 4. The main process sends statuses to the renderer:
 
-| State                  | Payload                                                | Dialog content                                                                 |
-| ---------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------ |
-| `checking`             | —                                                      | "Checking GitHub…" and **Close**                                               |
-| `update-available`     | `version`, `releaseName?`, `releaseNotes` (plain text) | New version, current version, release-note summary, **Download** / **Not now** |
-| `update-not-available` | current `version`                                      | "You are using the latest version" and **Close**                               |
-| `download-progress`    | `percent` (0–100 integer)                              | Progress bar and **Hide** (the download continues)                             |
+| State                  | Payload                                                | Dialog content                                                                    |
+| ---------------------- | ------------------------------------------------------ | --------------------------------------------------------------------------------- |
+| `checking`             | —                                                      | "Checking GitHub…" and **Close**                                                  |
+| `update-available`     | `version`, `releaseName?`, `releaseNotes` (plain text) | New version, current version, release-note summary, **Download** / **Not now**    |
+| `update-not-available` | current `version`                                      | "You are using the latest version" and **Close**                                  |
+| `download-progress`    | `percent` (0–100 integer)                              | Progress bar and **Hide** (the download continues)                                |
 | `update-downloaded`    | `version`                                              | **Restart and install** / **Close** (install later from Help → Check for Updates) |
-| `unsupported`          | `message`                                              | Explanation (development or portable build) and **Close**                      |
-| `error`                | readable `message`                                     | Alert with the message, **Try again** / **Close**                              |
+| `unsupported`          | `message`                                              | Explanation (development or portable build) and **Close**                         |
+| `error`                | readable `message`                                     | Alert with the message, **Try again** / **Close**                                 |
 
 5. **Download** calls `autoUpdater.downloadUpdate()`. The controller refuses to download unless an update was
    reported as available.
