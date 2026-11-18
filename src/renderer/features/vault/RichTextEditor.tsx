@@ -4,6 +4,7 @@ import { extractPastedImageDescription } from '../../../shared/paste-content';
 import { sanitizeNoteHtml } from './sanitize-html';
 import { detectSmartTrigger } from './smart-formatting';
 import InsertImageDialog from './InsertImageDialog';
+import InsertLinkDialog from './InsertLinkDialog';
 
 const MATH_TEMPLATES = [
   { label: 'Fraction template', snippet: 'frac(a,b)' },
@@ -51,6 +52,9 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
   const [activeTool, setActiveTool] = useState(0);
   const [showMath, setShowMath] = useState(false);
   const [showImageDialog, setShowImageDialog] = useState(false);
+  const [showLinkDialog, setShowLinkDialog] = useState(false);
+  const [linkInitialText, setLinkInitialText] = useState('');
+  const savedLinkRange = useRef<Range | null>(null);
   const [mathInput, setMathInput] = useState('');
   const [mathError, setMathError] = useState('');
   const mathInputRef = useRef<HTMLInputElement>(null);
@@ -84,6 +88,25 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
     window.addEventListener('a11y:open-math-toolbar', open);
     return () => window.removeEventListener('a11y:open-math-toolbar', open);
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  /** Save the caret or selection, then ask for the link in the dialog. */
+  const openLinkDialog = () => {
+    const selection = window.getSelection();
+    if (selection?.rangeCount && editor.current?.contains(selection.anchorNode)) {
+      savedLinkRange.current = selection.getRangeAt(0).cloneRange();
+      setLinkInitialText(selection.toString());
+    } else {
+      savedLinkRange.current = null;
+      setLinkInitialText('');
+    }
+    setShowLinkDialog(true);
+  };
+
+  useEffect(() => {
+    const open = () => openLinkDialog();
+    window.addEventListener('a11y:open-link-dialog', open);
+    return () => window.removeEventListener('a11y:open-link-dialog', open);
   }, []);
 
   const insertMath = () => {
@@ -145,6 +168,13 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
       setShowImageDialog(true);
       return;
     }
+    if (command === 'link') {
+      // The link question is asked in the app's own dialog, for the
+      // same reason: the native prompt this used to ask with does not
+      // work here, so the toolbar button silently did nothing.
+      openLinkDialog();
+      return;
+    }
     target.focus();
     if (command.startsWith('heading')) {
       document.execCommand('formatBlock', false, `h${command.slice('heading'.length)}`);
@@ -152,9 +182,6 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
       document.execCommand('formatBlock', false, 'blockquote');
     } else if (command === 'code') {
       document.execCommand('formatBlock', false, 'pre');
-    } else if (command === 'link') {
-      const url = window.prompt('Link address');
-      if (url?.trim()) document.execCommand('createLink', false, url.trim());
     } else if (command === 'table') {
       document.execCommand(
         'insertHTML',
@@ -189,6 +216,33 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
     if (target.innerHTML !== next) target.innerHTML = next;
     onChange(next);
     setShowImageDialog(false);
+  };
+
+  /** Insert the link the Insert link dialog asked for, replacing the selection. */
+  const insertLink = (url: string, text: string) => {
+    const target = editor.current;
+    if (!target) return;
+    const range = savedLinkRange.current;
+    savedLinkRange.current = null;
+    // Close the dialog first: while it is mounted its focus trap pulls
+    // focus back inside, so an insert now would run against the dialog's
+    // input instead of the editor. Wait until Modal releases its focus
+    // trap before returning focus to the editor, as EditorTools does.
+    setShowLinkDialog(false);
+    requestAnimationFrame(() => {
+      if (!target.isConnected) return;
+      target.focus();
+      const selection = window.getSelection();
+      if (selection && range && target.contains(range.startContainer)) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      const anchor = document.createElement('a');
+      anchor.setAttribute('href', url);
+      anchor.textContent = text || url;
+      document.execCommand('insertHTML', false, anchor.outerHTML);
+      emitChange();
+    });
   };
 
   const emitChange = () => {
@@ -351,6 +405,13 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
       </div>
       {showImageDialog ? (
         <InsertImageDialog onSubmit={insertImage} onClose={() => setShowImageDialog(false)} />
+      ) : null}
+      {showLinkDialog ? (
+        <InsertLinkDialog
+          initialText={linkInitialText}
+          onSubmit={insertLink}
+          onClose={() => setShowLinkDialog(false)}
+        />
       ) : null}
       {showMath ? (
         <div role="group" aria-label="Mathematics toolbar">
