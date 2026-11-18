@@ -49,9 +49,13 @@ async function launchLinkApp(): Promise<LaunchedApp> {
   return { app, page, paths, pageErrors };
 }
 
-async function openRichTextEditor(page: Page, entry: string): Promise<void> {
+async function openRichTextEditor(page: Page, entry: string, heading: string): Promise<void> {
   await openNotebook(page, 'Seeded');
   await openGridEntry(page, entry);
+  // Wait for the reading view to render before switching modes: the
+  // edit-mode shortcut can be lost if it lands before the note's
+  // keydown listener attaches (seen as a missing Rich text button).
+  await expect(page.getByRole('heading', { name: heading, level: 1 })).toBeVisible({ timeout: 30000 });
   await pressShortcut(page, 'Control+E');
   await page.getByRole('button', { name: 'Rich text', exact: true }).click();
   const editor = page.getByRole('textbox', { name: 'Rich text editor' });
@@ -94,7 +98,7 @@ test('insert a link into a Markdown note with the toolbar, keeping the selected 
   try {
     launched = await launchLinkApp();
     const { page, paths } = launched;
-    await openRichTextEditor(page, 'Seeded note.md');
+    await openRichTextEditor(page, 'Seeded note.md', 'Seeded note');
     await selectInEditor(page, 6, 15);
     await page
       .getByRole('toolbar', { name: 'Rich text formatting' })
@@ -132,7 +136,7 @@ test('insert a link with no selection uses the address as the link text', async 
   try {
     launched = await launchLinkApp();
     const { page } = launched;
-    await openRichTextEditor(page, 'Seeded note.md');
+    await openRichTextEditor(page, 'Seeded note.md', 'Seeded note');
     await selectInEditor(page, 15, 15);
     await insertLink(page, 'https://example.com');
     await page.getByRole('button', { name: 'Plain source', exact: true }).click();
@@ -153,7 +157,7 @@ test('an invalid link address is refused and inserts nothing', async () => {
   try {
     launched = await launchLinkApp();
     const { page } = launched;
-    await openRichTextEditor(page, 'Seeded note.md');
+    await openRichTextEditor(page, 'Seeded note.md', 'Seeded note');
     await selectInEditor(page, 6, 15);
     await page
       .getByRole('toolbar', { name: 'Rich text formatting' })
@@ -180,7 +184,7 @@ test('insert a link into an HTML note with the toolbar', async () => {
   try {
     launched = await launchLinkApp();
     const { page, paths } = launched;
-    await openRichTextEditor(page, 'Page.html');
+    await openRichTextEditor(page, 'Page.html', 'Page');
     await selectInEditor(page, 0, 9);
     await insertLink(page, 'https://example.com', 'Some text');
     await pressShortcut(page, 'Control+S');
@@ -202,7 +206,7 @@ test('Control+K opens the Insert link dialog in rich-text mode', async () => {
   try {
     launched = await launchLinkApp();
     const { page } = launched;
-    await openRichTextEditor(page, 'Seeded note.md');
+    await openRichTextEditor(page, 'Seeded note.md', 'Seeded note');
     await pressShortcut(page, 'Control+K');
     await expect(page.getByRole('dialog', { name: 'Insert link' })).toBeVisible({ timeout: 30000 });
     expect(launched.pageErrors).toEqual([]);
