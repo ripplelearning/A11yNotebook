@@ -49,7 +49,7 @@ export interface VaultBridge {
   }>;
   pasteChooseFolder?(title: string): Promise<string | null>;
   pasteLibraryCopy?(source: string, parent: string): Promise<{ path: string; files: number; bytes: number }>;
-  pasteLibraryOpen?(source: string): Promise<import('./types').VaultInfo>;
+  pasteLibraryAdd?(source: string): Promise<RecentLibrary>;
   pasteNotebook?(source: string): Promise<{ notebook: string; files: number }>;
   pasteFiles?(sources: string[], notebookPath: string): Promise<{ files: string[] }>;
   /**

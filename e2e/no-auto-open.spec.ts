@@ -14,6 +14,7 @@ import {
   runPaletteCommand,
   seedLibrary,
   statusLine,
+  switchView,
   waitForApp,
   type SeedPaths,
 } from './helpers';
@@ -276,6 +277,54 @@ test('paste structured HTML as markdown does not open the new note', async () =>
     await expect(page.getByText('First step', { exact: true })).toHaveCount(0);
     await expect(page.getByText('Alpha', { exact: true })).toHaveCount(0);
     await expectNoDocumentChangedMessage(page);
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste a folder as a library adds it without switching libraries', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchNoAutoOpenApp();
+    const { app, page, paths } = launched;
+    // One notebook, no loose files: no orphan-organize dialog.
+    const pastedDir = path.join(paths.baseDir, 'fixtures', 'PastedLibrary');
+    mkdirSync(path.join(pastedDir, 'Research'), { recursive: true });
+    // The Libraries grid is the switch detector: the navigation pane
+    // also shows a 'library' heading, so the heading alone cannot tell
+    // the views apart.
+    await switchView(page, 'Control+1', async () =>
+      page.getByRole('grid', { name: 'Libraries' }).count(),
+    );
+    await copyFileToClipboard(app, pastedDir);
+    await page.getByRole('main').getByRole('heading', { name: 'library', exact: true }).click();
+    await pressShortcut(page, 'Control+V');
+    const dialog = page.getByRole('dialog', { name: 'Paste library' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel(/Use the original folder as the library/).click();
+    await dialog.getByRole('button', { name: 'Continue' }).click();
+    await expect(statusLine(page)).toContainText(
+      'Added library PastedLibrary. Open it from Libraries when ready.',
+      { timeout: 30000 },
+    );
+    // The library is listed, and the current library is unchanged.
+    // The path cell also ends in PastedLibrary, so match the name cell exactly.
+    await expect(page.getByRole('gridcell', { name: 'PastedLibrary', exact: true })).toBeVisible();
+    await expect(
+      page.getByRole('main').getByRole('heading', { name: 'library', exact: true }),
+    ).toBeVisible();
+    await switchView(page, 'Control+2', async () =>
+      page.getByRole('gridcell', { name: 'Seeded' }).count(),
+    );
+    await expect(page.getByRole('gridcell', { name: 'Seeded' })).toBeVisible();
+    // She opens it when ready: the pasted library opens, with its notebook.
+    await switchView(page, 'Control+1', async () =>
+      page.getByRole('gridcell', { name: 'PastedLibrary' }).count(),
+    );
+    await openGridEntry(page, 'PastedLibrary');
+    await expect(statusLine(page)).toContainText('Opened library PastedLibrary.', { timeout: 30000 });
+    await expect(page.getByRole('gridcell', { name: 'Research' })).toBeVisible();
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);

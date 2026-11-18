@@ -3055,43 +3055,27 @@ export default function App() {
     return bridge.importComplete(pending, choice);
   };
 
-  const openPastedLibrary = async (libraryPath: string): Promise<boolean> => {
+  /**
+   * Add a pasted library to Libraries without opening it (no-auto-open):
+   * the library appears in the Libraries view and stays unopened until
+   * the user opens it herself. The current library is untouched, so no
+   * unsaved-changes guard is needed here.
+   */
+  const addPastedLibrary = async (libraryPath: string): Promise<boolean> => {
     const bridge = window.a11yNotebook?.vault;
-    if (!bridge?.pasteLibraryOpen) {
-      setStatusMessage('Opening a pasted library is unavailable.');
+    if (!bridge?.pasteLibraryAdd) {
+      setStatusMessage('Adding a pasted library is unavailable.');
       return false;
     }
-    if (openNotes.some((note) => note.content !== note.saved) || activeConflict || switchingRef.current) {
-      setStatusMessage('Save or resolve unsaved changes before opening another library.');
-      return false;
-    }
-    switchingRef.current = true;
-    vaultGenerationRef.current += 1;
-    setSwitchingVault(true);
     try {
-      const opened = await bridge.pasteLibraryOpen(libraryPath);
-      if (opened) {
-        vaultPathRef.current = opened.path;
-        setVault(opened);
-        setOpenNotes([]);
-        setNotePasswordDialog(null);
-        setAttachment(null);
-        setAssetTabOpen(false);
-        setAssetInitialPath(undefined);
-        setAssetDirty(false);
-        setSelectedTab('libraries');
-        setStatusMessage(`Opened library ${opened.name}.`);
-        refreshRecentLibraries();
-        void restoreLibraryUiState(opened);
-        return true;
-      }
-      return false;
+      const added = await bridge.pasteLibraryAdd(libraryPath);
+      setSelectedTab('libraries');
+      setStatusMessage(`Added library ${added.name}. Open it from Libraries when ready.`);
+      refreshRecentLibraries();
+      return true;
     } catch {
-      setStatusMessage('Could not open the pasted library.');
+      setStatusMessage('Could not add the pasted library.');
       return false;
-    } finally {
-      switchingRef.current = false;
-      setSwitchingVault(false);
     }
   };
 
@@ -3360,7 +3344,7 @@ export default function App() {
               setStatusMessage(
                 copied
                   ? `Paste cancelled. The copy remains at ${libraryPath}; open it from Libraries when ready.`
-                  : 'Paste cancelled. The original folder was not opened as a library.',
+                  : 'Paste cancelled. The original folder was not added as a library.',
               );
               continue;
             }
@@ -3371,7 +3355,7 @@ export default function App() {
               result.mode === 'one' ? result.notebookName : undefined,
             );
           }
-          await openPastedLibrary(libraryPath);
+          await addPastedLibrary(libraryPath);
         } else if (selectedTab === 'notebooks') {
           if (!vault || securityLocked) {
             setStatusMessage('Open and unlock a library before pasting into it.');

@@ -33,7 +33,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultChooseReminderSound: 'vault:choose-reminder-sound',
   vaultReadReminderSound: 'vault:read-reminder-sound',
   vaultPasteLibraryCopy: 'vault:paste-library-copy',
-  vaultPasteLibraryOpen: 'vault:paste-library-open',
+  vaultPasteLibraryAdd: 'vault:paste-library-add',
   vaultPasteNotebook: 'vault:paste-notebook',
   vaultPasteFiles: 'vault:paste-files',
   vaultPasteFileStart: 'vault:paste-file-start',
@@ -238,7 +238,7 @@ const bridge: NotebookBridge = {
     readReminderSoundFile: (soundPath: string) => ipcRenderer.invoke(CHANNELS.vaultReadReminderSound, soundPath),
     pasteLibraryCopy: (source: string, parent: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteLibraryCopy, source, parent),
-    pasteLibraryOpen: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteLibraryOpen, source),
+    pasteLibraryAdd: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteLibraryAdd, source),
     pasteNotebook: (source: string) => ipcRenderer.invoke(CHANNELS.vaultPasteNotebook, source),
     pasteFiles: (sources: string[], notebookPath: string) =>
       ipcRenderer.invoke(CHANNELS.vaultPasteFiles, sources, notebookPath),
