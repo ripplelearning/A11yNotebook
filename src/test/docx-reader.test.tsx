@@ -89,4 +89,39 @@ describe('DOCX semantic reader', () => {
     expect(await screen.findByRole('alert')).toHaveTextContent('library was locked');
     expect(screen.queryByText('Find this paragraph')).not.toBeInTheDocument();
   });
+
+  it('ignores a change observed before the load started, but reports one observed after it', async () => {
+    let onChanged: ((event: { paths: string[]; changedAt?: number }) => void) | undefined;
+    window.a11yNotebook = {
+      vault: {
+        readDocxStructure: vi.fn(async () => structure),
+        getBookmarks: vi.fn(async () => []),
+        onSecurityLocked: () => () => undefined,
+        onChanged: (callback: (event: { paths: string[]; changedAt?: number }) => void) => {
+          onChanged = callback;
+          return () => {
+            onChanged = undefined;
+          };
+        },
+      },
+    } as unknown as NotebookBridge;
+
+    render(<DocxReader path="Guide.docx" />);
+    expect(await screen.findByRole('heading', { name: 'Accessible guide' })).toBeInTheDocument();
+
+    // The import's own write, observed before this load started and
+    // delivered late by the watcher's debounce: the load already read
+    // the post-import content, so no "document changed" error.
+    act(() => onChanged?.({ paths: ['Guide.docx'], changedAt: Date.now() - 5000 }));
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(screen.getByText('Find this paragraph')).toBeInTheDocument();
+
+    // A change observed after the load started is a real external
+    // change: the reader reports it and clears the document.
+    act(() => onChanged?.({ paths: ['Guide.docx'], changedAt: Date.now() }));
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'The document changed. Reopen it to continue reading.',
+    );
+    expect(screen.queryByText('Find this paragraph')).not.toBeInTheDocument();
+  });
 });

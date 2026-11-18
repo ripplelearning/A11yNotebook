@@ -20,6 +20,8 @@ export async function createVaultWatcher(
   const pending = new Set<string>();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
+  /** Epoch milliseconds of the most recent observed change in the pending batch. */
+  let lastEventAt = 0;
   let recursive = options.recursive ?? (process.platform === 'win32' || process.platform === 'darwin');
   let running: Promise<void> = Promise.resolve();
 
@@ -41,6 +43,7 @@ export async function createVaultWatcher(
     if (closed || (relative && !REPORTED_STORE_PATHS.has(relative) && !isVisibleVaultPath(relative)))
       return;
     pending.add(relative);
+    lastEventAt = Date.now();
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => {
       timer = undefined;
@@ -49,8 +52,12 @@ export async function createVaultWatcher(
           if (closed || !pending.size) return;
           const paths = [...pending].sort();
           pending.clear();
+          // Seal the batch's timestamp with its paths: a change that
+          // arrives during the reconcile below belongs to the next
+          // batch, not this one.
+          const changedAt = lastEventAt;
           if (!recursive) await reconcile();
-          if (!closed) await onChanged({ vaultPath: root, paths });
+          if (!closed) await onChanged({ vaultPath: root, paths, changedAt });
         })
         .catch(report);
     }, options.debounceMs ?? 100);

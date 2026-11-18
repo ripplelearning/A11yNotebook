@@ -275,6 +275,9 @@ export default function DocxReader({ path }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    // The load below reads the file as it is now; a change observed
+    // before this moment is already reflected in what was read.
+    const loadStartedAt = Date.now();
     setStructure(null);
     setAnnotations([]);
     setDraft(null);
@@ -310,6 +313,12 @@ export default function DocxReader({ path }: Props) {
       setError('The library was locked. Unlock it to continue reading this DOCX.');
     });
     const unsubscribeChanged = vault.onChanged((event) => {
+      // A change the watcher observed before this load started is
+      // already reflected in what was just read — the import's own
+      // write, whose debounced event can arrive after the imported
+      // document is opened. Only a change observed after the load
+      // started means the document changed under the reader.
+      if (event.changedAt !== undefined && event.changedAt < loadStartedAt) return;
       if (!event.paths.length || event.paths.includes(path)) {
         cancelled = true;
         setStructure(null);

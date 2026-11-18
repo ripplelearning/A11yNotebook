@@ -851,7 +851,7 @@ describe('contextual shell document workflows', () => {
     expect(screen.getByRole('tab', { name: 'A plan #1' })).toHaveAttribute('aria-controls', panel.id);
   });
 
-  it('imports a compatible selected document before opening its managed copy', async () => {
+  it('imports a compatible selected document without opening its managed copy', async () => {
     const { bridge, vault } = setup({
       entries: [
         {
@@ -887,10 +887,19 @@ describe('contextual shell document workflows', () => {
     await screen.findByRole('dialog', { name: 'Import file' });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
     await waitFor(() => expect(bridge.vault.importComplete).toHaveBeenCalledWith(pending, 'copy'));
-    await waitFor(() => expect(bridge.vault.readNote).toHaveBeenCalledWith('Imported.md', undefined));
+    // The import finishes in the grid: the managed copy is listed, but
+    // never opened automatically — the user opens it when ready.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+        'Document imported as an editable note. The original file was kept.',
+      ),
+    );
+    expect(bridge.vault.readNote).not.toHaveBeenCalledWith('Imported.md', undefined);
+    expect(screen.queryByRole('tab', { name: 'Imported' })).not.toBeInTheDocument();
     expect(bridge.vault.openWith).not.toHaveBeenCalled();
-    const navigation = screen.getByRole('complementary', { name: 'Navigation pane' });
-    expect(within(navigation).getByRole('gridcell', { name: 'External.md' })).toBeInTheDocument();
+    // No document tab is open, so the notes grid in the main panel —
+    // not the navigation pane's document-tab grid — lists the original.
+    expect(await screen.findByRole('gridcell', { name: 'External.md' })).toBeInTheDocument();
   });
 
   it('does not offer import for incompatible files or try to read their bytes', async () => {

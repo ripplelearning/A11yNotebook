@@ -2308,7 +2308,8 @@ export default function App() {
     if (!copy || copy.provenance !== 'imported')
       throw new Error('The imported copy is unavailable. Refresh the library before opening it.');
     setVault(imported.vault);
-    await openEntry(copy, undefined, isCurrent);
+    // Imported items never open automatically: the user opens them when
+    // ready (Tristen, 1.9.17 retest).
     if (isCurrent())
       setStatusMessage(
         isAliusPath(copy.path)
@@ -3182,9 +3183,8 @@ export default function App() {
       text: stored,
     });
     setVault(created.vault);
-    if (choice.storeAs === 'note') {
-      await openEntry({ name: fileName, path: created.path, kind: 'note', provenance: 'imported' });
-    }
+    // Pasted notes never open automatically: the user opens them when
+    // ready (Tristen, 1.9.17 retest).
     setStatusMessage(`Pasted ${fileName} into ${notebookPath.split('/').at(-1)}.`);
   };
 
@@ -4622,7 +4622,8 @@ export default function App() {
         if (!isCurrent() || !imported) return;
         setVault(imported.vault);
         const created = findEntry(imported.vault.entries, imported.path);
-        if (created) await openEntry(created);
+        // Imported items never open automatically: the user opens them
+        // when ready (Tristen, 1.9.17 retest).
         if (created && isAliusPath(created.path)) {
           setStatusMessage('Document imported as an Alius. The original file was kept.');
           return;
@@ -5928,7 +5929,8 @@ export default function App() {
             if (!completed) return;
             setVault(completed.vault);
             const created = findEntry(completed.vault.entries, completed.path);
-            if (created) await openEntry(created);
+            // Imported items never open automatically: the user opens
+            // them when ready (Tristen, 1.9.17 retest).
             if (created && isAliusPath(created.path)) {
               setStatusMessage(`Imported ${updated.sourceName} as an Alius. The original file was kept.`);
             } else if (created) {
