@@ -109,6 +109,12 @@ function EpubAnnotationDialog({
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
 const MAX_SEARCHABLE_TEXT = 20 * 1024 * 1024;
+// How often a stale 'relocated' may make the reader re-assert the section
+// the app asked for, before it gives up re-displaying and just ignores
+// further stale reports. Stale reports are finite (one per display epub.js
+// still had in flight), so this cap is only a safety net against a
+// pathological loop; the label stays correct either way.
+const MAX_EPUB_STALE_REDISPLAYS = 3;
 
 /**
  * Passwords for protected PDFs, kept only in memory for the session so
@@ -766,6 +772,24 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const renditionContainerRef = useRef<HTMLDivElement>(null);
   const pendingHrefRef = useRef<string | null>(null);
   const pendingCfiRef = useRef<string | null>(null);
+  // The section the app last asked the rendition to display, while epub.js
+  // has not yet confirmed it through 'relocated'. epub.js reports the
+  // displayed section through that event, but the report lags the display
+  // that caused it: it is queued behind the next display and its location
+  // is only read on a later animation frame, so a report from the section
+  // being left can arrive after the app has already asked for the next
+  // one. While a navigation is outstanding, a report for any other section
+  // is stale and must not move the section label, the accessible text, or
+  // the saved reading position. pendingTargetRef keeps the exact target
+  // (section href, table-of-contents fragment, or restored CFI) so a
+  // stale report can also put the rendition back on the requested section
+  // when epub.js itself moved it (it re-displays its last-reported
+  // location after a resize). Both refs are null when no navigation is
+  // outstanding; then a report is a genuine rendition-driven move (for
+  // example jumping to an annotation in another section) and is accepted.
+  const pendingSectionRef = useRef<number | null>(null);
+  const pendingTargetRef = useRef<string | null>(null);
+  const staleRedisplayRef = useRef(0);
   const [positionReady, setPositionReady] = useState(false);
   const sectionIndexRef = useRef(0);
   sectionIndexRef.current = sectionIndex;
@@ -1056,6 +1080,28 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         } catch {
           // Keep the section the controls already show.
         }
+        const pending = pendingSectionRef.current;
+        if (pending !== null && index !== pending) {
+          // A report for another section while the app's navigation is
+          // still unconfirmed is stale: the rendition has not caught up
+          // with the section the app asked for (or epub.js moved it back
+          // to its stale last-reported location). Ignore it, and put the
+          // rendition back on the requested section so the book view
+          // matches the label and the accessible text.
+          if (staleRedisplayRef.current < MAX_EPUB_STALE_REDISPLAYS) {
+            staleRedisplayRef.current += 1;
+            const target = pendingTargetRef.current ?? book.spine.spineItems[pending]?.href;
+            if (target) {
+              void renditionRef.current?.display(target).catch(() => {
+                pendingSectionRef.current = null;
+                pendingTargetRef.current = null;
+              });
+            }
+          }
+          return;
+        }
+        pendingSectionRef.current = null;
+        pendingTargetRef.current = null;
         if (index !== sectionIndexRef.current) setSectionIndex(index);
         queueSavePosition(cfi, index);
       });
@@ -1109,7 +1155,12 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     const target = pendingCfiRef.current ?? pendingHrefRef.current ?? section.href;
     pendingCfiRef.current = null;
     pendingHrefRef.current = null;
+    pendingSectionRef.current = sectionIndex;
+    pendingTargetRef.current = target;
+    staleRedisplayRef.current = 0;
     void renditionRef.current.display(target).catch(() => {
+      pendingSectionRef.current = null;
+      pendingTargetRef.current = null;
       setError('This ePub section could not be rendered. Its accessible text remains available.');
     });
   }, [book, sectionIndex, positionReady]);

@@ -376,6 +376,65 @@ describe('local accessible document reader', () => {
     );
   });
 
+  it('ignores a stale relocated report for the section being left', async () => {
+    // epub.js reports the displayed section through 'relocated', but the
+    // report lags the display that caused it: a report from chapter 1 can
+    // arrive after the app has already asked for chapter 2 (the 1.9.18
+    // release flake: the label flipped back to "Section 1 of 2" and the
+    // reader re-displayed chapter 1). While that navigation is
+    // unconfirmed, a report for any other section is stale: the label and
+    // the accessible text stay on chapter 2, the rendition is put back on
+    // chapter 2, and the saved position is not overwritten with chapter 1.
+    // Once the chapter 2 report arrives, the navigation is confirmed and
+    // a later chapter 1 report is a genuine rendition-driven move again.
+    const { display, getRelocatedHandler } = mockEpubjs({
+      navigation: { toc: [] },
+      sections: [
+        { index: 0, href: 'Text/one.xhtml', text: 'Chapter 1 text' },
+        { index: 1, href: 'Text/two.xhtml', text: 'Chapter 2 text' },
+      ],
+      spineGet: (cfi: string) => (cfi.includes('chapter2') ? { index: 1 } : { index: 0 }),
+    });
+    const setReadingPosition = vi.fn(async () => undefined);
+    window.a11yNotebook = {
+      vault: {
+        getReadingPosition: vi.fn(async () => null),
+        setReadingPosition,
+        listEpubAnnotations: vi.fn(async () => []),
+      },
+    } as unknown as NotebookBridge;
+
+    render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
+    expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
+    await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml'));
+
+    // The stale report from the chapter 1 display, arriving after the
+    // chapter 2 display was requested.
+    getRelocatedHandler()?.({ start: { cfi: 'epubcfi(/6/2[chapter1]!/4/2)' } });
+    await waitFor(() => expect(display).toHaveBeenNthCalledWith(3, 'Text/two.xhtml'));
+    expect(screen.getByText('Section 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Chapter 2 text')).toBeInTheDocument();
+
+    // The matching report confirms the navigation.
+    getRelocatedHandler()?.({ start: { cfi: 'epubcfi(/6/4[chapter2]!/4/2)' } });
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    expect(setReadingPosition).toHaveBeenCalledWith('Books/Guide.epub', {
+      cfi: 'epubcfi(/6/4[chapter2]!/4/2)',
+      sectionIndex: 1,
+    });
+    expect(setReadingPosition).not.toHaveBeenCalledWith(
+      'Books/Guide.epub',
+      expect.objectContaining({ sectionIndex: 0 }),
+    );
+
+    // With no navigation outstanding, a chapter 1 report is a genuine
+    // rendition-driven move and is accepted again.
+    getRelocatedHandler()?.({ start: { cfi: 'epubcfi(/6/2[chapter1]!/4/2)' } });
+    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+  });
+
   it('rejects an oversized file before passing it to a parser', async () => {
     vi.stubGlobal(
       'fetch',
