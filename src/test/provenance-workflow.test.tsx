@@ -100,7 +100,7 @@ describe('provenance-aware row activation', () => {
     expect(bridge.vault.openExternal).not.toHaveBeenCalled();
   });
 
-  it('imports a separate copy and opens the returned destination, leaving the original unopened', async () => {
+  it('imports a separate copy without opening the returned destination, leaving the original unopened', async () => {
     const bridge = installBridge();
     const copy = {
       name: 'Outside imported.md',
@@ -129,10 +129,19 @@ describe('provenance-aware row activation', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: 'Import file' }));
     await screen.findByRole('dialog', { name: 'Import file' });
     fireEvent.click(screen.getByRole('button', { name: 'Import' }));
-    await screen.findByRole('heading', { name: 'Outside imported', level: 2 });
+    // The copy lands in the grid, but never opens automatically — the
+    // user opens it when ready.
+    await waitFor(() =>
+      expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+        'Document imported as an editable note. The original file was kept.',
+      ),
+    );
+    await screen.findByRole('gridcell', { name: 'Outside imported.md' });
+    expect(screen.queryByRole('heading', { name: 'Outside imported', level: 2 })).not.toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Outside imported' })).not.toBeInTheDocument();
     expect(bridge.vault.importEntry).toHaveBeenCalledWith('Research/Outside.md');
     expect(bridge.vault.importComplete).toHaveBeenCalledWith(pending, 'copy');
-    expect(bridge.vault.readNote).toHaveBeenCalledWith(copy.path, undefined);
+    expect(bridge.vault.readNote).not.toHaveBeenCalledWith(copy.path, undefined);
     expect(bridge.vault.readNote).not.toHaveBeenCalledWith('Research/Outside.md', undefined);
   });
 

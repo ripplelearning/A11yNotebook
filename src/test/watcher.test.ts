@@ -50,6 +50,28 @@ describe('external vault watcher', () => {
     },
   );
 
+  it('stamps each batch with when its most recent change was observed', async () => {
+    const root = await folder();
+    await mkdir(path.join(root, 'Work'));
+    const events: VaultChangedEvent[] = [];
+    const watcher = await createVaultWatcher(
+      root,
+      (event) => {
+        events.push(event);
+      },
+      { recursive: false, debounceMs: 80 },
+    );
+    disposables.push(watcher);
+    const beforeWrite = Date.now();
+    await writeFile(path.join(root, 'Work', 'one.md'), 'one');
+    await vi.waitFor(() => expect(events).toHaveLength(1), { timeout: 3000 });
+    const afterEvent = Date.now();
+    expect(events[0].changedAt).toBeDefined();
+    expect(events[0].changedAt).toBeGreaterThanOrEqual(beforeWrite - 1000);
+    expect(events[0].changedAt).toBeLessThanOrEqual(afterEvent);
+    expect(events[0].paths).toContain('Work/one.md');
+  });
+
   it('reconciles new, renamed, and deleted directories without restarting', async () => {
     const root = await folder();
     const events: VaultChangedEvent[] = [];

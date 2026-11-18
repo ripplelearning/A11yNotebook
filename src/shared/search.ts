@@ -32,6 +32,14 @@ export interface VaultChangedEvent {
   vaultPath: string;
   /** Vault-relative paths; an empty path means the whole vault may have changed. */
   paths: string[];
+  /**
+   * Epoch milliseconds when the most recent change in this batch was
+   * observed by the watcher. Readers use it to ignore changes that
+   * predate their load — for example the import's own write, whose
+   * debounced event can arrive after the imported document is opened
+   * and otherwise be mistaken for an external change.
+   */
+  changedAt?: number;
 }
 
 /** The notebook (parent directory) a vault-relative path lives in; '' for the library root. */

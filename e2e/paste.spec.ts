@@ -130,7 +130,10 @@ test('paste text as a markdown note, named from its first line', async () => {
     await expect(dialog.getByLabel('Format')).toHaveValue('markdown');
     await dialog.getByRole('button', { name: 'Paste' }).click();
     await expect(statusLine(page)).toContainText('Pasted Shopping list.md into Seeded.', { timeout: 30000 });
-    await expect(page.getByText('milk', { exact: true })).toBeVisible();
+    // No auto-open: the note lands in the grid and is not opened.
+    await expect(page.getByRole('gridcell', { name: 'Shopping list.md' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Shopping list' })).toHaveCount(0);
+    await expect(page.getByText('milk', { exact: true })).toHaveCount(0);
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);
@@ -152,7 +155,10 @@ test('paste HTML as a rich-text note, keeping its heading', async () => {
     await expect(dialog.getByRole('textbox', { name: 'File name' })).toHaveValue('Meeting notes');
     await dialog.getByRole('button', { name: 'Paste' }).click();
     await expect(statusLine(page)).toContainText('Pasted Meeting notes.html into Seeded.', { timeout: 30000 });
-    await expect(page.getByRole('heading', { name: 'Meeting notes', level: 1 })).toBeVisible();
+    // No auto-open: the note lands in the grid and is not opened.
+    await expect(page.getByRole('gridcell', { name: 'Meeting notes.html' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Meeting notes' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Meeting notes', level: 1 })).toHaveCount(0);
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);
@@ -178,9 +184,12 @@ test('paste structured HTML as markdown, converting headings, lists, and tables'
     await dialog.getByLabel('Format').selectOption('markdown');
     await dialog.getByRole('button', { name: 'Paste' }).click();
     await expect(statusLine(page)).toContainText('Pasted Guide.md into Seeded.', { timeout: 30000 });
-    await expect(page.getByRole('heading', { name: 'Guide', level: 1 })).toBeVisible();
-    await expect(page.getByText('First step', { exact: true })).toBeVisible();
-    await expect(page.getByText('Alpha', { exact: true })).toBeVisible();
+    // No auto-open: the note lands in the grid and is not opened.
+    await expect(page.getByRole('gridcell', { name: 'Guide.md' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Guide' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Guide', level: 1 })).toHaveCount(0);
+    await expect(page.getByText('First step', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Alpha', { exact: true })).toHaveCount(0);
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);
@@ -201,7 +210,10 @@ test('paste text as plain text', async () => {
     await dialog.getByLabel('Format').selectOption('txt');
     await dialog.getByRole('button', { name: 'Paste' }).click();
     await expect(statusLine(page)).toContainText('Pasted Quick reminder.txt into Seeded.', { timeout: 30000 });
-    await expect(page.getByText('Call back tomorrow.')).toBeVisible();
+    // No auto-open: the note lands in the grid and is not opened.
+    await expect(page.getByRole('gridcell', { name: 'Quick reminder.txt' })).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Quick reminder' })).toHaveCount(0);
+    await expect(page.getByText('Call back tomorrow.')).toHaveCount(0);
     expect(launched.pageErrors).toEqual([]);
   } finally {
     if (launched) await closeApp(launched.app, launched.paths);
