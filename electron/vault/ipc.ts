@@ -593,6 +593,25 @@ async function rememberVault(vaultPath: string) {
   await writeFile(recentFile(), JSON.stringify({ lastOpened: vaultPath, recent: next }), 'utf8');
 }
 
+/**
+ * Record a library in the recent list without opening it: pasting a
+ * folder as a library adds it to Libraries, and the user opens it when
+ * ready. Unlike rememberVault, this never touches lastOpened — the
+ * pasted library must not become the library restored on next launch.
+ */
+async function rememberVaultAsRecent(vaultPath: string): Promise<RecentLibraryRecord> {
+  const { recent, lastOpened } = await readRecentVaultFile();
+  const entry: RecentLibraryRecord = {
+    path: vaultPath,
+    name: path.basename(vaultPath),
+    lastOpenedAt: new Date().toISOString(),
+  };
+  const next = [entry, ...recent.filter((item) => item.path !== vaultPath)].slice(0, 10);
+  await mkdir(path.dirname(recentFile()), { recursive: true });
+  await writeFile(recentFile(), JSON.stringify({ lastOpened, recent: next }), 'utf8');
+  return entry;
+}
+
 /** Recent libraries whose folders still exist, most recently opened first. */
 async function listRecentVaults(): Promise<RecentLibraryRecord[]> {
   const { recent } = await readRecentVaultFile();
@@ -2850,10 +2869,12 @@ export function setupVaultIpc(
       return { path: copied.path, files: copied.files, bytes: copied.bytes };
     },
   );
-  ipcMain.handle(IPC_CHANNELS.vaultPasteLibraryOpen, async (event, source: unknown) => {
+  ipcMain.handle(IPC_CHANNELS.vaultPasteLibraryAdd, async (event, source: unknown) => {
     assertTrusted(event, isTrustedSender, true);
     if (typeof source !== 'string' || !source) throw new Error('Library path must be text.');
-    return openVault(source);
+    const stat = await lstat(source).catch(() => null);
+    if (!stat?.isDirectory() || stat.isSymbolicLink()) throw new Error('Library must be a folder.');
+    return rememberVaultAsRecent(source);
   });
   ipcMain.handle(IPC_CHANNELS.vaultPasteNotebook, async (event, source: unknown) => {
     assertTrusted(event, isTrustedSender);

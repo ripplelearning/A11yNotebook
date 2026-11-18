@@ -603,6 +603,39 @@ describe('extended vault IPC integration', () => {
     );
   });
 
+  it('adds a pasted library to recents without opening it or changing lastOpened', async () => {
+    const pasted = path.join(temporary, 'PastedLibrary');
+    await mkdir(path.join(pasted, 'Research'), { recursive: true });
+    const before = JSON.parse(await readFile(path.join(mock.userData, 'recent-vault.json'), 'utf8')) as {
+      lastOpened?: string;
+      recent: { path: string }[];
+    };
+    const added = (await invoke(IPC_CHANNELS.vaultPasteLibraryAdd, pasted)) as {
+      path: string;
+      name: string;
+      lastOpenedAt: string;
+    };
+    expect(added).toMatchObject({ path: pasted, name: 'PastedLibrary' });
+    expect(typeof added.lastOpenedAt).toBe('string');
+    const after = JSON.parse(await readFile(path.join(mock.userData, 'recent-vault.json'), 'utf8')) as {
+      lastOpened?: string;
+      recent: { path: string; name: string }[];
+    };
+    // The pasted library joins the Libraries list, but the launch
+    // restore target stays the library that was already open.
+    expect(after.lastOpened).toBe(before.lastOpened);
+    expect(after.recent.map((entry) => entry.path)).toContain(pasted);
+    const current = (await invoke(IPC_CHANNELS.vaultGet)) as import('../shared/types').VaultInfo | null;
+    expect(current?.path).toBe(mock.root);
+    await expect(invoke(IPC_CHANNELS.vaultPasteLibraryAdd, path.join(mock.root, 'Topic.md'))).rejects.toThrow(
+      'folder',
+    );
+    await expect(invoke(IPC_CHANNELS.vaultPasteLibraryAdd, path.join(temporary, 'missing'))).rejects.toThrow(
+      'folder',
+    );
+    await expect(mock.handlers.get(IPC_CHANNELS.vaultPasteLibraryAdd)!({}, pasted)).rejects.toThrow('Untrusted');
+  });
+
   it('rolls back a failed new library and keeps the existing library open', async () => {
     mock.savePath = path.join(temporary, 'Failed library');
     mock.failRecentWrite = true;

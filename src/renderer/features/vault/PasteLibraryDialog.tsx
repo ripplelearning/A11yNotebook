@@ -44,7 +44,7 @@ export default function PasteLibraryDialog({ folderName, onChoice }: Props) {
             />
             Use the original folder as the library
           </label>
-          <p>The app will open that folder as a library and add its library data to it.</p>
+          <p>The folder will be added to your libraries without opening it. Open it from Libraries when ready.</p>
         </fieldset>
         <button type="submit">Continue</button>
         <button type="button" onClick={() => onChoice('cancel')}>
