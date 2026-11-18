@@ -4890,8 +4890,11 @@ export default function App() {
                                 ? 'pre'
                                 : '';
       if (commandId === 'insert-link') {
-        const url = window.prompt('Link address');
-        if (url) document.execCommand('createLink', false, url);
+        // The link question is asked in the rich-text editor's own
+        // dialog: the native prompt this used to ask with does not work
+        // here (Electron does not implement window.prompt), so the
+        // context-menu button silently did nothing.
+        window.dispatchEvent(new CustomEvent('a11y:open-link-dialog'));
       } else if (commandId === 'insert-table') {
         document.execCommand(
           'insertHTML',
@@ -6065,8 +6068,16 @@ export default function App() {
         setStatusMessage('Switch to edit mode first.');
         return;
       }
-      if (commandId === 'insert-link') editorToolsRef.current?.openLink();
-      else editorToolsRef.current?.openTable();
+      if (commandId === 'insert-link') {
+        // In rich-text mode there is no textarea for the Markdown
+        // dialog to edit: the rich-text editor asks in its own dialog
+        // instead, as the Mathematics toolbar does.
+        if (document.querySelector('.rich-text-editor')) {
+          window.dispatchEvent(new CustomEvent('a11y:open-link-dialog'));
+        } else {
+          editorToolsRef.current?.openLink();
+        }
+      } else editorToolsRef.current?.openTable();
       return;
     }
     if (commandId === 'insert-math') {
