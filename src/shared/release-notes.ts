@@ -19,6 +19,7 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
       'Alius Word documents open in the app again; downloading a filled PDF no longer fails on rich-text fields; ePub books open again; bookmark jumps work in Markdown notes.',
       'The “Install on Exit” update option is removed: it silently did nothing, so the downloaded state now offers Restart and install or Close.',
       'The paste dialog starts on the New note versus File attachment choice, and pasted pictures keep their alt text and captions.',
+      'Moving to the next section of an ePub book no longer shows the new chapter under the old section heading: stale reader reports about the section being left are now ignored.',
     ],
   },
 ];
