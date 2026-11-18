@@ -93,6 +93,16 @@ async function insertLink(page: Page, address: string, text?: string): Promise<v
   await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
 }
 
+/**
+ * The insert runs on the next animation frame after the dialog closes,
+ * so wait until the link is in the editor before saving or switching
+ * views — otherwise the save can land before the insert.
+ */
+async function expectLinkInEditor(page: Page, href: string): Promise<void> {
+  const editor = page.getByRole('textbox', { name: 'Rich text editor' });
+  await expect(editor.locator(`a[href="${href}"]`)).toHaveCount(1, { timeout: 30000 });
+}
+
 test('insert a link into a Markdown note with the toolbar, keeping the selected text', async () => {
   let launched: LaunchedApp | null = null;
   try {
@@ -109,6 +119,7 @@ test('insert a link into a Markdown note with the toolbar, keeping the selected 
     await expect(dialog.getByLabel('Link text')).toHaveValue('the guide');
     await dialog.getByLabel('Link address').fill('https://example.com');
     await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
+    await expectLinkInEditor(page, 'https://example.com/');
     // The inserted link is written back as Markdown link syntax.
     await page.getByRole('button', { name: 'Plain source', exact: true }).click();
     const source = page.getByRole('textbox', { name: 'Markdown source' });
@@ -139,6 +150,7 @@ test('insert a link with no selection uses the address as the link text', async 
     await openRichTextEditor(page, 'Seeded note.md', 'Seeded note');
     await selectInEditor(page, 15, 15);
     await insertLink(page, 'https://example.com');
+    await expectLinkInEditor(page, 'https://example.com/');
     await page.getByRole('button', { name: 'Plain source', exact: true }).click();
     const source = page.getByRole('textbox', { name: 'Markdown source' });
     // The converter escapes the dots in the URL used as link text; the
@@ -187,6 +199,7 @@ test('insert a link into an HTML note with the toolbar', async () => {
     await openRichTextEditor(page, 'Page.html', 'Page');
     await selectInEditor(page, 0, 9);
     await insertLink(page, 'https://example.com', 'Some text');
+    await expectLinkInEditor(page, 'https://example.com/');
     await pressShortcut(page, 'Control+S');
     await expect(statusLine(page)).toContainText('Saved Page.', { timeout: 30000 });
     expect(readFileSync(path.join(paths.libraryDir, 'Seeded', 'Page.html'), 'utf8')).toContain(
