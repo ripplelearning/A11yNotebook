@@ -2,7 +2,12 @@ import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
 import { asciiToMathML } from '../../../shared/ascii-math';
+import { attachmentPathFromUrl } from '../../../shared/attachments';
+import { relativeLibraryPath } from '../../../shared/paste-content';
 import { sanitizeNoteHtml } from './sanitize-html';
+
+/** The reading view's URI rule: library image URLs stay, everything else follows DOMPurify's defaults. */
+const LIBRARY_IMAGE_URI_REGEXP = /^(?:(?:vault-file|https?|mailto):|[^a-z]|[a-z+.-]+(?:[^a-z+.:-]|$))/i;
 
 const MARKDOWN_SPECIAL_CHARACTERS = new Set('\\`*_{}[]()#+.!|>-');
 
@@ -14,7 +19,29 @@ function markdownCodeSpan(value: string) {
 }
 
 export function markdownToHtml(source: string, render: (source: string) => string) {
-  return expandMathSpans(DOMPurify.sanitize(render(source)));
+  // The render step rewrites library pictures to their library URLs, so
+  // the sanitizer must keep those — bare DOMPurify strips the scheme and
+  // the rich-text editor loses the picture entirely.
+  return expandMathSpans(
+    DOMPurify.sanitize(render(source), { ALLOWED_URI_REGEXP: LIBRARY_IMAGE_URI_REGEXP }),
+  );
+}
+
+/**
+ * Markdown image reference for a picture stored beside its note: the
+ * path is relative to the note and percent-encoded per segment, so a
+ * file name with spaces or parentheses still parses as one destination,
+ * and the description keeps any brackets instead of breaking the markup.
+ */
+export function markdownImageReference(alt: string, relativePath: string): string {
+  const encoded = relativePath
+    .split('/')
+    .map((segment) =>
+      encodeURIComponent(segment).replace(/[()]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`),
+    )
+    .join('/');
+  const safeAlt = alt.replace(/\\/g, '\\\\').replace(/\]/g, '\\]');
+  return `![${safeAlt}](${encoded})`;
 }
 
 /**
@@ -38,7 +65,7 @@ export function expandMathSpans(html: string): string {
   return template.innerHTML;
 }
 
-function inlineMarkdown(node: Node): string {
+function inlineMarkdown(node: Node, notePath = ''): string {
   if (node.nodeType === Node.TEXT_NODE) {
     return Array.from(node.textContent ?? '', (character) =>
       MARKDOWN_SPECIAL_CHARACTERS.has(character) ? `\\${character}` : character,
@@ -47,7 +74,7 @@ function inlineMarkdown(node: Node): string {
   // Element, not HTMLElement: MathML elements are MathMLElements, and the
   // 'math' case below must see them.
   if (!(node instanceof Element)) return '';
-  const content = Array.from(node.childNodes, inlineMarkdown).join('');
+  const content = Array.from(node.childNodes, (child) => inlineMarkdown(child, notePath)).join('');
   switch (node.tagName.toLowerCase()) {
     case 'strong':
     case 'b':
@@ -78,7 +105,20 @@ function inlineMarkdown(node: Node): string {
       return wiki;
     }
     case 'img':
-      return `![${node.getAttribute('alt') ?? ''}](${node.getAttribute('src') ?? ''})`;
+      // A library picture arrives with its library URL (the sanitizer
+      // rewrites a relative path to one); write it back as a path
+      // relative to the note, so the Markdown source stays readable and
+      // portable instead of carrying the internal URL. Anything else —
+      // a remote picture, or no note to relativize against — keeps the
+      // reference exactly as it was.
+      {
+        const alt = node.getAttribute('alt') ?? '';
+        const src = node.getAttribute('src') ?? '';
+        const stored = notePath ? attachmentPathFromUrl(src) : null;
+        if (!stored) return `![${alt}](${src})`;
+        const directory = notePath.split('/').slice(0, -1).join('/');
+        return markdownImageReference(alt, relativeLibraryPath(directory, stored));
+      }
     case 'math': {
       const ascii = node.getAttribute('alttext') ?? node.textContent ?? '';
       return ascii ? markdownCodeSpan(`math:${ascii}`) : '';
@@ -90,11 +130,12 @@ function inlineMarkdown(node: Node): string {
   }
 }
 
-function blockMarkdown(node: Node): string {
-  if (!(node instanceof HTMLElement)) return inlineMarkdown(node);
+function blockMarkdown(node: Node, notePath = ''): string {
+  if (!(node instanceof HTMLElement)) return inlineMarkdown(node, notePath);
   const tag = node.tagName.toLowerCase();
-  if (!/^(?:h[1-6]|p|blockquote|pre|ul|ol|table|div|body|main|section|article)$/.test(tag)) return inlineMarkdown(node);
-  const content = Array.from(node.childNodes, blockMarkdown).join('');
+  if (!/^(?:h[1-6]|p|blockquote|pre|ul|ol|table|div|body|main|section|article)$/.test(tag))
+    return inlineMarkdown(node, notePath);
+  const content = Array.from(node.childNodes, (child) => blockMarkdown(child, notePath)).join('');
   if (/^h[1-6]$/.test(tag)) return `${'#'.repeat(Number(tag[1]))} ${content.trim()}`;
   if (tag === 'p') return content.trim();
   if (tag === 'blockquote')
@@ -111,14 +152,14 @@ function blockMarkdown(node: Node): string {
       return items
         .map((item) => {
           const number = /^fn-?(\d+)$/.exec(item.getAttribute('id') ?? '')?.[1];
-          const text = Array.from(item.childNodes, inlineMarkdown).join('').trim();
+          const text = Array.from(item.childNodes, (child) => inlineMarkdown(child, notePath)).join('').trim();
           return `[^${number}]: ${text}`;
         })
         .join('\n');
     }
     return items
       .map((item, index) => {
-        const content = Array.from(item.childNodes, inlineMarkdown).join('').trim();
+        const content = Array.from(item.childNodes, (child) => inlineMarkdown(child, notePath)).join('').trim();
         const task = item.getAttribute('data-a11y-task-id');
         if (!task) return `${tag === 'ol' ? `${index + 1}.` : '-'} ${content}`;
         const checked = item.getAttribute('data-a11y-task-complete') === 'true';
@@ -132,14 +173,14 @@ function blockMarkdown(node: Node): string {
   if (tag === 'table') {
     const rows = Array.from(node.querySelectorAll('tr')).map(
       (row) =>
-        `| ${Array.from(row.children, (cell) => Array.from(cell.childNodes, inlineMarkdown).join('').trim()).join(' | ')} |`,
+        `| ${Array.from(row.children, (cell) => Array.from(cell.childNodes, (child) => inlineMarkdown(child, notePath)).join('').trim()).join(' | ')} |`,
     );
     if (rows.length > 1)
       rows.splice(1, 0, `| ${Array.from(node.querySelector('tr')?.children ?? [], () => '---').join(' | ')} |`);
     return rows.join('\n');
   }
   if (['div', 'body', 'main', 'section', 'article'].includes(tag)) {
-    return Array.from(node.childNodes, blockMarkdown)
+    return Array.from(node.childNodes, (child) => blockMarkdown(child, notePath))
       .map((block) => block.trim())
       .filter(Boolean)
       .join('\n\n');
@@ -147,11 +188,11 @@ function blockMarkdown(node: Node): string {
   return content;
 }
 
-export function htmlToMarkdown(source: string) {
+export function htmlToMarkdown(source: string, notePath = '') {
   const container = document.createElement('div');
   // The note sanitizer, not bare DOMPurify: it keeps MathML and its alttext.
   container.innerHTML = sanitizeNoteHtml(source);
-  return Array.from(container.childNodes, blockMarkdown)
+  return Array.from(container.childNodes, (child) => blockMarkdown(child, notePath))
     .map((block) => block.trim())
     .filter(Boolean)
     .join('\n\n');
@@ -218,7 +259,7 @@ export function convertNoteContent(
     });
     return sanitizeNoteHtml(template.innerHTML, targetPath);
   }
-  return htmlToMarkdown(source);
+  return htmlToMarkdown(source, targetPath);
 }
 
 export function formatConversionWarning(source: string, from: 'markdown' | 'html', to: 'markdown' | 'html') {

@@ -3,6 +3,7 @@ import { asciiToMathML, findTrailingMathExpression } from '../../../shared/ascii
 import { extractPastedImageDescription } from '../../../shared/paste-content';
 import { sanitizeNoteHtml } from './sanitize-html';
 import { detectSmartTrigger } from './smart-formatting';
+import InsertImageDialog from './InsertImageDialog';
 
 const MATH_TEMPLATES = [
   { label: 'Fraction template', snippet: 'frac(a,b)' },
@@ -49,6 +50,7 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
   const editor = useRef<HTMLDivElement>(null);
   const [activeTool, setActiveTool] = useState(0);
   const [showMath, setShowMath] = useState(false);
+  const [showImageDialog, setShowImageDialog] = useState(false);
   const [mathInput, setMathInput] = useState('');
   const [mathError, setMathError] = useState('');
   const mathInputRef = useRef<HTMLInputElement>(null);
@@ -134,6 +136,15 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
       openMathToolbar();
       return;
     }
+    if (command === 'image') {
+      // The image question is asked in the app's own dialog: the native
+      // prompt this used to ask with does not work here (Electron does
+      // not implement window.prompt), so the toolbar button silently did
+      // nothing. Opening the dialog returns focus to the toolbar button
+      // when it closes.
+      setShowImageDialog(true);
+      return;
+    }
     target.focus();
     if (command.startsWith('heading')) {
       document.execCommand('formatBlock', false, `h${command.slice('heading'.length)}`);
@@ -150,17 +161,6 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
         false,
         '<table><thead><tr><th scope="col">Column 1</th><th scope="col">Column 2</th></tr></thead><tbody><tr><td></td><td></td></tr></tbody></table>',
       );
-    } else if (command === 'image') {
-      const source = window.prompt('Library image path');
-      if (source?.trim()) {
-        const alt = window.prompt('Image description (required)')?.trim();
-        if (alt) {
-          const image = document.createElement('img');
-          image.setAttribute('src', source.trim());
-          image.setAttribute('alt', alt);
-          target.append(image);
-        }
-      }
     } else if (command === 'task') {
       const id = crypto.randomUUID();
       document.execCommand(
@@ -174,6 +174,21 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
     const next = sanitizeNoteHtml(target.innerHTML, notePath);
     if (target.innerHTML !== next) target.innerHTML = next;
     onChange(next);
+  };
+
+  /** Insert the picture the Insert image dialog asked for, at the end of the note. */
+  const insertImage = (source: string, alt: string) => {
+    const target = editor.current;
+    if (!target) return;
+    target.focus();
+    const image = document.createElement('img');
+    image.setAttribute('src', source);
+    image.setAttribute('alt', alt);
+    target.append(image);
+    const next = sanitizeNoteHtml(target.innerHTML, notePath);
+    if (target.innerHTML !== next) target.innerHTML = next;
+    onChange(next);
+    setShowImageDialog(false);
   };
 
   const emitChange = () => {
@@ -334,6 +349,9 @@ export default function RichTextEditor({ content, notePath, onChange, onPasteIma
           </button>
         ))}
       </div>
+      {showImageDialog ? (
+        <InsertImageDialog onSubmit={insertImage} onClose={() => setShowImageDialog(false)} />
+      ) : null}
       {showMath ? (
         <div role="group" aria-label="Mathematics toolbar">
           <p>
