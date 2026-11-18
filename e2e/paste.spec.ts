@@ -402,6 +402,91 @@ test('paste a web-copied picture without alt text keeps its figure caption', asy
   }
 });
 
+test('paste a web-copied picture into an open Markdown note inserts it inline', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page, paths } = launched;
+    await openNotebook(page, 'Seeded');
+    await openGridEntry(page, 'Seeded note.md');
+    await expect(page.getByRole('heading', { name: 'Seeded note', level: 1 })).toBeVisible({ timeout: 30000 });
+    await pressShortcut(page, 'Control+E');
+    const editor = page.getByRole('textbox', { name: 'Markdown source' });
+    await expect(editor).toBeVisible({ timeout: 30000 });
+    await editor.click();
+    await writeWebImageClipboard(
+      app,
+      '<html><body><!--StartFragment-->' +
+        '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Example.jpg/320px-Example.jpg" alt="A red dot on white">' +
+        '<!--EndFragment--></body></html>',
+    );
+    await pressShortcut(page, 'Control+V');
+    await expect(editor).toHaveValue(/!\[A red dot on white\]\(Pasted%20image\.png\)/, { timeout: 30000 });
+    await pressShortcut(page, 'Control+S');
+    await expect(statusLine(page)).toContainText('Saved Seeded note.', { timeout: 30000 });
+    // The picture survives the save: the note file holds the inline
+    // image reference with its description, and the reading view shows it.
+    const saved = readFileSync(path.join(paths.libraryDir, 'Seeded', 'Seeded note.md'), 'utf8');
+    expect(saved).toContain('![A red dot on white](Pasted%20image.png)');
+    expect(readFileSync(path.join(paths.libraryDir, 'Seeded', 'Pasted image.png')).length).toBeGreaterThan(0);
+    await pressShortcut(page, 'Control+E');
+    await expect(statusLine(page)).toContainText('Mode switched to read-only.', { timeout: 30000 });
+    await expect(page.getByRole('img', { name: 'A red dot on white' })).toBeVisible({ timeout: 30000 });
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('insert an image into a Markdown note with the toolbar', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { page, paths } = launched;
+    // A picture already in the notebook, for the toolbar to insert.
+    const dotPng = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    writeFileSync(path.join(paths.libraryDir, 'Seeded', 'Dot.png'), dotPng);
+    await openNotebook(page, 'Seeded');
+    await openGridEntry(page, 'Seeded note.md');
+    await expect(page.getByRole('heading', { name: 'Seeded note', level: 1 })).toBeVisible({ timeout: 30000 });
+    await pressShortcut(page, 'Control+E');
+    await page.getByRole('button', { name: 'Rich text', exact: true }).click();
+    const editor = page.getByRole('textbox', { name: 'Rich text editor' });
+    await expect(editor).toBeVisible({ timeout: 30000 });
+    await editor.click();
+    await page
+      .getByRole('toolbar', { name: 'Rich text formatting' })
+      .getByRole('button', { name: 'Insert image' })
+      .click();
+    // The toolbar asks in the app's own dialog (the native prompt it
+    // used to ask with does not work in Electron), with the picture's
+    // description required.
+    const dialog = page.getByRole('dialog', { name: 'Insert image' });
+    await expect(dialog).toBeVisible({ timeout: 30000 });
+    await dialog.getByLabel('Library image path').fill('Dot.png');
+    await dialog.getByLabel('Image description').fill('A red dot');
+    await dialog.getByRole('button', { name: 'Insert', exact: true }).click();
+    // The inserted picture is written back as a note-relative Markdown
+    // reference with its description, not the internal library URL.
+    await page.getByRole('button', { name: 'Plain source', exact: true }).click();
+    const source = page.getByRole('textbox', { name: 'Markdown source' });
+    await expect(source).toHaveValue(/!\[A red dot\]\(Dot\.png\)/, { timeout: 30000 });
+    await pressShortcut(page, 'Control+S');
+    await expect(statusLine(page)).toContainText('Saved Seeded note.', { timeout: 30000 });
+    const saved = readFileSync(path.join(paths.libraryDir, 'Seeded', 'Seeded note.md'), 'utf8');
+    expect(saved).toContain('![A red dot](Dot.png)');
+    await pressShortcut(page, 'Control+E');
+    await expect(statusLine(page)).toContainText('Mode switched to read-only.', { timeout: 30000 });
+    await expect(page.getByRole('img', { name: 'A red dot' })).toBeVisible({ timeout: 30000 });
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
 test('paste a web-copied picture into an open HTML note inserts it inline', async () => {
   let launched: LaunchedApp | null = null;
   try {

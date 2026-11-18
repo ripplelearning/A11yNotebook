@@ -9,6 +9,32 @@ export function imageUrl(relative: string) {
   return `vault-file://attachment/${relative.split('/').map(encodeURIComponent).join('/')}`;
 }
 
+const ATTACHMENT_URL_PATTERN = /^vault-file:\/\/attachment\/([^?#]+)$/;
+
+/**
+ * Library-relative path for a library image URL, or null when the URL
+ * is not a safe library reference: the same segment rules as the main
+ * process serves by — no empty, ".", or ".." segment, and no slash,
+ * backslash, colon, or NUL smuggled in through percent-encoding — so a
+ * crafted URL can never climb out of the library.
+ */
+export function attachmentPathFromUrl(url: string): string | null {
+  const match = ATTACHMENT_URL_PATTERN.exec(url);
+  if (!match) return null;
+  let segments: string[];
+  try {
+    segments = match[1].split('/').map((segment) => decodeURIComponent(segment));
+  } catch {
+    return null;
+  }
+  if (
+    segments.some((segment) => !segment || segment === '.' || segment === '..' || /[\\/:\0]/.test(segment))
+  ) {
+    return null;
+  }
+  return segments.join('/');
+}
+
 /** Human-readable file type for an attachment path ("PDF", "Word document"). */
 const ATTACHMENT_TYPE_LABELS: Record<string, string> = {
   pdf: 'PDF',

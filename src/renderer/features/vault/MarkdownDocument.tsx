@@ -5,10 +5,11 @@ import footnote from 'markdown-it-footnote';
 import { useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
 import type { VaultTask } from '../../../shared/types';
-import { imageUrl } from '../../../shared/attachments';
+import { attachmentPathFromUrl, imageUrl } from '../../../shared/attachments';
+import { extractPastedImageDescription } from '../../../shared/paste-content';
 import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
-import { expandMathSpans, htmlToMarkdown, markdownToHtml } from './format-conversion';
+import { expandMathSpans, htmlToMarkdown, markdownImageReference, markdownToHtml } from './format-conversion';
 import { sanitizeNoteHtml } from './sanitize-html';
 import { continueMarkdownList } from './smart-formatting';
 
@@ -108,6 +109,17 @@ function createMarkdown(links: VaultLink[], notePath?: string) {
   const renderImage = markdown.renderer.rules.image!;
   markdown.renderer.rules.image = (tokens, index, options, environment, renderer) => {
     const href = String(tokens[index].attrGet('src') ?? '');
+    // A library picture the editor round trip wrote as a library URL:
+    // resolve it back to its library path instead of treating the
+    // scheme as an external image and blanking it. Only a safe library
+    // reference resolves; anything else falls through to the checks
+    // below, so a crafted URL still cannot climb out of the library.
+    const stored = attachmentPathFromUrl(href);
+    if (stored) {
+      if (/\.(?:png|jpe?g|gif|webp|bmp)$/i.test(stored)) tokens[index].attrSet('src', imageUrl(stored));
+      else tokens[index].attrSet('src', '');
+      return renderImage(tokens, index, options, environment, renderer);
+    }
     const parts = notePath?.split('/').slice(0, -1) ?? [];
     try {
       if (/^(?:[a-z][a-z\d+.-]*:|\/\/|\/)/i.test(href)) throw new Error('External image.');
@@ -169,9 +181,10 @@ interface MarkdownDocumentProps {
   /** Status announcements for automatic edits, such as list continuation. */
   announce?: (message: string) => void;
   /**
-   * Store a picture pasted into an HTML note beside the note and return
-   * its inline reference; only wired for HTML notes, where the inline
-   * image survives the editor's sanitizer as a library-relative picture.
+   * Store a picture pasted into a note beside the note and return its
+   * inline reference; wired for HTML and Markdown notes alike. In a
+   * Markdown note the reference is written back as a relative image
+   * reference, so the picture renders in the reading view.
    */
   onPasteImage?: (
     notePath: string,
@@ -242,12 +255,14 @@ export default function MarkdownDocument({
             }
             notePath={notePath ?? ''}
             onPasteImage={
-              format === 'html' && onPasteImage
+              (format === 'html' || format === 'markdown') && onPasteImage
                 ? (file, description) => onPasteImage(notePath ?? '', file, description)
                 : undefined
             }
             onChange={(value) =>
-              onChange(format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value))
+              onChange(
+                format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value, notePath),
+              )
             }
           />
         ) : (
@@ -264,6 +279,35 @@ export default function MarkdownDocument({
               onChange={(event) =>
                 onChange(format === 'html' ? sanitizeNoteHtml(event.target.value, notePath) : event.target.value)
               }
+              onPaste={async (event) => {
+                // A picture pasted into Markdown source has no editor to
+                // catch it: store it beside the note and insert the
+                // image reference at the caret, keeping the description
+                // the source provides. Anything that is not a picture
+                // falls through to the browser's default paste.
+                if (format !== 'markdown' || !onPasteImage || !notePath) return;
+                const file = Array.from(event.clipboardData?.files ?? []).find((item) =>
+                  item.type.startsWith('image/'),
+                );
+                if (!file) return;
+                event.preventDefault();
+                const description = extractPastedImageDescription(
+                  event.clipboardData?.getData('text/html') ?? '',
+                );
+                const area = event.currentTarget;
+                const start = area.selectionStart ?? area.value.length;
+                const end = area.selectionEnd ?? start;
+                const inserted = await onPasteImage(notePath, file, description);
+                if (!inserted) return;
+                const reference = markdownImageReference(inserted.alt, inserted.src);
+                onChange(area.value.slice(0, start) + reference + area.value.slice(end));
+                const caret = start + reference.length;
+                // The parent re-renders the controlled textarea with the
+                // new value; restore the caret after that render lands.
+                window.setTimeout(() => {
+                  if (document.contains(area)) area.setSelectionRange(caret, caret);
+                }, 0);
+              }}
               onKeyDown={(event) => {
                 if (format !== 'markdown' || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
                   return;
