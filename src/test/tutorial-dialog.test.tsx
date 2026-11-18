@@ -64,7 +64,7 @@ describe('Tutorial dialog', () => {
     }
     expect(screen.getByRole('heading', { name: /What's new in version/ })).toBeInTheDocument();
     expect(screen.getByRole('heading', { name: 'What changed' })).toBeInTheDocument();
-    expect(screen.getByText(/Download filled PDF/)).toBeInTheDocument();
+    expect(screen.getByText(/Insert link now works/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Finish' })).toBeInTheDocument();
   });
 });

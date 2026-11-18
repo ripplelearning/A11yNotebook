@@ -7,18 +7,18 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
   {
     heading: "What's new",
     items: [
-      'Import now asks first: make a copy, or create an Alius — a shortcut to the original file, which stays where it is. An Alius shows as Type "Alius" in the grid, and a broken one offers Locate the file and Remove the Alius.',
-      'Pasting into a notebook now asks whether to store the content as a new note or a file attachment, what format (Markdown, rich text, or plain text), and what file name. A whole file keeps its format and only asks copy vs Alius and file name.',
-      'Fillable PDFs now show their fields inline in the reading view: text, checkbox, radio, and dropdown fields, filled in place as you read. Filled values are stored in the app, with a "Download filled PDF" export for a real filled file.',
-      'A password-protected PDF asks for its password once per session; filling works and the values stay saved in the app.',
+      'Insert link now works in the rich-text editor: an accessible dialog asks for the address and the link text, instead of a prompt that silently did nothing.',
+      'Pictures can now be pasted or inserted into Markdown notes, keeping their description; the Insert image toolbar works there too.',
+      'Nothing opens automatically after an import or a paste any more — pasted folders join Libraries without switching to them, and imported or pasted notes wait until you open them.',
+      'Help now has Tutorial and What’s New entries, and the startup tutorial’s checkbox reads “Show the tutorial after each update”.',
     ],
   },
   {
     heading: 'What changed',
     items: [
-      'The end-to-end tests now resolve the macOS temp directory through its real path, so the Mac tests pass and the Mac builds ship. This is a test-only change.',
-      'XFA forms show an honest notice rather than fillable fields: pdf.js exposes no XFA fields through its field APIs.',
-      'Filling an Alius never touches the original file: saving a filled copy always creates a new file in the library.',
+      'Alius Word documents open in the app again; downloading a filled PDF no longer fails on rich-text fields; ePub books open again; bookmark jumps work in Markdown notes.',
+      'The “Install on Exit” update option is removed: it silently did nothing, so the downloaded state now offers Restart and install or Close.',
+      'The paste dialog starts on the New note versus File attachment choice, and pasted pictures keep their alt text and captions.',
     ],
   },
 ];
