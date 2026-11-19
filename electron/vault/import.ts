@@ -60,6 +60,12 @@ export interface PdfImportInfo {
   hasXfa: boolean;
   /** True when the PDF needs a password to open; the reader asks for it once at open. */
   passwordProtected: boolean;
+  /**
+   * True when the PDF restricts printing, copying, or editing without
+   * needing a password to open. It imports as a read-only managed
+   * document: it reads, but notes and a filled file are unavailable.
+   */
+  permissionProtected: boolean;
 }
 
 export async function validatePdfImport(bytes: Buffer): Promise<PdfImportInfo> {
@@ -70,18 +76,18 @@ export async function validatePdfImport(bytes: Buffer): Promise<PdfImportInfo> {
   const loading = getDocument({ data: new Uint8Array(bytes), useSystemFonts: false, enableXfa: false, verbosity: 0 });
   try {
     const document = await loading.promise;
-    if ((await document.getPermissions()) !== null)
-      throw new Error('Protected PDFs cannot be imported as managed documents.');
+    const permissionProtected = (await document.getPermissions()) !== null;
     const fields = await document.getFieldObjects();
     const fieldCount = fields ? [...fields.values()].reduce((total, entries) => total + entries.length, 0) : 0;
-    return { fillable: fieldCount > 0, fieldCount, hasXfa, passwordProtected: false };
+    return { fillable: fieldCount > 0, fieldCount, hasXfa, passwordProtected: false, permissionProtected };
   } catch (error) {
     if (error instanceof Error && error.name === 'PasswordException')
       // A password-protected PDF is imported as-is: the reader asks for
       // the password once when the file is opened, and the filled
-      // values live in the app. Only permission-protected PDFs are
-      // refused outright.
-      return { fillable: false, fieldCount: 0, hasXfa, passwordProtected: true };
+      // values live in the app. A permission-protected PDF is imported
+      // the same way, as a read-only document; only a file PDF.js
+      // cannot open at all is refused.
+      return { fillable: false, fieldCount: 0, hasXfa, passwordProtected: true, permissionProtected: false };
     throw error;
   } finally {
     await loading.destroy();
