@@ -283,6 +283,81 @@ test('paste structured HTML as markdown does not open the new note', async () =>
   }
 });
 
+test('paste structured HTML as markdown from the navigation-pane grid does not open the new note', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchNoAutoOpenApp();
+    const { app, page } = launched;
+    await openNotebook(page, 'Seeded');
+    // With a note open, the Notes and Files grid lives in the
+    // navigation pane (the main grid is unmounted): pasting from that
+    // grid is the grid paste path too, and it used to reach no paste
+    // handler at all.
+    await openGridEntry(page, 'Seeded note.md');
+    await expect(page.getByRole('tab', { name: 'Seeded note' })).toHaveCount(1);
+    await writeHtmlClipboard(
+      app,
+      '<h1>Guide</h1><ul><li>First step</li><li>Second step</li></ul>' +
+        '<table><tr><th>Name</th><th>Value</th></tr><tr><td>Alpha</td><td>1</td></tr></table>',
+      'Guide',
+    );
+    await page.getByText('Items in Seeded', { exact: true }).click();
+    await pressShortcut(page, 'Control+V');
+    const dialog = page.getByRole('dialog', { name: 'Paste into notebook' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Format').selectOption('markdown');
+    await dialog.getByRole('button', { name: 'Paste' }).click();
+    await expect(page.getByRole('gridcell', { name: 'Guide.md' })).toBeVisible({ timeout: 30000 });
+    await expect(statusLine(page)).toContainText('Pasted Guide.md into Seeded.', { timeout: 30000 });
+    await expectNoTab(page, 'Guide');
+    await expect(page.getByText('First step', { exact: true })).toHaveCount(0);
+    await expect(page.getByText('Alpha', { exact: true })).toHaveCount(0);
+    await expectNoDocumentChangedMessage(page);
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
+test('paste structured HTML as markdown with no notebook selected does not open the new note', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchNoAutoOpenApp();
+    const { app, page } = launched;
+    // No notebook selected: the notebook picker runs first. Click the
+    // panel heading to focus the panel without selecting a notebook row.
+    await writeHtmlClipboard(
+      app,
+      '<h1>Guide</h1><ul><li>First step</li><li>Second step</li></ul>' +
+        '<table><tr><th>Name</th><th>Value</th></tr><tr><td>Alpha</td><td>1</td></tr></table>',
+      'Guide',
+    );
+    await page.getByRole('heading', { name: 'Notebooks in library' }).click();
+    await pressShortcut(page, 'Control+V');
+    const picker = page.getByRole('dialog', { name: 'Choose a notebook' });
+    await expect(picker).toBeVisible();
+    // Pick Seeded explicitly: with no current notebook the picker
+    // defaults to the first notebook alphabetically (Second).
+    await picker.getByRole('radio', { name: 'Seeded' }).click();
+    await picker.getByRole('button', { name: 'Paste here' }).click();
+    const dialog = page.getByRole('dialog', { name: 'Paste into notebook' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Format').selectOption('markdown');
+    await dialog.getByRole('button', { name: 'Paste' }).click();
+    await expect(statusLine(page)).toContainText('Pasted Guide.md into Seeded.', { timeout: 30000 });
+    await expectNoTab(page, 'Guide');
+    await expect(page.getByText('First step', { exact: true })).toHaveCount(0);
+    await expectNoDocumentChangedMessage(page);
+    // The note landed in the picked notebook: open it and check the grid.
+    await openNotebook(page, 'Seeded');
+    await expect(page.getByRole('gridcell', { name: 'Guide.md' })).toBeVisible({ timeout: 30000 });
+    await expectNoTab(page, 'Guide');
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
 test('paste a folder as a library adds it without switching libraries', async () => {
   let launched: LaunchedApp | null = null;
   try {
