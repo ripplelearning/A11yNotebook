@@ -58,9 +58,12 @@ import { sanitizeNoteHtml } from './features/vault/sanitize-html';
 import { outlineConversionWarning } from '../shared/outline-conversion';
 import {
   headingAnchorAt,
+  headingAnchorAtSourceIndex,
   headingAnchorForRenderedText,
+  headingSourceIndex,
   headingTextSpan,
   lineSpanAt,
+  listHeadings,
   normalizeHeadingText,
   readingJumpHeading,
   resolveBookmarkAnchor,
@@ -3644,7 +3647,19 @@ export default function App() {
       const occurrence = headings
         .filter((candidate) => normalizeHeadingText(candidate.textContent?.trim() ?? '') === wanted)
         .indexOf(heading);
-      return headingAnchorForRenderedText(content, isHtml, wanted, Math.max(0, occurrence));
+      const byText = headingAnchorForRenderedText(content, isHtml, wanted, Math.max(0, occurrence));
+      if (byText) return byText;
+      // The heading's text cannot be compared (a footnote reference, an
+      // HTML entity, or another form the normalizer does not understand):
+      // fall back to its position among the note's headings. The reading
+      // view renders headings in source order, so the fallback only
+      // applies when the rendered list has the same length as the source
+      // list — a note with headings the source scan misses (setext,
+      // blockquoted) keeps the old behavior instead of bookmarking the
+      // wrong heading.
+      const source = listHeadings(content, isHtml);
+      const index = headings.indexOf(heading);
+      return source.length === headings.length ? headingAnchorAtSourceIndex(content, isHtml, index) : null;
     };
     const { heading, hasPosition } = renderedHeadingAtSelection(root);
     if (heading) return anchorForRenderedHeading(heading);
@@ -3762,7 +3777,11 @@ export default function App() {
   // position bookmark before the first heading, or a note with no
   // headings). The comparison uses the rendered heading text: an anchor
   // stores the heading as written in source (`Hello *world*`), while the
-  // reading view shows it formatted (`Hello world`).
+  // reading view shows it formatted (`Hello world`). When the text
+  // cannot be compared at all (a footnote reference, an HTML entity, or
+  // another form the normalizer does not understand), the heading is
+  // found by its position among the note's headings instead — the
+  // reading view renders headings in source order.
   // Focus alone does not move a screen reader's virtual cursor, so the
   // heading's text is selected after focus lands — exactly the way Find
   // selects a match: a range anchored on the heading's own text nodes
@@ -3770,8 +3789,10 @@ export default function App() {
   // (range.selectNodeContents) anchors the selection on the element
   // instead, with no character position for the virtual cursor to
   // follow — that is why jumps moved focus but the reading position
-  // stayed put. Returns the heading only when both focus and a live
-  // text-node selection are in place.
+  // stayed put. A heading with no text at all (an image-only heading)
+  // has nothing to select, so focus itself is the landing there;
+  // a heading with text still needs the live text-node selection.
+  // Returns the heading only when the landing is verified.
   const focusBookmarkHeading = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
     if (!jumpHeading) return null;
@@ -3783,7 +3804,17 @@ export default function App() {
     const matches = headings.filter(
       (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
     );
-    const target = matches[jumpHeading.occurrence] ?? matches[0];
+    // The heading's text cannot be compared: fall back to its position
+    // among the note's headings, only when the rendered list has the
+    // same length as the source list — a note with headings the source
+    // scan misses (setext, blockquoted) keeps the old behavior instead
+    // of landing on the wrong heading.
+    const byPosition = (): HTMLElement | null => {
+      const index = headingSourceIndex(content, isHtml, jumpHeading);
+      if (index === null) return null;
+      return listHeadings(content, isHtml).length === headings.length ? headings[index] ?? null : null;
+    };
+    const target = matches[jumpHeading.occurrence] ?? matches[0] ?? byPosition();
     if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
@@ -3794,11 +3825,13 @@ export default function App() {
       // Scrolling is best-effort; the focus landing is what matters.
     }
     const selection = window.getSelection();
+    const hasText = (target.textContent?.trim() ?? '') !== '';
     return document.activeElement === target &&
-      selected &&
-      !!selection?.anchorNode &&
-      selection.anchorNode.nodeType === Node.TEXT_NODE &&
-      target.contains(selection.anchorNode)
+      (!hasText ||
+        (selected &&
+          !!selection?.anchorNode &&
+          selection.anchorNode.nodeType === Node.TEXT_NODE &&
+          target.contains(selection.anchorNode)))
       ? target
       : null;
   };
@@ -3856,8 +3889,20 @@ export default function App() {
       const matches = headings.filter(
         (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
       );
-      const target = matches[jumpHeading.occurrence] ?? matches[0];
+      // The heading's text cannot be compared (a footnote reference, an
+      // HTML entity, or another form the normalizer does not understand):
+      // fall back to its position among the note's headings, only when
+      // the rendered list has the same length as the source list.
+      const byPosition = (): HTMLElement | null => {
+        const index = headingSourceIndex(content, isHtml, jumpHeading);
+        if (index === null) return null;
+        return listHeadings(content, isHtml).length === headings.length ? headings[index] ?? null : null;
+      };
+      const target = matches[jumpHeading.occurrence] ?? matches[0] ?? byPosition();
       if (!target) return false;
+      // A heading with no text (an image-only heading) has nothing to
+      // select: the editor holding focus is the landing.
+      if ((target.textContent?.trim() ?? '') === '') return document.activeElement === editor;
       if (!selectElementText(target)) return false;
     } else {
       const offset = resolveBookmarkAnchor(content, isHtml, anchor);
@@ -4020,6 +4065,10 @@ export default function App() {
       .getReadingPosition(path)
       .then((saved) => {
         if (cancelled || !saved?.heading) return;
+        // A bookmark jump that landed while this load was in flight owns
+        // the focus now: resuming to the saved position would yank the
+        // reader off the bookmarked heading.
+        if (bookmarkJumpRef.current?.path === path) return;
         const container = annotationTools.documentRef.current;
         const headings = container ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')] : [];
         const wanted = normalizeHeadingText(saved.heading);
