@@ -24,7 +24,10 @@ import {
  * differs from the rendered text — wiki links ([[Usage]]), images, and
  * other inline formatting. A jump is only a pass when focus AND the DOM
  * selection land on the bookmarked heading: focus alone does not move a
- * screen reader's virtual cursor.
+ * screen reader's virtual cursor. The 1.9.20 retest added two more
+ * forms that still landed at the top of the note: image-only headings,
+ * which have no text to select, and footnote headings, whose rendered
+ * `Usage[1]` never matches the stored `Usage[^1]`.
  */
 
 const NOTE_CONTENT =
@@ -481,6 +484,94 @@ test('image heading: image plus text heading bookmark jumps', async () => {
       .poll(() => readingJumpState(page), { timeout: 10000 })
       .toEqual({ tag: 'H2', text: ' Usage', selection: ' Usage' });
     await expect(statusLine(page)).toContainText('Jumped to Usage.', { timeout: 30000 });
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('image-only heading: bookmark jumps to the heading, not the top', async () => {
+  // An image-only heading has no text to select: the old landing check
+  // required a text-node selection, so it rejected the focus landing
+  // and the jump fell back to the top of the note.
+  const logoPng = Uint8Array.from([
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44, 0x52, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, 0x08, 0x06, 0x00, 0x00, 0x00, 0x1f, 0x15, 0xc4, 0x89, 0x00,
+    0x00, 0x00, 0x0a, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05, 0x00, 0x01,
+    0x0d, 0x0a, 0x2d, 0xb4, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42, 0x60, 0x82,
+  ]);
+  const paths = seedLibrary([
+    {
+      name: 'Seeded',
+      files: [
+        { name: 'Edge.md', content: '# Edge\n\nIntro.\n\n## ![logo](logo.png)\n\nDetails here.\n' },
+        { name: 'logo.png', content: logoPng },
+      ],
+    },
+  ]);
+  const { app, page, pageErrors } = await launchSeededApp(paths);
+  try {
+    await openNote(page, 'Edge.md', 'Edge');
+    await placeReadingSelection(page, 'Details here.');
+    await pressShortcut(page, 'Control+Alt+H');
+    const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
+    await expect(nameDialog).toBeVisible();
+    // An image-only heading suggests no name: the reader names it.
+    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('');
+    await nameDialog.getByLabel('Bookmark name').fill('Logo section');
+    await nameDialog.getByRole('button', { name: 'Save bookmark' }).click();
+    await expect(nameDialog).toBeHidden({ timeout: 30000 });
+    await placeReadingSelection(page, 'Intro.');
+    const bookmarkButton = page.getByRole('button', { name: 'Logo section — Edge.md' });
+    await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
+    await bookmarkButton.click();
+    // The heading has no text, so there is nothing to select: focus
+    // itself is the landing.
+    await expect
+      .poll(() => readingJumpState(page), { timeout: 10000 })
+      .toEqual({ tag: 'H2', text: '', selection: '' });
+    await expect(statusLine(page)).toContainText('Jumped to the bookmarked place.', { timeout: 30000 });
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('footnote heading: bookmark jumps to the heading, not the top', async () => {
+  // The rendered heading reads `Usage[1]` while its source stores
+  // `Usage[^1]`, so no text comparison matches it; the jump used to
+  // fall back to the top of the note while announcing the jump.
+  const paths = seedLibrary([
+    {
+      name: 'Seeded',
+      files: [
+        {
+          name: 'Edge.md',
+          content: '# Edge\n\nIntro.\n\n## Usage[^1]\n\nDetails here.\n\n[^1]: A footnote.\n',
+        },
+      ],
+    },
+  ]);
+  const { app, page, pageErrors } = await launchSeededApp(paths);
+  try {
+    await openNote(page, 'Edge.md', 'Edge');
+    await placeReadingSelection(page, 'Details here.');
+    await bookmarkCurrentHeading(page, 'Usage');
+    await placeReadingSelection(page, 'Intro.');
+    const bookmarkButton = page.getByRole('button', { name: 'Usage — Edge.md' });
+    await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
+    await bookmarkButton.click();
+    await expect
+      .poll(() => readingJumpState(page), { timeout: 10000 })
+      .toEqual({ tag: 'H2', text: 'Usage[1]', selection: 'Usage[1]' });
+    await expect(statusLine(page)).toContainText('Jumped to Usage.', { timeout: 30000 });
+    // Focus must stay on the heading afterwards, not drift back to the
+    // top or the saved reading position.
+    const start = Date.now();
+    while (Date.now() - start < 2000) {
+      expect(await readingJumpState(page)).toEqual({ tag: 'H2', text: 'Usage[1]', selection: 'Usage[1]' });
+      await page.waitForTimeout(250);
+    }
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);

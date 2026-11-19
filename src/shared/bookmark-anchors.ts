@@ -14,14 +14,75 @@ const MARKDOWN_HEADING = /^ {0,3}#{1,6}\s+(.*?)\s*#*\s*$/;
 const HTML_HEADING = /<h[1-6][^>]*>([\s\S]*?)<\/h[1-6]>/gi;
 
 function stripHtml(text: string): string {
+  return decodeEntities(text.replace(/<[^>]*>/g, '')).trim();
+}
+
+/**
+ * Common named HTML entities, for the pure-text heading comparison.
+ * A rendered heading reads `©` while its source stores `&copy;`, so
+ * the two forms must decode to the same text or the jump never matches.
+ * This module also runs in the main process, where there is no DOM, so
+ * the decoding is plain text work: numeric entities plus the named
+ * entities a note heading realistically contains. Unknown entities are
+ * left as written.
+ */
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: '\u00a0',
+  copy: '©',
+  reg: '®',
+  trade: '™',
+  hellip: '…',
+  mdash: '—',
+  ndash: '–',
+  lsquo: '‘',
+  rsquo: '’',
+  ldquo: '“',
+  rdquo: '”',
+  laquo: '«',
+  raquo: '»',
+  deg: '°',
+  plusmn: '±',
+  times: '×',
+  divide: '÷',
+  frac12: '½',
+  frac14: '¼',
+  frac34: '¾',
+  euro: '€',
+  pound: '£',
+  yen: '¥',
+  cent: '¢',
+  sect: '§',
+  para: '¶',
+  middot: '·',
+  bull: '•',
+  dagger: '†',
+  Dagger: '‡',
+  permil: '‰',
+  lsaquo: '‹',
+  rsaquo: '›',
+  sbquo: '‚',
+  bdquo: '„',
+  ensp: '\u2002',
+  emsp: '\u2003',
+  thinsp: '\u2009',
+};
+
+function decodeEntities(text: string): string {
   return text
-    .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;|&apos;/g, "'")
-    .trim();
+    .replace(/&#x([0-9a-fA-F]+);/g, (match, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    })
+    .replace(/&#(\d+);/g, (match, decimal: string) => {
+      const code = Number.parseInt(decimal, 10);
+      return code >= 0 && code <= 0x10ffff ? String.fromCodePoint(code) : match;
+    })
+    .replace(/&([a-zA-Z][a-zA-Z0-9]+);/g, (match, name: string) => NAMED_ENTITIES[name] ?? match);
 }
 
 /**
@@ -37,6 +98,13 @@ function stripHtml(text: string): string {
  * stored form unable to match the rendered heading. The bookmark then
  * cannot be created from reading mode, and a jump to it falls back to
  * the top of the note while still announcing the jump.
+ *
+ * A footnote reference (`[^1]`) renders as a superscript number, so it
+ * is dropped too: the rendered heading reads `Usage[1]`, which no
+ * source-side strip can produce, so the position fallback (see
+ * headingSourceIndex) is what lands the jump — the strip only keeps the
+ * suggested name and the announcement reading `Usage` instead of
+ * `Usage[^1]`.
  */
 export function normalizeHeadingText(text: string): string {
   return stripHtml(
@@ -48,6 +116,7 @@ export function normalizeHeadingText(text: string): string {
       .replace(/\[([^\]]*)\]\[[^\]]*\]/g, '$1')
       .replace(/<((?:https?:\/\/|mailto:)[^>\s]+)>/g, '$1')
       .replace(/<([^<>\s]+@[^<>\s]+)>/g, '$1')
+      .replace(/\[\^[^\]]*\]/g, '')
       .replace(/(`{1,3})([^`]*?)\1/g, '$2')
       .replace(/(\*\*|__)(.*?)\1/g, '$2')
       .replace(/(\*|_)(.*?)\1/g, '$2')
@@ -102,6 +171,44 @@ export function resolveBookmarkAnchor(content: string, isHtml: boolean, anchor: 
   const matches = listHeadings(content, isHtml).filter((hit) => hit.text === anchor.text);
   const hit = matches[anchor.occurrence] ?? matches[0];
   return hit ? hit.start : null;
+}
+
+/**
+ * The source-heading index of a heading anchor: where the anchor's
+ * heading sits among the note's headings in source order. Null when
+ * the anchor does not resolve (the heading is gone). The reading view
+ * renders headings in the same order, so when the rendered list has
+ * the same length as the source list, this index identifies the
+ * rendered heading even when its text cannot be compared — a footnote
+ * reference, an HTML entity, or any other form the normalizer does not
+ * understand.
+ */
+export function headingSourceIndex(
+  content: string,
+  isHtml: boolean,
+  anchor: Extract<BookmarkAnchor, { kind: 'heading' }>,
+): number | null {
+  const start = resolveBookmarkAnchor(content, isHtml, anchor);
+  if (start === null) return null;
+  const index = listHeadings(content, isHtml).findIndex((hit) => hit.start === start);
+  return index >= 0 ? index : null;
+}
+
+/**
+ * The heading anchor for the source heading at `index` (0-based, in
+ * source order), with the occurrence among same-text headings. Null
+ * when the index is out of range.
+ */
+export function headingAnchorAtSourceIndex(
+  content: string,
+  isHtml: boolean,
+  index: number,
+): Extract<BookmarkAnchor, { kind: 'heading' }> | null {
+  const hits = listHeadings(content, isHtml);
+  const hit = hits[index] ?? null;
+  if (!hit) return null;
+  const occurrence = hits.filter((item) => item.text === hit.text && item.start < hit.start).length;
+  return { kind: 'heading', text: hit.text, occurrence };
 }
 
 /**

@@ -6,7 +6,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import {
   headingAnchorAt,
+  headingAnchorAtSourceIndex,
   headingAnchorForRenderedText,
+  headingSourceIndex,
   headingTextSpan,
   lineSpanAt,
   listHeadings,
@@ -176,6 +178,21 @@ describe('normalizeHeadingText', () => {
     expect(normalizeHeadingText('See <https://example.com> for details')).toBe('See https://example.com for details');
     expect(normalizeHeadingText('Mail <help@example.com>')).toBe('Mail help@example.com');
   });
+
+  it('decodes HTML entities the way the rendered heading reads them', () => {
+    expect(normalizeHeadingText('Fish &copy; Chips')).toBe('Fish © Chips');
+    expect(normalizeHeadingText('Fish &#169; Chips')).toBe('Fish © Chips');
+    expect(normalizeHeadingText('Fish &#xA9; Chips')).toBe('Fish © Chips');
+    expect(normalizeHeadingText('Terms &amp; Conditions')).toBe('Terms & Conditions');
+    expect(normalizeHeadingText('Wait &hellip;')).toBe('Wait …');
+    expect(normalizeHeadingText('A &mdash; B')).toBe('A — B');
+    expect(normalizeHeadingText('An &unknown; entity')).toBe('An &unknown; entity');
+  });
+
+  it('drops footnote references, which render as a superscript number', () => {
+    expect(normalizeHeadingText('Usage[^1]')).toBe('Usage');
+    expect(normalizeHeadingText('Notes[^intro] here')).toBe('Notes here');
+  });
 });
 
 describe('headingTextSpan and lineSpanAt', () => {
@@ -268,5 +285,35 @@ describe('headingAnchorForRenderedText', () => {
       text: '![logo](logo.png) Usage',
       occurrence: 0,
     });
+  });
+});
+
+describe('headingSourceIndex and headingAnchorAtSourceIndex', () => {
+  const indexed = '# Title\n\nIntro.\n\n## Setup\n\nSteps.\n\n## Usage[^1]\n\nDetails.\n\n[^1]: A footnote.\n';
+
+  it('maps an anchor to its heading index in source order', () => {
+    expect(headingSourceIndex(indexed, false, { kind: 'heading', text: 'Title', occurrence: 0 })).toBe(0);
+    expect(headingSourceIndex(indexed, false, { kind: 'heading', text: 'Setup', occurrence: 0 })).toBe(1);
+    expect(headingSourceIndex(indexed, false, { kind: 'heading', text: 'Usage[^1]', occurrence: 0 })).toBe(2);
+    expect(headingSourceIndex(indexed, false, { kind: 'heading', text: 'Missing', occurrence: 0 })).toBeNull();
+  });
+
+  it('maps a source index back to its anchor, counting duplicates', () => {
+    expect(headingAnchorAtSourceIndex(markdown, false, 1)).toEqual({
+      kind: 'heading',
+      text: 'Setup',
+      occurrence: 0,
+    });
+    expect(headingAnchorAtSourceIndex(markdown, false, 2)).toEqual({
+      kind: 'heading',
+      text: 'Setup',
+      occurrence: 1,
+    });
+    expect(headingAnchorAtSourceIndex(indexed, false, 2)).toEqual({
+      kind: 'heading',
+      text: 'Usage[^1]',
+      occurrence: 0,
+    });
+    expect(headingAnchorAtSourceIndex(markdown, false, 9)).toBeNull();
   });
 });

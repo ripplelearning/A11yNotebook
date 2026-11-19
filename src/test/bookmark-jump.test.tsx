@@ -27,6 +27,7 @@ function setup(
   noteContent: string = content,
   savedPosition: ReadingPosition | null = null,
   settingsOverride: Partial<typeof DEFAULT_SETTINGS> = {},
+  getReadingPositionImpl?: () => Promise<ReadingPosition | null>,
 ) {
   const vault: VaultInfo = {
     name: 'Study',
@@ -46,7 +47,7 @@ function setup(
       getTaskLinks: vi.fn(async () => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => bookmarks),
-      getReadingPosition: vi.fn(async () => savedPosition),
+      getReadingPosition: vi.fn(getReadingPositionImpl ?? (async () => savedPosition)),
       setReadingPosition: vi.fn(async () => undefined),
       toggleBookmark: vi.fn(async () => []),
       addBookmark,
@@ -291,6 +292,145 @@ describe('bookmark jump from the side pane', () => {
     // A formatted heading spans text nodes ("Hello " + "world"): the
     // range still starts on a text node, as a Find match does.
     expect(window.getSelection()?.anchorNode?.nodeType).toBe(Node.TEXT_NODE);
+  });
+
+  it('lands focus on an image-only heading in reading mode', async () => {
+    // An image-only heading has no text to select, so the old landing
+    // check (which required a text-node selection) rejected the focus
+    // landing and the jump fell back to the top of the note.
+    const imageContent = '# Title\n\nIntro text.\n\n## ![logo](logo.png)\n\nDetails here.\n';
+    const imageBookmark: VaultBookmark = {
+      id: 'bm-image-only',
+      path: 'Note.md',
+      title: '![logo](logo.png)',
+      name: 'Logo section',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: '![logo](logo.png)', occurrence: 0 },
+    };
+    setup([imageBookmark], imageContent);
+    await openNote();
+    const heading = screen.getByRole('heading', { name: 'logo' });
+    fireEvent.click(screen.getByRole('button', { name: 'Logo section — Note.md' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to the bookmarked place.'));
+    expect(document.activeElement).toBe(heading);
+    // Nothing to select in an image-only heading: focus itself is the
+    // landing, and the selection stays empty instead of grabbing the
+    // top of the note.
+    expect(window.getSelection()?.toString()).toBe('');
+  });
+
+  it('lands focus on a footnote-ref heading in reading mode', async () => {
+    // The rendered heading reads `Usage[1]` while its source stores
+    // `Usage[^1]`, so no text comparison matches it; the jump used to
+    // fall back to the top of the note while announcing the jump.
+    const footnoteContent = '# Title\n\nIntro text.\n\n## Usage[^1]\n\nDetails here.\n\n[^1]: A footnote.\n';
+    const footnoteBookmark: VaultBookmark = {
+      id: 'bm-footnote',
+      path: 'Note.md',
+      title: 'Usage[^1]',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Usage[^1]', occurrence: 0 },
+    };
+    setup([footnoteBookmark], footnoteContent);
+    await openNote();
+    const heading = screen.getByRole('heading', { name: /Usage/ });
+    fireEvent.click(screen.getByRole('button', { name: 'Usage — Note.md' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Usage.'));
+    expect(document.activeElement).toBe(heading);
+    expect(window.getSelection()?.toString()).toBe('Usage[1]');
+    expect(window.getSelection()?.anchorNode?.nodeType).toBe(Node.TEXT_NODE);
+  });
+
+  it('lands focus on an entity heading in reading mode', async () => {
+    // The rendered heading reads `Fish © Chips` while its source stores
+    // `Fish &copy; Chips`; the jump used to fall back to the top.
+    const entityContent = '# Title\n\nIntro text.\n\n## Fish &copy; Chips\n\nDetails here.\n';
+    const entityBookmark: VaultBookmark = {
+      id: 'bm-entity',
+      path: 'Note.md',
+      title: 'Fish &copy; Chips',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Fish &copy; Chips', occurrence: 0 },
+    };
+    setup([entityBookmark], entityContent);
+    await openNote();
+    const heading = screen.getByRole('heading', { name: 'Fish © Chips' });
+    fireEvent.click(screen.getByRole('button', { name: 'Fish © Chips — Note.md' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Fish © Chips.'));
+    expect(document.activeElement).toBe(heading);
+    expect(window.getSelection()?.toString()).toBe('Fish © Chips');
+  });
+
+  it('creates a footnote heading bookmark from the reading position', async () => {
+    const { addBookmark } = setup(
+      [headingBookmark],
+      '# Title\n\nIntro text.\n\n## Usage[^1]\n\nDetails here.\n\n[^1]: A footnote.\n',
+    );
+    await openNote();
+    placeReadingSelection('Details here.');
+    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    // The suggested name reads as the reader sees the heading, without
+    // the footnote marker.
+    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Usage');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
+    await waitFor(() =>
+      expect(addBookmark).toHaveBeenCalledWith(
+        'Note.md',
+        { kind: 'heading', text: 'Usage[^1]', occurrence: 0 },
+        'Usage',
+        undefined,
+      ),
+    );
+  });
+
+  it('creates an entity heading bookmark from the reading position', async () => {
+    const { addBookmark } = setup(
+      [headingBookmark],
+      '# Title\n\nIntro text.\n\n## Fish &copy; Chips\n\nDetails here.\n',
+    );
+    await openNote();
+    placeReadingSelection('Details here.');
+    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Fish © Chips');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
+    await waitFor(() =>
+      expect(addBookmark).toHaveBeenCalledWith(
+        'Note.md',
+        { kind: 'heading', text: 'Fish &copy; Chips', occurrence: 0 },
+        'Fish © Chips',
+        undefined,
+      ),
+    );
+  });
+
+  it('a slow saved-position load does not yank focus off a just-landed bookmark jump', async () => {
+    // Opening the note starts a saved-position load; a jump that lands
+    // while it is still in flight owns the focus, and the load resolving
+    // afterwards must not resume to the saved heading instead.
+    const saved: ReadingPosition = {
+      path: 'Note.md',
+      heading: 'Title',
+      occurrence: 0,
+      updated: new Date().toISOString(),
+    };
+    let resolvePosition!: (value: ReadingPosition | null) => void;
+    const positionPromise = new Promise<ReadingPosition | null>((resolve) => {
+      resolvePosition = resolve;
+    });
+    setup([headingBookmark], content, saved, {}, () => positionPromise);
+    await openNote();
+    const setupHeading = screen.getByRole('heading', { name: 'Setup' });
+    fireEvent.click(screen.getByRole('button', { name: 'Setup — Note.md' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(setupHeading);
+    await act(async () => {
+      resolvePosition(saved);
+    });
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(document.activeElement).toBe(setupHeading);
+    expect(statusBar()).toHaveTextContent('Jumped to Setup.');
   });
 
   it('shows a bookmark under its chosen name, with the heading as the reader sees it', async () => {
