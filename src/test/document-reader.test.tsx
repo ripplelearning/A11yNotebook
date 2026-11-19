@@ -308,7 +308,10 @@ describe('local accessible document reader', () => {
     await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml'));
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in ePub' }), { target: { value: 'second' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Go to two.xhtml' })).toBeInTheDocument());
+    // The search-match button names the section by its chapter title now,
+    // not by its file name (the old label was the href's last segment,
+    // which in the app is the blob UUID epubjs resolves the href to).
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Go to Second chapter' })).toBeInTheDocument());
     fireEvent.click(screen.getByRole('button', { name: 'Second chapter' }));
     await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml#heading'));
     reader.unmount();
@@ -333,7 +336,9 @@ describe('local accessible document reader', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
     expect(await screen.findByText('Second chapter text')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in ePub' }), { target: { value: 'second' } });
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Go to two.xhtml' })).toBeInTheDocument());
+    // No table of contents, title, or manifest file name is mocked for
+    // these sections, so the label falls back to "Section N".
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Go to Section 2' })).toBeInTheDocument());
   });
 
   it('renders the ePub reader without a table of contents until navigation arrives', async () => {

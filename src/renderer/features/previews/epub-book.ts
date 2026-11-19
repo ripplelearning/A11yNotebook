@@ -234,7 +234,78 @@ export function mapEpubTocItems(
   }));
 }
 
-/** The epubjs internals the findInSpine patch reads. */
+/**
+ * Flatten a table of contents to section href -> label, for the reader's
+ * section headings. epubjs resolves every spine href to a blob: URL when
+ * it opens an archived book (Resources.replacements creates one blob URL
+ * per HTML resource and toBook resolves spine hrefs through that cache),
+ * so a section's href is "blob:<origin>/<uuid>" and its last segment is
+ * the blob UUID — never a chapter name. The table of contents carries the
+ * same resolved hrefs (see mapEpubTocItems), so it is the lookup key.
+ * Fragments are stripped on both sides: a table-of-contents entry may
+ * point at an anchor inside its section. The first entry for a section
+ * wins, so a section keeps its chapter title rather than a subsection's.
+ */
+export function epubTocLabels(items: EpubTocItem[]): Map<string, string> {
+  const labels = new Map<string, string>();
+  const collect = (entries: EpubTocItem[]): void => {
+    for (const entry of entries) {
+      const key = entry.href.split('#')[0];
+      if (!labels.has(key)) labels.set(key, entry.label);
+      if (entry.subitems) collect(entry.subitems);
+    }
+  };
+  collect(items);
+  return labels;
+}
+
+/**
+ * The display label for one spine section. Never derived from
+ * section.href: that is a blob: URL whose last segment is the blob UUID
+ * (see epubTocLabels). Prefer the table-of-contents title for the section,
+ * then the section document's <title>, then the manifest file name, and
+ * finally a plain "Section N".
+ */
+export function epubSectionLabel(
+  section: { href: string; source?: string; index: number },
+  title: string,
+  tocLabels: ReadonlyMap<string, string>,
+): string {
+  const tocLabel = tocLabels.get(section.href.split('#')[0]);
+  if (tocLabel) return tocLabel;
+  if (title) return title;
+  // section.source is the manifest href relative to the package
+  // (epubjs sets it in toBook); a file name still beats a UUID.
+  const fileName = section.source
+    ?.split('/')
+    .at(-1)
+    ?.replace(/\.[^.]+$/, '');
+  if (fileName) return fileName;
+  return `Section ${section.index + 1}`;
+}
+
+/**
+ * A section's accessible text and document title from its loaded
+ * document. The <title> is metadata, not body text: it is returned
+ * separately so it can head the section instead of repeating inside the
+ * text, and so an image-only section that carries a <title> does not
+ * report the title as its extractable text. A document with no <body>
+ * falls back to the whole document's text.
+ */
+export function epubSectionText(content: Element): { text: string; title: string } {
+  const normalize = (value: string | null | undefined): string => value?.replace(/\s+/g, ' ').trim() ?? '';
+  // Real epubjs resolves section.load() to the document element, which has
+  // querySelector; a minimal { textContent } shape (the shape the reader
+  // tests mock) does not, so only use it when it exists instead of
+  // throwing and losing the section's text.
+  const querySelector =
+    typeof content.querySelector === 'function' ? content.querySelector.bind(content) : null;
+  const body = querySelector?.('body');
+  return {
+    text: normalize((body ?? content).textContent),
+    title: normalize(querySelector?.('title')?.textContent),
+  };
+}
 interface RenditionInternals {
   epubcfi: { isCfiString: (target: string) => boolean };
   spineByHref: Record<string, number>;
