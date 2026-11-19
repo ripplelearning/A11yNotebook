@@ -1,4 +1,6 @@
 // @vitest-environment node
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { PDFDocument } from 'pdf-lib';
 import { PdfDocument } from '../renderer/pdf-semantic/pdf-document';
@@ -147,5 +149,19 @@ describe('fillable PDF field extraction', () => {
     expect(filled.skippedFields).toEqual([{ name: 'short', reason: 'The filled value is too long for this field.' }]);
     const reloaded = await PDFDocument.load(filled.bytes);
     expect(reloaded.getForm().getTextField('plainName').getText()).toBe('Ada');
+  });
+
+  it('refuses a filled file for protected PDFs, without naming a password that may not exist', async () => {
+    const { applyPdfFormValues } = await import('../../electron/vault/pdf-form-export');
+    // pdf-lib cannot open any encrypted PDF, so both protected kinds
+    // fail here the same way; the reader disables the export buttons
+    // for both, and this is the honest fallback when it is reached.
+    // Fixtures: see src/test/protected-pdf-import.test.ts.
+    for (const name of ['permission-protected.pdf', 'password-protected.pdf']) {
+      const bytes = new Uint8Array(await readFile(path.resolve(__dirname, 'fixtures', name)));
+      await expect(applyPdfFormValues(bytes, { fullName: 'Ada Lovelace' })).rejects.toThrow(
+        'This PDF is protected, so a filled file cannot be created. The filled values remain saved in the app.',
+      );
+    }
   });
 });

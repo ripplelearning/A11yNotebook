@@ -196,6 +196,8 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [passwordInput, setPasswordInput] = useState('');
   const [passwordError, setPasswordError] = useState('');
   const [wasPasswordProtected, setWasPasswordProtected] = useState(false);
+  /** A protected PDF opened without a password: it reads, but it is read-only. */
+  const [wasPermissionProtected, setWasPermissionProtected] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   /** Fields the last filled-PDF export could not write, with their reasons. */
   const [exportSkippedFields, setExportSkippedFields] = useState<PdfFormSkippedField[]>([]);
@@ -226,6 +228,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         await pdf.ready;
         if (cancelled) return;
         if (password) setWasPasswordProtected(true);
+        else if (pdf.permissionProtected) setWasPermissionProtected(true);
         const sections: Array<{ label: string; text: string }> = [];
         let size = 0;
         for (let pageNumber = 1; pageNumber <= Math.min(pdf.numPages, MAX_SEARCHABLE_PAGES); pageNumber += 1) {
@@ -573,6 +576,12 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       <h3>
         {activePage?.label ?? `Page ${pageNumber}`} of {pageCount || '…'}
       </h3>
+      {wasPermissionProtected ? (
+        <p>
+          This PDF is protected, so it opens read-only: notes and a filled file are unavailable. The filled values stay
+          saved in the app.
+        </p>
+      ) : null}
       <div role="group" aria-label="PDF page navigation">
         <button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((page) => Math.max(1, page - 1))}>
           Previous page
@@ -693,7 +702,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           <div role="group" aria-label="Filled PDF export">
             <button
               type="button"
-              disabled={exportBusy || !formFields.length || wasPasswordProtected}
+              disabled={exportBusy || !formFields.length || wasPasswordProtected || wasPermissionProtected}
               onClick={() => void downloadFilledPdf()}
             >
               Download filled PDF
@@ -701,7 +710,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
             {isAlius ? (
               <button
                 type="button"
-                disabled={exportBusy || !formFields.length || wasPasswordProtected}
+                disabled={exportBusy || !formFields.length || wasPasswordProtected || wasPermissionProtected}
                 onClick={() => void saveFilledPdfCopy()}
               >
                 Save filled copy in library

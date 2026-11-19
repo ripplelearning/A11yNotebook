@@ -23,9 +23,9 @@ function skipReason(error: unknown): string {
  * filled file's bytes. The library file is never touched: the caller
  * decides whether the bytes go to a download or a new filled copy.
  *
- * pdf-lib cannot open a password-protected PDF, so a protected source
- * throws here; the caller reports that the filled values stay in the
- * app instead.
+ * pdf-lib cannot open a protected PDF, so a protected source throws
+ * here; the caller reports that the filled values stay in the app
+ * instead.
  *
  * Rich-text text fields need special handling. pdf-lib refuses to read
  * a rich-text field that holds no plain-text value, and its appearance
@@ -45,7 +45,7 @@ export async function applyPdfFormValues(source: Uint8Array, values: PdfFormValu
   } catch (error) {
     if (error instanceof Error && /password|encrypted/i.test(error.message)) {
       throw new Error(
-        'This PDF is password-protected, so a filled file cannot be created. The filled values remain saved in the app.',
+        'This PDF is protected, so a filled file cannot be created. The filled values remain saved in the app.',
       );
     }
     throw error;

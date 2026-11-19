@@ -115,6 +115,7 @@ function mockPdf() {
   return {
     numPages: 2,
     fingerprints: ['fixture-fingerprint', null],
+    getPermissions: async (): Promise<number[] | null> => null,
     getPageLabels: async () => null,
     getMetadata: async () => ({ info: { Title: 'Test PDF' }, metadata: null }),
     getPage: vi.fn(async (pageNumber: number) => ({
@@ -254,6 +255,16 @@ describe('local accessible document reader', () => {
     expect(await screen.findByLabelText('PDF zoom')).toHaveTextContent('125%');
     fireEvent.click(screen.getByRole('button', { name: 'Rotate page' }));
     await waitFor(() => expect(document.querySelector('.pdf-text-layer')).toHaveAttribute('data-rotation', '90'));
+  });
+
+  it('shows a read-only notice for a permission-protected PDF', async () => {
+    const pdf = mockPdf();
+    pdf.getPermissions = async () => [4];
+    getDocument.mockReturnValue({ promise: Promise.resolve(pdf), destroy: vi.fn().mockResolvedValue(undefined) });
+    render(<DocumentReader path="Docs/Protected.pdf" kind=".pdf" />);
+
+    expect(await screen.findByText('Page 1 searchable text')).toBeInTheDocument();
+    expect(await screen.findByText(/This PDF is protected, so it opens read-only: notes and a filled file are unavailable\./)).toBeInTheDocument();
   });
 
   it('uses epub.js for section navigation and search', async () => {

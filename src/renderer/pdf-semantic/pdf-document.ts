@@ -39,6 +39,15 @@ export class PdfDocument {
   metadata: PdfMetadata = {};
   pageLabels: string[] = [];
   numPages = 0;
+  /**
+   * True when the PDF restricts printing, copying, or editing. It still
+   * opens and reads — pdf.js reports the restriction through
+   * getPermissions() — but notes and a filled file are unavailable, so
+   * the reader treats it as read-only. A password-protected PDF opened
+   * with its password reports this too; the reader keeps the password
+   * state separate, since that one asks for the password at open.
+   */
+  permissionProtected = false;
   private readonly loadingTask: Promise<PDFDocumentLoadingTask>;
   private readonly pdfPromise: Promise<PDFDocumentProxy>;
   private readonly pages = new Map<number, Promise<PdfPage>>();
@@ -76,6 +85,13 @@ export class PdfDocument {
         const fingerprints = pdf.fingerprints ?? [];
         this.fingerprints = [fingerprints[0] ?? fileHash, fingerprints[1] ?? undefined];
         this.numPages = pdf.numPages;
+        // A permissions lookup must never fail the open: it is only a
+        // read-only flag, so an unavailable lookup reads as unprotected.
+        try {
+          this.permissionProtected = (await pdf.getPermissions()) !== null;
+        } catch {
+          this.permissionProtected = false;
+        }
         this.pageLabels = (await pdf.getPageLabels()) ?? [];
         const { info, metadata } = await pdf.getMetadata();
         const infoValues = info as Record<string, unknown>;

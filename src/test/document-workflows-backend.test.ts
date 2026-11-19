@@ -27,7 +27,7 @@ vi.mock('pdfjs-dist/legacy/build/pdf.mjs', async (original) => {
         promise:
           mock.protectedPdf === 'password'
             ? Promise.reject(Object.assign(new Error('Password required'), { name: 'PasswordException' }))
-            : Promise.resolve({ getPermissions: async () => [4] }),
+            : Promise.resolve({ getPermissions: async () => [4], getFieldObjects: async () => new Map() }),
         destroy: async () => undefined,
       };
     },
@@ -94,13 +94,16 @@ describe('document provenance and original imports', () => {
     }
   });
 
-  it('validates genuine PDF structure, still refuses permission-protected originals, and imports password-protected originals for the reader to unlock', async () => {
+  it('validates genuine PDF structure, imports permission-protected originals as read-only, and imports password-protected originals for the reader to unlock', async () => {
     const source = path.join(root, 'Original.pdf');
     const bytes = Buffer.from(untaggedReport(1));
     await writeFile(source, bytes);
     expect(await readImportSource(source)).toEqual(bytes);
+    // A permission-protected PDF imports as a read-only managed
+    // document: it opens in the reader, but notes and a filled file
+    // are unavailable. The bytes are stored unchanged.
     mock.protectedPdf = 'permissions';
-    await expect(readImportSource(source)).rejects.toThrow(/protected|Protected/);
+    expect(await readImportSource(source)).toEqual(bytes);
     // A password-protected PDF imports as-is: the reader asks for the
     // password once at open, and the filled values live in the app.
     mock.protectedPdf = 'password';
