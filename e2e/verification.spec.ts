@@ -508,6 +508,10 @@ test('epub opens as readable content', async () => {
     await expect(
       reader.locator('article', { hasText: 'This is the first chapter of the verification book.' }),
     ).toBeVisible({ timeout: 30000 });
+    // The accessible-text heading is the chapter title, not the blob UUID
+    // epubjs resolves the section href to (1.9.20 showed the UUID as the
+    // heading for every section of every book).
+    await expect(reader.getByRole('heading', { name: 'Chapter One' })).toBeVisible({ timeout: 30000 });
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);

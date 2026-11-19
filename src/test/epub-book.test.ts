@@ -1,7 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import type { EpubBook } from 'epubjs/src/index.js';
-import { mapEpubTocItems, openEpubBook, patchFindInSpine, repairEpubPackage } from '../renderer/features/previews/epub-book';
+import {
+  epubSectionLabel,
+  epubSectionText,
+  epubTocLabels,
+  mapEpubTocItems,
+  openEpubBook,
+  patchFindInSpine,
+  repairEpubPackage,
+} from '../renderer/features/previews/epub-book';
 import { zip } from './test-zip';
 
 // ---------------------------------------------------------------------------
@@ -14,7 +22,10 @@ import { zip } from './test-zip';
 const blobStore = new Map<string, Blob>();
 let blobCounter = 0;
 URL.createObjectURL = (blob: Blob): string => {
-  const url = `blob:mock/${++blobCounter}`;
+  // Chromium returns blob:<origin>/<uuid>; the mock mirrors that shape
+  // (deterministic per counter) so a label derived from a blob URL shows
+  // up as a UUID here exactly as it does in the app.
+  const url = `blob:mock/00000000-0000-4000-8000-${String(++blobCounter).padStart(12, '0')}`;
   blobStore.set(url, blob);
   return url;
 };
@@ -312,6 +323,181 @@ describe('openEpubBook with real epubjs', () => {
   });
 });
 
+
+/** The reader's section loop from DocumentReader.tsx, via the helpers. */
+async function loadReaderSections(book: EpubBook): Promise<Array<{ label: string; text: string }>> {
+  const tocLabels = epubTocLabels(book.navigation.toc);
+  const loaded: Array<{ label: string; text: string }> = [];
+  for (const section of book.spine.spineItems) {
+    let text = '';
+    let title = '';
+    try {
+      const extracted = epubSectionText(await section.load());
+      text = extracted.text;
+      title = extracted.title;
+    } catch {
+      text = '';
+      title = '';
+    }
+    loaded.push({ label: epubSectionLabel(section, title, tocLabels), text });
+  }
+  return loaded;
+}
+
+function imagePage(titleElement: string, image: string): string {
+  return `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head>${titleElement}</head><body><div><img src="${image}" alt="Scanned page"/></div></body></html>`;
+}
+
+/** A two-page scanned book: every section is a single page image. */
+function imageOnlyEntries(options: { titles: boolean; toc: boolean }): Record<string, string | Buffer> {
+  const title = (label: string): string => (options.titles ? `<title>${label}</title>` : '');
+  const navBody = options.toc
+    ? '<nav xmlns:epub="http://www.idpf.org/2007/ops" epub:type="toc"><ol><li><a href="page1.xhtml">Page 1</a></li><li><a href="page2.xhtml">Page 2</a></li></ol></nav>'
+    : '<nav xmlns:epub="http://www.idpf.org/2007/ops" epub:type="toc"><ol></ol></nav>';
+  return {
+    mimetype: 'application/epub+zip',
+    'META-INF/container.xml': CONTAINER_OPF,
+    'OEBPS/content.opf': `<?xml version="1.0" encoding="UTF-8"?><package xmlns="http://www.idpf.org/2007/opf" unique-identifier="test-book" version="3.0"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Test Book</dc:title><dc:language>en</dc:language><dc:identifier id="test-book">urn:uuid:test-book</dc:identifier></metadata><manifest><item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/><item id="p1" href="page1.xhtml" media-type="application/xhtml+xml"/><item id="p2" href="page2.xhtml" media-type="application/xhtml+xml"/><item id="img1" href="images/page1.jpg" media-type="image/jpeg"/><item id="img2" href="images/page2.jpg" media-type="image/jpeg"/></manifest><spine><itemref idref="p1"/><itemref idref="p2"/></spine></package>`,
+    'OEBPS/nav.xhtml': `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Navigation</title></head><body>${navBody}</body></html>`,
+    'OEBPS/page1.xhtml': imagePage(title('Page 1'), 'images/page1.jpg'),
+    'OEBPS/page2.xhtml': imagePage(title('Page 2'), 'images/page2.jpg'),
+    'OEBPS/images/page1.jpg': TINY_JPEG,
+    'OEBPS/images/page2.jpg': TINY_JPEG,
+  };
+}
+
+describe('epubTocLabels, epubSectionLabel, epubSectionText', () => {
+  it('flattens nested table-of-contents entries, strips fragments, and keeps the first label per section', () => {
+    const labels = epubTocLabels([
+      {
+        label: 'Chapter One',
+        href: 'blob:mock/00000000-0000-4000-8000-000000000001',
+        subitems: [
+          {
+            label: '1.1 Intro',
+            href: 'blob:mock/00000000-0000-4000-8000-000000000001#intro',
+            subitems: undefined,
+          },
+        ],
+      },
+      {
+        label: 'Chapter Two',
+        href: 'blob:mock/00000000-0000-4000-8000-000000000002#top',
+        subitems: undefined,
+      },
+    ]);
+    expect(labels.get('blob:mock/00000000-0000-4000-8000-000000000001')).toBe('Chapter One');
+    expect(labels.get('blob:mock/00000000-0000-4000-8000-000000000002')).toBe('Chapter Two');
+  });
+
+  it('prefers the table-of-contents title, then the document title, then the file name', () => {
+    const section = {
+      href: 'blob:mock/00000000-0000-4000-8000-000000000001',
+      source: 'Text/chapter1.xhtml',
+      index: 0,
+    };
+    const toc = new Map([['blob:mock/00000000-0000-4000-8000-000000000001', 'Chapter One']]);
+    expect(epubSectionLabel(section, 'Chapter One', toc)).toBe('Chapter One');
+    expect(epubSectionLabel(section, 'Chapter One', new Map())).toBe('Chapter One');
+    expect(epubSectionLabel(section, '', new Map())).toBe('chapter1');
+    expect(epubSectionLabel({ href: section.href, index: 4 }, '', new Map())).toBe('Section 5');
+  });
+
+  it('never uses the blob UUID as the label', () => {
+    const section = {
+      href: 'blob:file:///c83aa0f9-11cc-48f8-ad60-b5084ec13b43',
+      source: 'page1.xhtml',
+      index: 0,
+    };
+    expect(epubSectionLabel(section, '', new Map())).toBe('page1');
+    expect(epubSectionLabel(section, '', new Map())).not.toContain('c83aa0f9');
+  });
+
+  it('reads body text only and returns the document title separately', () => {
+    const doc = new DOMParser().parseFromString(
+      `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Chapter One</title></head><body><h1>Chapter One</h1><p>Body text.</p></body></html>`,
+      'application/xhtml+xml',
+    );
+    expect(epubSectionText(doc.documentElement)).toEqual({
+      // No whitespace sits between </h1> and <p> in the fixture, so the
+      // two text runs concatenate directly — the same as the old
+      // whole-document textContent did. What changed is only that the
+      // <title> no longer repeats inside the text.
+      text: 'Chapter OneBody text.',
+      title: 'Chapter One',
+    });
+  });
+
+  it('reports no text for an image-only body, even when it carries a title', () => {
+    const doc = new DOMParser().parseFromString(
+      `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Page 1</title></head><body><div><img src="page1.jpg" alt="Scanned page one"/></div></body></html>`,
+      'application/xhtml+xml',
+    );
+    expect(epubSectionText(doc.documentElement)).toEqual({ text: '', title: 'Page 1' });
+  });
+
+  it('falls back to the whole document when there is no body', () => {
+    const doc = new DOMParser().parseFromString(
+      `<?xml version="1.0" encoding="UTF-8"?><html xmlns="http://www.w3.org/1999/xhtml"><head><title>Loose text</title></head></html>`,
+      'application/xhtml+xml',
+    );
+    expect(epubSectionText(doc.documentElement)).toEqual({ text: 'Loose text', title: 'Loose text' });
+  });
+
+  it('reads the text of a minimal { textContent } shape with no querySelector', () => {
+    // The shape the reader tests mock section.load() as: a plain object
+    // carrying only textContent. The helper must not throw on it and lose
+    // the section's text.
+    expect(
+      epubSectionText({ textContent: '  First chapter text.  ' } as unknown as Element),
+    ).toEqual({ text: 'First chapter text.', title: '' });
+  });
+});
+
+describe('reader section labels and text over real epubjs opens', () => {
+  it('shows table-of-contents titles and body text, without repeating the title, for a text book', async () => {
+    const book = await openEpubBook(new Uint8Array(zip(epub3Entries())));
+    try {
+      const sections = await loadReaderSections(book);
+      expect(sections).toHaveLength(1);
+      // Before the fix the label was the blob UUID
+      // (blob:<origin>/00000000-0000-4000-8000-…) and the text repeated
+      // the <title> ("Chapter OneChapter OneThe first chapter…").
+      expect(sections[0].label).toBe('Chapter One');
+      expect(sections[0].text).toBe('Chapter OneThe first chapter body text for testing.');
+      expect(sections[0].text).not.toContain('Chapter OneChapter One');
+    } finally {
+      book.destroy();
+    }
+  });
+
+  it('shows table-of-contents titles and no extractable text for an image-only book', async () => {
+    const book = await openEpubBook(new Uint8Array(zip(imageOnlyEntries({ titles: true, toc: true }))));
+    try {
+      // The sections genuinely contain no text (a title is metadata, not
+      // body text), so the reader reports no extractable text — the
+      // heading is the page title, not a blob UUID.
+      expect(await loadReaderSections(book)).toEqual([
+        { label: 'Page 1', text: '' },
+        { label: 'Page 2', text: '' },
+      ]);
+    } finally {
+      book.destroy();
+    }
+  });
+
+  it('falls back to the file name when a section has neither a table-of-contents entry nor a title', async () => {
+    const book = await openEpubBook(new Uint8Array(zip(imageOnlyEntries({ titles: false, toc: false }))));
+    try {
+      expect(await loadReaderSections(book)).toEqual([
+        { label: 'page1', text: '' },
+        { label: 'page2', text: '' },
+      ]);
+    } finally {
+      book.destroy();
+    }
+  });
+});
 
 describe('patchFindInSpine', () => {
   function patchedRendition() {

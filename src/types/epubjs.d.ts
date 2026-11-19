@@ -20,6 +20,8 @@ declare module 'epubjs/src/index.js' {
   interface EpubSection {
     index: number;
     href: string;
+    /** Manifest href relative to the package, set by epubjs in toBook. */
+    source?: string;
     load: () => Promise<Element>;
     hooks: {
       serialize: {

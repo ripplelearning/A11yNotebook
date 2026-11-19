@@ -17,7 +17,7 @@ import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf
 import { syncFormFieldValues } from '../../pdf-semantic/pdf-form-dom';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
-import { openEpubBook } from './epub-book';
+import { epubSectionLabel, epubSectionText, epubTocLabels, openEpubBook } from './epub-book';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
 import DocxReader from './DocxReader';
@@ -989,6 +989,11 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         const items = opened.spine.spineItems.slice(0, MAX_SEARCHABLE_PAGES);
         const loaded: Array<{ label: string; text: string }> = [];
         const texts = new Map<string, string>();
+        // Section headings come from the table of contents, the section
+        // document's <title>, or the manifest file name — never from
+        // section.href, which epubjs resolves to a blob: URL whose last
+        // segment is the blob UUID (see epubSectionLabel).
+        const tocLabels = epubTocLabels(opened.navigation.toc);
         let size = 0;
         for (const section of items) {
           // One section that cannot be loaded must not fail the whole
@@ -997,15 +1002,18 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           // reader showing "could not be opened" for a book that is
           // otherwise readable.
           let text = '';
+          let title = '';
           try {
-            const content = await section.load();
-            text = content.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+            const extracted = epubSectionText(await section.load());
+            text = extracted.text;
+            title = extracted.title;
           } catch {
             text = '';
+            title = '';
           }
           size += text.length;
           if (size > MAX_SEARCHABLE_TEXT) break;
-          loaded.push({ label: section.href.split('/').at(-1) || `Section ${section.index + 1}`, text });
+          loaded.push({ label: epubSectionLabel(section, title, tocLabels), text });
           texts.set(section.href, text);
           if (cancelled) break;
         }
