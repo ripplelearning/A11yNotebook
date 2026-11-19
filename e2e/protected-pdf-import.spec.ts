@@ -87,7 +87,12 @@ test('permission-protected PDF imports as a read-only copy and reads with its fi
     await importAsCopy(app, page, fixturePath, 'permission-protected.pdf');
 
     await openGridEntry(page, 'permission-protected.pdf');
-    await expect(page.getByText('Protected import fixture')).toBeVisible({ timeout: 30000 });
+    // The page text lives in both the accessible text and the visual
+    // text layer: scope to the accessible text so the assertion is
+    // unambiguous.
+    await expect(
+      page.getByRole('region', { name: 'Accessible text for PDF page 1' }).getByText('Protected import fixture'),
+    ).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole('heading', { name: 'Form fields' })).toBeVisible({ timeout: 30000 });
     await expect(page.getByLabel('Your full name (required)')).toBeVisible();
 
