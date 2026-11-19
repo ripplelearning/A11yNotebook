@@ -1420,13 +1420,18 @@ export default function App() {
     // The annotation store only accepts Markdown and HTML notes; asking
     // for annotations on a plain-text note is rejected, so skip it
     // instead of reporting a load failure.
+    // The success branch is guarded by `cancelled`, and so is the failure
+    // branch: a load superseded by opening another note must not report
+    // its failure over the new note's state.
     if (currentNote?.path && /\.(?:md|html)$/i.test(currentNote.path))
       void window.a11yNotebook?.vault
         .getAnnotations?.(currentNote.path)
         .then((items) => {
           if (!cancelled) setNoteAnnotations(items);
         })
-        .catch(() => setStatusMessage('Could not load annotations.'));
+        .catch(() => {
+          if (!cancelled) setStatusMessage('Could not load annotations.');
+        });
     return () => {
       cancelled = true;
     };
@@ -4171,6 +4176,39 @@ export default function App() {
    * move or rename commit already refuses to run while any note is dirty.
    */
   const applyOrganizeResult = (ops: StagedOp[], finalVault: VaultInfo, partial: boolean) => {
+    // Remap open-note paths synchronously first: the filesystem moves
+    // have already committed, so anything that runs on the new vault —
+    // the annotations load, the external-change check — must see the new
+    // paths, not the stale old ones. The old code re-read every moved
+    // note before remapping, so in the window between the new vault
+    // landing and the remap the open note still pointed at its old path:
+    // the annotations load rejected with ENOENT and "Could not load
+    // annotations." overwrote "Staged changes applied.", and the
+    // external-change check read the note as deleted and announced a
+    // spurious conflict. Content is still re-read asynchronously below;
+    // a move never changes content, so the remap never waits on it.
+    const remappedNotes = openNotes.map((note) => {
+      const nextPath = remapPathAfterOps(note.path, ops);
+      if (nextPath === null) return null;
+      if (nextPath === note.path) return note;
+      return {
+        ...note,
+        id: nextPath,
+        path: nextPath,
+        title: nextPath
+          .split('/')
+          .at(-1)!
+          .replace(/\.(?:md|html|htm|txt)$/i, ''),
+      };
+    });
+    setOpenNotes(remappedNotes.filter((note): note is OpenNote => note !== null));
+    setSelectedTab((current) => {
+      if (!openNotes.some((note) => note.id === current)) return current;
+      return remapPathAfterOps(current, ops) ?? 'notes-files';
+    });
+    setTreeSelection((current) => (current ? remapPathAfterOps(current, ops) : current));
+    setSelectedNotebookPath((current) => (current ? (remapPathAfterOps(current, ops) ?? undefined) : current));
+    for (const note of openNotes) synchronization.clearConflict(note.path);
     setVault(finalVault);
     setStatusMessage(
       partial
@@ -4384,6 +4422,30 @@ export default function App() {
       setRelocatingPath(undefined);
     }
     if (findEntry(updated.entries, source)) return; // Native confirmation was cancelled.
+    // Remap open-note paths synchronously first: the filesystem move has
+    // committed, so the annotations load and the external-change check
+    // must see the new paths, not the stale old ones, while the content
+    // re-read below awaits — same stale-path window as
+    // applyOrganizeResult (a load for the old path rejects with ENOENT
+    // and a missing file reads as an external deletion).
+    setOpenNotes(
+      openNotes.map((note) => {
+        const nextPath = moved(note.path);
+        if (nextPath === note.path) return note;
+        return {
+          ...note,
+          id: nextPath,
+          path: nextPath,
+          title: nextPath
+            .split('/')
+            .at(-1)!
+            .replace(/\.(?:md|html|htm|txt)$/i, ''),
+        };
+      }),
+    );
+    setSelectedTab(moved(selectedTab));
+    setTreeSelection(destination);
+    for (const note of openNotes) synchronization.clearConflict(note.path);
     const refreshed = await Promise.all(
       openNotes.map(async (note) => {
         const nextPath = moved(note.path);
@@ -4402,9 +4464,6 @@ export default function App() {
       }),
     );
     setOpenNotes(refreshed);
-    setSelectedTab(moved(selectedTab));
-    setTreeSelection(destination);
-    for (const note of openNotes) synchronization.clearConflict(note.path);
     setStatusMessage('Item moved and local links repaired.');
   };
 
