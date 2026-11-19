@@ -389,6 +389,12 @@ export default function App() {
   // The spreadsheet preview's save function, when one is open: Ctrl+S
   // (save-current-note) calls it when the attachment tab is active.
   const spreadsheetSaveRef = useRef<(() => Promise<void>) | null>(null);
+  // The pending autosave timer, when one is scheduled: a manual save
+  // (Ctrl+S, the Save button, the command palette) clears it first, so
+  // the autosave can never fire with the pre-save baseline after the
+  // manual save has already written the note — that stale-baseline
+  // save throws "Note changed on disk".
+  const autosaveTimeoutRef = useRef<number | null>(null);
   // The caret each still-open note was last at, same lifetime as the
   // mode memory: tabbing away and back restores it, closing forgets it.
   const noteCaretRef = useRef<Partial<Record<string, { start: number; end: number }>>>({});
@@ -4995,6 +5001,14 @@ export default function App() {
       return;
     }
     if (!window.a11yNotebook || activeConflict || synchronization.checking) return;
+    // A manual save supersedes any pending autosave: clear its timer
+    // now, before the disk write, so the autosave cannot fire during
+    // this save with the pre-save baseline and throw "Note changed on
+    // disk" once the write has already landed.
+    if (autosaveTimeoutRef.current !== null) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
     const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     try {
       await window.a11yNotebook.vault.saveNote(note.path, contentToSave, note.saved);
@@ -5190,6 +5204,7 @@ export default function App() {
       return;
     const contentToSave = /\.html?$/i.test(note.path) ? sanitizeNoteHtml(note.content, note.path) : note.content;
     const timeout = window.setTimeout(() => {
+      autosaveTimeoutRef.current = null;
       void window.a11yNotebook?.vault
         .saveNote(note.path, contentToSave, note.saved)
         .then(() => {
@@ -5210,7 +5225,11 @@ export default function App() {
           void checkDisk(note.path);
         });
     }, settings.autosaveDelay);
-    return () => window.clearTimeout(timeout);
+    autosaveTimeoutRef.current = timeout;
+    return () => {
+      window.clearTimeout(timeout);
+      if (autosaveTimeoutRef.current === timeout) autosaveTimeoutRef.current = null;
+    };
   }, [
     openNotes,
     selectedTab,
