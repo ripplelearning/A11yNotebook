@@ -487,6 +487,48 @@ test('insert an image into a Markdown note with the toolbar', async () => {
   }
 });
 
+test('paste a web-copied picture into an open HTML note in source mode inserts it inline', async () => {
+  let launched: LaunchedApp | null = null;
+  try {
+    launched = await launchPasteApp();
+    const { app, page, paths } = launched;
+    await openNotebook(page, 'Seeded');
+    await openGridEntry(page, 'Page.html');
+    await expect(page.getByRole('heading', { name: 'Page', level: 1 })).toBeVisible({ timeout: 30000 });
+    await pressShortcut(page, 'Control+E');
+    // HTML notes open in Plain source by default: this is the view a
+    // paste into an open HTML note lands in, and it used to swallow a
+    // picture paste entirely (the source textarea only handled
+    // Markdown). No switch to Rich text here, deliberately.
+    const editor = page.getByRole('textbox', { name: 'HTML source' });
+    await expect(editor).toBeVisible({ timeout: 30000 });
+    await editor.click();
+    await writeWebImageClipboard(
+      app,
+      '<html><body><!--StartFragment-->' +
+        '<img src="https://upload.wikimedia.org/wikipedia/commons/thumb/a/ab/Example.jpg/320px-Example.jpg" alt="A red dot on white">' +
+        '<!--EndFragment--></body></html>',
+    );
+    await pressShortcut(page, 'Control+V');
+    await expect(editor).toHaveValue(/<img[^>]*alt="A red dot on white"[^>]*>/, { timeout: 30000 });
+    await expect(editor).toHaveValue(/vault-file:\/\/attachment\/Seeded\/Pasted%20image\.png/);
+    await pressShortcut(page, 'Control+S');
+    await expect(statusLine(page)).toContainText('Saved Page.', { timeout: 30000 });
+    // The picture survives the save: the note file holds the inline
+    // image with its description, and the reading view shows it.
+    const saved = readFileSync(path.join(paths.libraryDir, 'Seeded', 'Page.html'), 'utf8');
+    expect(saved).toContain('alt="A red dot on white"');
+    expect(saved).toContain('vault-file://attachment/Seeded/Pasted%20image.png');
+    expect(readFileSync(path.join(paths.libraryDir, 'Seeded', 'Pasted image.png')).length).toBeGreaterThan(0);
+    await pressShortcut(page, 'Control+E');
+    await expect(statusLine(page)).toContainText('Mode switched to read-only.', { timeout: 30000 });
+    await expect(page.getByRole('img', { name: 'A red dot on white' })).toBeVisible({ timeout: 30000 });
+    expect(launched.pageErrors).toEqual([]);
+  } finally {
+    if (launched) await closeApp(launched.app, launched.paths);
+  }
+});
+
 test('paste a web-copied picture into an open HTML note inserts it inline', async () => {
   let launched: LaunchedApp | null = null;
   try {

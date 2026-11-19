@@ -146,6 +146,109 @@ describe('markdown images', () => {
     );
   });
 
+  it('inserts a pasted picture into HTML source at the caret, keeping its description', async () => {
+    const onChange = vi.fn();
+    const onPasteImage = vi
+      .fn()
+      .mockResolvedValue({ src: 'Pasted image.png', alt: 'A red dot on white' });
+    render(
+      <MarkdownDocument
+        content={'<h1>Page</h1><p>Some text.</p>'}
+        mode="edit"
+        format="html"
+        notePath="Seeded/Page.html"
+        links={[]}
+        onChange={onChange}
+        onNavigate={vi.fn()}
+        onPasteImage={onPasteImage}
+      />,
+    );
+    const editor = screen.getByRole('textbox', { name: 'HTML source' }) as HTMLTextAreaElement;
+    editor.setSelectionRange(13, 13);
+    const file = new File(['pixels'], 'image.png', { type: 'image/png' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [file],
+        getData: (type: string) =>
+          type === 'text/html' ? '<img src="https://example.com/dot.png" alt="A red dot on white">' : '',
+      },
+    });
+    await waitFor(() => expect(onPasteImage).toHaveBeenCalledWith('Seeded/Page.html', file, 'A red dot on white'));
+    // The source view is the default edit mode for HTML notes, so this
+    // is the path a paste into an open HTML note takes: the inline
+    // image lands in the stored HTML with its description, at the
+    // library URL the sanitizer writes for a note-relative picture.
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.stringContaining(
+          '<img src="vault-file://attachment/Seeded/Pasted%20image.png" alt="A red dot on white">',
+        ),
+      ),
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.stringContaining('<h1>Page</h1>'),
+      ),
+    );
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(expect.stringContaining('<p>Some text.</p>')),
+    );
+  });
+
+  it('keeps quotes in a pasted picture description in HTML source', async () => {
+    const onChange = vi.fn();
+    const onPasteImage = vi.fn().mockResolvedValue({ src: 'Pasted image.png', alt: 'A "quoted" dot' });
+    render(
+      <MarkdownDocument
+        content={'<h1>Page</h1>'}
+        mode="edit"
+        format="html"
+        notePath="Seeded/Page.html"
+        links={[]}
+        onChange={onChange}
+        onNavigate={vi.fn()}
+        onPasteImage={onPasteImage}
+      />,
+    );
+    const editor = screen.getByRole('textbox', { name: 'HTML source' }) as HTMLTextAreaElement;
+    editor.setSelectionRange(13, 13);
+    const file = new File(['pixels'], 'image.png', { type: 'image/png' });
+    fireEvent.paste(editor, {
+      clipboardData: {
+        files: [file],
+        getData: (type: string) =>
+          type === 'text/html' ? '<img src="https://example.com/dot.png" alt="A &quot;quoted&quot; dot">' : '',
+      },
+    });
+    await waitFor(() => expect(onPasteImage).toHaveBeenCalledWith('Seeded/Page.html', file, 'A "quoted" dot'));
+    await waitFor(() =>
+      expect(onChange).toHaveBeenCalledWith(
+        expect.stringContaining('alt="A &quot;quoted&quot; dot"'),
+      ),
+    );
+  });
+
+  it('leaves a text paste in HTML source to the browser', () => {
+    const onChange = vi.fn();
+    const onPasteImage = vi.fn();
+    render(
+      <MarkdownDocument
+        content={'<h1>Page</h1>'}
+        mode="edit"
+        format="html"
+        notePath="Seeded/Page.html"
+        links={[]}
+        onChange={onChange}
+        onNavigate={vi.fn()}
+        onPasteImage={onPasteImage}
+      />,
+    );
+    fireEvent.paste(screen.getByRole('textbox', { name: 'HTML source' }), {
+      clipboardData: { files: [], getData: () => 'plain text' },
+    });
+    expect(onPasteImage).not.toHaveBeenCalled();
+  });
+
   it('leaves a text paste in Markdown source to the browser', () => {
     const onChange = vi.fn();
     const onPasteImage = vi.fn();
