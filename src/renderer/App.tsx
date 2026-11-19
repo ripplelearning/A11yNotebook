@@ -3091,6 +3091,10 @@ export default function App() {
     }
     const current = linkTargetNotebook();
     if (current) return current;
+    // With a note open, the Notes and Files grid lives in the navigation
+    // pane for the open notebook: paste into it without asking, the same
+    // as pasting from the Notes and Files tab itself.
+    if (selectedNotebookPath && notebooks.includes(selectedNotebookPath)) return selectedNotebookPath;
     if (!notebooks.length) {
       setStatusMessage('Create a notebook first, then paste into it.');
       return null;
@@ -3269,6 +3273,20 @@ export default function App() {
   };
 
   /**
+   * The Notes and Files grid lives in the navigation pane while a note,
+   * attachment, or cognitive tool is open (the main grid is unmounted
+   * then, so the two never duplicate). Panel paste is available from
+   * that grid too: without this, Ctrl+V with a note open reaches no
+   * paste handler at all.
+   */
+  const notesGridInNavPane =
+    !!vault &&
+    !securityLocked &&
+    (selectedTab === 'attachment' ||
+      selectedTab === 'assets' ||
+      openNotes.some((note) => note.id === selectedTab));
+
+  /**
    * Paste into the current panel. OS-copied files and folders keep their
    * existing paths (a folder becomes a notebook or a library); a whole
    * file now goes through the guided flow — validation, copy or Alius,
@@ -3280,7 +3298,13 @@ export default function App() {
     if (pasteBusy) return;
     const target = event.target as HTMLElement;
     if (target.closest('[contenteditable="true"], textarea, input, select')) return;
-    if (selectedTab !== 'libraries' && selectedTab !== 'notebooks' && selectedTab !== 'notes-files') return;
+    if (
+      selectedTab !== 'libraries' &&
+      selectedTab !== 'notebooks' &&
+      selectedTab !== 'notes-files' &&
+      !notesGridInNavPane
+    )
+      return;
     const bridge = window.a11yNotebook?.vault;
     if (!bridge?.getPathForFile || !bridge.pasteInspect) {
       setStatusMessage('Pasting files is not available in this build.');
@@ -7090,6 +7114,7 @@ export default function App() {
           data-region="navigation"
           aria-label="Navigation pane"
           tabIndex={-1}
+          onPaste={(event) => void handlePanelPaste(event)}
         >
           <h2>{vault?.name ?? 'Library'}</h2>
           {showCommandButtons && (
@@ -7143,10 +7168,7 @@ export default function App() {
           two never duplicate. Focus Mode hides the whole navigation
           pane, which is the one case where the grid hides with a
           document open. */}
-          {vault && !securityLocked &&
-          (selectedTab === 'attachment' ||
-            selectedTab === 'assets' ||
-            openNotes.some((note) => note.id === selectedTab)) ? (
+          {notesGridInNavPane ? (
             <NotesFilesScreen
               showCommandButtons={showCommandButtons}
               title={viewTitles['notes-files']}
@@ -8156,12 +8178,12 @@ export default function App() {
             if (!capture) throw new Error('Web capture is unavailable.');
             const result = await capture(url, notebookPath, format);
             setVault(result.vault);
-            const entry = findEntry(result.vault.entries, result.notePath);
-            if (entry) await openEntry(entry);
+            // Captured pages never open automatically: the user opens them
+            // when ready (Tristen, 1.9.17 retest).
             setStatusMessage(
               result.omittedImages
                 ? `Web page captured as ${format.toUpperCase()}. ${result.omittedImages} image${result.omittedImages === 1 ? ' was' : 's were'} unavailable; the note explains the omissions.`
-                : `Web page captured as ${format.toUpperCase()} and opened as a note.`,
+                : `Web page captured as ${format.toUpperCase()}. Open it from Notes and Files when ready.`,
             );
           }}
         />

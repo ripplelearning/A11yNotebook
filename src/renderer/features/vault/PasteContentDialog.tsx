@@ -81,7 +81,7 @@ export default function PasteContentDialog({ source, notebookName, onSubmit, onC
               />
               New note
             </label>
-            <p>An editable note, opened after pasting.</p>
+            <p>An editable note, kept in the notebook for you to open when ready.</p>
             <label>
               <input
                 type="radio"
