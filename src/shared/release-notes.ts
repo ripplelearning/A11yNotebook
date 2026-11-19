@@ -20,6 +20,9 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
       'The “Install on Exit” update option is removed: it silently did nothing, so the downloaded state now offers Restart and install or Close.',
       'The paste dialog starts on the New note versus File attachment choice, and pasted pictures keep their alt text and captions.',
       'Moving to the next section of an ePub book no longer shows the new chapter under the old section heading: stale reader reports about the section being left are now ignored.',
+      'Protected PDFs can now be imported as read-only managed documents, and pasting a picture into an open HTML note now inserts it inline with its description.',
+      'Pasted or captured items no longer open on their own, and pasting works from the navigation-pane grid too.',
+      'Saving a note by hand no longer triggers a spurious “Note changed on disk” message from the pending autosave.',
     ],
   },
 ];
