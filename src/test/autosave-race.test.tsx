@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
-import type { VaultInfo, VaultTask } from '../shared/types';
+import type { VaultInfo } from '../shared/types';
 import type { VaultChangedEvent } from '../shared/search';
 import type { VaultReminderEvent } from '../shared/reminders';
 import { DEFAULT_SETTINGS } from '../shared/settings';
@@ -47,7 +47,7 @@ function setup() {
       open: vi.fn(async () => vault),
       get: vi.fn(async () => vault),
       readNote: vi.fn(async () => content),
-      saveNote: vi.fn(async (_path: string, value: string, _expected?: string) => {
+      saveNote: vi.fn(async (_path: string, value: string) => {
         content = value;
         return new Promise<void>((resolve) => {
           saveNoteResolvers.push(resolve);
