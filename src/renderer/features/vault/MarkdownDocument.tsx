@@ -280,12 +280,16 @@ export default function MarkdownDocument({
                 onChange(format === 'html' ? sanitizeNoteHtml(event.target.value, notePath) : event.target.value)
               }
               onPaste={async (event) => {
-                // A picture pasted into Markdown source has no editor to
-                // catch it: store it beside the note and insert the
-                // image reference at the caret, keeping the description
-                // the source provides. Anything that is not a picture
-                // falls through to the browser's default paste.
-                if (format !== 'markdown' || !onPasteImage || !notePath) return;
+                // A picture pasted into Markdown or HTML source has no
+                // editor to catch it: store it beside the note and insert
+                // the inline reference at the caret, keeping the
+                // description the source provides. Anything that is not
+                // a picture falls through to the browser's default paste.
+                // (HTML notes open in this source view by default — the
+                // rich-text editor's own paste handler only runs after
+                // switching to Rich text — so without this branch a
+                // picture pasted into an open HTML note landed nowhere.)
+                if ((format !== 'markdown' && format !== 'html') || !onPasteImage || !notePath) return;
                 const file = Array.from(event.clipboardData?.files ?? []).find((item) =>
                   item.type.startsWith('image/'),
                 );
@@ -299,9 +303,28 @@ export default function MarkdownDocument({
                 const end = area.selectionEnd ?? start;
                 const inserted = await onPasteImage(notePath, file, description);
                 if (!inserted) return;
-                const reference = markdownImageReference(inserted.alt, inserted.src);
-                onChange(area.value.slice(0, start) + reference + area.value.slice(end));
-                const caret = start + reference.length;
+                let caret: number;
+                if (format === 'markdown') {
+                  const reference = markdownImageReference(inserted.alt, inserted.src);
+                  onChange(area.value.slice(0, start) + reference + area.value.slice(end));
+                  caret = start + reference.length;
+                } else {
+                  // HTML source: insert the inline image element at the
+                  // caret. The element is built through the DOM so a
+                  // description with quotes or ampersands stays intact,
+                  // and the sanitizer rewrites its note-relative path to
+                  // the library URL the note stores, as for typed edits.
+                  const image = document.createElement('img');
+                  image.setAttribute('src', inserted.src);
+                  image.setAttribute('alt', inserted.alt);
+                  const snippet = sanitizeNoteHtml(image.outerHTML, notePath);
+                  if (!snippet) return;
+                  const next = area.value.slice(0, start) + snippet + area.value.slice(end);
+                  const sanitized = sanitizeNoteHtml(next, notePath);
+                  onChange(sanitized);
+                  const at = sanitized.indexOf(snippet, start);
+                  caret = (at === -1 ? start : at) + snippet.length;
+                }
                 // The parent re-renders the controlled textarea with the
                 // new value; restore the caret after that render lands.
                 window.setTimeout(() => {
