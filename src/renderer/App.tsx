@@ -6643,6 +6643,15 @@ export default function App() {
             : null;
       if (!target) return;
       event.preventDefault();
+      // A contextmenu event aimed at the open menu itself must not replace
+      // it. The keydown handler already opened the menu and focus moved to
+      // its first item, so a trailing contextmenu event — the one Windows
+      // delivers for the Applications key after the keydown, where
+      // Shift+F10 delivers none — targets that focused menu item. The item
+      // carries no data-context, so re-opening here derived the 'general'
+      // context and swapped the item menu ("Actions for …") for the
+      // Application menu. The open menu stays, whichever key opened it.
+      if (target.closest('[role="menu"]')) return;
       contextMenuHandlerRef.current(target, { x: event.clientX, y: event.clientY });
     };
     window.addEventListener('keydown', listener);
