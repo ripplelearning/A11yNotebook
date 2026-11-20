@@ -757,4 +757,28 @@ describe('reminder date-time display for search results', () => {
   it('keeps an unparseable value instead of guessing', () => {
     expect(formatReminderDateTime('not a date')).toBe('not a date');
   });
+
+  it('converts a stored ISO timestamp to local time instead of reading its UTC fields as local', () => {
+    // A reminder set for 10:40 AM America/Los_Angeles is stored as the
+    // UTC instant 2026-11-22T18:40:00.000Z; search results showed
+    // "11/22/2026, 6:40 PM" because the local-marker pattern matched the
+    // ISO prefix and read the UTC fields as local time. The expected value
+    // is computed from the instant's local fields so the test holds on any
+    // host timezone. The two cases cover each other: on a UTC host the
+    // Z case is invisible (offset zero) but the offset case differs, and
+    // on a -08:00 host the reverse holds — at least one fails without the
+    // fix on every timezone.
+    const expectedFor = (value: string): string => {
+      const date = new Date(value);
+      const meridiem = date.getHours() >= 12 ? 'PM' : 'AM';
+      const hour12 = date.getHours() % 12 || 12;
+      return `${String(date.getMonth() + 1).padStart(2, '0')}/${String(date.getDate()).padStart(2, '0')}/${date.getFullYear()}, ${hour12}:${String(date.getMinutes()).padStart(2, '0')} ${meridiem}`;
+    };
+    expect(formatReminderDateTime('2026-11-22T18:40:00.000Z')).toBe(
+      expectedFor('2026-11-22T18:40:00.000Z'),
+    );
+    expect(formatReminderDateTime('2026-11-22T10:40:00-08:00')).toBe(
+      expectedFor('2026-11-22T10:40:00-08:00'),
+    );
+  });
 });
