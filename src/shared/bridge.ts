@@ -17,6 +17,7 @@ import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './s
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
 import type { PdfFormSkippedField, PdfFormValues, PdfFormValuesRecord } from './pdf-form';
+import type { OcrLanguageStatus } from './ocr';
 import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './docx-annotations';
 import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
 import type { AttachmentPreview } from './attachments';
@@ -127,6 +128,26 @@ export interface VaultBridge {
   }>;
   /** Write the stored values into a filled copy inside the same notebook. */
   saveFilledPdfCopy(path: string): Promise<{ path: string; name: string; skippedFields?: PdfFormSkippedField[] }>;
+  /**
+   * Save OCR results into a file: a managed file is updated in place,
+   * while an Alius saves a copy in the library and never touches the
+   * original. `bytes` are the whole file with the recognized text written
+   * in; the result names the file that now holds the text and whether it
+   * is a new copy. Absent on older bridges.
+   */
+  saveOcrText?(
+    path: string,
+    kind: '.pdf' | '.epub',
+    bytes: Uint8Array,
+  ): Promise<{ path: string; name: string; copied: boolean }>;
+  /** OCR languages with whether each one's data is already on this computer; absent on older bridges. */
+  listOcrLanguages?(): Promise<OcrLanguageStatus[]>;
+  /**
+   * Download a language's OCR data once when it is not already on this
+   * computer; returns whether the data is ready and whether this call
+   * downloaded it. Absent on older bridges.
+   */
+  ensureOcrLanguage?(code: string): Promise<{ ready: boolean; downloaded: boolean }>;
   listDocxAnnotations(path: string): Promise<DocxAnnotation[]>;
   addDocxAnnotation(annotation: NewDocxAnnotation): Promise<DocxAnnotation>;
   updateDocxAnnotation(path: string, id: string, update: DocxAnnotationUpdate): Promise<DocxAnnotation>;

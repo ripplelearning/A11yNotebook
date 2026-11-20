@@ -392,6 +392,10 @@ export default function App() {
   // The spreadsheet preview's save function, when one is open: Ctrl+S
   // (save-current-note) calls it when the attachment tab is active.
   const spreadsheetSaveRef = useRef<(() => Promise<void>) | null>(null);
+  // The OCR save function, when temporary OCR text is showing in the
+  // document reader: Ctrl+S (save-current-note) calls it when the
+  // attachment tab is active, writing the recognized text into the file.
+  const ocrSaveRef = useRef<(() => Promise<void>) | null>(null);
   // The pending autosave timer, when one is scheduled: a manual save
   // (Ctrl+S, the Save button, the command palette) clears it first, so
   // the autosave can never fire with the pre-save baseline after the
@@ -5105,6 +5109,8 @@ export default function App() {
     if (!note) {
       if (selectedTab === 'attachment' && window.a11yNotebook && spreadsheetSaveRef.current) {
         await spreadsheetSaveRef.current();
+      } else if (selectedTab === 'attachment' && window.a11yNotebook && ocrSaveRef.current) {
+        await ocrSaveRef.current();
       }
       return;
     }
@@ -7605,6 +7611,7 @@ export default function App() {
                     if (entry) void openEntry(entry);
                   }}
                   spreadsheetSaveRef={spreadsheetSaveRef}
+                  ocrSaveRef={ocrSaveRef}
                   onSpreadsheetFileCreated={() => {
                     void refreshVault();
                   }}

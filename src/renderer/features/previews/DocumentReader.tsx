@@ -1,8 +1,9 @@
 import type { EpubBook, EpubTocItem } from 'epubjs/src/index.js';
 import DOMPurify from 'dompurify';
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type MutableRefObject } from 'react';
 import { imageUrl } from '../../../shared/attachments';
 import { isAliusPath } from '../../../shared/alius';
+import { mergeOcrTexts, type OcrPageResult } from '../../../shared/ocr';
 import {
   describePdfFormFillState,
   detectPdfXfa,
@@ -16,8 +17,13 @@ import {
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { syncFormFieldValues } from '../../pdf-semantic/pdf-form-dom';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
-import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
+import { createDocumentReaderModel } from './document-reader-model';
 import { epubInitialSectionIndex, epubSectionLabel, epubSectionText, epubTocLabels, openEpubBook } from './epub-book';
+import OcrDialog from './OcrDialog';
+import type { OcrEngine, OcrEngineLogger } from './ocr-engine';
+import { buildOcrEpub, buildOcrPdf } from './ocr-save';
+import { extractEpubSectionImages } from './ocr-images';
+import type { OcrRunUnit } from './ocr-runner';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
 import DocxReader from './DocxReader';
@@ -126,13 +132,19 @@ const pdfPasswords = new Map<string, string>();
 interface Props {
   path: string;
   kind: '.pdf' | '.epub' | '.docx';
+  /**
+   * App's Ctrl+S calls the OCR save function registered here, when
+   * temporary OCR text is showing — the same shortcut as saving a note.
+   */
+  ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** Engine factory for OCR; defaults to the real on-device engine. Tests pass a fake. */
+  ocrEngineFactory?: (language: string, onLogger: OcrEngineLogger) => Promise<OcrEngine>;
 }
 
 type ByteDocumentProps = Omit<Props, 'kind'> & { kind: '.pdf' | '.epub' };
 
-const emptyDocument: DocumentReaderModel = createDocumentReaderModel([]);
 
-function useDocumentBytes(path: string, kind: ByteDocumentProps['kind']) {
+function useDocumentBytes(path: string, kind: ByteDocumentProps['kind'], reloadKey = 0) {
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [loadedPath, setLoadedPath] = useState('');
   const [error, setError] = useState('');
@@ -157,16 +169,32 @@ function useDocumentBytes(path: string, kind: ByteDocumentProps['kind']) {
     return () => {
       cancelled = true;
     };
-  }, [kind, path]);
+  }, [kind, path, reloadKey]);
 
   return { bytes: loadedPath === path ? bytes : null, error };
 }
 
-function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
+function PdfReader({
+  bytes,
+  path,
+  ocrSaveRef,
+  ocrEngineFactory,
+  ocrStatus,
+  setOcrStatus,
+  onReload,
+}: {
+  bytes: Uint8Array;
+  path: string;
+  ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  ocrEngineFactory?: (language: string, onLogger: OcrEngineLogger) => Promise<OcrEngine>;
+  ocrStatus: string;
+  setOcrStatus: (value: string) => void;
+  onReload: () => void;
+}) {
   const [document, setDocument] = useState<PdfDocument | null>(null);
   const [pageCount, setPageCount] = useState(0);
   const [pageNumber, setPageNumber] = useState(1);
-  const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
+  const [baseSections, setBaseSections] = useState<Array<{ label: string; text: string }>>([]);
   const [activePage, setActivePage] = useState<PdfPage | null>(null);
   const [loadingText, setLoadingText] = useState(true);
   const [search, setSearch] = useState('');
@@ -201,6 +229,11 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   const [exportBusy, setExportBusy] = useState(false);
   /** Fields the last filled-PDF export could not write, with their reasons. */
   const [exportSkippedFields, setExportSkippedFields] = useState<PdfFormSkippedField[]>([]);
+  // OCR ("OCR this file"): temporary results, shown in the reader until
+  // the user saves them with Ctrl+S or the dialog's Save button.
+  const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
+  const [ocrResults, setOcrResults] = useState<Map<number, OcrPageResult> | null>(null);
+  const [ocrSaveBusy, setOcrSaveBusy] = useState(false);
   const valuesRef = useRef<PdfFormValues>({});
   const errorsRef = useRef<ReadonlyMap<string, string>>(new Map());
   const valuesDirtyRef = useRef(false);
@@ -244,7 +277,7 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           if (cancelled) return;
           setDocument(pdf);
           setPageCount(pdf.numPages);
-          setReaderModel(createDocumentReaderModel(sections));
+          setBaseSections(sections);
           setLoadingText(false);
           const fields = (await pdf.getFormFields?.().catch(() => [] as PdfFormField[])) ?? [];
           if (!cancelled) setFormFields(fields);
@@ -402,6 +435,106 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     setExportSkippedFields([]);
   }, [path]);
 
+  // Temporary OCR text, merged into the reader only where the page had
+  // no extractable text — a page that already reads keeps its own text.
+  const ocrTextMap = useMemo(() => {
+    if (!ocrResults) return new Map<number, string>();
+    const map = new Map<number, string>();
+    for (const [index, result] of ocrResults) {
+      if (result.text.trim()) map.set(index, result.text);
+    }
+    return map;
+  }, [ocrResults]);
+  const readerModel = useMemo(() => {
+    const { texts } = mergeOcrTexts(
+      baseSections.map((section) => section.text),
+      ocrTextMap,
+    );
+    return createDocumentReaderModel(baseSections.map((section, index) => ({ label: section.label, text: texts[index] })));
+  }, [baseSections, ocrTextMap]);
+  /** Pages with no extractable text — the ones OCR reads. */
+  const emptyPageIndexes = useMemo(
+    () => baseSections.map((_, index) => index).filter((index) => !baseSections[index].text.trim()),
+    [baseSections],
+  );
+  const currentPageHasOcrText = ocrTextMap.has(pageNumber - 1);
+  const canSaveOcr =
+    ocrResults !== null &&
+    [...ocrResults.values()].some((result) => result.text.trim()) &&
+    !wasPasswordProtected &&
+    !wasPermissionProtected &&
+    document !== null &&
+    !ocrSaveBusy;
+
+  /**
+   * Save the temporary OCR text into the file — the Ctrl+S path. The
+   * file is re-read first, so a change on disk since the open is not
+   * overwritten blindly. A managed file updates in place; an Alius saves
+   * a copy in the library and never touches the original.
+   */
+  const saveOcr = useCallback(async () => {
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.saveOcrText || !ocrResults || !document) return;
+    const usable = new Map<number, OcrPageResult>();
+    for (const [index, result] of ocrResults) {
+      if (result.text.trim() && !baseSections[index]?.text.trim()) usable.set(index, result);
+    }
+    if (usable.size === 0) {
+      setOcrStatus('There is no recognized text to save.');
+      return;
+    }
+    setOcrSaveBusy(true);
+    try {
+      const fresh = await fetch(imageUrl(path)).then(async (response) => {
+        if (!response.ok) throw new Error('The PDF could not be read again.');
+        return new Uint8Array(await response.arrayBuffer());
+      });
+      const pageSizes = new Map<number, { width: number; height: number; rotation: number }>();
+      for (const index of usable.keys()) {
+        const page = await document.getPage(index + 1);
+        const [x0, y0, x1, y1] = page.view;
+        pageSizes.set(index, { width: x1 - x0, height: y1 - y0, rotation: page.canRotate });
+      }
+      const next = await buildOcrPdf(fresh, usable, pageSizes);
+      const saved = await vault.saveOcrText(path, '.pdf', next);
+      if (saved.copied) {
+        setOcrStatus(`Saved OCR copy as ${saved.name}. The original file was not changed.`);
+      } else {
+        setOcrResults(null);
+        setOcrStatus('OCR text saved into the file.');
+        onReload();
+      }
+    } catch (reason) {
+      setOcrStatus(reason instanceof Error ? reason.message : 'The OCR text could not be saved.');
+    } finally {
+      setOcrSaveBusy(false);
+    }
+  }, [ocrResults, document, baseSections, path, onReload, setOcrStatus]);
+
+  // Register the save function for App's Ctrl+S while temporary OCR text
+  // is showing; clear it when the text is saved or the reader closes.
+  const saveOcrRef = useRef(saveOcr);
+  saveOcrRef.current = saveOcr;
+  useEffect(() => {
+    if (!ocrSaveRef) return;
+    ocrSaveRef.current = canSaveOcr ? () => saveOcrRef.current() : null;
+    return () => {
+      if (ocrSaveRef) ocrSaveRef.current = null;
+    };
+  }, [ocrSaveRef, canSaveOcr]);
+
+  /** OCR units: one lazy render per page with no extractable text. */
+  const prepareOcrUnits = useCallback(async (): Promise<OcrRunUnit[]> => {
+    if (!document) return [];
+    return emptyPageIndexes.map((index) => ({
+      index,
+      loadImages: async () => {
+        const page = await document.getPage(index + 1);
+        return [await page.renderCanvas(3, 0, 3)];
+      },
+    }));
+  }, [document, emptyPageIndexes]);
+
   /** Required fields must be filled before a filled file is produced. */
   const validateForExport = useCallback((): boolean => {
     if (!missingRequired.length) return true;
@@ -535,6 +668,21 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     };
   }, [document, pageNumber, rotation, zoom]);
 
+  // Temporary OCR text lives in the semantic text area, alongside the
+  // extracted text: the page render above replaces the semantic DOM on
+  // every page turn, so this runs after it and re-appends the text.
+  useEffect(() => {
+    const semantic = semanticRef.current;
+    if (!semantic) return;
+    semantic.querySelector('[data-ocr-text]')?.remove();
+    const text = ocrTextMap.get(pageNumber - 1);
+    if (!text) return;
+    const paragraph = window.document.createElement('p');
+    paragraph.dataset.ocrText = 'true';
+    paragraph.textContent = text;
+    semantic.append(paragraph);
+  }, [ocrTextMap, activePage, pageNumber]);
+
   const matchingPages = readerModel.findSections(search);
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
 
@@ -605,7 +753,25 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         <button type="button" onClick={() => setRotation((value) => (value + 90) % 360)}>
           Rotate page
         </button>
+        {emptyPageIndexes.length > 0 && !loadingText ? (
+          <button type="button" onClick={() => setOcrDialogOpen(true)}>
+            OCR this file
+          </button>
+        ) : null}
       </div>
+      {ocrStatus ? <p role="status">{ocrStatus}</p> : null}
+      {ocrDialogOpen ? (
+        <OcrDialog
+          kind=".pdf"
+          total={emptyPageIndexes.length}
+          isAlius={isAlius}
+          onClose={() => setOcrDialogOpen(false)}
+          onComplete={(results) => setOcrResults(results)}
+          onSaveNow={() => saveOcr()}
+          prepareUnits={prepareOcrUnits}
+          createEngine={ocrEngineFactory}
+        />
+      ) : null}
       <label>
         Find in PDF
         <input
@@ -637,10 +803,21 @@ function PdfReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       {renderError ? <p role="alert">{renderError}</p> : null}
       <section aria-label={`Accessible text for PDF page ${pageNumber}`} aria-live="polite">
         <h4>Page text</h4>
+        {currentPageHasOcrText ? (
+          <p>Recognized text (temporary). Press Ctrl+S to save it into the file.</p>
+        ) : null}
         <div ref={semanticRef}>
           {readerModel.sections[pageNumber - 1]?.text ||
             (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
         </div>
+        {!loadingText && !baseSections[pageNumber - 1]?.text.trim() && emptyPageIndexes.length > 0 ? (
+          <p>
+            This page has no extractable text.{' '}
+            <button type="button" onClick={() => setOcrDialogOpen(true)}>
+              OCR this file
+            </button>
+          </p>
+        ) : null}
       </section>
       {document && (formFields.length > 0 || hasXfa) ? (
         <section aria-label="Form fields">
@@ -763,8 +940,29 @@ function EpubToc({ items, onSelect }: { items: EpubTocItem[]; onSelect: (href: s
   );
 }
 
-function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
-  const [readerModel, setReaderModel] = useState<DocumentReaderModel>(emptyDocument);
+function EpubReader({
+  bytes,
+  path,
+  ocrSaveRef,
+  ocrEngineFactory,
+  ocrStatus,
+  setOcrStatus,
+  onReload,
+}: {
+  bytes: Uint8Array;
+  path: string;
+  ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  ocrEngineFactory?: (language: string, onLogger: OcrEngineLogger) => Promise<OcrEngine>;
+  ocrStatus: string;
+  setOcrStatus: (value: string) => void;
+  onReload: () => void;
+}) {
+  const [baseSections, setBaseSections] = useState<Array<{ label: string; text: string }>>([]);
+  // OCR ("OCR this file"): temporary results, shown in the reader until
+  // the user saves them with Ctrl+S or the dialog's Save button.
+  const [ocrDialogOpen, setOcrDialogOpen] = useState(false);
+  const [ocrResults, setOcrResults] = useState<Map<number, OcrPageResult> | null>(null);
+  const [ocrSaveBusy, setOcrSaveBusy] = useState(false);
   const [sectionIndex, setSectionIndex] = useState(0);
   const [search, setSearch] = useState('');
   const [error, setError] = useState('');
@@ -1018,7 +1216,7 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
           if (cancelled) break;
         }
         if (!cancelled) {
-          setReaderModel(createDocumentReaderModel(loaded));
+          setBaseSections(loaded);
           setSectionTexts(texts);
           // A book usually opens on its cover, which has no extractable
           // text: without this, the first thing a screen-reader user
@@ -1196,6 +1394,98 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
     });
   }, [book, sectionIndex, positionReady]);
 
+  // Temporary OCR text, merged into the reader only where the section
+  // had no extractable text — a section that already reads keeps its own
+  // text.
+  const isAlius = isAliusPath(path);
+  const ocrTextMap = useMemo(() => {
+    if (!ocrResults) return new Map<number, string>();
+    const map = new Map<number, string>();
+    for (const [index, result] of ocrResults) {
+      if (result.text.trim()) map.set(index, result.text);
+    }
+    return map;
+  }, [ocrResults]);
+  const readerModel = useMemo(() => {
+    const { texts } = mergeOcrTexts(
+      baseSections.map((section) => section.text),
+      ocrTextMap,
+    );
+    return createDocumentReaderModel(baseSections.map((section, index) => ({ label: section.label, text: texts[index] })));
+  }, [baseSections, ocrTextMap]);
+  /** Sections with no extractable text — the ones OCR reads. */
+  const emptySectionIndexes = useMemo(
+    () => baseSections.map((_, index) => index).filter((index) => !baseSections[index].text.trim()),
+    [baseSections],
+  );
+  const currentSectionHasOcrText = ocrTextMap.has(sectionIndex);
+  const canSaveOcr =
+    ocrResults !== null &&
+    [...ocrResults.values()].some((result) => result.text.trim()) &&
+    book !== null &&
+    !ocrSaveBusy;
+
+  /**
+   * Save the temporary OCR text into the file — the Ctrl+S path. The
+   * file is re-read first, so a change on disk since the open is not
+   * overwritten blindly. A managed file updates in place; an Alius saves
+   * a copy in the library and never touches the original.
+   */
+  const saveOcr = useCallback(async () => {
+    const vault = window.a11yNotebook?.vault;
+    if (!vault?.saveOcrText || !ocrResults) return;
+    const usable = new Map<number, string>();
+    for (const [index, result] of ocrResults) {
+      if (result.text.trim() && !baseSections[index]?.text.trim()) usable.set(index, result.text);
+    }
+    if (usable.size === 0) {
+      setOcrStatus('There is no recognized text to save.');
+      return;
+    }
+    setOcrSaveBusy(true);
+    try {
+      const fresh = await fetch(imageUrl(path)).then(async (response) => {
+        if (!response.ok) throw new Error('The ePub could not be read again.');
+        return new Uint8Array(await response.arrayBuffer());
+      });
+      const next = await buildOcrEpub(fresh, usable);
+      const saved = await vault.saveOcrText(path, '.epub', next);
+      if (saved.copied) {
+        setOcrStatus(`Saved OCR copy as ${saved.name}. The original file was not changed.`);
+      } else {
+        setOcrResults(null);
+        setOcrStatus('OCR text saved into the file.');
+        onReload();
+      }
+    } catch (reason) {
+      setOcrStatus(reason instanceof Error ? reason.message : 'The OCR text could not be saved.');
+    } finally {
+      setOcrSaveBusy(false);
+    }
+  }, [ocrResults, baseSections, path, onReload, setOcrStatus]);
+
+  // Register the save function for App's Ctrl+S while temporary OCR text
+  // is showing; clear it when the text is saved or the reader closes.
+  const saveOcrRef = useRef(saveOcr);
+  saveOcrRef.current = saveOcr;
+  useEffect(() => {
+    if (!ocrSaveRef) return;
+    ocrSaveRef.current = canSaveOcr ? () => saveOcrRef.current() : null;
+    return () => {
+      if (ocrSaveRef) ocrSaveRef.current = null;
+    };
+  }, [ocrSaveRef, canSaveOcr]);
+
+  /** OCR units: the embedded images of sections with no extractable text. */
+  const prepareOcrUnits = useCallback(async (): Promise<OcrRunUnit[]> => {
+    const extracted = await extractEpubSectionImages(bytes, emptySectionIndexes);
+    const byIndex = new Map(extracted.map((unit) => [unit.index, unit.images]));
+    return emptySectionIndexes.map((index) => ({
+      index,
+      loadImages: async () => byIndex.get(index) ?? [],
+    }));
+  }, [bytes, emptySectionIndexes]);
+
   const matchingSections = readerModel.findSections(search);
   const activeSection = readerModel.sections[sectionIndex];
 
@@ -1222,7 +1512,25 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         <button type="button" onClick={beginEpubAnnotation}>
           Annotate selection
         </button>
+        {emptySectionIndexes.length > 0 ? (
+          <button type="button" onClick={() => setOcrDialogOpen(true)}>
+            OCR this file
+          </button>
+        ) : null}
       </div>
+      {ocrStatus ? <p role="status">{ocrStatus}</p> : null}
+      {ocrDialogOpen ? (
+        <OcrDialog
+          kind=".epub"
+          total={emptySectionIndexes.length}
+          isAlius={isAlius}
+          onClose={() => setOcrDialogOpen(false)}
+          onComplete={(results) => setOcrResults(results)}
+          onSaveNow={() => saveOcr()}
+          prepareUnits={prepareOcrUnits}
+          createEngine={ocrEngineFactory}
+        />
+      ) : null}
       {book?.navigation?.toc?.length ? (
         <nav aria-label="ePub table of contents">
           <h4>Table of contents</h4>
@@ -1258,7 +1566,17 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
       ) : activeSection ? (
         <article aria-label={activeSection.label}>
           <h4>{activeSection.label}</h4>
+          {currentSectionHasOcrText ? (
+            <p>Recognized text (temporary). Press Ctrl+S to save it into the file.</p>
+          ) : null}
           <p>{activeSection.text || 'No extractable text was found in this section.'}</p>
+          {!activeSection.text && emptySectionIndexes.length > 0 ? (
+            <p>
+              <button type="button" onClick={() => setOcrDialogOpen(true)}>
+                OCR this file
+              </button>
+            </p>
+          ) : null}
         </article>
       ) : (
         <p>Loading ePub content…</p>
@@ -1349,8 +1667,15 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
   );
 }
 
-function ByteDocumentReader({ path, kind }: ByteDocumentProps) {
-  const { bytes, error } = useDocumentBytes(path, kind);
+function ByteDocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: ByteDocumentProps) {
+  const [reloadKey, setReloadKey] = useState(0);
+  const { bytes, error } = useDocumentBytes(path, kind, reloadKey);
+  // The OCR save status lives here, not in the inner reader: saving reloads
+  // the reader (new key), which would wipe a status held inside it — and
+  // the save announcement must reach the screen reader after the reload.
+  const [ocrStatus, setOcrStatus] = useState('');
+  useEffect(() => setOcrStatus(''), [path]);
+  const requestReload = useCallback(() => setReloadKey((key) => key + 1), []);
   return error ? (
     <>
       <p role="alert">{error}</p>
@@ -1359,13 +1684,31 @@ function ByteDocumentReader({ path, kind }: ByteDocumentProps) {
   ) : !bytes ? (
     <p role="status">Loading {kind.slice(1)} document…</p>
   ) : kind === '.pdf' ? (
-    <PdfReader key={path} bytes={bytes} path={path} />
+    <PdfReader
+      key={`${path}:${reloadKey}`}
+      bytes={bytes}
+      path={path}
+      ocrSaveRef={ocrSaveRef}
+      ocrEngineFactory={ocrEngineFactory}
+      ocrStatus={ocrStatus}
+      setOcrStatus={setOcrStatus}
+      onReload={requestReload}
+    />
   ) : (
-    <EpubReader key={path} bytes={bytes} path={path} />
+    <EpubReader
+      key={`${path}:${reloadKey}`}
+      bytes={bytes}
+      path={path}
+      ocrSaveRef={ocrSaveRef}
+      ocrEngineFactory={ocrEngineFactory}
+      ocrStatus={ocrStatus}
+      setOcrStatus={setOcrStatus}
+      onReload={requestReload}
+    />
   );
 }
 
-export default function DocumentReader({ path, kind }: Props) {
+export default function DocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: Props) {
   if (kind === '.docx') return <DocxReader path={path} />;
-  return <ByteDocumentReader path={path} kind={kind} />;
+  return <ByteDocumentReader path={path} kind={kind} ocrSaveRef={ocrSaveRef} ocrEngineFactory={ocrEngineFactory} />;
 }

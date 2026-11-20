@@ -16,6 +16,12 @@ files:
   - package.json
   - '!**/*.map'
 
+# The on-device OCR runtime (Tesseract worker, core, and English language
+# data) ships inside the app so OCR works offline; see ocr-runtime/README.md.
+extraResources:
+  - from: ocr-runtime
+    to: ocr-runtime
+
 win:
   extraResources:
     - from: out/native/A11yNotebook.OpenWith.exe

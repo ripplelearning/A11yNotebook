@@ -64,6 +64,7 @@ vi.mock('electron', () => ({
     registerSchemesAsPrivileged: vi.fn((schemes: { scheme: string; privileges?: Record<string, boolean> }[]) => {
       mock.registeredSchemes = schemes;
     }),
+    handle: vi.fn(),
   },
   session: { defaultSession: { setPermissionRequestHandler: vi.fn() } },
   ipcMain: {

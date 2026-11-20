@@ -61,9 +61,9 @@ test('epub opens on the first readable chapter, not the textless cover', async (
     // The cover is still reachable, and still honestly reports no text.
     await reader.getByRole('button', { name: 'Previous section' }).click();
     await expect(reader.locator('h3')).toContainText('Section 1 of 3', { timeout: 30000 });
-    await expect(reader.locator('article p')).toContainText('No extractable text was found in this section.', {
-      timeout: 30000,
-    });
+    await expect(
+      reader.getByText('No extractable text was found in this section.'),
+    ).toBeVisible({ timeout: 30000 });
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);

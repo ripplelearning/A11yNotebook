@@ -42,6 +42,7 @@ import type { VaultChangedEvent } from '../../src/shared/search';
 import type { NewAnnotation, AnnotationUpdate } from '../../src/shared/annotations';
 import type { NewPdfAnnotation, PdfAnnotationUpdate } from '../../src/shared/pdf-annotation';
 import type { PdfFormValues, PdfFormValuesRecord } from '../../src/shared/pdf-form';
+import { OCR_MAX_FILE_BYTES, ocrCopyFileName } from '../../src/shared/ocr';
 import type { DocxAnnotationUpdate, NewDocxAnnotation } from '../../src/shared/docx-annotations';
 import type { EpubAnnotationUpdate, NewEpubAnnotation } from '../../src/shared/epub-annotations';
 import type { ReadingPositionInput, VaultEntry, VaultInfo } from '../../src/shared/types';
@@ -3546,6 +3547,39 @@ export function setupVaultIpc(
       );
       access.assertCurrent();
       return { path: created.path, name: created.path.split('/').at(-1)!, skippedFields: filled.skippedFields };
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultOcrSave, async (event, relative: unknown, kind: unknown, bytes: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || (kind !== '.pdf' && kind !== '.epub') || !(bytes instanceof Uint8Array)) {
+      throw new Error('Invalid OCR save request.');
+    }
+    if (bytes.byteLength === 0 || bytes.byteLength > OCR_MAX_FILE_BYTES) {
+      throw new Error('This file is too large to save.');
+    }
+    const access = captureVaultAccess(event, isTrustedSender);
+    const vault = access.vault;
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const alius = await vault.resolveAlius(relative);
+      if (alius) {
+        // Saving OCR for an Alius never touches the original: the text
+        // goes into a new managed copy in the same notebook.
+        const notebookPath = path.posix.dirname(relative) === '.' ? '' : path.posix.dirname(relative);
+        const baseName = path.posix.basename(relative).replace(/\.alius$/i, '') || 'Document';
+        const created = await copyImportedDocument(
+          vault,
+          path.posix.join(notebookPath, ocrCopyFileName(baseName)),
+          Buffer.from(bytes),
+          false,
+          access.assertCurrent,
+        );
+        access.assertCurrent();
+        return { path: created.path, name: created.path.split('/').at(-1)!, copied: true };
+      }
+      await vault.replaceDocumentBytes(relative, Buffer.from(bytes), access.assertCurrent);
+      access.assertCurrent();
+      return { path: relative, name: relative.split('/').at(-1)!, copied: false };
     });
   });
   ipcMain.handle(IPC_CHANNELS.vaultDocxAnnotations, async (event, relative: unknown) => {

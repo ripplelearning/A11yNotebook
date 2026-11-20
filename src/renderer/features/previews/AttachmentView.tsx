@@ -23,6 +23,8 @@ interface Props {
   onOpenTranscript?: () => void;
   /** App's Ctrl+S calls the spreadsheet save function registered here. */
   spreadsheetSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** App's Ctrl+S calls the OCR save function registered here, when temporary OCR text is showing. */
+  ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
   /** Called with the new path after an .xls file is saved as .xlsx. */
   onSpreadsheetFileCreated?: (relativePath: string) => void;
 }
@@ -38,6 +40,7 @@ export default function AttachmentView({
   transcriptPath,
   onOpenTranscript,
   spreadsheetSaveRef,
+  ocrSaveRef,
   onSpreadsheetFileCreated,
 }: Props) {
   const [description, setDescription] = useState(alt);
@@ -119,9 +122,9 @@ export default function AttachmentView({
           srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">${html}`}
         />
       ) : preview.kind === '.pdf' ? (
-        <DocumentReader key={preview.path} path={preview.path} kind=".pdf" />
+        <DocumentReader key={preview.path} path={preview.path} kind=".pdf" ocrSaveRef={ocrSaveRef} />
       ) : preview.kind === '.epub' ? (
-        <DocumentReader key={preview.path} path={preview.path} kind=".epub" />
+        <DocumentReader key={preview.path} path={preview.path} kind=".epub" ocrSaveRef={ocrSaveRef} />
       ) : preview.kind === '.docx' ? (
         <DocumentReader key={preview.path} path={preview.path} kind=".docx" />
       ) : spreadsheet ? (

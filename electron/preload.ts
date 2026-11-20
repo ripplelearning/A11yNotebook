@@ -126,6 +126,9 @@ const CHANNELS: typeof SharedChannels = {
   vaultPdfFormValuesSave: 'vault:pdf-form-values-save',
   vaultPdfFilledDownload: 'vault:pdf-filled-download',
   vaultPdfFilledCopy: 'vault:pdf-filled-copy',
+  vaultOcrSave: 'vault:ocr-save',
+  vaultOcrLanguages: 'vault:ocr-languages',
+  vaultOcrEnsureLanguage: 'vault:ocr-ensure-language',
   vaultDocxAnnotations: 'vault:docx-annotations',
   vaultDocxAnnotationAdd: 'vault:docx-annotation-add',
   vaultDocxAnnotationUpdate: 'vault:docx-annotation-update',
@@ -289,6 +292,10 @@ const bridge: NotebookBridge = {
       ipcRenderer.invoke(CHANNELS.vaultPdfFormValuesSave, relativePath, values, identity),
     downloadFilledPdf: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledDownload, relativePath),
     saveFilledPdfCopy: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledCopy, relativePath),
+    saveOcrText: (relativePath, kind, bytes) =>
+      ipcRenderer.invoke(CHANNELS.vaultOcrSave, relativePath, kind, bytes),
+    listOcrLanguages: () => ipcRenderer.invoke(CHANNELS.vaultOcrLanguages),
+    ensureOcrLanguage: (code) => ipcRenderer.invoke(CHANNELS.vaultOcrEnsureLanguage, code),
     listDocxAnnotations: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultDocxAnnotations, relativePath),
     addDocxAnnotation: (annotation) => ipcRenderer.invoke(CHANNELS.vaultDocxAnnotationAdd, annotation),
     updateDocxAnnotation: (relativePath, id, update) =>
