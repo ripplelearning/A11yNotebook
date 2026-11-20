@@ -850,17 +850,41 @@ describe('accessible details view', () => {
     expect(await screen.findByRole('dialog', { name: 'Insert link' })).toBeInTheDocument();
   });
 
-  it('titles the window with the current view and names the tasks grid for its library', async () => {
+  it('titles the window with the current view and the open notebook in the notebook views', async () => {
     const { menu } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
-    menu('show-notebooks');
-    expect(document.title).toBe('Notebooks | Study | A11y Notebook');
+    // With no notebook open, the notebook views omit the middle segment
+    // instead of naming the library or leaving it empty.
+    menu('show-notes-files');
+    expect(document.title).toBe('Notes & Files | A11y Notebook');
     menu('show-tasks');
     expect(await screen.findByRole('table', { name: 'Tasks in Study' })).toBeInTheDocument();
-    expect(document.title).toBe('Tasks | Study | A11y Notebook');
+    expect(document.title).toBe('Tasks | A11y Notebook');
     menu('show-assets');
-    expect(document.title).toBe('Cognitive Tools | Study | A11y Notebook');
-    menu('show-notes-files');
-    expect(document.title).toBe('Notes & Files | Study | A11y Notebook');
+    expect(document.title).toBe('Cognitive Tools | A11y Notebook');
+    menu('show-calendar');
+    expect(document.title).toBe('Calendar | A11y Notebook');
+    menu('show-reminders');
+    expect(document.title).toBe('Reminders | A11y Notebook');
+    // Open the Research notebook: each notebook view now names it.
+    menu('show-notebooks');
+    const notebooks = screen.getByRole('grid', { name: 'Notebooks' });
+    fireEvent.keyDown(within(notebooks).getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
+    expect(document.title).toBe('Notes & Files | Research | A11y Notebook');
+    menu('show-tasks');
+    expect(document.title).toBe('Tasks | Research | A11y Notebook');
+    menu('show-assets');
+    expect(document.title).toBe('Cognitive Tools | Research | A11y Notebook');
+    menu('show-calendar');
+    expect(document.title).toBe('Calendar | Research | A11y Notebook');
+    menu('show-reminders');
+    expect(document.title).toBe('Reminders | Research | A11y Notebook');
+    // The Libraries, Notebooks, and Contents views keep naming the library.
+    menu('show-notebooks');
+    expect(document.title).toBe('Notebooks | Study | A11y Notebook');
+    menu('show-contents');
+    expect(document.title).toBe('Contents | Study | A11y Notebook');
+    menu('show-libraries');
+    expect(document.title).toBe('Libraries | Study | A11y Notebook');
   });
 });
