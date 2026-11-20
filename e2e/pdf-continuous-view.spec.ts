@@ -1,3 +1,5 @@
+// Continuous-view specs must drive the app through launchApp's window, not the
+// Playwright `page` fixture (which launches a bare browser that CI may not have).
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
