@@ -334,7 +334,8 @@ envelopes are not parsed or exposed as tasks.
 Use `[[Note title]]` to link to a note by title, or a relative Markdown link such as `[Related](./Related.md)`.
 In read mode, activate a resolved link to open its note in a tab. Missing wiki links are marked and announced as
 missing. The right pane lists outgoing links and backlinks for the current note. Choose **Bookmark note** to
-bookmark or unbookmark it; saved bookmarks appear in the right pane and open the note when selected. From
+bookmark or unbookmark it; the Bookmarks section of the right pane lists the open note's bookmarks — with no
+note open, it lists every bookmark in the library — and activating one opens its note at the bookmark. From
 edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at or before the cursor, and
 **Bookmark position at cursor** (Ctrl+Alt+J) bookmarks the cursor position; both are also in the Tools
 menu and the command palette. In reading mode the same shortcuts bookmark the heading you are reading —

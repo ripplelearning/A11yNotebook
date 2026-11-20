@@ -3700,7 +3700,14 @@ export default function App() {
 
   const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
     const note = openNotes.find((item) => item.id === selectedTab);
-    if (!note || !window.a11yNotebook) return;
+    if (!note) {
+      // The keyboard path reaches this command even when the palette
+      // shows it disabled (a preview open, or no note open at all):
+      // say so instead of silently doing nothing.
+      setStatusMessage('Open a note to set a bookmark.');
+      return;
+    }
+    if (!window.a11yNotebook) return;
     const isHtml = /\.html?$/i.test(note.path);
     // The edit caret when there is a plain-text editor. Reading mode
     // and the rich-text editor have no textarea, so a caret read there
@@ -8027,40 +8034,48 @@ export default function App() {
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
               <ul>
-                {bookmarks.map((bookmark) => {
-                  // A user-chosen name wins; otherwise the title as the
-                  // reader sees it (a heading stored from source may
-                  // carry Markdown formatting).
-                  const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
-                  return (
-                    <li key={bookmark.id}>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const entry = findEntry(vault?.entries ?? [], bookmark.path);
-                          if (entry) {
-                            if (bookmark.anchor)
-                              setPendingBookmarkAnchor({
-                                path: bookmark.path,
-                                anchor: bookmark.anchor,
-                                nonce: Date.now(),
-                              });
-                            void openEntry(entry);
-                          }
-                        }}
-                      >
-                        {bookmark.anchor?.kind === 'heading'
-                          ? `${label} — ${bookmark.path.split('/').pop()}`
-                          : bookmark.anchor?.kind === 'offset'
-                            ? `${label} (position)`
-                            : label}
-                      </button>{' '}
-                      <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
-                        Remove
-                      </button>
-                    </li>
-                  );
-                })}
+                {/* Only the open note's bookmarks: bookmarks for other
+                    notes open those notes when activated, so listing
+                    them here reads as bookmarks of the note on screen.
+                    With no note open there is no open file to scope to,
+                    so the library's bookmarks show — the list is the
+                    only way to jump into a closed note at its bookmark. */}
+                {bookmarks
+                  .filter((bookmark) => !currentNote || bookmark.path === currentNote.path)
+                  .map((bookmark) => {
+                    // A user-chosen name wins; otherwise the title as the
+                    // reader sees it (a heading stored from source may
+                    // carry Markdown formatting).
+                    const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
+                    return (
+                      <li key={bookmark.id}>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const entry = findEntry(vault?.entries ?? [], bookmark.path);
+                            if (entry) {
+                              if (bookmark.anchor)
+                                setPendingBookmarkAnchor({
+                                  path: bookmark.path,
+                                  anchor: bookmark.anchor,
+                                  nonce: Date.now(),
+                                });
+                              void openEntry(entry);
+                            }
+                          }}
+                        >
+                          {bookmark.anchor?.kind === 'heading'
+                            ? `${label} — ${bookmark.path.split('/').pop()}`
+                            : bookmark.anchor?.kind === 'offset'
+                              ? `${label} (position)`
+                              : label}
+                        </button>{' '}
+                        <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
+                          Remove
+                        </button>
+                      </li>
+                    );
+                  })}
               </ul>
             </section>
           </aside>
