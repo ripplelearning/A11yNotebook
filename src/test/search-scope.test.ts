@@ -117,4 +117,35 @@ describe('searchTasksRemindersAppointments', () => {
     expect(due.snippet).not.toContain('2026-11-10');
     expect(due.snippet).toContain('high priority');
   });
+
+  it('shows a reminder at its local time, not the UTC fields of its stored ISO timestamp', () => {
+    // The reported bug: a reminder set for 11/22/2026, 10:40 AM
+    // America/Los_Angeles showed as "11/22/2026, 6:40 PM" in search
+    // results. The stored scheduledAt is the UTC instant of that local
+    // time; the expected display is computed from the instant's local
+    // fields so the test holds on any host timezone.
+    const [reminder] = searchTasksRemindersAppointments(
+      { text: 'dentist', kind: 'reminder' },
+      {
+        tasks: [],
+        reminders: [
+          {
+            id: 'r-dentist',
+            source: 'task',
+            title: 'Call the dentist',
+            path: 'Research/Note.md',
+            scheduledAt: '2026-11-22T18:40:00.000Z',
+            originalScheduledAt: '2026-11-22T18:40:00.000Z',
+            status: 'pending',
+          },
+        ],
+        appointments: [],
+      },
+    );
+    const at = new Date('2026-11-22T18:40:00.000Z');
+    const meridiem = at.getHours() >= 12 ? 'PM' : 'AM';
+    const hour12 = at.getHours() % 12 || 12;
+    const expected = `${String(at.getMonth() + 1).padStart(2, '0')}/${String(at.getDate()).padStart(2, '0')}/${at.getFullYear()}, ${hour12}:${String(at.getMinutes()).padStart(2, '0')} ${meridiem}`;
+    expect(reminder.snippet).toContain(`Reminder at ${expected}`);
+  });
 });
