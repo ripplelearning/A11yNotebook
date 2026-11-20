@@ -3,7 +3,7 @@ import { useState, type MutableRefObject } from 'react';
 import { imageUrl, type AttachmentPreview } from '../../../shared/attachments';
 import { isAudioPath } from '../../../shared/audio';
 import PlainTextDocument from '../vault/PlainTextDocument';
-import DocumentReader from './DocumentReader';
+import DocumentReader, { type PdfBookmarkApi } from './DocumentReader';
 import SpreadsheetView from './SpreadsheetView';
 import SlideDeckView from './SlideDeckView';
 
@@ -27,6 +27,8 @@ interface Props {
   ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
   /** Called with the new path after an .xls file is saved as .xlsx. */
   onSpreadsheetFileCreated?: (relativePath: string) => void;
+  /** The open PDF reader registers its bookmark API here; see DocumentReader. */
+  pdfBookmarkRef?: MutableRefObject<PdfBookmarkApi | null>;
 }
 
 export default function AttachmentView({
@@ -42,6 +44,7 @@ export default function AttachmentView({
   spreadsheetSaveRef,
   ocrSaveRef,
   onSpreadsheetFileCreated,
+  pdfBookmarkRef,
 }: Props) {
   const [description, setDescription] = useState(alt);
   const image = /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(preview.path);
@@ -122,7 +125,13 @@ export default function AttachmentView({
           srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'none'; style-src 'none'; img-src 'none'; form-action 'none'; base-uri 'none'">${html}`}
         />
       ) : preview.kind === '.pdf' ? (
-        <DocumentReader key={preview.path} path={preview.path} kind=".pdf" ocrSaveRef={ocrSaveRef} />
+        <DocumentReader
+          key={preview.path}
+          path={preview.path}
+          kind=".pdf"
+          ocrSaveRef={ocrSaveRef}
+          pdfBookmarkRef={pdfBookmarkRef}
+        />
       ) : preview.kind === '.epub' ? (
         <DocumentReader key={preview.path} path={preview.path} kind=".epub" ocrSaveRef={ocrSaveRef} />
       ) : preview.kind === '.docx' ? (

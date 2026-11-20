@@ -102,13 +102,15 @@ export const READER_CONTRACTS: readonly ReaderContract[] = [
     ...NOTE_ANNOTATIONS,
     'lifecycle-cleanup',
   ]),
-  // PDF: full annotation support with quote export and orphan status;
-  // notes/bookmarks concepts from the vault do not apply to previews,
-  // and the reader does not surface the document outline.
+  // PDF: full annotation support with quote export and orphan status,
+  // and page-and-spot bookmarks (a page anchor marks the page and the
+  // character offset on it, like a position bookmark in a note). The
+  // reader does not surface the document outline.
   contract('pdf', 'pdf-page-range', [
     'sequential-navigation',
     'semantic-structure',
     'search',
+    'bookmarks',
     'annotation-create',
     'annotation-list',
     'annotation-jump',

@@ -1,7 +1,8 @@
 // @vitest-environment node
-import { mkdtemp, rm } from 'node:fs/promises';
+import { copyFile, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import {
@@ -59,6 +60,8 @@ describe('bookmark anchors', () => {
     );
     expect(resolveBookmarkAnchor('# Only\n', false, anchor)).toBeNull();
     expect(resolveBookmarkAnchor(markdown, false, { kind: 'offset', offset: 9999 })).toBe(markdown.length);
+    // A PDF page anchor has no meaning inside note text.
+    expect(resolveBookmarkAnchor(markdown, false, { kind: 'page', page: 2, offset: 10 })).toBeNull();
   });
 
   it('sanitizes untrusted anchor values', () => {
@@ -68,8 +71,16 @@ describe('bookmark anchors', () => {
       occurrence: 2,
     });
     expect(sanitizeBookmarkAnchor({ kind: 'offset', offset: 12.7 })).toEqual({ kind: 'offset', offset: 12 });
+    expect(sanitizeBookmarkAnchor({ kind: 'page', page: 3, offset: 42.9 })).toEqual({
+      kind: 'page',
+      page: 3,
+      offset: 42,
+    });
     expect(sanitizeBookmarkAnchor({ kind: 'heading', text: '', occurrence: 0 })).toBeUndefined();
     expect(sanitizeBookmarkAnchor({ kind: 'offset', offset: -1 })).toBeUndefined();
+    expect(sanitizeBookmarkAnchor({ kind: 'page', page: 0, offset: 0 })).toBeUndefined();
+    expect(sanitizeBookmarkAnchor({ kind: 'page', page: 1, offset: -1 })).toBeUndefined();
+    expect(sanitizeBookmarkAnchor({ kind: 'page', page: 1.5, offset: 0 })).toBeUndefined();
     expect(sanitizeBookmarkAnchor('heading')).toBeUndefined();
   });
 
@@ -124,6 +135,42 @@ describe('bookmark anchors', () => {
     expect(reloaded[0]).toMatchObject({ name: 'My setup section' });
     expect(reloaded[1]).toMatchObject({ name: 'Where the steps start', context: 'Steps.' });
   });
+
+  it('stores PDF page bookmarks, keeps them across reloads, and follows the file on move', async () => {
+    temporaryDirectory = await mkdtemp(path.join(os.tmpdir(), 'a11y-bookmarks-'));
+    const service = createVaultService(temporaryDirectory);
+    await service.initialize();
+    await copyFile(
+      fileURLToPath(new URL('./fixtures/chrome-tagged-sample.pdf', import.meta.url)),
+      path.join(temporaryDirectory, 'Guide.pdf'),
+    );
+    const added = await service.addBookmark('Guide.pdf', { kind: 'page', page: 2, offset: 120 }, 'Methods section');
+    expect(added).toHaveLength(1);
+    expect(added[0]).toMatchObject({
+      path: 'Guide.pdf',
+      title: 'Guide',
+      name: 'Methods section',
+      anchor: { kind: 'page', page: 2, offset: 120 },
+    });
+    expect(
+      await service.addBookmark('Guide.pdf', { kind: 'page', page: 2, offset: 120 }, 'Methods section'),
+    ).toHaveLength(1); // duplicate is a no-op
+    const other = await service.addBookmark('Guide.pdf', { kind: 'page', page: 1, offset: 0 }, 'Page 1');
+    expect(other).toHaveLength(2);
+    const reloaded = await service.getBookmarks();
+    expect(reloaded.map((bookmark) => bookmark.anchor)).toEqual([
+      { kind: 'page', page: 2, offset: 120 },
+      { kind: 'page', page: 1, offset: 0 },
+    ]);
+    // A PDF bookmark follows the file when it moves, like a note bookmark.
+    await service.moveEntry('Guide.pdf', 'Renamed.pdf');
+    const migrated = await service.getBookmarks();
+    expect(migrated.every((bookmark) => bookmark.path === 'Renamed.pdf')).toBe(true);
+    expect(migrated.every((bookmark) => bookmark.title === 'Renamed')).toBe(true);
+    const remaining = await service.removeBookmark(migrated[0].id);
+    expect(remaining).toHaveLength(1);
+    expect(remaining[0].anchor).toEqual({ kind: 'page', page: 1, offset: 0 });
+  });
 });
 
 describe('readingJumpHeading', () => {
@@ -149,6 +196,10 @@ describe('readingJumpHeading', () => {
       occurrence: 0,
     });
     expect(readingJumpHeading('Intro first.\n\n# Title\n', false, { kind: 'offset', offset: 0 })).toBeNull();
+  });
+
+  it('has no heading to jump to for a PDF page anchor', () => {
+    expect(readingJumpHeading(markdown, false, { kind: 'page', page: 1, offset: 0 })).toBeNull();
   });
 });
 

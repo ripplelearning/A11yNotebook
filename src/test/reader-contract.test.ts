@@ -39,7 +39,7 @@ describe('reader capability contract', () => {
     expect(pdf.anchorKind).toBe('pdf-page-range');
     expect(missingCapabilities(pdf, annotationSet)).toEqual([]);
     expect(pdf.capabilities['quote-export']).toBe(true);
-    expect(pdf.capabilities.bookmarks).toBe(false);
+    expect(pdf.capabilities.bookmarks).toBe(true);
   });
 });
 

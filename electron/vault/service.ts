@@ -2061,7 +2061,8 @@ export function createVaultService(
         ? {
             ...bookmark,
             path: `${nextRelative}${bookmark.path.slice(sourceRelative.length)}`,
-            ...(bookmark.path === sourceRelative && isNotePath(sourceRelative)
+            ...(bookmark.path === sourceRelative &&
+            (isNotePath(sourceRelative) || path.extname(sourceRelative).toLowerCase() === '.pdf')
               ? { title: path.posix.basename(nextRelative, path.posix.extname(nextRelative)) }
               : {}),
           }
@@ -2293,7 +2294,12 @@ export function createVaultService(
         candidates.map(async (bookmark) => {
           try {
             const target = await resolveEntry(bookmark.path);
-            if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') return null;
+            if (
+              !isNotePath(target) &&
+              path.extname(target).toLowerCase() !== '.docx' &&
+              path.extname(target).toLowerCase() !== '.pdf'
+            )
+              return null;
             const anchor = sanitizeBookmarkAnchor(bookmark.anchor);
             const clean: VaultBookmark = {
               id: bookmark.id,
@@ -2342,8 +2348,12 @@ export function createVaultService(
   /** Add a bookmark, optionally anchored to a heading or character position. Idempotent per path+anchor. */
   async function addBookmark(relativePath: string, anchor?: BookmarkAnchor, name?: string, context?: string) {
     const target = await resolveEntry(relativePath);
-    if (!isNotePath(target) && path.extname(target).toLowerCase() !== '.docx') {
-      throw new Error('Only notes and DOCX documents can be bookmarked.');
+    if (
+      !isNotePath(target) &&
+      path.extname(target).toLowerCase() !== '.docx' &&
+      path.extname(target).toLowerCase() !== '.pdf'
+    ) {
+      throw new Error('Only notes, DOCX documents, and PDFs can be bookmarked.');
     }
     const cleanAnchor = sanitizeBookmarkAnchor(anchor);
     const bookmarks = await getBookmarks();
