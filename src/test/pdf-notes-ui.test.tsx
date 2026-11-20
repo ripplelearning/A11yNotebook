@@ -868,3 +868,93 @@ describe('PDF notes reader integration', () => {
     expect(api.addPdfAnnotation).not.toHaveBeenCalled();
   });
 });
+
+describe('PDF notes heading and in-text note buttons', () => {
+  const secondNote: PdfAnnotation = {
+    ...note,
+    id: 'note-2',
+    label: 'Second',
+    target: {
+      ...target,
+      canonicalStart: 12,
+      canonicalLength: 5,
+      exactQuote: 'Hello',
+      normalizedQuote: 'hello',
+      contextBefore: 'Hello world ',
+      contextAfter: '',
+    },
+  };
+
+  it('renders the saved-notes list under a real heading', async () => {
+    const { pdf, page } = setup([note]);
+    render(<Harness pdf={pdf} page={page} />);
+    const heading = await screen.findByRole('heading', { name: 'Saved PDF notes' });
+    expect(heading.tagName).toBe('H4');
+    expect(heading.id).toBeTruthy();
+    const list = screen.getByRole('list', { name: 'Saved PDF notes' });
+    expect(list).toBeInTheDocument();
+    expect(list).toHaveAttribute('aria-labelledby', heading.id);
+  });
+
+  it('inserts a Note button at each annotation on the current page that jumps to the note', async () => {
+    const { pdf, page } = setup([note, secondNote]);
+    render(<Harness pdf={pdf} page={page} />);
+    const first = await screen.findByRole('button', { name: 'Note1' });
+    const second = screen.getByRole('button', { name: 'Note2' });
+    // The buttons sit in the accessible page text, ahead of the annotated span.
+    expect(first.closest('p')).not.toBeNull();
+    expect(second.nextElementSibling?.getAttribute('data-start-offset')).toBe('0');
+    fireEvent.click(first);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Important — yellow, page 1' })).toHaveFocus());
+    fireEvent.click(second);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Second — yellow, page 1' })).toHaveFocus());
+  });
+
+  it('shows no heading or in-text buttons when the open PDF has no notes', async () => {
+    const { pdf, page } = setup([]);
+    render(<Harness pdf={pdf} page={page} />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
+    expect(screen.queryByRole('heading', { name: 'Saved PDF notes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^Note\d+$/ })).not.toBeInTheDocument();
+  });
+
+  it('adds no in-text button for a note located on another page', async () => {
+    const elsewhere: PdfAnnotation = {
+      ...secondNote,
+      id: 'note-3',
+      label: 'Elsewhere',
+      target: { ...secondNote.target, page: 2 },
+    };
+    const { pdf, page } = setup([note, elsewhere]);
+    render(<Harness pdf={pdf} page={page} />);
+    await screen.findByRole('button', { name: 'Note1' });
+    expect(screen.queryByRole('button', { name: 'Note2' })).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Elsewhere — yellow, page 2' })).toBeInTheDocument();
+  });
+
+  it('adds no in-text button for an orphaned note', async () => {
+    const { pdf, page } = setup([note]);
+    vi.mocked(pdf.resolveAnnotationAnchor).mockResolvedValue({
+      orphaned: true,
+      classification: 'orphan',
+      confidence: 'uncertain',
+      verification: 'unverified',
+      reason: 'The original text was removed.',
+    });
+    render(<Harness pdf={pdf} page={page} />);
+    await screen.findByRole('button', { name: 'Important — yellow, page 1' });
+    expect(screen.queryByRole('button', { name: 'Note1' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Saved PDF notes' })).toBeInTheDocument();
+  });
+
+  it('shows no notes from another PDF in the open PDF', async () => {
+    const { api, pdf, page } = setup([note]);
+    api.listPdfAnnotations.mockImplementation(async (requested?: string) => (requested === 'book.pdf' ? [note] : []));
+    render(<Harness pdf={pdf} page={page} path="other.pdf" />);
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
+    expect(api.listPdfAnnotations).toHaveBeenCalledWith('other.pdf');
+    expect(screen.queryByRole('heading', { name: 'Saved PDF notes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Note1' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Important —/ })).not.toBeInTheDocument();
+  });
+});
