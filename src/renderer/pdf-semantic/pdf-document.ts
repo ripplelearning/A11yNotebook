@@ -330,13 +330,15 @@ export class PdfPage {
     return this.textModel.resolveAnchor(target);
   }
 
-  async renderCanvas(zoom = 1, rotation = 0): Promise<HTMLCanvasElement> {
+  async renderCanvas(zoom = 1, rotation = 0, maxScale = 2): Promise<HTMLCanvasElement> {
     const canvas = document.createElement('canvas');
     const pageRotation = (this.page.rotate + rotation) % 360;
     const unscaled = this.page.getViewport({ scale: 1, rotation: pageRotation });
     const scale = Math.min(
       Math.max(0.1, zoom),
-      2,
+      // The display cap is 2; OCR passes 3 for ~216 DPI, where the
+      // recognizer's accuracy falls off below 200 DPI.
+      maxScale,
       2000 / unscaled.width,
       2600 / unscaled.height,
       Math.sqrt(4_000_000 / (unscaled.width * unscaled.height)),

@@ -675,6 +675,24 @@ navigation and search. Encrypted Office archives, macros, embedded OLE packages 
 rejected. DOCX annotations are not available; legacy binary `.doc` is unsupported.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
 
+### OCR scanned PDFs and ePubs
+
+A scanned PDF or ePub has no extractable text — it is pictures of pages, not text. **OCR this file**,
+in the reader (and next to the "no extractable text" message), reads the whole file with an on-device
+text recognizer, so nothing leaves your computer. A dialog asks which language the file is in, every
+time — there is no automatic detection and no silent default. English data is built in; another
+language downloads its data once, the first time you pick it, and then works offline. A whole book
+can take minutes: the dialog shows progress per page or section and has a **Cancel OCR** button.
+
+The recognized text is shown in the reader only at first — it is temporary. Pages and sections that
+already have real text are left alone; only the ones with no text get recognized text. When you want
+to keep it, press **Ctrl+S** (the same shortcut as saving a note), or use **Save into file** in the
+finished dialog. Saving writes the text into the file: a hidden text layer in a PDF, so it becomes
+searchable and selectable, and text written back into an ePub. A file managed by the library updates
+in place; an Alius (a link to a file kept elsewhere) instead saves a copy in the library — the
+original file is never changed. The save is announced. Files larger than 40 MB cannot be OCR'd, and
+password-protected or permission-protected PDFs cannot be saved into.
+
 ## Audio notes, dictation, and transcription
 
 Audio files (`.webm`, `.mp3`, `.wav`, `.m4a`, `.ogg`, `.flac`, up to 40 MB) can be imported like any

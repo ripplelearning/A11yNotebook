@@ -503,6 +503,9 @@ a:focus-visible,
 .modal-backdrop {
   position: fixed;
   inset: 0;
+  /* Above reader content: the PDF text layer is positioned and later in
+     the DOM, so without this it paints over the dialog and steals clicks. */
+  z-index: 1000;
   background: rgba(15, 23, 42, 0.7);
   display: grid;
   place-items: center;

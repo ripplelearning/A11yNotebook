@@ -803,6 +803,57 @@ export function createVaultService(
     }
   }
 
+  /**
+   * Replace a managed document's bytes in place: the OCR save path for a
+   * managed PDF or ePub. Same staging, provenance, and whole-library
+   * encryption behavior as replaceNote, but for binary content — the
+   * note-path restriction does not apply (documents are not notes), and
+   * only .pdf and .epub files are accepted. An Alius never reaches here:
+   * the OCR save handler copies an Alius instead of touching its
+   * original, so a record path is rejected as well.
+   */
+  async function replaceDocumentBytes(
+    relativePath: string,
+    content: Buffer,
+    assertCurrent?: () => void,
+  ): Promise<void> {
+    if (!/\.(pdf|epub)$/i.test(relativePath)) {
+      throw new Error('Only PDF and ePub files can be updated in place.');
+    }
+    if (isAliusPath(relativePath)) {
+      throw new Error('An Alius is never updated in place.');
+    }
+    const target = await resolveEntry(relativePath);
+    const temporary = path.join(path.dirname(target), `.${path.basename(target)}.${randomUUID()}.tmp`);
+    try {
+      const stat = await lstat(target);
+      if (!stat.isFile()) throw new Error('Only regular files can be updated in place.');
+      let outgoing: Buffer = content;
+      let manifestEntry: LibraryManifestFile | null = null;
+      if (libraryManifest) {
+        const fileId = fileIdFor(relativePath);
+        const container = encryptLibraryFile(requireLibraryContentKey(), fileId, content);
+        outgoing = container;
+        manifestEntry = {
+          fileId,
+          plainLength: content.length,
+          containerLength: container.length,
+        };
+      }
+      await writeFile(temporary, outgoing, { flag: 'wx', mode: stat.mode & 0o777 });
+      await resolveEntry(path.relative(root, temporary));
+      await resolveEntry(relativePath);
+      const retirePrevious = await preserveProvenance(relativePath, temporary, assertCurrent);
+      assertCurrent?.();
+      await rename(temporary, target);
+      if (manifestEntry) recordManifestEntry(relativePath, manifestEntry);
+      await retirePrevious().catch(() => undefined);
+      await refreshSearchIndex();
+    } finally {
+      await rm(temporary, { force: true }).catch(() => undefined);
+    }
+  }
+
   function saveNote(
     relativePath: string,
     content: string,
@@ -2547,6 +2598,7 @@ export function createVaultService(
     // encryption behavior as replaceNote, without the note-path
     // restriction (assets include .csv and .json sources).
     replaceTextFile: replaceNote,
+    replaceDocumentBytes,
     saveNote,
     createFolder,
     createNote,

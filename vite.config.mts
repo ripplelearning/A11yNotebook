@@ -7,11 +7,13 @@ import pkg from './package.json';
 // for hot module replacement.
 const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
-  "script-src 'self'",
+  // ocr-data: serves the on-device OCR runtime (Tesseract worker, core,
+  // and language data) from this computer; see electron/ocr-runtime.ts.
+  "script-src 'self' ocr-data:",
   "style-src 'self'",
   "img-src 'self' data: vault-file:",
   "font-src 'self'",
-  "connect-src 'self' vault-file:",
+  "connect-src 'self' vault-file: ocr-data:",
   "worker-src 'self'",
   "object-src 'none'",
   "base-uri 'none'",

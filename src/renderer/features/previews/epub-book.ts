@@ -15,9 +15,10 @@ const HTML_MEDIA_TYPES = new Set(['application/xhtml+xml', 'text/html']);
  * segments, and percent-decode (epubjs looks entries up decoded, so a
  * manifest href of `My%20Chapter.xhtml` and a zip entry of
  * `My Chapter.xhtml` are the same file). Returns null when the path
- * escapes the archive root.
+ * escapes the archive root. Also used by the OCR image extraction, which
+ * reads the same package directly.
  */
-function normalizeZipPath(path: string): string | null {
+export function normalizeZipPath(path: string): string | null {
   let decoded = path.replace(/^\/+/, '');
   try {
     decoded = decodeURIComponent(decoded);

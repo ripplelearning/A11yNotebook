@@ -14,6 +14,9 @@ describe('shared IPC contract', () => {
         IPC_CHANNELS.vaultImportAsNote,
         IPC_CHANNELS.vaultAdoptEncrypted,
         IPC_CHANNELS.vaultOpenWith,
+        IPC_CHANNELS.vaultOcrSave,
+        IPC_CHANNELS.vaultOcrLanguages,
+        IPC_CHANNELS.vaultOcrEnsureLanguage,
       ]),
     );
   });

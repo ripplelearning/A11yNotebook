@@ -25,6 +25,7 @@ import type { VaultReminderEvent } from '../src/shared/reminders';
 import { buildApplicationMenu, updateApplicationMenu as applyNativeMenuState } from './menu';
 import { setupUpdater } from './updater';
 import { setupAuthIpc } from './auth/ipc';
+import { setupOcrDataProtocol, setupOcrIpc } from './ocr-runtime';
 import { setupVaultIpc } from './vault/ipc';
 import { getPdfReadingPreferences, setPdfReadingPreferences } from './store';
 import { validatePdfReadingPreferences, type PdfReadingPreferences } from '../src/shared/pdf-reading-preferences';
@@ -34,6 +35,13 @@ const DEV_SERVER_URL = 'http://127.0.0.1:5173';
 protocol.registerSchemesAsPrivileged([
   {
     scheme: 'vault-file',
+    privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
+  },
+  {
+    // On-device OCR runtime (see electron/ocr-runtime.ts): the Tesseract
+    // worker, core, and language data the renderer loads from this
+    // computer, with no network involved.
+    scheme: 'ocr-data',
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
   },
 ]);
@@ -250,6 +258,8 @@ if (!app.requestSingleInstanceLock()) {
       return focus;
     });
     const wakeLaunch = process.argv.includes('--a11y-reminder-wake');
+    setupOcrDataProtocol();
+    setupOcrIpc(isTrustedSender);
     const vaultIpc = setupVaultIpc(
       isTrustedSender,
       (event) => {

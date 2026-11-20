@@ -5,7 +5,9 @@ import tseslint from 'typescript-eslint';
 
 export default tseslint.config(
   {
-    ignores: ['node_modules/', 'dist/', 'dist-electron/', 'release/', 'coverage/'],
+    // Vendored on-device OCR runtime (Tesseract worker, core, language
+    // data): third-party files, not app source.
+    ignores: ['node_modules/', 'dist/', 'dist-electron/', 'release/', 'coverage/', 'ocr-runtime/'],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,
