@@ -426,6 +426,10 @@ a:focus-visible,
   margin-block: 1rem;
 }
 
+.pdf-note-marker {
+  margin-inline-end: 0.25rem;
+}
+
 .pdf-note-instructions {
   max-width: 65ch;
 }

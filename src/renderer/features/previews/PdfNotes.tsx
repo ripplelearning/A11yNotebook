@@ -174,9 +174,7 @@ export default function PdfNotes({
     ]);
     const ranges = visualRanges.length
       ? visualRanges
-      : groupedPdfSelection(window.getSelection(), [
-          { page: rendered.page.pageNum, element: semanticRef.current },
-        ]);
+      : groupedPdfSelection(window.getSelection(), [{ page: rendered.page.pageNum, element: semanticRef.current }]);
     return ranges[0] ?? null;
   };
 
@@ -360,6 +358,49 @@ export default function PdfNotes({
       overlay.remove();
     };
   }, [notes, rendered, visualRef]);
+
+  // In-text note buttons: one "Note1", "Note2", … button at the place of
+  // each annotation located on the current page, inserted into the
+  // accessible page text just before the span holding the annotation's
+  // start. The button is a sibling of the text span, never inside it, so
+  // it cannot change canonical selection offsets. Activating it moves
+  // focus to that note's control in the "Saved PDF notes" list below.
+  // The reader replaces the semantic DOM on every page render, so the
+  // buttons are re-inserted whenever the notes or the rendered page
+  // change, and removed on cleanup. Numbering follows the note's position
+  // in the list, so "Note2" always means the second saved note; a note
+  // with no unique location has no place in the text and gets no button.
+  useEffect(() => {
+    const semantic = semanticRef.current;
+    if (!semantic || !rendered) return;
+    const inserted: HTMLButtonElement[] = [];
+    const placed = new Set<string>();
+    notes.forEach((item, index) => {
+      if (placed.has(item.note.id)) return;
+      const resolution = item.resolutions.find(
+        (candidate) => isLocated(candidate) && candidate.page === rendered.page.pageNum,
+      );
+      if (!resolution || !isLocated(resolution)) return;
+      const span = Array.from(semantic.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
+        (candidate) =>
+          Number(candidate.dataset.startOffset) <= resolution.offset &&
+          Number(candidate.dataset.endOffset) > resolution.offset,
+      );
+      if (!span?.parentElement) return;
+      placed.add(item.note.id);
+      const button = window.document.createElement('button');
+      button.type = 'button';
+      button.className = 'pdf-note-marker';
+      button.dataset.pdfNoteButton = item.note.id;
+      button.textContent = `Note${index + 1}`;
+      button.addEventListener('click', () => setFocusNote(item.note.id));
+      span.parentElement.insertBefore(button, span);
+      inserted.push(button);
+    });
+    return () => {
+      for (const button of inserted) button.remove();
+    };
+  }, [notes, rendered, semanticRef]);
 
   const reconfirm = async () => {
     if (!isCurrentDocument() || !reanchorNote || !targets || operation.current) return;
@@ -561,80 +602,83 @@ export default function PdfNotes({
       <p role="status">{message}</p>
       {error ? <p role="alert">{error}</p> : null}
       {notes.length ? (
-        <ul aria-label="Saved PDF notes">
-          {notes.map((item) => {
-            const { note, resolutions } = item;
-            const orphaned = resolutions.some((resolution) => !isLocated(resolution));
-            const unverified = resolutions.some((resolution) => resolution.verification !== 'verified');
-            const uncertain = resolutions.some((resolution) => resolution.confidence !== 'certain');
-            return (
-              <li key={note.id}>
-                <button
-                  type="button"
-                  ref={(element) => {
-                    if (element) controls.current.set(note.id, element);
-                    else controls.current.delete(note.id);
-                  }}
-                  onClick={() => {
-                    const index = resolutions.findIndex(isLocated);
-                    const resolution = resolutions[index];
-                    if (resolution && isLocated(resolution))
-                      onNavigate(resolution.page, resolution.offset, resolution.length);
-                    else setMessage('This note has no unique location. Review its original quotation below.');
-                  }}
-                >
-                  {note.label || 'PDF note'} — {note.color === 'none' ? 'outline only' : note.color}, page{' '}
-                  {note.target.page}
-                </button>
-                <p>
-                  Location: {[...new Set(resolutions.map((resolution) => resolution.classification))].join(', ')}.{' '}
-                  Confidence: {[...new Set(resolutions.map((resolution) => resolution.confidence))].join(', ')}.{' '}
-                  Verification:{' '}
-                  {[...new Set(resolutions.map((resolution) => resolution.verification ?? 'unverified'))].join(', ')}.
-                </p>
-                {note.comment ? <p className="pdf-note-comment">{note.comment}</p> : null}
-                {orphaned || unverified || uncertain ? (
-                  <div className="pdf-note-warning">
-                    <p>
-                      {orphaned
-                        ? 'Orphaned or ambiguous note: no unique location found.'
-                        : unverified
-                          ? 'Unverified note: reconfirm the location before highlighting.'
-                          : 'Location has probable or uncertain confidence. Review it before relying on the highlight.'}
-                    </p>
-                    <blockquote>
-                      {[note.target, ...(note.targets ?? [])].map((target) => target.exactQuote).join('\n')}
-                    </blockquote>
-                    <p>
-                      {resolutions
-                        .map((resolution) => resolution.reason)
-                        .filter(Boolean)
-                        .join(' ') || 'The stored quotation needs review.'}
-                    </p>
-                    {!orphaned ? (
-                      <button type="button" disabled={busy} onClick={() => void verify(item)}>
-                        Verify location for {note.label || 'PDF note'}
+        <>
+          <h4 id="saved-pdf-notes-heading">Saved PDF notes</h4>
+          <ul aria-labelledby="saved-pdf-notes-heading">
+            {notes.map((item) => {
+              const { note, resolutions } = item;
+              const orphaned = resolutions.some((resolution) => !isLocated(resolution));
+              const unverified = resolutions.some((resolution) => resolution.verification !== 'verified');
+              const uncertain = resolutions.some((resolution) => resolution.confidence !== 'certain');
+              return (
+                <li key={note.id}>
+                  <button
+                    type="button"
+                    ref={(element) => {
+                      if (element) controls.current.set(note.id, element);
+                      else controls.current.delete(note.id);
+                    }}
+                    onClick={() => {
+                      const index = resolutions.findIndex(isLocated);
+                      const resolution = resolutions[index];
+                      if (resolution && isLocated(resolution))
+                        onNavigate(resolution.page, resolution.offset, resolution.length);
+                      else setMessage('This note has no unique location. Review its original quotation below.');
+                    }}
+                  >
+                    {note.label || 'PDF note'} — {note.color === 'none' ? 'outline only' : note.color}, page{' '}
+                    {note.target.page}
+                  </button>
+                  <p>
+                    Location: {[...new Set(resolutions.map((resolution) => resolution.classification))].join(', ')}.{' '}
+                    Confidence: {[...new Set(resolutions.map((resolution) => resolution.confidence))].join(', ')}.{' '}
+                    Verification:{' '}
+                    {[...new Set(resolutions.map((resolution) => resolution.verification ?? 'unverified'))].join(', ')}.
+                  </p>
+                  {note.comment ? <p className="pdf-note-comment">{note.comment}</p> : null}
+                  {orphaned || unverified || uncertain ? (
+                    <div className="pdf-note-warning">
+                      <p>
+                        {orphaned
+                          ? 'Orphaned or ambiguous note: no unique location found.'
+                          : unverified
+                            ? 'Unverified note: reconfirm the location before highlighting.'
+                            : 'Location has probable or uncertain confidence. Review it before relying on the highlight.'}
+                      </p>
+                      <blockquote>
+                        {[note.target, ...(note.targets ?? [])].map((target) => target.exactQuote).join('\n')}
+                      </blockquote>
+                      <p>
+                        {resolutions
+                          .map((resolution) => resolution.reason)
+                          .filter(Boolean)
+                          .join(' ') || 'The stored quotation needs review.'}
+                      </p>
+                      {!orphaned ? (
+                        <button type="button" disabled={busy} onClick={() => void verify(item)}>
+                          Verify location for {note.label || 'PDF note'}
+                        </button>
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={busy || !rendered}
+                        onClick={() => {
+                          setReanchorNote(note);
+                          createSelection();
+                        }}
+                      >
+                        Re-anchor {note.label || 'PDF note'}
                       </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={busy || !rendered}
-                      onClick={() => {
-                        setReanchorNote(note);
-                        createSelection();
-                      }}
-                    >
-                      Re-anchor {note.label || 'PDF note'}
-                    </button>
-                  </div>
-                ) : null}
-                <button type="button" disabled={busy} onClick={() => void remove(note)}>
-                  Delete {note.label || 'PDF note'}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
+                    </div>
+                  ) : null}
+                  <button type="button" disabled={busy} onClick={() => void remove(note)}>
+                    Delete {note.label || 'PDF note'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </>
       ) : null}
       {quoteDialog ? (
         <PdfQuoteDialog
