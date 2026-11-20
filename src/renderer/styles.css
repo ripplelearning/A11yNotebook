@@ -370,6 +370,14 @@ a:focus-visible,
   margin: 0;
 }
 
+/* Continuous PDF view: one page wrapper per page, stacked in the
+ * visual container. The wrapper is the positioning context for the
+ * page's canvas, text layer, and note highlights. */
+.document-page-visual-page {
+  position: relative;
+  margin-block-end: 1rem;
+}
+
 .pdf-text-layer {
   position: absolute;
   top: 0;

@@ -39,6 +39,8 @@ export default function PdfNotes({
   document: pdf,
   path,
   loadedPages,
+  pageCount,
+  continuous,
   readerRef,
   visualRef,
   semanticRef,
@@ -48,6 +50,10 @@ export default function PdfNotes({
   document: PdfDocument;
   path: string;
   loadedPages: number;
+  /** Total pages in the document; in continuous view every page is a selection layer. */
+  pageCount?: number;
+  /** Continuous view shows every page at once, so selections and highlights resolve per page. */
+  continuous?: boolean;
   readerRef: RefObject<HTMLElement>;
   visualRef: RefObject<HTMLDivElement>;
   semanticRef: RefObject<HTMLDivElement>;
@@ -167,27 +173,48 @@ export default function PdfNotes({
       }
     }
   };
+  /**
+   * Selection layers for groupedPdfSelection. In paginated view only the
+   * rendered page exists, so the container itself is its layer. In
+   * continuous view every page has its own wrapper, so a selection on
+   * any page — including one drag across pages — resolves to the right
+   * page with the right offsets (offsets restart at zero per page).
+   */
+  const selectionLayers = (ref: RefObject<HTMLDivElement>): Array<{ page: number; element: HTMLElement }> => {
+    const total = pageCount ?? loadedPages;
+    const layers: Array<{ page: number; element: HTMLElement }> = [];
+    for (let pageNumber = 1; pageNumber <= total; pageNumber += 1) {
+      const wrapper = ref.current?.querySelector<HTMLElement>(`[data-pdf-page="${pageNumber}"]`);
+      if (wrapper) layers.push({ page: pageNumber, element: wrapper });
+      else if (rendered && pageNumber === rendered.page.pageNum && ref.current)
+        layers.push({ page: pageNumber, element: ref.current });
+    }
+    return layers;
+  };
+
+  /** The page a focused or selected element belongs to, from its page wrapper. */
+  const pageOfElement = (element: Element | null | undefined): number | null => {
+    const wrapper = element?.closest?.('[data-pdf-page]');
+    const page = wrapper?.getAttribute('data-pdf-page');
+    const parsed = page === null || page === undefined ? Number.NaN : Number(page);
+    return Number.isInteger(parsed) ? parsed : null;
+  };
+
   const currentSelectionRange = (): PdfSelectionRange | null => {
     if (!rendered || !visualRef.current || !semanticRef.current) return null;
-    const visualRanges = groupedPdfSelection(window.getSelection(), [
-      { page: rendered.page.pageNum, element: visualRef.current },
-    ]);
+    const visualRanges = groupedPdfSelection(window.getSelection(), selectionLayers(visualRef));
     const ranges = visualRanges.length
       ? visualRanges
-      : groupedPdfSelection(window.getSelection(), [{ page: rendered.page.pageNum, element: semanticRef.current }]);
+      : groupedPdfSelection(window.getSelection(), selectionLayers(semanticRef));
     return ranges[0] ?? null;
   };
 
   const createSelection = (range?: Range) => {
     if (!isCurrentDocument() || !notesLoaded || !rendered || !visualRef.current || !semanticRef.current) return;
-    const visualRanges = groupedPdfSelection(range ?? window.getSelection(), [
-      { page: rendered.page.pageNum, element: visualRef.current },
-    ]);
+    const visualRanges = groupedPdfSelection(range ?? window.getSelection(), selectionLayers(visualRef));
     const ranges = visualRanges.length
       ? visualRanges
-      : groupedPdfSelection(range ?? window.getSelection(), [
-          { page: rendered.page.pageNum, element: semanticRef.current },
-        ]);
+      : groupedPdfSelection(range ?? window.getSelection(), selectionLayers(semanticRef));
     if (ranges.length) void begin(ranges);
     else setQuoteDialog(true);
   };
@@ -320,13 +347,15 @@ export default function PdfNotes({
         return;
       const detail = event instanceof CustomEvent ? (event.detail as PdfCommandDetail | undefined) : undefined;
       setReanchorNote(null);
-      const range = semanticPdfRange(
+      const target =
         detail?.element ??
-          (semanticRef.current.contains(window.document.activeElement)
-            ? window.document.activeElement
-            : currentSemantic.current),
+        (semanticRef.current.contains(window.document.activeElement)
+          ? window.document.activeElement
+          : currentSemantic.current);
+      const range = semanticPdfRange(
+        target,
         semanticRef.current,
-        rendered.page.pageNum,
+        pageOfElement(target instanceof Element ? target : null) ?? rendered.page.pageNum,
       );
       if (range) void begin([range]);
       else setError('Focus a paragraph, heading, or table cell in the accessible page text first.');
@@ -353,7 +382,12 @@ export default function PdfNotes({
       ),
     );
     const overlay = createPdfHighlightLayer(rendered.page, rendered.scale, rendered.rotation, highlights);
-    visualRef.current.append(overlay);
+    // In continuous view the overlay belongs inside the current page's
+    // wrapper, where its page-relative geometry lines up; the container
+    // itself would offset it by the page's position in the document.
+    const host =
+      visualRef.current.querySelector<HTMLElement>(`[data-pdf-page="${rendered.page.pageNum}"]`) ?? visualRef.current;
+    host.append(overlay);
     return () => {
       overlay.remove();
     };
@@ -552,7 +586,11 @@ export default function PdfNotes({
         onClick={() => {
           if (!rendered || !semanticRef.current) return;
           setReanchorNote(null);
-          const range = semanticPdfRange(currentSemantic.current, semanticRef.current, rendered.page.pageNum);
+          const range = semanticPdfRange(
+            currentSemantic.current,
+            semanticRef.current,
+            pageOfElement(currentSemantic.current) ?? rendered.page.pageNum,
+          );
           if (range) void begin([range]);
           else setError('Focus a paragraph, heading, or table cell in the accessible page text first.');
         }}
@@ -580,9 +618,9 @@ export default function PdfNotes({
         </button>
       )}
       <p className="pdf-note-instructions">
-        Select text, focus an accessible paragraph, heading or cell, or create a note by finding a quotation. Only one
-        PDF page is displayed at a time; for a passage that spans pages, start a cross-page note on the first page and
-        finish it on the last.
+        {continuous
+          ? 'All pages are shown as one continuous document. Select text on any page to annotate it, or select a passage spanning pages in one drag.'
+          : 'Select text, focus an accessible paragraph, heading or cell, or create a note by finding a quotation. Only one PDF page is displayed at a time; for a passage that spans pages, start a cross-page note on the first page and finish it on the last.'}
       </p>
       {rendered && notesLoaded
         ? (() => {

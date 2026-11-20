@@ -115,6 +115,30 @@ function EpubAnnotationDialog({
 const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
 const MAX_SEARCHABLE_TEXT = 20 * 1024 * 1024;
+
+/** The render scale for one PDF page, capped the way the paginated render caps it. */
+function pdfPageRenderScale(page: PdfPage, zoom: number, rotation: number): number {
+  const effectiveRotation = (page.canRotate + rotation) % 360;
+  return Math.min(
+    zoom,
+    2000 / (effectiveRotation % 180 ? page.view[3] - page.view[1] : page.view[2] - page.view[0]),
+    2600 / (effectiveRotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]),
+    Math.sqrt(4_000_000 / ((page.view[2] - page.view[0]) * (page.view[3] - page.view[1]))),
+  );
+}
+
+/** Display size of one rendered PDF page, in CSS pixels. */
+function pdfPageDisplaySize(
+  page: PdfPage,
+  scale: number,
+  rotation: number,
+): { width: number; height: number } {
+  const transform = page.viewportTransform(scale, rotation);
+  return {
+    width: (transform.rotation % 180 ? page.view[3] - page.view[1] : page.view[2] - page.view[0]) * scale,
+    height: (transform.rotation % 180 ? page.view[2] - page.view[0] : page.view[3] - page.view[1]) * scale,
+  };
+}
 // How often a stale 'relocated' may make the reader re-assert the section
 // the app asked for, before it gives up re-displaying and just ignores
 // further stale reports. Stale reports are finite (one per display epub.js
@@ -207,6 +231,20 @@ function PdfReader({
   const readerRef = useRef<HTMLElement>(null);
   const [rendered, setRendered] = useState<PdfRenderedPage | null>(null);
   const pendingNote = useRef<{ page: number; offset: number; length: number } | null>(null);
+  /** Continuous view: the whole document in one scrolling page instead of one page at a time. */
+  const [continuous, setContinuous] = useState(false);
+  const pageNumberRef = useRef(pageNumber);
+  pageNumberRef.current = pageNumber;
+  const continuousRef = useRef(continuous);
+  continuousRef.current = continuous;
+  /** Programmatic page moves in continuous view scroll that page into view. */
+  const scrollToPageRef = useRef<number | null>(null);
+  /** Pages rendered in continuous view, keyed by page number. */
+  const continuousPagesRef = useRef(new Map<number, PdfRenderedPage>());
+  /** Pages whose canvas has been rendered in continuous view. */
+  const continuousCanvasesRef = useRef(new Set<number>());
+  /** Guards lazy canvas renders against a stale continuous render. */
+  const continuousGenerationRef = useRef(0);
   const preferences = usePdfReadingPreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
@@ -416,10 +454,29 @@ function PdfReader({
     }
   }, [formValues, formErrors, activePage]);
 
-  const goToFormField = useCallback((field: PdfFormField) => {
-    pendingFieldFocus.current = field.name;
-    setPageNumber(field.page);
+  /** Turn to a page; in continuous view the page also scrolls into view. */
+  const goToPage = useCallback((page: number) => {
+    if (continuousRef.current) {
+      scrollToPageRef.current = page;
+      // The scroll tracker only follows real scrolling, so a programmatic
+      // move also makes the page current now: the heading, notes, and
+      // form fields track it immediately.
+      const entry = continuousPagesRef.current.get(page);
+      if (entry) {
+        setActivePage(entry.page);
+        setRendered(entry);
+      }
+    }
+    setPageNumber(page);
   }, []);
+
+  const goToFormField = useCallback(
+    (field: PdfFormField) => {
+      pendingFieldFocus.current = field.name;
+      goToPage(field.page);
+    },
+    [goToPage],
+  );
 
   const missingRequired = useMemo(
     () => missingRequiredPdfFormFields(formFields, formValues),
@@ -595,7 +652,10 @@ function PdfReader({
     }
   }, [path, validateForExport]);
 
+  // Paginated view: one page at a time. Continuous view renders in the
+  // effect below, so this one stays out of its way while it is on.
   useEffect(() => {
+    if (continuous) return;
     let cancelled = false;
     const visual = visualRef.current;
     const semantic = semanticRef.current;
@@ -666,11 +726,210 @@ function PdfReader({
     return () => {
       cancelled = true;
     };
-  }, [document, pageNumber, rotation, zoom]);
+  }, [document, pageNumber, rotation, zoom, continuous]);
+
+  // Continuous view: the whole document in one scrolling page. The
+  // accessible text for every page is rendered up front, so headings on
+  // any page are navigable; each page's canvas renders lazily as it
+  // approaches the viewport, so a long document does not hold a canvas
+  // for every page at once. Where no IntersectionObserver exists (unit
+  // tests), every canvas renders eagerly instead.
+  useEffect(() => {
+    if (!continuous || !document) return;
+    let cancelled = false;
+    const generation = ++continuousGenerationRef.current;
+    const visual = visualRef.current;
+    const semantic = semanticRef.current;
+    if (!visual || !semantic) return;
+    setRendered(null);
+    continuousPagesRef.current = new Map();
+    continuousCanvasesRef.current = new Set();
+    let lazyObserver: IntersectionObserver | null = null;
+    const renderCanvasForPage = async (targetPage: number) => {
+      if (cancelled || generation !== continuousGenerationRef.current) return;
+      if (continuousCanvasesRef.current.has(targetPage)) return;
+      continuousCanvasesRef.current.add(targetPage);
+      const entry = continuousPagesRef.current.get(targetPage);
+      const host = visual.querySelector<HTMLElement>(`[data-pdf-page="${targetPage}"]`);
+      if (!entry || !host) return;
+      try {
+        const canvas = await entry.page.renderCanvas(entry.scale, rotation);
+        if (cancelled || generation !== continuousGenerationRef.current) return;
+        canvas.className = 'document-page-canvas';
+        canvas.setAttribute('aria-hidden', 'true');
+        const layer = entry.page.getTextLayer(entry.scale, rotation);
+        const { width, height } = pdfPageDisplaySize(entry.page, entry.scale, rotation);
+        layer.style.width = `${width}px`;
+        layer.style.height = `${height}px`;
+        layer.setAttribute('aria-hidden', 'true');
+        host.append(canvas, layer);
+      } catch {
+        // A page whose canvas fails still keeps its accessible text.
+        continuousCanvasesRef.current.delete(targetPage);
+      }
+    };
+    const scrollPageIntoView = (targetPage: number) => {
+      visual
+        .querySelector<HTMLElement>(`[data-pdf-page="${targetPage}"]`)
+        ?.scrollIntoView?.({ behavior: 'auto', block: 'start' });
+    };
+    void (async () => {
+      try {
+        visual.replaceChildren();
+        semantic.replaceChildren();
+        for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
+          const page = await document.getPage(pageIndex);
+          if (cancelled) return;
+          const scale = pdfPageRenderScale(page, zoom, rotation);
+          const { width, height } = pdfPageDisplaySize(page, scale, rotation);
+          const visualWrapper = window.document.createElement('div');
+          visualWrapper.className = 'document-page-visual-page';
+          visualWrapper.dataset.pdfPage = String(pageIndex);
+          visualWrapper.style.width = `${width}px`;
+          visualWrapper.style.height = `${height}px`;
+          visual.append(visualWrapper);
+          const semanticWrapper = window.document.createElement('div');
+          semanticWrapper.dataset.pdfPage = String(pageIndex);
+          semantic.append(semanticWrapper);
+          semanticWrapper.replaceChildren(
+            page.getSemanticDOM(zoom, rotation, undefined, {
+              values: valuesRef.current,
+              errors: errorsRef.current,
+              onChange: (name, value) => formChangeRef.current(name, value),
+            }),
+          );
+          for (const block of semanticWrapper.querySelectorAll<HTMLElement>(
+            'p,h1,h2,h3,h4,h5,h6,td,th,li,blockquote,[role="heading"],[role="cell"]',
+          )) {
+            if (
+              block.querySelector('[data-start-offset]') &&
+              !block.closest('[data-pdf-artifact-type]') &&
+              !block.querySelector('[data-pdf-artifact-type]')
+            ) {
+              block.tabIndex = 0;
+              block.dataset.context = 'pdf-semantic';
+            }
+          }
+          continuousPagesRef.current.set(pageIndex, { page, scale, rotation });
+          if (pageIndex === pageNumberRef.current) {
+            setActivePage(page);
+            setRendered({ page, scale, rotation });
+          }
+        }
+        applyPdfReadingPreferences(visual, preferencesRef.current);
+        applyPdfReadingPreferences(semantic, preferencesRef.current);
+        // The current page's canvas renders now; the rest render as they
+        // approach the viewport, or all at once without an observer.
+        await renderCanvasForPage(pageNumberRef.current);
+        if (cancelled) return;
+        if (typeof IntersectionObserver === 'function') {
+          lazyObserver = new IntersectionObserver(
+            (entries) => {
+              for (const entry of entries) {
+                if (!entry.isIntersecting) continue;
+                const target = Number((entry.target as HTMLElement).dataset.pdfPage);
+                if (Number.isInteger(target)) void renderCanvasForPage(target);
+              }
+            },
+            { rootMargin: '600px' },
+          );
+          for (const wrapper of visual.querySelectorAll<HTMLElement>('[data-pdf-page]')) {
+            lazyObserver.observe(wrapper);
+          }
+        } else {
+          for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
+            void renderCanvasForPage(pageIndex);
+          }
+        }
+        const note = pendingNote.current;
+        if (note) {
+          const entry = continuousPagesRef.current.get(note.page);
+          const host = semantic.querySelector<HTMLElement>(`[data-pdf-page="${note.page}"]`);
+          if (entry && host) {
+            entry.page.selectTextRange(note.offset, note.length, host);
+            const span = Array.from(host.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
+              (candidate) =>
+                Number(candidate.dataset.startOffset) <= note.offset &&
+                Number(candidate.dataset.endOffset) > note.offset,
+            );
+            span?.closest<HTMLElement>('[tabindex]')?.focus();
+            pendingNote.current = null;
+            scrollToPageRef.current = note.page;
+          }
+        }
+        const target = scrollToPageRef.current ?? pageNumberRef.current;
+        scrollToPageRef.current = null;
+        scrollPageIntoView(target);
+      } catch {
+        if (!cancelled) setRenderError('This PDF could not be rendered. The extracted text remains available.');
+      }
+    })();
+    return () => {
+      cancelled = true;
+      lazyObserver?.disconnect();
+    };
+  }, [document, continuous, pageCount, rotation, zoom]);
+
+  // In continuous view the current page follows the scroll position, so
+  // notes, form fields, and the page heading track the page in view.
+  // Programmatic moves set scrollToPageRef instead and never flow through
+  // here, so this never fights a jump the user or the app asked for.
+  useEffect(() => {
+    if (!continuous || !document) return;
+    const visual = visualRef.current;
+    if (!visual) return;
+    let frame = 0;
+    let ticking = false;
+    const updateCurrentPage = () => {
+      ticking = false;
+      const wrappers = [...visual.querySelectorAll<HTMLElement>('[data-pdf-page]')];
+      if (!wrappers.length) return;
+      if (wrappers[0].getBoundingClientRect().height === 0) return;
+      let current = 1;
+      for (const wrapper of wrappers) {
+        if (wrapper.getBoundingClientRect().top <= 140) current = Number(wrapper.dataset.pdfPage);
+        else break;
+      }
+      if (current !== pageNumberRef.current) {
+        const entry = continuousPagesRef.current.get(current);
+        if (!entry) return;
+        setPageNumber(current);
+        setActivePage(entry.page);
+        setRendered(entry);
+      }
+    };
+    const onScroll = () => {
+      if (ticking) return;
+      ticking = true;
+      if (typeof requestAnimationFrame === 'function') frame = requestAnimationFrame(updateCurrentPage);
+      else updateCurrentPage();
+    };
+    window.addEventListener('scroll', onScroll, { passive: true });
+    visual.addEventListener('scroll', onScroll, { passive: true });
+    return () => {
+      window.removeEventListener('scroll', onScroll);
+      visual.removeEventListener('scroll', onScroll);
+      if (typeof cancelAnimationFrame === 'function') cancelAnimationFrame(frame);
+    };
+  }, [continuous, document, pageCount]);
+
+  // Programmatic page moves in continuous view scroll the target page
+  // into view once its wrapper exists.
+  useEffect(() => {
+    if (!continuous) return;
+    const target = scrollToPageRef.current;
+    if (target === null) return;
+    const wrapper = visualRef.current?.querySelector<HTMLElement>(`[data-pdf-page="${target}"]`);
+    if (!wrapper) return;
+    scrollToPageRef.current = null;
+    wrapper.scrollIntoView?.({ behavior: 'auto', block: 'start' });
+  }, [pageNumber, continuous]);
 
   // Temporary OCR text lives in the semantic text area, alongside the
   // extracted text: the page render above replaces the semantic DOM on
-  // every page turn, so this runs after it and re-appends the text.
+  // every page turn, so this runs after it and re-appends the text. In
+  // continuous view it goes to the current page's text, not the top of
+  // the whole document.
   useEffect(() => {
     const semantic = semanticRef.current;
     if (!semantic) return;
@@ -680,8 +939,11 @@ function PdfReader({
     const paragraph = window.document.createElement('p');
     paragraph.dataset.ocrText = 'true';
     paragraph.textContent = text;
-    semantic.append(paragraph);
-  }, [ocrTextMap, activePage, pageNumber]);
+    const host = continuous
+      ? semantic.querySelector<HTMLElement>(`[data-pdf-page="${pageNumber}"]`) ?? semantic
+      : semantic;
+    host.append(paragraph);
+  }, [ocrTextMap, activePage, pageNumber, continuous]);
 
   const matchingPages = readerModel.findSections(search);
   const currentMatch = matchingPages.length ? matchingPages[searchIndex % matchingPages.length] : undefined;
@@ -731,13 +993,16 @@ function PdfReader({
         </p>
       ) : null}
       <div role="group" aria-label="PDF page navigation">
-        <button type="button" disabled={pageNumber <= 1} onClick={() => setPageNumber((page) => Math.max(1, page - 1))}>
+        <button type="button" aria-pressed={continuous} onClick={() => setContinuous((value) => !value)}>
+          {continuous ? 'Continuous view' : 'Paginated view'}
+        </button>
+        <button type="button" disabled={pageNumber <= 1} onClick={() => goToPage(Math.max(1, pageNumber - 1))}>
           Previous page
         </button>
         <button
           type="button"
           disabled={pageNumber >= pageCount}
-          onClick={() => setPageNumber((page) => Math.min(pageCount, page + 1))}
+          onClick={() => goToPage(Math.min(pageCount, pageNumber + 1))}
         >
           Next page
         </button>
@@ -792,7 +1057,7 @@ function PdfReader({
         <button
           type="button"
           onClick={() => {
-            setPageNumber(currentMatch! + 1);
+            goToPage(currentMatch! + 1);
             setSearchIndex((index) => (index + 1) % matchingPages.length);
           }}
         >
@@ -901,6 +1166,8 @@ function PdfReader({
           document={document}
           path={path}
           loadedPages={readerModel.sections.length}
+          pageCount={pageCount}
+          continuous={continuous}
           readerRef={readerRef}
           visualRef={visualRef}
           semanticRef={semanticRef}
@@ -908,14 +1175,20 @@ function PdfReader({
           onNavigate={(page, offset, length) => {
             pendingNote.current = { page, offset, length };
             if (page === pageNumber && activePage && semanticRef.current) {
-              activePage.selectTextRange(offset, length, semanticRef.current);
-              const span = Array.from(semanticRef.current.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
+              // In continuous view the container holds every page, and
+              // offsets restart at zero on each page, so the selection
+              // must be scoped to the note's own page.
+              const layer = continuous
+                ? semanticRef.current.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`) ?? semanticRef.current
+                : semanticRef.current;
+              activePage.selectTextRange(offset, length, layer);
+              const span = Array.from(layer.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
                 (candidate) =>
                   Number(candidate.dataset.startOffset) <= offset && Number(candidate.dataset.endOffset) > offset,
               );
               span?.closest<HTMLElement>('[tabindex]')?.focus();
               pendingNote.current = null;
-            } else setPageNumber(page);
+            } else goToPage(page);
           }}
         />
       ) : renderError ? (
