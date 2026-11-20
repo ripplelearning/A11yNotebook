@@ -186,6 +186,11 @@ export function formatTaskDueDate(dueDate: string | undefined, dueTime: string |
  * results use for reminder (and appointment) times. A stored task marker
  * ("YYYY-MM-DD HH:MM") is local time and is read field by field so no
  * timezone conversion can shift it; anything else goes through Date.
+ * The marker pattern is anchored to the end of the string: without the
+ * anchor it also matches the prefix of an ISO timestamp with a timezone
+ * (a stored scheduledAt is UTC, e.g. "2026-11-22T18:40:00.000Z" for a
+ * 10:40 AM America/Los_Angeles reminder) and reads its UTC fields as
+ * local time, shifting the display by the local UTC offset.
  * The format is pinned down here instead of relying on toLocaleString,
  * whose output varies by locale.
  */
@@ -196,7 +201,7 @@ export function formatReminderDateTime(value: string | Date): string {
   let hours: number;
   let minutes: number;
   const marker =
-    typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})/.exec(value) : null;
+    typeof value === 'string' ? /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value) : null;
   if (marker) {
     year = Number(marker[1]);
     month = Number(marker[2]);
