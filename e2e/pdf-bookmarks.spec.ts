@@ -116,6 +116,19 @@ async function goToPage(page: Page, pageNumber: number): Promise<void> {
 
 /** Place a collapsed selection in the reader's accessible page text, the way a screen reader's virtual cursor leaves it. */
 async function placePdfSelection(page: Page, text: string, offset = 1): Promise<void> {
+  // The page heading updates before the page's semantic text renders,
+  // so wait for a span carrying the wanted text: placing the caret in
+  // the not-yet-rendered plain text would fall back to the top of the
+  // page instead of the wanted spot.
+  await page.waitForFunction(
+    ({ wanted }) => {
+      const section = document.querySelector('section[aria-label^="Accessible text for PDF page"]');
+      if (!section) return false;
+      return [...section.querySelectorAll('[data-start-offset]')].some((span) => span.textContent?.includes(wanted));
+    },
+    { wanted: text },
+    { timeout: 30000 },
+  );
   await page.evaluate(
     ({ wanted, at }) => {
       const section = document.querySelector('section[aria-label^="Accessible text for PDF page"]');
