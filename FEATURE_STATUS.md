@@ -9,6 +9,10 @@ Status marks below mean **implemented**, **partial**, **open**, or **externally 
 production-ready or manually verified. Automated DOM/mocked OS tests do not establish Windows toast delivery,
 installer behavior, screen-reader speech, or secure erasure.
 
+## November 19, 2026 — OCR this file (PR #227, unmerged)
+
+- **OCR this file (PR #227):** open ePubs and PDFs that have no extractable text can be recognized with an on-device Tesseract.js engine (vendored runtime, English data bundled, other languages download once and cache for offline use). The whole file is recognized; only pages and sections with no text get recognized text. The language is asked every time, progress is shown per page or section, and the run can be cancelled. Results are temporary in the reader by default; Ctrl+S or the dialog's Save button writes them into the file (hidden text layer in PDFs, text written back into ePubs). Managed files update in place; an Alius saves a copy in the library and never touches the original. Unit tests (dialog, runner, extraction, PDF/ePub save, reader Ctrl+S flow) and four E2E scenarios with real Tesseract pass; the full unit suite (2243 tests) and full E2E suite (84 tests) pass on the rebased branch.
+
 ## October 24, 2026 — paste and Tasks context-menu dialogs (merged to main, next release)
 
 - **Paste files and folders (PR #116):** copying files or folders in the operating system and pasting them
