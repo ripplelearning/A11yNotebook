@@ -17,7 +17,7 @@ import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf
 import { syncFormFieldValues } from '../../pdf-semantic/pdf-form-dom';
 import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel, type DocumentReaderModel } from './document-reader-model';
-import { epubSectionLabel, epubSectionText, epubTocLabels, openEpubBook } from './epub-book';
+import { epubInitialSectionIndex, epubSectionLabel, epubSectionText, epubTocLabels, openEpubBook } from './epub-book';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
 import DocxReader from './DocxReader';
@@ -1020,6 +1020,20 @@ function EpubReader({ bytes, path }: { bytes: Uint8Array; path: string }) {
         if (!cancelled) {
           setReaderModel(createDocumentReaderModel(loaded));
           setSectionTexts(texts);
+          // A book usually opens on its cover, which has no extractable
+          // text: without this, the first thing a screen-reader user
+          // hears on opening a book full of text is "No extractable text
+          // was found in this section." Start at the first readable
+          // section instead. Only while the reader is still on section 0:
+          // a saved reading position (or the user's own navigation) has
+          // already moved it, and that wins.
+          if (sectionIndexRef.current === 0) {
+            const start = epubInitialSectionIndex(
+              items.map((section, index) => ({ href: section.href, text: loaded[index]?.text ?? '' })),
+              opened.navigation.toc,
+            );
+            if (start > 0) setSectionIndex(start);
+          }
         }
       })
       .catch((reason: unknown) => {

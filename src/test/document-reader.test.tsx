@@ -331,14 +331,48 @@ describe('local accessible document reader', () => {
     };
     render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
 
-    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+    // The unloadable first section has no text, so the book opens on the
+    // first readable section instead of presenting "No extractable text".
+    expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
+    expect(screen.getByText('Second chapter text')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
-    expect(await screen.findByText('Second chapter text')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous section' }));
+    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+    expect(screen.getByText('No extractable text was found in this section.')).toBeInTheDocument();
     fireEvent.change(screen.getByRole('textbox', { name: 'Find in ePub' }), { target: { value: 'second' } });
     // No table of contents, title, or manifest file name is mocked for
     // these sections, so the label falls back to "Section N".
     await waitFor(() => expect(screen.getByRole('button', { name: 'Go to Section 2' })).toBeInTheDocument());
+  });
+
+  it('opens a cover-first book on the first chapter, not the cover', async () => {
+    mockEpubjs({
+      navigation: {
+        toc: [
+          {
+            id: 'np1',
+            href: 'Text/chapter1.xhtml',
+            title: 'Chapter One',
+            children: [{ id: 'np2', href: 'Text/chapter2.xhtml', title: 'Chapter Two', children: [] }],
+          },
+        ],
+      },
+      sections: [
+        { index: 0, href: 'Text/cover.xhtml', text: '' },
+        { index: 1, href: 'Text/chapter1.xhtml', text: 'Chapter OneIt was a queer, sultry summer…' },
+        { index: 2, href: 'Text/chapter2.xhtml', text: 'Chapter TwoI wouldn’t have missed it…' },
+      ],
+    });
+    render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+
+    // The cover has no text; the reader starts at the first
+    // table-of-contents entry with text instead of reporting no
+    // extractable text for a book full of it.
+    expect(await screen.findByText('Section 2 of 3')).toBeInTheDocument();
+    expect(screen.getByText('Chapter OneIt was a queer, sultry summer…')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Previous section' }));
+    expect(await screen.findByText('Section 1 of 3')).toBeInTheDocument();
+    expect(screen.getByText('No extractable text was found in this section.')).toBeInTheDocument();
   });
 
   it('renders the ePub reader without a table of contents until navigation arrives', async () => {

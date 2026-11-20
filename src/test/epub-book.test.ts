@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import JSZip from 'jszip';
 import type { EpubBook } from 'epubjs/src/index.js';
 import {
+  epubInitialSectionIndex,
   epubSectionLabel,
   epubSectionText,
   epubTocLabels,
@@ -496,6 +497,90 @@ describe('reader section labels and text over real epubjs opens', () => {
     } finally {
       book.destroy();
     }
+  });
+});
+
+describe('epubInitialSectionIndex', () => {
+  // A cover-first book like the Bell Jar: the cover section has no text,
+  // the table-of-contents page has a little, the chapters have the book.
+  const coverFirst = [
+    { href: 'blob:mock/cover', text: '' },
+    { href: 'blob:mock/toc', text: 'The Bell JarTable of Contents' },
+    { href: 'blob:mock/ch1', text: 'Chapter OneIt was a queer, sultry summer…' },
+    { href: 'blob:mock/ch2', text: 'Chapter TwoI wouldn’t have missed it…' },
+  ];
+  const toc = [
+    { label: 'Chapter One', href: 'blob:mock/ch1', subitems: undefined },
+    { label: 'Chapter Two', href: 'blob:mock/ch2', subitems: undefined },
+  ];
+
+  it('starts at the first table-of-contents entry with text, skipping the textless cover', () => {
+    expect(epubInitialSectionIndex(coverFirst, toc)).toBe(2);
+  });
+
+  it('starts at section 0 when the first section has text', () => {
+    expect(
+      epubInitialSectionIndex(
+        [
+          { href: 'blob:mock/ch1', text: 'Chapter One…' },
+          { href: 'blob:mock/ch2', text: 'Chapter Two…' },
+        ],
+        toc,
+      ),
+    ).toBe(0);
+  });
+
+  it('skips a textless table-of-contents entry (a cover listed first) to the next one with text', () => {
+    expect(
+      epubInitialSectionIndex(coverFirst, [
+        { label: 'Cover', href: 'blob:mock/cover', subitems: undefined },
+        ...toc,
+      ]),
+    ).toBe(2);
+  });
+
+  it('falls back to the first section with text when the table of contents is empty', () => {
+    expect(epubInitialSectionIndex(coverFirst, [])).toBe(1);
+  });
+
+  it('falls back to the first section with text when no table-of-contents entry matches one', () => {
+    expect(
+      epubInitialSectionIndex(coverFirst, [
+        { label: 'Elsewhere', href: 'blob:mock/other', subitems: undefined },
+      ]),
+    ).toBe(1);
+  });
+
+  it('strips fragments when matching table-of-contents hrefs', () => {
+    expect(
+      epubInitialSectionIndex(coverFirst, [
+        { label: 'Chapter One', href: 'blob:mock/ch1#start', subitems: undefined },
+      ]),
+    ).toBe(2);
+  });
+
+  it('considers nested table-of-contents entries in order', () => {
+    expect(
+      epubInitialSectionIndex(coverFirst, [
+        {
+          label: 'Front matter',
+          href: 'blob:mock/cover',
+          subitems: [{ label: 'Chapter One', href: 'blob:mock/ch1', subitems: undefined }],
+        },
+      ]),
+    ).toBe(2);
+  });
+
+  it('stays on section 0 when no section has text (a genuinely image-only book)', () => {
+    expect(
+      epubInitialSectionIndex(
+        [
+          { href: 'blob:mock/p1', text: '' },
+          { href: 'blob:mock/p2', text: '' },
+        ],
+        [],
+      ),
+    ).toBe(0);
   });
 });
 

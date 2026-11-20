@@ -260,6 +260,34 @@ export function epubTocLabels(items: EpubTocItem[]): Map<string, string> {
 }
 
 /**
+ * The section a book opens on. A book's first spine item is usually its
+ * cover — an image with no extractable text — so opening on section 0
+ * makes a book full of text present "No extractable text was found in
+ * this section." as the first thing a screen-reader user hears, even
+ * though the chapters read fine. Start at the first readable section
+ * instead: the first table-of-contents entry whose section has text,
+ * else the first section with text at all. A book with no readable
+ * section still opens on section 0, which honestly reports no
+ * extractable text. The caller only uses this when no saved reading
+ * position was restored, so a resumed book still opens where the
+ * reader stopped.
+ */
+export function epubInitialSectionIndex(
+  sections: Array<{ href: string; text: string }>,
+  toc: EpubTocItem[],
+): number {
+  const byHref = new Map(sections.map((section, index) => [section.href.split('#')[0], index]));
+  const flatten = (items: EpubTocItem[]): string[] =>
+    items.flatMap((item) => [item.href, ...(item.subitems ? flatten(item.subitems) : [])]);
+  for (const href of flatten(toc)) {
+    const index = byHref.get(href.split('#')[0]);
+    if (index !== undefined && sections[index].text) return index;
+  }
+  const firstText = sections.findIndex((section) => section.text);
+  return firstText === -1 ? 0 : firstText;
+}
+
+/**
  * The display label for one spine section. Never derived from
  * section.href: that is a blob: URL whose last segment is the blob UUID
  * (see epubTocLabels). Prefer the table-of-contents title for the section,
