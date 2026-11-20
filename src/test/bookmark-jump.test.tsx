@@ -28,11 +28,12 @@ function setup(
   savedPosition: ReadingPosition | null = null,
   settingsOverride: Partial<typeof DEFAULT_SETTINGS> = {},
   getReadingPositionImpl?: () => Promise<ReadingPosition | null>,
+  entries: VaultInfo['entries'] = [{ name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' }],
 ) {
   const vault: VaultInfo = {
     name: 'Study',
     path: '/study',
-    entries: [{ name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' }],
+    entries,
   };
   let menuListener: (command: MenuCommand) => void = () => undefined;
   const addBookmark = vi.fn(async () => bookmarks);
@@ -575,6 +576,59 @@ describe('bookmark jump from the side pane', () => {
     fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('No heading at or before the cursor to bookmark.'),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument();
+  });
+
+  it("shows only the open note's bookmarks under the Bookmarks heading", async () => {
+    // A bookmark for another note used to list alongside the open
+    // note's bookmarks, reading as if it belonged to the note on
+    // screen. Only the open note's bookmarks are shown, and the list
+    // follows the note that becomes current.
+    const otherBookmark: VaultBookmark = {
+      id: 'bm-other',
+      path: 'Other.md',
+      title: 'Other heading',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Other heading', occurrence: 0 },
+    };
+    setup(
+      [headingBookmark, otherBookmark],
+      content,
+      null,
+      {},
+      undefined,
+      [
+        { name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' },
+        { name: 'Other.md', path: 'Other.md', kind: 'note', provenance: 'created' },
+      ],
+    );
+    await screen.findByRole('heading', { name: 'Study' });
+    // No note open yet: there is no open file to scope to, so the
+    // library's bookmarks show — the list is the way to jump into a
+    // closed note at its bookmark.
+    expect(screen.getByRole('button', { name: 'Setup — Note.md' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Other heading — Other.md' })).toBeInTheDocument();
+    await openNote();
+    expect(screen.getByRole('button', { name: 'Setup — Note.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Other heading — Other.md' })).not.toBeInTheDocument();
+    // Opening the other note flips the list to its bookmarks.
+    fireEvent.keyDown(document.body, { key: 'V', ctrlKey: true, shiftKey: true });
+    fireEvent.click(await screen.findByRole('treeitem', { name: /Other\.md/ }));
+    await screen.findByRole('heading', { name: 'Other', level: 2 });
+    expect(screen.getByRole('button', { name: 'Other heading — Other.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Setup — Note.md' })).not.toBeInTheDocument();
+  });
+
+  it('Ctrl+Alt+H with no note open says to open a note first', async () => {
+    // The keyboard path reaches the bookmark command even when the
+    // palette shows it disabled (a preview open, or no note open at
+    // all): the shortcut must say so instead of silently doing nothing.
+    setup([headingBookmark]);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    await waitFor(() =>
+      expect(statusBar()).toHaveTextContent('Open a note to set a bookmark.'),
     );
     expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument();
   });

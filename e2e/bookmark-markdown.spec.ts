@@ -277,19 +277,31 @@ test('a second jump after the first lands on the second bookmark', async () => {
   }
 });
 
-test('jump to a heading bookmark while another markdown note is current', async () => {
+test('bookmarks list follows the current note: another note hides the first note bookmarks', async () => {
   const { app, page, paths, pageErrors } = await launchSeededApp(seedMarkdownLibrary());
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
     await bookmarkCurrentHeading(page, 'Usage');
-    // Open the other note so it becomes current, then jump to the
-    // Field Notes bookmark from the Bookmarks list.
+    // Open the other note: the Field Notes bookmark leaves the
+    // Bookmarks list — only the open note's bookmarks are shown.
     await switchView(page, 'Control+2', async () =>
       page.getByRole('gridcell', { name: 'Other.md', exact: true }).count(),
     );
     await openGridEntry(page, 'Other.md');
     await expect(page.getByRole('heading', { name: 'Other note', level: 1 })).toBeVisible({ timeout: 30000 });
+    await expect(
+      page.getByRole('button', { name: 'Usage — Field Notes.md', exact: true }),
+    ).toHaveCount(0, { timeout: 30000 });
+    // Switch back to Field Notes: its bookmark is listed again, and
+    // jumping from it lands on the heading.
+    await switchView(page, 'Control+2', async () =>
+      page.getByRole('gridcell', { name: 'Field Notes.md', exact: true }).count(),
+    );
+    await openGridEntry(page, 'Field Notes.md');
+    await expect(page.getByRole('heading', { name: 'Field Notes', level: 1 })).toBeVisible({
+      timeout: 30000,
+    });
     await jumpToBookmark(page, 'Usage — Field Notes.md', 'Usage');
     expect(pageErrors).toEqual([]);
   } finally {
