@@ -620,16 +620,14 @@ describe('bookmark jump from the side pane', () => {
     expect(screen.queryByRole('button', { name: 'Setup — Note.md' })).not.toBeInTheDocument();
   });
 
-  it('Ctrl+Alt+H with no note open says to open a note first', async () => {
+  it('Ctrl+Alt+H with no note open says to open a note or PDF first', async () => {
     // The keyboard path reaches the bookmark command even when the
     // palette shows it disabled (a preview open, or no note open at
     // all): the shortcut must say so instead of silently doing nothing.
     setup([headingBookmark]);
     await screen.findByRole('heading', { name: 'Study' });
     fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
-    await waitFor(() =>
-      expect(statusBar()).toHaveTextContent('Open a note to set a bookmark.'),
-    );
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Open a note or PDF to set a bookmark.'));
     expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument();
   });
 });

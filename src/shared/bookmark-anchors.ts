@@ -165,8 +165,9 @@ export function headingAnchorAt(content: string, isHtml: boolean, offset: number
   return { kind: 'heading', text: current.text, occurrence };
 }
 
-/** The character offset an anchor points at, or null when its heading is gone. */
+/** The character offset an anchor points at, or null when its heading is gone. A PDF page anchor has no meaning inside note text. */
 export function resolveBookmarkAnchor(content: string, isHtml: boolean, anchor: BookmarkAnchor): number | null {
+  if (anchor.kind === 'page') return null;
   if (anchor.kind === 'offset') return Math.max(0, Math.min(anchor.offset, content.length));
   const matches = listHeadings(content, isHtml).filter((hit) => hit.text === anchor.text);
   const hit = matches[anchor.occurrence] ?? matches[0];
@@ -225,6 +226,7 @@ export function readingJumpHeading(
   if (anchor.kind === 'heading') {
     return resolveBookmarkAnchor(content, isHtml, anchor) === null ? null : anchor;
   }
+  if (anchor.kind === 'page') return null;
   return headingAnchorAt(content, isHtml, anchor.offset);
 }
 
@@ -319,6 +321,19 @@ export function sanitizeBookmarkAnchor(value: unknown): BookmarkAnchor | undefin
   if (anchor.kind === 'offset') {
     const offset = (anchor as { offset?: unknown }).offset;
     if (typeof offset === 'number' && Number.isFinite(offset) && offset >= 0) return { kind: 'offset', offset: Math.floor(offset) };
+  }
+  if (anchor.kind === 'page') {
+    const page = (anchor as { page?: unknown }).page;
+    const offset = (anchor as { offset?: unknown }).offset;
+    if (
+      typeof page === 'number' &&
+      Number.isInteger(page) &&
+      page >= 1 &&
+      typeof offset === 'number' &&
+      Number.isFinite(offset) &&
+      offset >= 0
+    )
+      return { kind: 'page', page, offset: Math.floor(offset) };
   }
   return undefined;
 }

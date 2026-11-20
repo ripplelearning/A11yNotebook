@@ -138,9 +138,11 @@ export interface VaultLinkIndex {
 
 /** A user bookmark that points to a note in a local vault. */
 /** A position inside a note that a bookmark points at, beyond the file itself. */
+/** A page and the spot on it inside a PDF, like a position bookmark in a note. */
 export type BookmarkAnchor =
   | { kind: 'heading'; text: string; occurrence: number }
-  | { kind: 'offset'; offset: number };
+  | { kind: 'offset'; offset: number }
+  | { kind: 'page'; page: number; offset: number };
 
 export interface VaultBookmark {
   id: string;

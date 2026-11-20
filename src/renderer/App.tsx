@@ -137,6 +137,7 @@ import {
   type NotebookSettings,
 } from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
+import type { PdfBookmarkApi } from './features/previews/DocumentReader';
 import type { AttachmentPreview } from '../shared/attachments';
 import { AudioRecorder, type FinishedRecording } from './features/audio/recorder';
 import { LocalTranscriber } from './features/audio/transcription';
@@ -481,6 +482,8 @@ export default function App() {
     path: string;
     anchor: BookmarkAnchor;
     nonce: number;
+    /** The bookmark's user-chosen name, for the jump announcement. */
+    name?: string;
   } | null>(null);
   // The last bookmark jump that landed, so switching views after it (or
   // resuming) does not yank the reader back to the saved reading
@@ -1035,6 +1038,8 @@ export default function App() {
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
+  /** The file the Bookmarks list is scoped to: the open note, the open attachment, or none — then the list shows every bookmark. */
+  const openFilePath = currentNote?.path ?? (selectedTab === 'attachment' ? (attachment?.path ?? null) : null);
   const currentNoteId = currentNote?.id;
   currentNoteIdRef.current = currentNoteId;
   const contextualNewCommand: CommandId =
@@ -2619,6 +2624,8 @@ export default function App() {
     return true;
   };
   const attachmentRef = useRef<HTMLDivElement>(null);
+  /** The open PDF reader's bookmark API (current spot, jump to a spot); null when no PDF reader is mounted. */
+  const pdfBookmarkRef = useRef<PdfBookmarkApi | null>(null);
 
   const isReaderAttachment = (path: string) => /\.(?:pdf|epub|docx)$/i.test(path);
   const isImageAttachment = (path: string) => /\.(?:png|jpe?g|gif|webp|bmp)$/i.test(path);
@@ -3701,10 +3708,33 @@ export default function App() {
   const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note) {
+      // A PDF has no note to anchor on, but it has pages: both commands
+      // set a page-and-spot bookmark there (a PDF has no headings, so
+      // the two commands resolve to the same spot). The naming prompt
+      // is pre-filled with the page, the way a heading bookmark is
+      // pre-filled with its heading.
+      if (selectedTab === 'attachment' && attachment && /\.pdf$/i.test(attachment.path)) {
+        const api = pdfBookmarkRef.current;
+        if (!api) {
+          setStatusMessage('The PDF is not ready yet.');
+          return;
+        }
+        const spot = api.getCurrentSpot();
+        if (!spot) {
+          setStatusMessage('The PDF is not ready yet.');
+          return;
+        }
+        setBookmarkNameRequest({
+          path: attachment.path,
+          anchor: { kind: 'page', page: spot.page, offset: spot.offset },
+          suggestedName: `Page ${spot.page}`,
+        });
+        return;
+      }
       // The keyboard path reaches this command even when the palette
       // shows it disabled (a preview open, or no note open at all):
       // say so instead of silently doing nothing.
-      setStatusMessage('Open a note to set a bookmark.');
+      setStatusMessage('Open a note or PDF to set a bookmark.');
       return;
     }
     if (!window.a11yNotebook) return;
@@ -3780,7 +3810,11 @@ export default function App() {
       );
       setBookmarks(nextBookmarks);
       setStatusMessage(
-        request.anchor.kind === 'heading' ? `Bookmarked heading "${name}".` : `Bookmarked "${name}".`,
+        request.anchor.kind === 'heading'
+          ? `Bookmarked heading "${name}".`
+          : request.anchor.kind === 'page'
+            ? `Bookmarked "${name}" on page ${request.anchor.page}.`
+            : `Bookmarked "${name}".`,
       );
     } catch {
       throw new Error('Could not add the bookmark.');
@@ -4051,6 +4085,45 @@ export default function App() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingBookmarkAnchor, currentNote, mode]);
+
+  // After a PDF bookmark is activated, land the reader on its page and
+  // spot once the PDF is the open attachment. The reader mounts (and
+  // registers its bookmark API) after the open, so a missing API is
+  // retried a bounded number of times instead of being dropped; the
+  // jump itself waits for the page to render inside the reader.
+  useEffect(() => {
+    if (!pendingBookmarkAnchor || pendingBookmarkAnchor.anchor.kind !== 'page') return;
+    const { path, anchor } = pendingBookmarkAnchor;
+    if (selectedTab !== 'attachment' || attachment?.path !== path) return;
+    const label = pendingBookmarkAnchor.name ?? `Page ${anchor.page}`;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let attempts = 0;
+    const tryJump = () => {
+      if (cancelled) return;
+      attempts += 1;
+      const api = pdfBookmarkRef.current;
+      if (!api) {
+        if (attempts < 60) {
+          timer = setTimeout(tryJump, 50);
+          return;
+        }
+        setPendingBookmarkAnchor(null);
+        setStatusMessage('The PDF could not be opened.');
+        return;
+      }
+      void api.jumpToSpot({ page: anchor.page, offset: anchor.offset }).then((landed) => {
+        if (cancelled) return;
+        setPendingBookmarkAnchor(null);
+        setStatusMessage(landed ? `Jumped to ${label}.` : 'That bookmarked page could not be opened.');
+      });
+    };
+    timer = setTimeout(tryJump, 0);
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [pendingBookmarkAnchor, selectedTab, attachment?.path]);
 
   // Resume a note in reading mode at the heading the reader had reached.
   // A bookmark jump takes precedence: when one is pending, this stays out
@@ -6798,8 +6871,9 @@ export default function App() {
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
     // Bookmarking at the cursor works from the reading position as
     // well as the edit caret, so these are available in either mode.
+    // A PDF has no note, but its reader takes the same commands.
     if (id === 'bookmark-heading-at-cursor' || id === 'bookmark-position-at-cursor')
-      return !currentNote;
+      return !currentNote && !(selectedTab === 'attachment' && attachment && /\.pdf$/i.test(attachment.path));
     if (id === 'toggle-focus-mode') return !currentNote;
     if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);
     if (id === 'save-current-note')
@@ -7645,6 +7719,7 @@ export default function App() {
                   }}
                   spreadsheetSaveRef={spreadsheetSaveRef}
                   ocrSaveRef={ocrSaveRef}
+                  pdfBookmarkRef={pdfBookmarkRef}
                   onSpreadsheetFileCreated={() => {
                     void refreshVault();
                   }}
@@ -8034,14 +8109,14 @@ export default function App() {
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
               <ul>
-                {/* Only the open note's bookmarks: bookmarks for other
-                    notes open those notes when activated, so listing
-                    them here reads as bookmarks of the note on screen.
-                    With no note open there is no open file to scope to,
+                {/* Only the open file's bookmarks: bookmarks for other
+                    files open those files when activated, so listing
+                    them here reads as bookmarks of the file on screen.
+                    With no file open there is no open file to scope to,
                     so the library's bookmarks show — the list is the
-                    only way to jump into a closed note at its bookmark. */}
+                    only way to jump into a closed file at its bookmark. */}
                 {bookmarks
-                  .filter((bookmark) => !currentNote || bookmark.path === currentNote.path)
+                  .filter((bookmark) => !openFilePath || bookmark.path === openFilePath)
                   .map((bookmark) => {
                     // A user-chosen name wins; otherwise the title as the
                     // reader sees it (a heading stored from source may
@@ -8059,6 +8134,7 @@ export default function App() {
                                   path: bookmark.path,
                                   anchor: bookmark.anchor,
                                   nonce: Date.now(),
+                                  ...(bookmark.name ? { name: bookmark.name } : {}),
                                 });
                               void openEntry(entry);
                             }
@@ -8068,7 +8144,9 @@ export default function App() {
                             ? `${label} — ${bookmark.path.split('/').pop()}`
                             : bookmark.anchor?.kind === 'offset'
                               ? `${label} (position)`
-                              : label}
+                              : bookmark.anchor?.kind === 'page'
+                                ? `${label} (Page ${bookmark.anchor.page})${openFilePath ? '' : ` — ${bookmark.path.split('/').pop()}`}`
+                                : label}
                         </button>{' '}
                         <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
                           Remove

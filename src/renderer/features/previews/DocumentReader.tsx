@@ -26,6 +26,7 @@ import { extractEpubSectionImages } from './ocr-images';
 import type { OcrRunUnit } from './ocr-runner';
 import PdfNotes, { type PdfRenderedPage } from './PdfNotes';
 import PdfUnavailableNotes from './PdfUnavailableNotes';
+import { groupedPdfSelection, semanticPdfRange } from './pdf-note-selection';
 import DocxReader from './DocxReader';
 import Modal from '../../components/Modal';
 import { ANNOTATION_COLORS } from '../../../shared/annotations';
@@ -116,6 +117,134 @@ const MAX_DOCUMENT_BYTES = 40 * 1024 * 1024;
 const MAX_SEARCHABLE_PAGES = 500;
 const MAX_SEARCHABLE_TEXT = 20 * 1024 * 1024;
 
+/** A page and the spot on it inside a PDF: the character offset in that page's extracted text. */
+export interface PdfBookmarkSpot {
+  page: number;
+  offset: number;
+}
+
+/** What the app uses to set and jump to PDF bookmarks in the open reader. */
+export interface PdfBookmarkApi {
+  /** The reader's current page and spot, or null when the PDF has not loaded. */
+  getCurrentSpot: () => PdfBookmarkSpot | null;
+  /** Open the page and land focus and the selection on the spot. */
+  jumpToSpot: (spot: PdfBookmarkSpot) => Promise<boolean>;
+}
+
+/** One page of layers for a PDF spot lookup: the accessible-text host and the visual text layer for that page. */
+interface PdfSpotLayer {
+  page: number;
+  element: HTMLElement;
+}
+
+/**
+ * The spot under the reader's selection: a selected range starts there,
+ * and a collapsed caret sits there. Offsets are character positions in
+ * the page's extracted text, read off the spans that carry them.
+ */
+function pdfSpotFromSelection(layers: PdfSpotLayer[]): PdfBookmarkSpot | null {
+  const selection = window.getSelection();
+  if (!selection || !selection.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!range.collapsed) {
+    const grouped = groupedPdfSelection(selection, layers);
+    if (grouped.length) return { page: grouped[0].page, offset: grouped[0].start };
+  }
+  const node = range.startContainer;
+  const element = node instanceof Element ? node : node.parentElement;
+  const span = element?.closest<HTMLElement>('[data-start-offset]');
+  if (!span) return null;
+  const layer = layers.find(({ element: host }) => host.contains(span));
+  if (!layer) return null;
+  const start = Number(span.dataset.startOffset);
+  const end = Number(span.dataset.endOffset);
+  if (!Number.isInteger(start) || !Number.isInteger(end) || end <= start) return null;
+  const prefix = span.ownerDocument.createRange();
+  prefix.selectNodeContents(span);
+  try {
+    prefix.setEnd(node, range.startOffset);
+  } catch {
+    return { page: layer.page, offset: start };
+  }
+  const within = Math.min(end - start, Math.max(0, prefix.toString().length));
+  return { page: layer.page, offset: start + within };
+}
+
+/** The spot at the focused block in the reader's accessible text. */
+function pdfSpotFromFocus(layers: PdfSpotLayer[]): PdfBookmarkSpot | null {
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement)) return null;
+  const layer = layers.find(({ element: host }) => host.contains(focused));
+  if (!layer) return null;
+  const range = semanticPdfRange(focused, layer.element, layer.page);
+  if (range) return { page: range.page, offset: range.start };
+  const span = focused.closest<HTMLElement>('[data-start-offset]');
+  if (!span) return null;
+  const start = Number(span.dataset.startOffset);
+  return Number.isInteger(start) ? { page: layer.page, offset: start } : null;
+}
+
+/**
+ * Land on a bookmarked spot in already-rendered page text: select from
+ * the bookmarked offset to the end of its span — a text-node range, the
+ * way Find selects a match, so the virtual cursor follows — and focus
+ * the containing block. Returns true only when focus and a live
+ * selection are both in place. A page with no extractable text has no
+ * span to land on: focus the page text container itself instead.
+ */
+function landOnPdfSpot(host: HTMLElement, page: PdfPage, spot: PdfBookmarkSpot): boolean {
+  const spans = [...host.querySelectorAll<HTMLElement>('[data-start-offset]')];
+  if (!spans.length) {
+    if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
+    host.focus();
+    try {
+      host.scrollIntoView({ block: 'start' });
+    } catch {
+      // Scrolling is best-effort; the focus landing is what matters.
+    }
+    return document.activeElement === host;
+  }
+  let span = spans.find(
+    (candidate) =>
+      spot.offset >= Number(candidate.dataset.startOffset) && spot.offset < Number(candidate.dataset.endOffset),
+  );
+  let offset = spot.offset;
+  if (!span) {
+    // The bookmarked offset is past the end of the page's current text
+    // (the file changed since the bookmark was set): clamp to the
+    // nearest span instead of failing the jump.
+    const first = spans[0];
+    const last = spans[spans.length - 1];
+    if (offset < Number(first.dataset.startOffset)) {
+      span = first;
+      offset = Number(first.dataset.startOffset);
+    } else {
+      span = last;
+      offset = Number(last.dataset.startOffset);
+    }
+  }
+  const length = Math.max(1, Number(span.dataset.endOffset) - offset);
+  const block = span.closest<HTMLElement>('[tabindex]');
+  if (!block) return false;
+  // Focus first, then select: focusing after selecting can drop the
+  // selection, leaving focus without a place for the virtual cursor.
+  block.focus();
+  try {
+    block.scrollIntoView({ block: 'start' });
+  } catch {
+    // Scrolling is best-effort; the focus landing is what matters.
+  }
+  const selected = page.selectTextRange(offset, length, host);
+  const selection = window.getSelection();
+  return (
+    document.activeElement === block &&
+    selected &&
+    !!selection?.anchorNode &&
+    selection.anchorNode.nodeType === Node.TEXT_NODE &&
+    block.contains(selection.anchorNode)
+  );
+}
+
 /** The render scale for one PDF page, capped the way the paginated render caps it. */
 function pdfPageRenderScale(page: PdfPage, zoom: number, rotation: number): number {
   const effectiveRotation = (page.canRotate + rotation) % 360;
@@ -163,6 +292,12 @@ interface Props {
   ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
   /** Engine factory for OCR; defaults to the real on-device engine. Tests pass a fake. */
   ocrEngineFactory?: (language: string, onLogger: OcrEngineLogger) => Promise<OcrEngine>;
+  /**
+   * The app registers the open PDF reader's bookmark API here — the
+   * current page and spot, and the jump to one — the same ref pattern
+   * as the OCR save function above.
+   */
+  pdfBookmarkRef?: MutableRefObject<PdfBookmarkApi | null>;
 }
 
 type ByteDocumentProps = Omit<Props, 'kind'> & { kind: '.pdf' | '.epub' };
@@ -203,6 +338,7 @@ function PdfReader({
   path,
   ocrSaveRef,
   ocrEngineFactory,
+  pdfBookmarkRef,
   ocrStatus,
   setOcrStatus,
   onReload,
@@ -211,6 +347,7 @@ function PdfReader({
   path: string;
   ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
   ocrEngineFactory?: (language: string, onLogger: OcrEngineLogger) => Promise<OcrEngine>;
+  pdfBookmarkRef?: MutableRefObject<PdfBookmarkApi | null>;
   ocrStatus: string;
   setOcrStatus: (value: string) => void;
   onReload: () => void;
@@ -245,6 +382,14 @@ function PdfReader({
   const continuousCanvasesRef = useRef(new Set<number>());
   /** Guards lazy canvas renders against a stale continuous render. */
   const continuousGenerationRef = useRef(0);
+  /** A bookmark jump waiting for its page to render. */
+  const pendingBookmarkJump = useRef<PdfBookmarkSpot | null>(null);
+  const activePageRef = useRef<PdfPage | null>(null);
+  activePageRef.current = activePage;
+  const pageCountRef = useRef(pageCount);
+  pageCountRef.current = pageCount;
+  const renderedRef = useRef<PdfRenderedPage | null>(null);
+  renderedRef.current = rendered;
   const preferences = usePdfReadingPreferences();
   const preferencesRef = useRef(preferences);
   preferencesRef.current = preferences;
@@ -477,6 +622,112 @@ function PdfReader({
     },
     [goToPage],
   );
+
+  /** The page's rendered text host for a spot landing: the whole semantic container when paginated, one page wrapper in continuous view. */
+  const pdfSpotHost = useCallback((page: number): HTMLElement | null => {
+    const semantic = semanticRef.current;
+    if (!semantic) return null;
+    return continuousRef.current ? semantic.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`) : semantic;
+  }, []);
+
+  /** The rendered page object for a spot landing, or null when that page is not the rendered one. */
+  const pdfSpotPage = useCallback((page: number): PdfPage | null => {
+    if (continuousRef.current) return continuousPagesRef.current.get(page)?.page ?? null;
+    const active = activePageRef.current;
+    return active && active.pageNum === page ? active : null;
+  }, []);
+
+  /** True once the target page's accessible text is rendered and landable. */
+  const isPdfSpotRendered = useCallback((page: number): boolean => {
+    if (continuousRef.current) return continuousPagesRef.current.has(page);
+    return renderedRef.current?.page.pageNum === page;
+  }, []);
+
+  /**
+   * The reader's current page and spot: the selection first, then the
+   * focused block, then the top of the current page when the reader has
+   * no position yet. The visual text layer counts for a selection too,
+   * so a mouse selection in the page counts the same as one in the
+   * accessible text.
+   */
+  const getCurrentPdfSpot = useCallback((): PdfBookmarkSpot | null => {
+    if (!document) return null;
+    const semantic = semanticRef.current;
+    if (!semantic) return null;
+    const layers: PdfSpotLayer[] = [];
+    if (continuousRef.current) {
+      for (const host of [semantic, visualRef.current]) {
+        if (!host) continue;
+        for (const wrapper of host.querySelectorAll<HTMLElement>('[data-pdf-page]')) {
+          const page = Number(wrapper.dataset.pdfPage);
+          if (Number.isInteger(page)) layers.push({ page, element: wrapper });
+        }
+      }
+    } else {
+      layers.push({ page: pageNumberRef.current, element: semantic });
+      if (visualRef.current) layers.push({ page: pageNumberRef.current, element: visualRef.current });
+    }
+    return pdfSpotFromSelection(layers) ?? pdfSpotFromFocus(layers) ?? { page: pageNumberRef.current, offset: 0 };
+  }, [document]);
+
+  /**
+   * Jump to a bookmarked page and spot. The page turn renders
+   * asynchronously, so the jump waits for the page's accessible text:
+   * the render effects land a pending jump the moment they render its
+   * page, and this poll lands it when the page is already rendered (a
+   * jump on the current page renders nothing new). A page number beyond
+   * the document fails fast once the page count is known; a document
+   * that never loads fails when the wait runs out.
+   */
+  const jumpToPdfSpot = useCallback(
+    (spot: PdfBookmarkSpot): Promise<boolean> => {
+      if (spot.page < 1) return Promise.resolve(false);
+      if (document && spot.page > pageCountRef.current) return Promise.resolve(false);
+      pendingBookmarkJump.current = spot;
+      goToPage(spot.page);
+      return new Promise<boolean>((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          if (!pendingBookmarkJump.current) {
+            resolve(true);
+            return;
+          }
+          if (pageCountRef.current > 0 && spot.page > pageCountRef.current) {
+            pendingBookmarkJump.current = null;
+            resolve(false);
+            return;
+          }
+          if (isPdfSpotRendered(spot.page)) {
+            const host = pdfSpotHost(spot.page);
+            const page = pdfSpotPage(spot.page);
+            const landed = !!host && !!page && landOnPdfSpot(host, page, spot);
+            pendingBookmarkJump.current = null;
+            resolve(landed);
+            return;
+          }
+          if (Date.now() - started > 8000) {
+            pendingBookmarkJump.current = null;
+            resolve(false);
+            return;
+          }
+          setTimeout(tick, 100);
+        };
+        // The first tick waits a beat so a programmatic page scroll in
+        // continuous view settles before the landing scrolls the spot.
+        setTimeout(tick, 50);
+      });
+    },
+    [document, goToPage, isPdfSpotRendered, pdfSpotHost, pdfSpotPage],
+  );
+
+  // Register the bookmark API for the app; clear it when the reader closes.
+  useEffect(() => {
+    if (!pdfBookmarkRef) return;
+    pdfBookmarkRef.current = { getCurrentSpot: getCurrentPdfSpot, jumpToSpot: jumpToPdfSpot };
+    return () => {
+      pdfBookmarkRef.current = null;
+    };
+  }, [pdfBookmarkRef, getCurrentPdfSpot, jumpToPdfSpot]);
 
   const missingRequired = useMemo(
     () => missingRequiredPdfFormFields(formFields, formValues),
@@ -718,6 +969,10 @@ function PdfReader({
             span?.closest<HTMLElement>('[tabindex]')?.focus();
             pendingNote.current = null;
           }
+          const bookmarkJump = pendingBookmarkJump.current;
+          if (bookmarkJump?.page === page.pageNum && landOnPdfSpot(semantic, page, bookmarkJump)) {
+            pendingBookmarkJump.current = null;
+          }
         });
       })
       .catch(() => {
@@ -857,9 +1112,21 @@ function PdfReader({
             scrollToPageRef.current = note.page;
           }
         }
+        // A bookmark jump lands on its own spot, so the page-top scroll
+        // below stays out of its way once the landing is made.
+        const bookmarkJump = pendingBookmarkJump.current;
+        let bookmarkLanded = false;
+        if (bookmarkJump) {
+          const entry = continuousPagesRef.current.get(bookmarkJump.page);
+          const host = semantic.querySelector<HTMLElement>(`[data-pdf-page="${bookmarkJump.page}"]`);
+          if (entry && host && landOnPdfSpot(host, entry.page, bookmarkJump)) {
+            pendingBookmarkJump.current = null;
+            bookmarkLanded = true;
+          }
+        }
         const target = scrollToPageRef.current ?? pageNumberRef.current;
         scrollToPageRef.current = null;
-        scrollPageIntoView(target);
+        if (!bookmarkLanded) scrollPageIntoView(target);
       } catch {
         if (!cancelled) setRenderError('This PDF could not be rendered. The extracted text remains available.');
       }
@@ -1072,8 +1339,10 @@ function PdfReader({
           <p>Recognized text (temporary). Press Ctrl+S to save it into the file.</p>
         ) : null}
         <div ref={semanticRef}>
-          {readerModel.sections[pageNumber - 1]?.text ||
-            (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
+          {continuous
+            ? null
+            : readerModel.sections[pageNumber - 1]?.text ||
+              (loadingText ? 'Extracting text…' : 'No extractable text was found on this page.')}
         </div>
         {!loadingText && !baseSections[pageNumber - 1]?.text.trim() && emptyPageIndexes.length > 0 ? (
           <p>
@@ -1940,7 +2209,7 @@ function EpubReader({
   );
 }
 
-function ByteDocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: ByteDocumentProps) {
+function ByteDocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory, pdfBookmarkRef }: ByteDocumentProps) {
   const [reloadKey, setReloadKey] = useState(0);
   const { bytes, error } = useDocumentBytes(path, kind, reloadKey);
   // The OCR save status lives here, not in the inner reader: saving reloads
@@ -1963,6 +2232,7 @@ function ByteDocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: ByteDo
       path={path}
       ocrSaveRef={ocrSaveRef}
       ocrEngineFactory={ocrEngineFactory}
+      pdfBookmarkRef={pdfBookmarkRef}
       ocrStatus={ocrStatus}
       setOcrStatus={setOcrStatus}
       onReload={requestReload}
@@ -1981,7 +2251,15 @@ function ByteDocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: ByteDo
   );
 }
 
-export default function DocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory }: Props) {
+export default function DocumentReader({ path, kind, ocrSaveRef, ocrEngineFactory, pdfBookmarkRef }: Props) {
   if (kind === '.docx') return <DocxReader path={path} />;
-  return <ByteDocumentReader path={path} kind={kind} ocrSaveRef={ocrSaveRef} ocrEngineFactory={ocrEngineFactory} />;
+  return (
+    <ByteDocumentReader
+      path={path}
+      kind={kind}
+      ocrSaveRef={ocrSaveRef}
+      ocrEngineFactory={ocrEngineFactory}
+      pdfBookmarkRef={pdfBookmarkRef}
+    />
+  );
 }
