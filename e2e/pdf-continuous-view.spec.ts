@@ -9,7 +9,6 @@ import {
   openNotebook,
   seedLibrary,
   waitForApp,
-  type SeedPaths,
 } from './helpers';
 
 /**
@@ -42,25 +41,15 @@ async function openThreePagePdf(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
 }
 
-test.describe('PDF continuous view toggle', () => {
+test('PDF continuous view toggle switches between paginated and continuous view, tracking the current page', async () => {
   let app: ElectronApplication | null = null;
-  let paths: SeedPaths;
-
-  test.beforeAll(async () => {
-    const pdf = await threePagePdf();
-    paths = seedLibrary([{ name: 'Docs', files: [{ name: 'Guide.pdf', content: pdf }] }]);
-  });
-
-  test.beforeEach(async () => {
-    ({ app } = await launchApp(paths.userDataDir));
-  });
-
-  test.afterEach(async () => {
-    await closeApp(app, paths);
-    app = null;
-  });
-
-  test('toggles between paginated and continuous view, tracking the current page', async ({ page }) => {
+  const paths = seedLibrary([{ name: 'Docs', files: [{ name: 'Guide.pdf', content: await threePagePdf() }] }]);
+  try {
+    const launched = await launchApp(paths.userDataDir);
+    app = launched.app;
+    const page = launched.page;
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
     await openThreePagePdf(page);
     const navigation = page.getByRole('group', { name: 'PDF page navigation' });
     const toggle = navigation.getByRole('button', { name: 'Paginated view' });
@@ -108,5 +97,9 @@ test.describe('PDF continuous view toggle', () => {
     await expect(pageText.getByText('Continuous first page text')).toBeVisible();
     await expect(pageText.getByText('Continuous second page text')).toHaveCount(0);
     await expect(pageText.getByText('Continuous third page text')).toHaveCount(0);
-  });
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
 });
