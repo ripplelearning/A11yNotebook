@@ -275,6 +275,15 @@ const NAVIGATION_SCREENS = [
   { id: 'notebooks', label: 'Notebooks' },
   { id: 'notes-files', label: 'Notes & Files' },
 ] as const;
+// Views whose titlebar names the currently open notebook instead of the
+// library; the Libraries, Notebooks, and Contents views keep the library.
+const NOTEBOOK_TITLE_TABS: ReadonlySet<string> = new Set([
+  'notes-files',
+  'tasks',
+  'assets',
+  'calendar',
+  'reminders',
+]);
 const assetRegistry = createAssetRegistry(assetTypes);
 
 const REGION_LABELS: Record<FocusRegion, string> = {
@@ -6966,7 +6975,11 @@ export default function App() {
   // screen reader's title-bar shortcut always identifies the app. An open
   // note keeps its title only while it is the selected tab, in the same
   // "Note | Library | A11y Notebook" form. With no library open, the view
-  // and the app name are all there is to show.
+  // and the app name are all there is to show. In the Notes & Files,
+  // Tasks, Cognitive Tools, Calendar, and Reminders views the middle
+  // segment names the currently open notebook instead of the library, so
+  // the title reads "View | Notebook | A11y Notebook"; with no notebook
+  // open there the segment is omitted rather than left empty.
   const titleView =
     activeDialog === 'settings'
       ? 'Settings'
@@ -6998,10 +7011,14 @@ export default function App() {
     document.title =
       currentNote && vault && selectedTab === currentNote.id
         ? `${currentNote.title} | ${vault.name} | A11y Notebook`
-        : vault
-          ? `${titleView} | ${vault.name} | A11y Notebook`
-          : `${titleView} | A11y Notebook`;
-  }, [titleView, currentNote, vault, selectedTab, activeDialog]);
+        : vault && NOTEBOOK_TITLE_TABS.has(selectedTab) && selectedNotebookName
+          ? `${titleView} | ${selectedNotebookName} | A11y Notebook`
+          : vault && NOTEBOOK_TITLE_TABS.has(selectedTab)
+            ? `${titleView} | A11y Notebook`
+            : vault
+              ? `${titleView} | ${vault.name} | A11y Notebook`
+              : `${titleView} | A11y Notebook`;
+  }, [titleView, currentNote, vault, selectedTab, activeDialog, selectedNotebookName]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 

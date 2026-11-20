@@ -191,3 +191,60 @@ test('seeded library opens with its note, tasks, and appointment', async () => {
     await closeApp(app, paths);
   }
 });
+
+test('title bar names the open notebook in the notebook views', async () => {
+  let app: ElectronApplication | null = null;
+  const paths = seedLibrary();
+  try {
+    app = await electron.launch({
+      args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${paths.userDataDir}`],
+    });
+    const page = await app.firstWindow();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+
+    await expect(page).toHaveTitle(/A11y Notebook/);
+    await expect(page.getByRole('banner', { name: 'Application header' })).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page.getByRole('gridcell', { name: 'Seeded' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
+
+    // View shortcuts race the keydown listener attaching after mount, so
+    // retry each switch until the title actually changes.
+    async function switchToTitle(shortcut: string, title: string) {
+      for (let attempt = 0; attempt < 6; attempt++) {
+        if ((await page.title()) === title) return;
+        await page.keyboard.press(platformShortcut(shortcut));
+        await page.waitForTimeout(500);
+      }
+      await expect(page).toHaveTitle(title);
+    }
+
+    // With no notebook open, the notebook views omit the middle segment.
+    await switchToTitle('Control+4', 'Tasks | A11y Notebook');
+    // The untouched views name the library (the seeded folder, 'library').
+    await switchToTitle('Control+2', 'Notebooks | library | A11y Notebook');
+
+    // Open the Seeded notebook from the Notebooks grid.
+    const notebookRow = page.getByRole('row', { name: /Seeded\s+notebook/ });
+    await expect(notebookRow).toBeVisible();
+    await notebookRow.dblclick();
+    await expect(page.getByRole('gridcell', { name: 'Seeded note.md' })).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page).toHaveTitle('Notes & Files | Seeded | A11y Notebook');
+    await switchToTitle('Control+4', 'Tasks | Seeded | A11y Notebook');
+    await switchToTitle('Control+5', 'Cognitive Tools | Seeded | A11y Notebook');
+    await switchToTitle('Control+6', 'Calendar | Seeded | A11y Notebook');
+    await switchToTitle('Control+7', 'Reminders | Seeded | A11y Notebook');
+    // The untouched views keep naming the library with a notebook open.
+    await switchToTitle('Control+2', 'Notebooks | library | A11y Notebook');
+    await switchToTitle('Control+0', 'Contents | library | A11y Notebook');
+    await switchToTitle('Control+1', 'Libraries | library | A11y Notebook');
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
