@@ -131,6 +131,7 @@ export function buildApplicationMenu(
         commandItem('toggle-bookmark', 'checkbox'),
         commandItem('bookmark-heading-at-cursor'),
         commandItem('bookmark-position-at-cursor'),
+        commandItem('bookmark-jump-next'),
         commandItem('encrypt-current-note'),
         commandItem('convert-current-note'),
         commandItem('convert-note-to-outline'),

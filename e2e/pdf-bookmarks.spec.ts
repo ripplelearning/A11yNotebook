@@ -17,14 +17,14 @@ import {
 } from './helpers';
 
 /**
- * Page-anchored PDF bookmarks: setting with Ctrl+Alt+H and Ctrl+Alt+J
- * (naming prompt prefilled "Page N"), jumping to the page and the spot
- * in Paginated and Continuous view, list scoping to the open file,
- * jumping into a closed PDF, deleting, and persistence across a relaunch.
- * A jump only passes when focus AND the DOM selection land on the
- * bookmarked spot: focus alone does not move a screen reader's virtual
- * cursor. Fixtures are generated with pdf-lib, so no third-party file is
- * involved.
+ * Page-anchored PDF bookmarks: setting with Ctrl+Alt+H (naming prompt
+ * prefilled "Page N"), jumping to the next bookmark with Ctrl+Alt+J
+ * (wrapping to the first) in Paginated and Continuous view, list scoping
+ * to the open file, jumping into a closed PDF, deleting, and persistence
+ * across a relaunch. A jump only passes when focus AND the DOM selection
+ * land on the bookmarked spot: focus alone does not move a screen
+ * reader's virtual cursor. Fixtures are generated with pdf-lib, so no
+ * third-party file is involved.
  */
 
 async function multiPagePdf(pages: string[][]): Promise<Uint8Array> {
@@ -163,6 +163,42 @@ async function readingJumpState(page: Page) {
   });
 }
 
+/** Place a collapsed selection in continuous view, where every page has its own accessible-text section. */
+async function placeContinuousSelection(page: Page, text: string, offset = 1): Promise<void> {
+  await page.waitForFunction(
+    ({ wanted }) => {
+      const sections = [...document.querySelectorAll('section[aria-label^="Accessible text for PDF page"]')];
+      return sections.some((section) =>
+        [...section.querySelectorAll('[data-start-offset]')].some((span) => span.textContent?.includes(wanted)),
+      );
+    },
+    { wanted: text },
+    { timeout: 30000 },
+  );
+  await page.evaluate(
+    ({ wanted, at }) => {
+      const sections = [...document.querySelectorAll('section[aria-label^="Accessible text for PDF page"]')];
+      for (const section of sections) {
+        const walker = document.createTreeWalker(section, NodeFilter.SHOW_TEXT);
+        let node: Text | null;
+        while ((node = walker.nextNode() as Text | null)) {
+          if (node.data.includes(wanted)) {
+            const range = document.createRange();
+            range.setStart(node, Math.min(at, node.data.length));
+            range.collapse(true);
+            const selection = window.getSelection();
+            selection?.removeAllRanges();
+            selection?.addRange(range);
+            return;
+          }
+        }
+      }
+      throw new Error(`PDF text not found: ${wanted}`);
+    },
+    { wanted: text, at: offset },
+  );
+}
+
 /** Set a bookmark with a shortcut and save it under the given name (or its default). */
 async function bookmarkWithShortcut(
   page: Page,
@@ -197,7 +233,19 @@ async function jumpToBookmark(
   await expect(statusLine(page)).toContainText(expectedStatus, { timeout: 30000 });
 }
 
-test('PDF bookmarks set with Ctrl+Alt+H and Ctrl+Alt+J and jump in paginated view', async () => {
+/** Jump to the next bookmark with Ctrl+Alt+J and check the landing. */
+async function jumpToNextBookmark(page: Page, expectedLine: string, expectedStatus: string): Promise<void> {
+  await pressShortcut(page, 'Control+Alt+J');
+  await expect
+    .poll(() => readingJumpState(page), { timeout: 15000 })
+    .toMatchObject({ tag: 'P', text: expect.stringContaining(expectedLine) });
+  const state = await readingJumpState(page);
+  expect(state.selection.length).toBeGreaterThan(0);
+  expect(state.text).toContain(state.selection.trim());
+  await expect(statusLine(page)).toContainText(expectedStatus, { timeout: 30000 });
+}
+
+test('PDF bookmarks set with Ctrl+Alt+H and jumped to with Ctrl+Alt+J in paginated view', async () => {
   test.setTimeout(180000);
   const paths = await seedLibraryWithPdfs();
   const { app, page } = await launchSeededApp(paths);
@@ -210,19 +258,25 @@ test('PDF bookmarks set with Ctrl+Alt+H and Ctrl+Alt+J and jump in paginated vie
     await expect(statusLine(page)).toContainText('Bookmarked "Beta start" on page 2.', { timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Beta start (Page 2)' })).toBeVisible();
     await goToPage(page, 3);
-    await bookmarkWithShortcut(page, 'Control+Alt+J', 'Page 3');
+    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 3');
     await expect(statusLine(page)).toContainText('Bookmarked "Page 3" on page 3.', { timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Page 3 (Page 3)' })).toBeVisible();
     // Jump back to page 2 from page 3: the reader turns the page and
     // lands focus and the selection on the bookmarked line.
     await jumpToBookmark(page, 'Beta start (Page 2)', 'Beta line one.', 'Jumped to Beta start.');
     await expect(page.getByRole('heading', { name: 'Page 2 of 3' })).toBeVisible();
+    // Ctrl+Alt+J jumps to the next bookmark after the current spot —
+    // the Page 3 bookmark — and again wraps to the first.
+    await jumpToNextBookmark(page, 'Gamma line one.', 'Jumped to Page 3.');
+    await expect(page.getByRole('heading', { name: 'Page 3 of 3' })).toBeVisible();
+    await jumpToNextBookmark(page, 'Beta line one.', 'Jumped to Beta start.');
+    await expect(page.getByRole('heading', { name: 'Page 2 of 3' })).toBeVisible();
   } finally {
     await closeApp(app, paths);
   }
 });
 
-test('PDF bookmarks jump in continuous view', async () => {
+test('PDF bookmarks jump with Ctrl+Alt+J in continuous view', async () => {
   test.setTimeout(180000);
   const paths = await seedLibraryWithPdfs();
   const { app, page } = await launchSeededApp(paths);
@@ -233,8 +287,18 @@ test('PDF bookmarks jump in continuous view', async () => {
     await placePdfSelection(page, 'Beta line two.');
     await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 2', 'Beta second');
     await expect(statusLine(page)).toContainText('Bookmarked "Beta second" on page 2.', { timeout: 30000 });
+    await goToPage(page, 3);
+    await placePdfSelection(page, 'Gamma line one.');
+    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 3', 'Gamma spot');
+    await expect(statusLine(page)).toContainText('Bookmarked "Gamma spot" on page 3.', { timeout: 30000 });
     await page.getByRole('button', { name: 'Paginated view' }).click();
     await expect(page.getByRole('button', { name: 'Continuous view' })).toHaveAttribute('aria-pressed', 'true');
+    // Past the last bookmark on page 3: J wraps to the first.
+    await placeContinuousSelection(page, 'Gamma line two.');
+    await jumpToNextBookmark(page, 'Beta line two.', 'Jumped to Beta second.');
+    // And from there J jumps forward to the Gamma bookmark.
+    await jumpToNextBookmark(page, 'Gamma line one.', 'Jumped to Gamma spot.');
+    // The list jump still works in continuous view too.
     await jumpToBookmark(page, 'Beta second (Page 2)', 'Beta line two.', 'Jumped to Beta second.');
   } finally {
     await closeApp(app, paths);

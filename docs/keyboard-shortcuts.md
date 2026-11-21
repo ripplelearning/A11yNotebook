@@ -61,8 +61,8 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+S         | Save note                               |
 | Ctrl+4         | Tasks                                   |
 | Ctrl+D         | Toggle note bookmark                    |
-| Ctrl+Alt+H     | Bookmark heading at cursor              |
-| Ctrl+Alt+J     | Bookmark position at cursor             |
+| Ctrl+Alt+H     | Bookmark position at cursor             |
+| Ctrl+Alt+J     | Jump to next bookmark                   |
 | F11            | Toggle Focus Mode                       |
 | Ctrl+M         | Edit note metadata…                     |
 | Ctrl+W         | Close current item                      |

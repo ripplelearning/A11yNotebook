@@ -308,6 +308,40 @@ export function headingAnchorForRenderedText(
   return { kind: 'heading', text: hit.text, occurrence };
 }
 
+/** Whether two anchors point at the same place, by value rather than by object identity. */
+export function sameAnchor(
+  a: BookmarkAnchor | null | undefined,
+  b: BookmarkAnchor | null | undefined,
+): boolean {
+  if (!a || !b) return a === b;
+  if (a.kind !== b.kind) return false;
+  if (a.kind === 'heading' && b.kind === 'heading') return a.text === b.text && a.occurrence === b.occurrence;
+  if (a.kind === 'offset' && b.kind === 'offset') return a.offset === b.offset;
+  if (a.kind === 'page' && b.kind === 'page') return a.page === b.page && a.offset === b.offset;
+  return false;
+}
+
+/**
+ * The bookmarks of one note in document order, each with the character
+ * offset it resolves to. Anchors that no longer resolve (a heading that
+ * was deleted) are left out — there is nowhere to jump to. The sort is
+ * stable, so bookmarks at the same offset keep their listed order.
+ */
+export function orderBookmarksByOffset<T extends { anchor?: BookmarkAnchor }>(
+  content: string,
+  isHtml: boolean,
+  bookmarks: readonly T[],
+): { bookmark: T; offset: number }[] {
+  return bookmarks
+    .map((bookmark, index) => {
+      const offset = bookmark.anchor ? resolveBookmarkAnchor(content, isHtml, bookmark.anchor) : null;
+      return offset === null ? null : { bookmark, offset, index };
+    })
+    .filter((item): item is { bookmark: T; offset: number; index: number } => item !== null)
+    .sort((a, b) => a.offset - b.offset || a.index - b.index)
+    .map(({ bookmark, offset }) => ({ bookmark, offset }));
+}
+
 /** Validate an untrusted anchor value (bookmark files are user-editable JSON). */
 export function sanitizeBookmarkAnchor(value: unknown): BookmarkAnchor | undefined {
   if (!value || typeof value !== 'object') return undefined;
