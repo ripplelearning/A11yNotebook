@@ -336,15 +336,17 @@ In read mode, activate a resolved link to open its note in a tab. Missing wiki l
 missing. The right pane lists outgoing links and backlinks for the current note. Choose **Bookmark note** to
 bookmark or unbookmark it; the Bookmarks section of the right pane lists the open file's bookmarks — with no
 file open, it lists every bookmark in the library — and activating one opens its note at the bookmark. From
-edit mode, **Bookmark position at cursor** (Ctrl+Alt+H) bookmarks the cursor position, and **Jump to next
+edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H) bookmarks the heading at or before the cursor,
+**Bookmark position at cursor** (Ctrl+Alt+B) bookmarks the cursor position, and **Jump to next
 bookmark** (Ctrl+Alt+J) jumps to the next bookmark after the cursor, wrapping to the first bookmark when
-past the last; both are also in the Tools menu and the command palette, as is **Bookmark heading at cursor**,
-which bookmarks the heading at or before the cursor. In reading mode the same shortcuts work from the
-heading you are reading — the heading at or before the screen reader's position in the document — so H
-bookmarks the position in the section you are reading, and J jumps to the next bookmark after it. Open a PDF
-instead and the same shortcuts bookmark the page and the spot you are on, with the name pre-filled as
-"Page N", and J jumps to the next bookmarked page and spot; activating a PDF bookmark opens its PDF if it is closed and lands on that page and spot, in
-Paginated and Continuous view alike. With only one bookmark, J jumps to it; with none, it says there are no bookmarks. To jump back
+past the last; all three are also in the Tools menu and the command palette. In reading mode the same
+shortcuts work from the heading you are reading — the heading at or before the screen reader's position in
+the document — so H bookmarks that heading, B bookmarks the position in the section you are reading, and J
+jumps to the next bookmark after it. Open a PDF instead and B bookmarks the page and the spot you are on,
+with the name pre-filled as "Page N", and J jumps to the next bookmarked page and spot; H has no heading to
+bookmark in a PDF, so it says heading bookmarks are for notes. Activating a PDF bookmark opens its PDF if
+it is closed and lands on that page and spot, in Paginated and Continuous view alike. With only one
+bookmark, J jumps to it; with none, it says there are no bookmarks. To jump back
 to a saved bookmark, activate it in the Bookmarks section of the right pane or press Ctrl+Alt+J. Opening an anchored bookmark lands on its heading in the reading view, or
 at its position in edit mode — in plain source and in the rich-text editor alike — moves the reading cursor there, as a Find match does, so a screen reader follows the jump, and announces the bookmark
 it landed on. When you create a bookmark you are asked to name it: the name is pre-filled with the heading or the surrounding text, and you can accept it or type your own. The name is what the bookmark is listed under in the right pane. Bookmarks and

@@ -17,8 +17,9 @@ import {
 } from './helpers';
 
 /**
- * Page-anchored PDF bookmarks: setting with Ctrl+Alt+H (naming prompt
- * prefilled "Page N"), jumping to the next bookmark with Ctrl+Alt+J
+ * Page-anchored PDF bookmarks: setting with Ctrl+Alt+B (naming prompt
+ * prefilled "Page N"), Ctrl+Alt+H announcing that heading bookmarks are
+ * for notes, jumping to the next bookmark with Ctrl+Alt+J
  * (wrapping to the first) in Paginated and Continuous view, list scoping
  * to the open file, jumping into a closed PDF, deleting, and persistence
  * across a relaunch. A jump only passes when focus AND the DOM selection
@@ -245,7 +246,7 @@ async function jumpToNextBookmark(page: Page, expectedLine: string, expectedStat
   await expect(statusLine(page)).toContainText(expectedStatus, { timeout: 30000 });
 }
 
-test('PDF bookmarks set with Ctrl+Alt+H and jumped to with Ctrl+Alt+J in paginated view', async () => {
+test('PDF bookmarks set with Ctrl+Alt+B and jumped to with Ctrl+Alt+J in paginated view', async () => {
   test.setTimeout(180000);
   const paths = await seedLibraryWithPdfs();
   const { app, page } = await launchSeededApp(paths);
@@ -254,11 +255,11 @@ test('PDF bookmarks set with Ctrl+Alt+H and jumped to with Ctrl+Alt+J in paginat
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
     await goToPage(page, 2);
     await placePdfSelection(page, 'Beta line one.');
-    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 2', 'Beta start');
+    await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 2', 'Beta start');
     await expect(statusLine(page)).toContainText('Bookmarked "Beta start" on page 2.', { timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Beta start (Page 2)' })).toBeVisible();
     await goToPage(page, 3);
-    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 3');
+    await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 3');
     await expect(statusLine(page)).toContainText('Bookmarked "Page 3" on page 3.', { timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Page 3 (Page 3)' })).toBeVisible();
     // Jump back to page 2 from page 3: the reader turns the page and
@@ -276,6 +277,28 @@ test('PDF bookmarks set with Ctrl+Alt+H and jumped to with Ctrl+Alt+J in paginat
   }
 });
 
+test('Ctrl+Alt+H in a PDF says heading bookmarks are for notes', async () => {
+  const paths = await seedLibraryWithPdfs();
+  const { app, page, pageErrors } = await launchSeededApp(paths);
+  try {
+    await openPdf(page, 'Guide.pdf');
+    await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
+    await placePdfSelection(page, 'Alpha line one.');
+    // H must not set a page-and-spot bookmark in a PDF — that is B's
+    // job — so it announces the heading command is for notes and opens
+    // no naming prompt.
+    await pressShortcut(page, 'Control+Alt+H');
+    await expect(statusLine(page)).toContainText(
+      'Heading bookmarks are for notes. Press Ctrl+Alt+B to bookmark this page and spot.',
+      { timeout: 30000 },
+    );
+    await expect(page.getByRole('dialog', { name: 'Name bookmark' })).toHaveCount(0);
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
 test('PDF bookmarks jump with Ctrl+Alt+J in continuous view', async () => {
   test.setTimeout(180000);
   const paths = await seedLibraryWithPdfs();
@@ -285,11 +308,11 @@ test('PDF bookmarks jump with Ctrl+Alt+J in continuous view', async () => {
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
     await goToPage(page, 2);
     await placePdfSelection(page, 'Beta line two.');
-    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 2', 'Beta second');
+    await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 2', 'Beta second');
     await expect(statusLine(page)).toContainText('Bookmarked "Beta second" on page 2.', { timeout: 30000 });
     await goToPage(page, 3);
     await placePdfSelection(page, 'Gamma line one.');
-    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 3', 'Gamma spot');
+    await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 3', 'Gamma spot');
     await expect(statusLine(page)).toContainText('Bookmarked "Gamma spot" on page 3.', { timeout: 30000 });
     await page.getByRole('button', { name: 'Paginated view' }).click();
     await expect(page.getByRole('button', { name: 'Continuous view' })).toHaveAttribute('aria-pressed', 'true');
@@ -314,7 +337,7 @@ test('PDF bookmark list scopes to the open file, jumps into a closed PDF, and de
     await openPdf(page, 'Guide.pdf');
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
     // With the PDF open, only its bookmarks show — not the note's.
-    await bookmarkWithShortcut(page, 'Control+Alt+H', 'Page 1', 'Guide spot');
+    await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 1', 'Guide spot');
     await expect(page.getByRole('button', { name: 'Guide spot (Page 1)' })).toBeVisible();
     expect(page.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toHaveCount(0);
     // With the note open, only the note's bookmarks show.
@@ -348,7 +371,7 @@ test('PDF bookmarks persist across a relaunch', async () => {
   try {
     await openPdf(launched.page, 'Guide.pdf');
     await expect(launched.page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
-    await bookmarkWithShortcut(launched.page, 'Control+Alt+H', 'Page 1', 'Kept spot');
+    await bookmarkWithShortcut(launched.page, 'Control+Alt+B', 'Page 1', 'Kept spot');
     await expect(statusLine(launched.page)).toContainText('Bookmarked "Kept spot" on page 1.', {
       timeout: 30000,
     });

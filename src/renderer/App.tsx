@@ -3712,12 +3712,20 @@ export default function App() {
   const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note) {
-      // A PDF has no note to anchor on, but it has pages: both commands
-      // set a page-and-spot bookmark there (a PDF has no headings, so
-      // the two commands resolve to the same spot). The naming prompt
-      // is pre-filled with the page, the way a heading bookmark is
-      // pre-filled with its heading.
+      // A PDF has no note to anchor on, but it has pages: the position
+      // command sets a page-and-spot bookmark there. The heading
+      // command has no heading to bookmark in a PDF, so it says so and
+      // points at the position command instead of silently setting the
+      // same page-and-spot bookmark H and B would both set. The naming
+      // prompt is pre-filled with the page, the way a heading bookmark
+      // is pre-filled with its heading.
       if (selectedTab === 'attachment' && attachment && /\.pdf$/i.test(attachment.path)) {
+        if (kind === 'heading') {
+          setStatusMessage(
+            'Heading bookmarks are for notes. Press Ctrl+Alt+B to bookmark this page and spot.',
+          );
+          return;
+        }
         const api = pdfBookmarkRef.current;
         if (!api) {
           setStatusMessage('The PDF is not ready yet.');
