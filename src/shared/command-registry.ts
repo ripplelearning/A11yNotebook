@@ -33,6 +33,7 @@ export type CommandId =
   | 'toggle-bookmark'
   | 'bookmark-heading-at-cursor'
   | 'bookmark-position-at-cursor'
+  | 'bookmark-jump-next'
   | 'toggle-focus-mode'
   | 'edit-note-metadata'
   | 'close-current-tab'
@@ -148,6 +149,8 @@ export type CommandActionContext = {
   toggleBookmark: () => void;
   bookmarkHeadingAtCursor: () => void;
   bookmarkPositionAtCursor: () => void;
+  /** Jump to the next bookmark after the cursor in the open note or PDF. */
+  jumpToNextBookmark: () => void;
   /** Move keyboard focus to a region or control of the shell. */
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
@@ -794,14 +797,20 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'bookmark-heading-at-cursor',
     label: 'Bookmark heading at cursor',
     description:
-      'Save the heading at or before the cursor as a bookmark. In a PDF, save the current page and spot instead. To jump back to it, activate the bookmark in the Bookmarks list.',
-    shortcut: 'Ctrl+Alt+H',
+      'Save the heading at or before the cursor as a bookmark. In a PDF, save the current page and spot instead. Press Ctrl+Alt+J to jump to the next bookmark.',
   },
   {
     id: 'bookmark-position-at-cursor',
     label: 'Bookmark position at cursor',
     description:
-      'Save the exact cursor position as a bookmark, not just its heading. In a PDF, save the current page and spot instead. To jump back to it, activate the bookmark in the Bookmarks list.',
+      'Save the exact cursor position as a bookmark, not just its heading. In a PDF, save the current page and spot instead. Press Ctrl+Alt+J to jump to the next bookmark.',
+    shortcut: 'Ctrl+Alt+H',
+  },
+  {
+    id: 'bookmark-jump-next',
+    label: 'Jump to next bookmark',
+    description:
+      'Jump to the next bookmark after the cursor in the open note or PDF, wrapping to the first bookmark when past the last. In a PDF, jumps to the next bookmarked page and spot.',
     shortcut: 'Ctrl+Alt+J',
   },
   {
@@ -1148,6 +1157,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return undefined;
     case 'bookmark-position-at-cursor':
       context.bookmarkPositionAtCursor();
+      return undefined;
+    case 'bookmark-jump-next':
+      context.jumpToNextBookmark();
       return undefined;
     case 'close-current-tab':
       context.setSelectedTab('notes-files');

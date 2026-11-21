@@ -27,6 +27,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     toggleBookmark: vi.fn(),
     bookmarkHeadingAtCursor: vi.fn(),
     bookmarkPositionAtCursor: vi.fn(),
+    jumpToNextBookmark: vi.fn(),
     focusTarget: vi.fn(),
     checkForUpdates: vi.fn(),
     showKeyboardShortcuts: vi.fn(),
@@ -59,6 +60,26 @@ describe('command registry', () => {
 
     expect(result).toBe('Mode switched to edit.');
     expect(currentMode).toBe('edit');
+  });
+
+  it('binds Ctrl+Alt+H to the position bookmark and Ctrl+Alt+J to jump-to-next', () => {
+    // The heading command keeps working from the Tools menu and the
+    // command palette, but it has no shortcut any more: H sets a
+    // position bookmark and J jumps to the next bookmark.
+    expect(getCommandById('bookmark-position-at-cursor')?.shortcut).toBe('Ctrl+Alt+H');
+    expect(getCommandById('bookmark-jump-next')?.shortcut).toBe('Ctrl+Alt+J');
+    expect(getCommandById('bookmark-heading-at-cursor')?.shortcut).toBeUndefined();
+    expect(getKeyboardShortcuts()).toContainEqual({
+      commandId: 'bookmark-jump-next',
+      label: 'Jump to next bookmark',
+      shortcut: 'Ctrl+Alt+J',
+    });
+  });
+
+  it('dispatches jump-to-next-bookmark', () => {
+    const context = createContext();
+    expect(dispatchCommand('bookmark-jump-next', context)).toBeUndefined();
+    expect(context.jumpToNextBookmark).toHaveBeenCalledTimes(1);
   });
 
   it('dispatches direct reading mode and the find dialog', () => {

@@ -65,8 +65,10 @@ import {
   lineSpanAt,
   listHeadings,
   normalizeHeadingText,
+  orderBookmarksByOffset,
   readingJumpHeading,
   resolveBookmarkAnchor,
+  sameAnchor,
   surroundingText,
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
@@ -484,6 +486,8 @@ export default function App() {
     nonce: number;
     /** The bookmark's user-chosen name, for the jump announcement. */
     name?: string;
+    /** The bookmark's display name, for a jump-to-next announcement. */
+    announceName?: string;
   } | null>(null);
   // The last bookmark jump that landed, so switching views after it (or
   // resuming) does not yank the reader back to the saved reading
@@ -3831,6 +3835,154 @@ export default function App() {
     }
   };
 
+  // Jump to the next bookmark after the cursor in the open note or PDF,
+  // wrapping to the first bookmark when past the last. A single bookmark
+  // jumps to itself; with no bookmarks the jump says so instead of
+  // silently doing nothing. The landing reuses the list-activation jump
+  // (pendingBookmarkAnchor), so focus, selection, and the announcement
+  // behave exactly as they do from the Bookmarks list.
+  const jumpToNextBookmark = async () => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    if (note) {
+      const isHtml = /\.html?$/i.test(note.path);
+      const ordered = orderBookmarksByOffset(
+        note.content,
+        isHtml,
+        bookmarks.filter((bookmark) => bookmark.path === note.path),
+      );
+      if (ordered.length === 0) {
+        setStatusMessage('No bookmarks in this note.');
+        return;
+      }
+      // The current position: the edit caret when there is a plain-text
+      // editor, otherwise the reading position (the heading at or before
+      // the selection, or the saved position when reading has not
+      // started). The reading position is heading-granular, so a
+      // position bookmark inside the current section sits after it —
+      // that is what "next" means while reading.
+      const textarea = editorRef.current;
+      let currentOffset: number;
+      let readingAnchor: Extract<BookmarkAnchor, { kind: 'heading' }> | null = null;
+      if (textarea && mode === 'edit') {
+        currentOffset = textarea.selectionStart;
+      } else {
+        readingAnchor = await readingPositionAnchor(note.content, isHtml, note.path);
+        currentOffset = readingAnchor
+          ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0)
+          : 0;
+      }
+      // A position bookmark the last jump landed on, when the reader is
+      // still on it: in reading mode it lands on its containing heading
+      // (or its line, when there is no heading), and in edit mode its
+      // line starts before its offset, so the "next after the position"
+      // search below would pick the bookmark just landed on instead of
+      // the one after it. A heading bookmark needs no such check: the
+      // reading position is its heading, and the edit caret lands past
+      // its line start, so the search already moves past it. When the
+      // reader is still on the landed position bookmark, the next
+      // bookmark is the one after it in document order.
+      let target: VaultBookmark | undefined;
+      const landed = bookmarkJumpRef.current;
+      if (landed && landed.path === note.path && landed.anchor.kind === 'offset') {
+        const landedOffset = resolveBookmarkAnchor(note.content, isHtml, landed.anchor);
+        const landedIndex = ordered.findIndex((item) => sameAnchor(item.bookmark.anchor, landed.anchor));
+        if (landedIndex >= 0 && landedOffset !== null) {
+          let stillOn = false;
+          if (textarea && mode === 'edit') {
+            const span = lineSpanAt(note.content, landedOffset);
+            stillOn = !!span && textarea.selectionStart >= span.start && textarea.selectionStart <= span.end;
+          } else {
+            const selection = window.getSelection();
+            const selectionText = selection?.toString().trim() ?? '';
+            const anchorNode = selection?.anchorNode;
+            const anchorElement =
+              anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
+            const inHeading = !!anchorElement?.closest('h1, h2, h3, h4, h5, h6');
+            const landedHeading = headingAnchorAt(note.content, isHtml, landedOffset);
+            if (inHeading) {
+              // The landing focused the containing heading and selected
+              // its text; a selection still in it means the reader is
+              // still on the landed bookmark.
+              stillOn = sameAnchor(landedHeading, readingAnchor);
+            } else {
+              // No containing heading: the landing selected the
+              // bookmarked line's first words, in the section the
+              // bookmark sits in.
+              const line = lineSpanAt(note.content, landedOffset);
+              const lineText = line ? normalizeHeadingText(note.content.slice(line.start, line.end)) : '';
+              stillOn =
+                lineText !== '' &&
+                selectionText !== '' &&
+                lineText.startsWith(selectionText) &&
+                sameAnchor(landedHeading, readingAnchor);
+            }
+          }
+          if (stillOn) target = ordered[(landedIndex + 1) % ordered.length].bookmark;
+        }
+      }
+      if (!target) {
+        target = ordered.find((item) => item.offset > currentOffset)?.bookmark ?? ordered[0].bookmark;
+      }
+      const anchor = target.anchor;
+      if (!anchor) return;
+      const label = target.name ?? normalizeHeadingText(target.title);
+      setPendingBookmarkAnchor({
+        path: note.path,
+        anchor,
+        nonce: Date.now(),
+        ...(target.name ? { name: target.name } : {}),
+        announceName: label,
+      });
+      return;
+    }
+    if (selectedTab === 'attachment' && attachment && /\.pdf$/i.test(attachment.path)) {
+      const api = pdfBookmarkRef.current;
+      if (!api) {
+        setStatusMessage('The PDF is not ready yet.');
+        return;
+      }
+      // A PDF spot is an exact page and offset, so "next" is a plain
+      // page-order comparison — no still-on-the-landing check is needed:
+      // the landed spot is the current spot, and the next bookmark is
+      // strictly after it.
+      const current = api.getCurrentSpot();
+      if (!current) {
+        setStatusMessage('The PDF is not ready yet.');
+        return;
+      }
+      const ordered = bookmarks
+        .filter((bookmark) => bookmark.path === attachment.path && bookmark.anchor?.kind === 'page')
+        .map((bookmark) => ({
+          bookmark,
+          anchor: bookmark.anchor as Extract<BookmarkAnchor, { kind: 'page' }>,
+        }))
+        .sort((a, b) => a.anchor.page - b.anchor.page || a.anchor.offset - b.anchor.offset);
+      if (ordered.length === 0) {
+        setStatusMessage('No bookmarks in this PDF.');
+        return;
+      }
+      const next =
+        ordered.find(
+          (item) =>
+            item.anchor.page > current.page ||
+            (item.anchor.page === current.page && item.anchor.offset > current.offset),
+        ) ?? ordered[0];
+      const label = next.bookmark.name ?? normalizeHeadingText(next.bookmark.title);
+      setPendingBookmarkAnchor({
+        path: attachment.path,
+        anchor: next.anchor,
+        nonce: Date.now(),
+        ...(next.bookmark.name ? { name: next.bookmark.name } : {}),
+        announceName: label,
+      });
+      return;
+    }
+    // The keyboard path reaches this command even when the palette shows
+    // it disabled (a preview open, or no note open at all): say so
+    // instead of silently doing nothing.
+    setStatusMessage('Open a note or PDF to jump to a bookmark.');
+  };
+
   // Focus the heading a bookmark points at in the reading view. Returns
   // the focused heading, or null when there is no heading to land on (a
   // position bookmark before the first heading, or a note with no
@@ -4020,8 +4172,11 @@ export default function App() {
     const content = currentNote.content;
     const jumpHeading = readingJumpHeading(content, isHtml, anchor);
     const headingName = jumpHeading ? normalizeHeadingText(jumpHeading.text) : null;
+    // A jump-to-next jump announces its bookmark by name; a list
+    // activation announces the heading it landed on, as before.
+    const label = pendingBookmarkAnchor.announceName ?? headingName;
     const announce = () =>
-      setStatusMessage(headingName ? `Jumped to ${headingName}.` : 'Jumped to the bookmarked place.');
+      setStatusMessage(label ? `Jumped to ${label}.` : 'Jumped to the bookmarked place.');
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
@@ -4095,7 +4250,8 @@ export default function App() {
     if (!pendingBookmarkAnchor || pendingBookmarkAnchor.anchor.kind !== 'page') return;
     const { path, anchor } = pendingBookmarkAnchor;
     if (selectedTab !== 'attachment' || attachment?.path !== path) return;
-    const label = pendingBookmarkAnchor.name ?? `Page ${anchor.page}`;
+    const label =
+      pendingBookmarkAnchor.announceName ?? pendingBookmarkAnchor.name ?? `Page ${anchor.page}`;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let attempts = 0;
@@ -6568,6 +6724,7 @@ export default function App() {
       toggleBookmark: () => void toggleActiveBookmark(),
       bookmarkHeadingAtCursor: () => void addAnchoredBookmark('heading'),
       bookmarkPositionAtCursor: () => void addAnchoredBookmark('position'),
+      jumpToNextBookmark: () => void jumpToNextBookmark(),
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
@@ -6871,8 +7028,13 @@ export default function App() {
     if (id === 'toggle-bookmark' || id === 'export-current-note') return !currentNote;
     // Bookmarking at the cursor works from the reading position as
     // well as the edit caret, so these are available in either mode.
-    // A PDF has no note, but its reader takes the same commands.
-    if (id === 'bookmark-heading-at-cursor' || id === 'bookmark-position-at-cursor')
+    // A PDF has no note, but its reader takes the same commands; the
+    // jump-to-next command takes them too.
+    if (
+      id === 'bookmark-heading-at-cursor' ||
+      id === 'bookmark-position-at-cursor' ||
+      id === 'bookmark-jump-next'
+    )
       return !currentNote && !(selectedTab === 'attachment' && attachment && /\.pdf$/i.test(attachment.path));
     if (id === 'toggle-focus-mode') return !currentNote;
     if (id === 'edit-note-metadata') return !currentNote || /\.html?$/i.test(currentNote.path);

@@ -248,22 +248,41 @@ describe('PDF bookmarks in the app', () => {
     expect(screen.getByRole('button', { name: 'My spot (Page 1)' })).toBeInTheDocument();
   });
 
-  it('sets a PDF bookmark with Ctrl+Alt+J under its default Page N name', async () => {
-    const { addBookmark } = setup();
+  it('Ctrl+Alt+J jumps to the next PDF bookmark and wraps to the first', async () => {
+    const first: VaultBookmark = {
+      id: 'bm-pdf-1',
+      path: 'Docs/Guide.pdf',
+      title: 'Guide',
+      created: new Date().toISOString(),
+      anchor: { kind: 'page', page: 1, offset: 0 },
+      name: 'First spot',
+    };
+    const second: VaultBookmark = {
+      id: 'bm-pdf-2',
+      path: 'Docs/Guide.pdf',
+      title: 'Guide',
+      created: new Date().toISOString(),
+      anchor: { kind: 'page', page: 2, offset: 0 },
+      name: 'Second spot',
+    };
+    setup([first, second]);
+    await openPdf();
+    // On page 1 with no selection, the current spot is the top of page
+    // 1: the next bookmark is the one on page 2.
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Second spot.'));
+    await screen.findByRole('heading', { name: 'Page 2 of 2' });
+    // Past the last bookmark: J wraps to the first.
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to First spot.'));
+    await screen.findByRole('heading', { name: 'Page 1 of 2' });
+  });
+
+  it('Ctrl+Alt+J with no PDF bookmarks says there are none', async () => {
+    setup();
     await openPdf();
     fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
-    const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
-    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Page 1');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
-    await waitFor(() =>
-      expect(addBookmark).toHaveBeenCalledWith(
-        'Docs/Guide.pdf',
-        { kind: 'page', page: 1, offset: 0 },
-        'Page 1',
-        undefined,
-      ),
-    );
-    await waitFor(() => expect(statusBar()).toHaveTextContent('Bookmarked "Page 1" on page 1.'));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('No bookmarks in this PDF.'));
   });
 
   it('scopes the list to the open file and shows all bookmarks with nothing open', async () => {

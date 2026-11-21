@@ -363,13 +363,16 @@ describe('bookmark jump from the side pane', () => {
   });
 
   it('creates a footnote heading bookmark from the reading position', async () => {
-    const { addBookmark } = setup(
+    // Ctrl+Alt+H no longer sets a heading bookmark — it sets a position
+    // bookmark — so the heading command goes through the Tools menu /
+    // command palette, where it keeps working.
+    const { addBookmark, menu } = setup(
       [headingBookmark],
       '# Title\n\nIntro text.\n\n## Usage[^1]\n\nDetails here.\n\n[^1]: A footnote.\n',
     );
     await openNote();
     placeReadingSelection('Details here.');
-    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    menu('bookmark-heading-at-cursor');
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
     // The suggested name reads as the reader sees the heading, without
     // the footnote marker.
@@ -386,13 +389,16 @@ describe('bookmark jump from the side pane', () => {
   });
 
   it('creates an entity heading bookmark from the reading position', async () => {
-    const { addBookmark } = setup(
+    // Ctrl+Alt+H no longer sets a heading bookmark — it sets a position
+    // bookmark — so the heading command goes through the Tools menu /
+    // command palette, where it keeps working.
+    const { addBookmark, menu } = setup(
       [headingBookmark],
       '# Title\n\nIntro text.\n\n## Fish &copy; Chips\n\nDetails here.\n',
     );
     await openNote();
     placeReadingSelection('Details here.');
-    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    menu('bookmark-heading-at-cursor');
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
     expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Fish © Chips');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
@@ -499,34 +505,15 @@ describe('bookmark jump from the side pane', () => {
     expect(editor.selectionEnd).toBe(setupOffset + 8);
   });
 
-  it('creates a heading bookmark with Ctrl+Alt+H from the reading position', async () => {
+  it('creates a position bookmark with Ctrl+Alt+H from the reading position', async () => {
     const { addBookmark } = setup([headingBookmark]);
     await openNote();
     placeReadingSelection('Details here.');
     fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
-    // The reader is in the Setup section, so the bookmark is Setup —
-    // not the first heading, which the old caret-0 read produced.
-    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
-    await waitFor(() =>
-      expect(addBookmark).toHaveBeenCalledWith(
-        'Note.md',
-        { kind: 'heading', text: 'Setup', occurrence: 0 },
-        'Setup',
-        undefined,
-      ),
-    );
-  });
-
-  it('creates a position bookmark with Ctrl+Alt+J from the reading position', async () => {
-    const { addBookmark } = setup([headingBookmark]);
-    await openNote();
-    placeReadingSelection('Details here.');
-    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
-    const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
-    // A position bookmark from reading mode lands on the section the
-    // reader is in, named for it.
+    // The reader is in the Setup section, so the bookmark is named for
+    // it — but it is a position bookmark at the section's start, not a
+    // heading bookmark: Ctrl+Alt+H now sets a position bookmark.
     expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
@@ -539,17 +526,132 @@ describe('bookmark jump from the side pane', () => {
     );
   });
 
-  it('Ctrl+Alt+H in reading mode with no reading position bookmarks the first heading', async () => {
+  it('Ctrl+Alt+J jumps to the next bookmark in reading mode and wraps to the first', async () => {
+    const positionBookmark: VaultBookmark = {
+      id: 'bm-details',
+      path: 'Note.md',
+      title: 'Setup',
+      name: 'The details',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: content.indexOf('Details here.') },
+    };
+    setup([headingBookmark, positionBookmark]);
+    await openNote();
+    // Reading in the Title section: the next bookmark is Setup.
+    placeReadingSelection('Intro text.');
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    const setupHeading = screen.getByRole('heading', { name: 'Setup' });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(setupHeading);
+    expect(window.getSelection()?.toString()).toBe('Setup');
+    // Still on Setup: the next bookmark is the position bookmark in its
+    // section. A position bookmark lands on its containing heading in
+    // reading mode, as a list activation does — announced under its
+    // chosen name.
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to The details.'));
+    expect(document.activeElement).toBe(setupHeading);
+    expect(window.getSelection()?.toString()).toBe('Setup');
+    // Past the last bookmark: J wraps to the first.
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(setupHeading);
+    expect(window.getSelection()?.toString()).toBe('Setup');
+  });
+
+  it('Ctrl+Alt+J with a single bookmark jumps to it', async () => {
+    setup([headingBookmark]);
+    await openNote();
+    placeReadingSelection('Intro text.');
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    const setupHeading = screen.getByRole('heading', { name: 'Setup' });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(setupHeading);
+    // Pressing J again on the only bookmark jumps to it again, not
+    // nowhere.
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(setupHeading);
+    expect(window.getSelection()?.toString()).toBe('Setup');
+  });
+
+  it('Ctrl+Alt+J with no bookmarks says there are none', async () => {
+    setup([]);
+    await openNote();
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('No bookmarks in this note.'));
+  });
+
+  it('Ctrl+Alt+J says there are no bookmarks when only another note has them', async () => {
+    const otherBookmark: VaultBookmark = {
+      id: 'bm-other',
+      path: 'Other.md',
+      title: 'Other heading',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Other heading', occurrence: 0 },
+    };
+    setup([otherBookmark]);
+    await openNote();
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('No bookmarks in this note.'));
+  });
+
+  it('Ctrl+Alt+J jumps to the next bookmark in edit mode and wraps to the first', async () => {
+    const positionBookmark: VaultBookmark = {
+      id: 'bm-details',
+      path: 'Note.md',
+      title: 'Setup',
+      name: 'The details',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: content.indexOf('Details here.') },
+    };
+    setup([headingBookmark, positionBookmark]);
+    await openNote();
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+    const editor = (await screen.findByRole('textbox', {
+      name: 'Markdown source',
+    })) as HTMLTextAreaElement;
+    const caret = content.indexOf('Intro text.') + 3;
+    editor.selectionStart = caret;
+    editor.selectionEnd = caret;
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(document.activeElement).toBe(editor);
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to The details.'));
+    const lineStart = content.indexOf('Details here.');
+    expect(editor.selectionStart).toBe(lineStart);
+    expect(editor.selectionEnd).toBe(lineStart + 'Details here.'.length);
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
+    expect(editor.selectionStart).toBe(setupOffset + 3);
+    expect(editor.selectionEnd).toBe(setupOffset + 8);
+  });
+
+  it('Ctrl+Alt+J with no note open says to open a note or PDF first', async () => {
+    setup([headingBookmark]);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Open a note or PDF to jump to a bookmark.'));
+  });
+
+  it('Ctrl+Alt+H in reading mode with no reading position bookmarks the top of the note', async () => {
     setup([headingBookmark]);
     await openNote();
     window.getSelection()?.removeAllRanges();
     (document.activeElement as HTMLElement | null)?.blur?.();
     fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    // With no reading position, H sets a position bookmark at the top
+    // of the note, named for the first heading.
     expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Title');
   });
 
   it('Ctrl+Alt+H in reading mode uses the saved reading position when there is no selection', async () => {
+    // H sets a position bookmark at the saved heading's offset, named
+    // for that heading — not a heading bookmark.
     setup([headingBookmark], content, {
       path: 'Note.md',
       heading: 'Setup',
@@ -568,16 +670,38 @@ describe('bookmark jump from the side pane', () => {
     expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
   });
 
-  it('Ctrl+Alt+H in reading mode before the first heading says so instead of bookmarking the wrong heading', async () => {
+  it('the heading command in reading mode before the first heading says so instead of bookmarking the wrong heading', async () => {
+    // Ctrl+Alt+H no longer sets a heading bookmark, so the "no heading"
+    // guard now belongs to the heading command itself, in the Tools menu
+    // / command palette.
     const leadContent = 'Intro text.\n\n# Title\n\nBody.\n';
-    setup([headingBookmark], leadContent);
+    const { menu } = setup([headingBookmark], leadContent);
     await openNote();
     placeReadingSelection('Intro text.');
-    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    menu('bookmark-heading-at-cursor');
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('No heading at or before the cursor to bookmark.'),
     );
     expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument();
+  });
+
+  it('Ctrl+Alt+H in reading mode before the first heading bookmarks the position instead', async () => {
+    const leadContent = 'Intro text.\n\n# Title\n\nBody.\n';
+    const { addBookmark } = setup([headingBookmark], leadContent);
+    await openNote();
+    placeReadingSelection('Intro text.');
+    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
+    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Intro text.');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
+    await waitFor(() =>
+      expect(addBookmark).toHaveBeenCalledWith(
+        'Note.md',
+        { kind: 'offset', offset: 0 },
+        'Intro text.',
+        'Intro text.',
+      ),
+    );
   });
 
   it("shows only the open note's bookmarks under the Bookmarks heading", async () => {

@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
+import type { BookmarkAnchor } from '../shared/types';
 import {
   headingAnchorAt,
   headingAnchorAtSourceIndex,
@@ -14,8 +15,10 @@ import {
   lineSpanAt,
   listHeadings,
   normalizeHeadingText,
+  orderBookmarksByOffset,
   readingJumpHeading,
   resolveBookmarkAnchor,
+  sameAnchor,
   sanitizeBookmarkAnchor,
   surroundingText,
 } from '../shared/bookmark-anchors';
@@ -170,6 +173,53 @@ describe('bookmark anchors', () => {
     const remaining = await service.removeBookmark(migrated[0].id);
     expect(remaining).toHaveLength(1);
     expect(remaining[0].anchor).toEqual({ kind: 'page', page: 1, offset: 0 });
+  });
+});
+
+describe('sameAnchor and orderBookmarksByOffset', () => {
+  it('compares anchors by value, not by object identity', () => {
+    expect(
+      sameAnchor({ kind: 'heading', text: 'Setup', occurrence: 0 }, { kind: 'heading', text: 'Setup', occurrence: 0 }),
+    ).toBe(true);
+    expect(
+      sameAnchor({ kind: 'heading', text: 'Setup', occurrence: 0 }, { kind: 'heading', text: 'Setup', occurrence: 1 }),
+    ).toBe(false);
+    expect(sameAnchor({ kind: 'offset', offset: 12 }, { kind: 'offset', offset: 12 })).toBe(true);
+    expect(sameAnchor({ kind: 'offset', offset: 12 }, { kind: 'offset', offset: 13 })).toBe(false);
+    expect(sameAnchor({ kind: 'page', page: 2, offset: 5 }, { kind: 'page', page: 2, offset: 5 })).toBe(true);
+    expect(sameAnchor({ kind: 'page', page: 2, offset: 5 }, { kind: 'page', page: 3, offset: 5 })).toBe(false);
+    expect(sameAnchor({ kind: 'offset', offset: 1 }, { kind: 'page', page: 1, offset: 1 })).toBe(false);
+    expect(sameAnchor(undefined, undefined)).toBe(true);
+    expect(sameAnchor(undefined, { kind: 'offset', offset: 0 })).toBe(false);
+    expect(sameAnchor(null, null)).toBe(true);
+  });
+
+  it('orders bookmarks by their resolved offset and drops unresolvable ones', () => {
+    const bookmarks: { id: string; anchor?: BookmarkAnchor }[] = [
+      { id: 'late', anchor: { kind: 'offset', offset: markdown.indexOf('Again.') } },
+      { id: 'gone', anchor: { kind: 'heading', text: 'Missing', occurrence: 0 } },
+      { id: 'first-setup', anchor: { kind: 'heading', text: 'Setup', occurrence: 0 } },
+      { id: 'intro', anchor: { kind: 'offset', offset: markdown.indexOf('Intro.') } },
+      { id: 'second-setup', anchor: { kind: 'heading', text: 'Setup', occurrence: 1 } },
+      { id: 'no-anchor' },
+    ];
+    const ordered = orderBookmarksByOffset(markdown, false, bookmarks);
+    expect(ordered.map((item) => item.bookmark.id)).toEqual(['intro', 'first-setup', 'second-setup', 'late']);
+    expect(ordered.map((item) => item.offset)).toEqual([
+      markdown.indexOf('Intro.'),
+      markdown.indexOf('## Setup'),
+      markdown.indexOf('## Setup', markdown.indexOf('## Setup') + 1),
+      markdown.indexOf('Again.'),
+    ]);
+  });
+
+  it('keeps bookmarks at the same offset in listed order', () => {
+    const at = markdown.indexOf('Steps.');
+    const ordered = orderBookmarksByOffset(markdown, false, [
+      { id: 'b', anchor: { kind: 'offset', offset: at } },
+      { id: 'a', anchor: { kind: 'offset', offset: at } },
+    ]);
+    expect(ordered.map((item) => item.bookmark.id)).toEqual(['b', 'a']);
   });
 });
 
