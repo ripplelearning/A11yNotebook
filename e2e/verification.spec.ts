@@ -464,7 +464,9 @@ test('bookmark jump moves focus to the bookmarked heading', async () => {
     // Jump from the Bookmarks list in the right pane. DOM-level only:
     // focus lands on the heading and its text is selected. (Whether a
     // screen reader's virtual cursor follows cannot be automated.)
-    const bookmarkButton = page.getByRole('button', { name: 'Seeded note — Seeded note.md' });
+    // Ctrl+Alt+H sets a position bookmark, so the list shows it with
+    // "(position)"; the jump still lands on its containing heading.
+    const bookmarkButton = page.getByRole('button', { name: 'Seeded note (position)' });
     await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
     await bookmarkButton.click();
     await expect
