@@ -62,13 +62,18 @@ describe('command registry', () => {
     expect(currentMode).toBe('edit');
   });
 
-  it('binds Ctrl+Alt+H to the position bookmark and Ctrl+Alt+J to jump-to-next', () => {
-    // The heading command keeps working from the Tools menu and the
-    // command palette, but it has no shortcut any more: H sets a
-    // position bookmark and J jumps to the next bookmark.
-    expect(getCommandById('bookmark-position-at-cursor')?.shortcut).toBe('Ctrl+Alt+H');
+  it('binds Ctrl+Alt+H to the heading bookmark, Ctrl+Alt+B to the position bookmark, and Ctrl+Alt+J to jump-to-next', () => {
+    // H sets a heading bookmark again and B sets a position bookmark;
+    // both commands also stay available from the Tools menu and the
+    // command palette, and J still jumps to the next bookmark.
+    expect(getCommandById('bookmark-heading-at-cursor')?.shortcut).toBe('Ctrl+Alt+H');
+    expect(getCommandById('bookmark-position-at-cursor')?.shortcut).toBe('Ctrl+Alt+B');
     expect(getCommandById('bookmark-jump-next')?.shortcut).toBe('Ctrl+Alt+J');
-    expect(getCommandById('bookmark-heading-at-cursor')?.shortcut).toBeUndefined();
+    expect(getKeyboardShortcuts()).toContainEqual({
+      commandId: 'bookmark-heading-at-cursor',
+      label: 'Bookmark heading at cursor',
+      shortcut: 'Ctrl+Alt+H',
+    });
     expect(getKeyboardShortcuts()).toContainEqual({
       commandId: 'bookmark-jump-next',
       label: 'Jump to next bookmark',

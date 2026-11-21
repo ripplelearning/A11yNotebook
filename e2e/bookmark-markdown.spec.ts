@@ -1,7 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication } from '@playwright/test';
 import {
-  clickNativeMenuItem,
   closeApp,
   dismissTutorial,
   launchApp,
@@ -28,8 +27,8 @@ import {
  * screen reader's virtual cursor. The 1.9.20 retest added two more
  * forms that still landed at the top of the note: image-only headings,
  * which have no text to select, and footnote headings, whose rendered
- * `Usage[1]` never matches the stored `Usage[^1]`. Ctrl+Alt+H now sets a
- * position bookmark (the heading command lives in the command palette),
+ * `Usage[1]` never matches the stored `Usage[^1]`. Ctrl+Alt+H sets a
+ * heading bookmark, Ctrl+Alt+B sets a position bookmark,
  * and Ctrl+Alt+J jumps to the next bookmark after the cursor, wrapping
  * to the first — in reading mode and in edit mode alike.
  */
@@ -128,13 +127,12 @@ async function readingJumpState(page: import('@playwright/test').Page) {
   });
 }
 
-/** Bookmark the heading at the reading position and save it under its suggested name. Ctrl+Alt+H no longer sets a heading bookmark — it sets a position bookmark — so the heading command runs through the native Tools menu: the menu leaves the reading selection in place, where the command palette moves focus into itself and the command then reads the top of the note instead. */
+/** Bookmark the heading at the reading position and save it under its suggested name. Ctrl+Alt+H sets a heading bookmark; the shortcut leaves the reading selection (and the edit caret) in place, where the command palette moves focus into itself and the command then reads the top of the note instead. */
 async function bookmarkCurrentHeading(
-  app: ElectronApplication,
   page: import('@playwright/test').Page,
   expectedName: string,
 ): Promise<void> {
-  await clickNativeMenuItem(app, 'bookmark-heading-at-cursor');
+  await pressShortcut(page, 'Control+Alt+H');
   const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
   await expect(nameDialog).toBeVisible();
   await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue(expectedName);
@@ -162,7 +160,7 @@ test('jump to a later heading bookmarked from reading mode in a markdown note', 
     await openNote(page, 'Field Notes.md', 'Field Notes');
     // Reading mode: put the virtual cursor in the Usage section, then bookmark it.
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await expect(statusLine(page)).toContainText('Bookmarked heading "Usage".', { timeout: 30000 });
     // Move the reading position back to the top, then jump from the Bookmarks list.
     await placeReadingSelection(page, 'Intro paragraph');
@@ -178,13 +176,13 @@ test('Ctrl+Alt+J jumps to the next note bookmark in reading and edit mode, wrapp
   const { app, page, paths, pageErrors } = await launchSeededApp(seedMarkdownLibrary());
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
-    // A heading bookmark on Usage (through the palette) and a position
-    // bookmark in the Reference section (through Ctrl+Alt+H).
+    // A heading bookmark on Usage (through Ctrl+Alt+H) and a position
+    // bookmark in the Reference section (through Ctrl+Alt+B).
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await expect(statusLine(page)).toContainText('Bookmarked heading "Usage".', { timeout: 30000 });
     await placeReadingSelection(page, 'Reference details here.');
-    await pressShortcut(page, 'Control+Alt+H');
+    await pressShortcut(page, 'Control+Alt+B');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
     await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Reference');
@@ -262,7 +260,7 @@ test('jump to a later heading bookmark opens the closed markdown note at the hea
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Reference details here.');
-    await bookmarkCurrentHeading(app, page, 'Reference');
+    await bookmarkCurrentHeading(page, 'Reference');
     // Close the note tab, then jump from the Bookmarks list: the jump itself opens the note.
     const closeButton = page.getByRole('button', { name: /Close Field Notes/ });
     await expect(closeButton).toBeVisible({ timeout: 30000 });
@@ -282,8 +280,8 @@ test('jump to a position bookmark in a later section of a markdown note', async 
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
-    // Ctrl+Alt+H now sets a position bookmark, named for the section.
-    await pressShortcut(page, 'Control+Alt+H');
+    // Ctrl+Alt+B sets a position bookmark, named for the section.
+    await pressShortcut(page, 'Control+Alt+B');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
     await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Usage');
@@ -312,7 +310,7 @@ test('jump to a heading bookmark while the markdown note is in edit mode', async
       area.focus();
       area.setSelectionRange(offset, offset);
     });
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     // Caret back to the top, then jump from the Bookmarks list: the
     // textarea selection must move to the heading text.
     await expect(editor).toBeFocused({ timeout: 30000 });
@@ -359,9 +357,9 @@ test('a second jump after the first lands on the second bookmark', async () => {
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await placeReadingSelection(page, 'Reference details here.');
-    await bookmarkCurrentHeading(app, page, 'Reference');
+    await bookmarkCurrentHeading(page, 'Reference');
     await placeReadingSelection(page, 'Intro paragraph');
     await jumpToBookmark(page, 'Usage — Field Notes.md', 'Usage');
     await jumpToBookmark(page, 'Reference — Field Notes.md', 'Reference');
@@ -376,7 +374,7 @@ test('bookmarks list follows the current note: another note hides the first note
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     // Open the other note: the Field Notes bookmark leaves the
     // Bookmarks list — only the open note's bookmarks are shown.
     await switchView(page, 'Control+2', async () =>
@@ -411,7 +409,7 @@ test('jump works after the app restarts with the bookmark saved', async () => {
   const pageErrors: string[] = first.pageErrors;
   await openNote(first.page, 'Field Notes.md', 'Field Notes');
   await placeReadingSelection(first.page, 'Usage details here.');
-  await bookmarkCurrentHeading(first.app, first.page, 'Usage');
+  await bookmarkCurrentHeading(first.page, 'Usage');
   await expect(statusLine(first.page)).toContainText('Bookmarked heading "Usage".', { timeout: 30000 });
   // Restart without deleting the seeded library: the bookmark must survive.
   await first.app.close();
@@ -449,7 +447,7 @@ test('duplicate headings: jump lands on the second occurrence', async () => {
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Second setup section.');
-    await bookmarkCurrentHeading(app, page, 'Setup');
+    await bookmarkCurrentHeading(page, 'Setup');
     await placeReadingSelection(page, 'Intro.');
     await jumpToBookmark(page, 'Setup — Edge.md', 'Setup');
     // And it must be the SECOND Setup: the selection must sit inside it.
@@ -478,7 +476,7 @@ test('formatted heading: bold heading bookmark jumps', async () => {
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage guide');
+    await bookmarkCurrentHeading(page, 'Usage guide');
     await placeReadingSelection(page, 'Intro.');
     await jumpToBookmark(page, 'Usage guide — Edge.md', 'Usage guide');
     expect(pageErrors).toEqual([]);
@@ -503,7 +501,7 @@ test('link heading: markdown-link heading bookmark jumps', async () => {
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Guide details here.');
-    await bookmarkCurrentHeading(app, page, 'See the guide');
+    await bookmarkCurrentHeading(page, 'See the guide');
     await placeReadingSelection(page, 'Intro.');
     await jumpToBookmark(page, 'See the guide — Edge.md', 'See the guide');
     expect(pageErrors).toEqual([]);
@@ -523,7 +521,7 @@ test('wiki-link heading: [[wiki]] heading bookmark jumps', async () => {
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await placeReadingSelection(page, 'Intro.');
     await jumpToBookmark(page, 'Usage — Edge.md', 'Usage');
     expect(pageErrors).toEqual([]);
@@ -552,10 +550,9 @@ test('wiki-link heading created in edit mode: jump lands on the heading, not the
       area.focus();
       area.setSelectionRange(offset, offset);
     });
-    // Ctrl+Alt+H no longer sets a heading bookmark: the heading command
-    // runs through the native Tools menu, which leaves the edit caret
-    // in place.
-    await clickNativeMenuItem(app, 'bookmark-heading-at-cursor');
+    // Ctrl+Alt+H sets a heading bookmark, and the shortcut leaves the
+    // edit caret in place.
+    await pressShortcut(page, 'Control+Alt+H');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
     await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Usage');
@@ -583,7 +580,7 @@ test('image heading: image plus text heading bookmark jumps', async () => {
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await placeReadingSelection(page, 'Intro.');
     const bookmarkButton = page.getByRole('button', { name: 'Usage — Edge.md' });
     await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
@@ -622,10 +619,9 @@ test('image-only heading: bookmark jumps to the heading, not the top', async () 
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Details here.');
-    // Ctrl+Alt+H now sets a position bookmark, named for the text above
-    // the image-only heading: the heading bookmark comes from the
-    // native Tools menu instead.
-    await clickNativeMenuItem(app, 'bookmark-heading-at-cursor');
+    // Ctrl+Alt+H sets a heading bookmark: an image-only heading has no
+    // text to suggest as its name, so the reader names it.
+    await pressShortcut(page, 'Control+Alt+H');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
     // An image-only heading suggests no name: the reader names it.
@@ -668,7 +664,7 @@ test('footnote heading: bookmark jumps to the heading, not the top', async () =>
   try {
     await openNote(page, 'Edge.md', 'Edge');
     await placeReadingSelection(page, 'Details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await placeReadingSelection(page, 'Intro.');
     const bookmarkButton = page.getByRole('button', { name: 'Usage — Edge.md' });
     await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
@@ -695,7 +691,7 @@ test('jump to a later heading bookmark in an HTML note is not regressed', async 
   try {
     await openNote(page, 'Field Notes.html', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
-    await bookmarkCurrentHeading(app, page, 'Usage');
+    await bookmarkCurrentHeading(page, 'Usage');
     await placeReadingSelection(page, 'Intro paragraph');
     await jumpToBookmark(page, 'Usage — Field Notes.html', 'Usage');
     expect(pageErrors).toEqual([]);

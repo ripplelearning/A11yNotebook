@@ -227,11 +227,11 @@ function placePdfSelection(text: string, offset: number) {
 }
 
 describe('PDF bookmarks in the app', () => {
-  it('sets a PDF bookmark with Ctrl+Alt+H, prefilled with the page, and lists it', async () => {
+  it('sets a PDF bookmark with Ctrl+Alt+B, prefilled with the page, and lists it', async () => {
     const { addBookmark } = setup();
     await openPdf();
     placePdfSelection('Alpha', 3);
-    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true, altKey: true });
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
     expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Page 1');
     fireEvent.change(within(dialog).getByLabelText('Bookmark name'), { target: { value: 'My spot' } });
@@ -246,6 +246,23 @@ describe('PDF bookmarks in the app', () => {
     );
     await waitFor(() => expect(statusBar()).toHaveTextContent('Bookmarked "My spot" on page 1.'));
     expect(screen.getByRole('button', { name: 'My spot (Page 1)' })).toBeInTheDocument();
+  });
+
+  it('Ctrl+Alt+H in a PDF says heading bookmarks are for notes', async () => {
+    const { addBookmark } = setup();
+    await openPdf();
+    placePdfSelection('Alpha', 3);
+    fireEvent.keyDown(document.body, { key: 'h', ctrlKey: true, altKey: true });
+    // H must not set a page-and-spot bookmark in a PDF — that is B's
+    // job — so it announces the heading command is for notes and opens
+    // no naming prompt.
+    await waitFor(() =>
+      expect(statusBar()).toHaveTextContent(
+        'Heading bookmarks are for notes. Press Ctrl+Alt+B to bookmark this page and spot.',
+      ),
+    );
+    expect(screen.queryByRole('dialog', { name: 'Name bookmark' })).not.toBeInTheDocument();
+    expect(addBookmark).not.toHaveBeenCalled();
   });
 
   it('Ctrl+Alt+J jumps to the next PDF bookmark and wraps to the first', async () => {

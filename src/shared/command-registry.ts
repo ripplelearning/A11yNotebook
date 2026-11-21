@@ -797,14 +797,15 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'bookmark-heading-at-cursor',
     label: 'Bookmark heading at cursor',
     description:
-      'Save the heading at or before the cursor as a bookmark. In a PDF, save the current page and spot instead. Press Ctrl+Alt+J to jump to the next bookmark.',
+      'Save the heading at or before the cursor as a bookmark. Heading bookmarks are for notes: in a PDF, press Ctrl+Alt+B to bookmark the current page and spot instead. Press Ctrl+Alt+J to jump to the next bookmark.',
+    shortcut: 'Ctrl+Alt+H',
   },
   {
     id: 'bookmark-position-at-cursor',
     label: 'Bookmark position at cursor',
     description:
       'Save the exact cursor position as a bookmark, not just its heading. In a PDF, save the current page and spot instead. Press Ctrl+Alt+J to jump to the next bookmark.',
-    shortcut: 'Ctrl+Alt+H',
+    shortcut: 'Ctrl+Alt+B',
   },
   {
     id: 'bookmark-jump-next',
