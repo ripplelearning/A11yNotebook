@@ -242,6 +242,35 @@ describe('calendar sync core', () => {
     expect(sameAppointmentContent(plain, reminded)).toBe(true);
   });
 
+  it('ignores excluded-occurrence-only differences when comparing content', () => {
+    const plain = appointment({ recurrence: { frequency: 'daily' } });
+    const excluded = appointment({
+      recurrence: { frequency: 'daily' },
+      excludedOccurrences: ['2026-11-03T10:00:00-08:00'],
+    });
+    expect(sameAppointmentContent(plain, excluded)).toBe(true);
+  });
+
+  it('keeps the local excluded occurrences when remote content wins', () => {
+    const local = appointment({
+      id: 'local-9',
+      provider: 'google',
+      externalId: 'g-9',
+      recurrence: { frequency: 'daily' },
+      excludedOccurrences: ['2026-11-03T10:00:00-08:00'],
+    });
+    const { merged } = applySync([local], [
+      {
+        remote: appointment({ title: 'Changed', provider: 'google', externalId: 'g-9' }),
+        local,
+        classification: 'remoteWins',
+      },
+    ]);
+    expect(merged).toHaveLength(1);
+    expect(merged[0].title).toBe('Changed');
+    expect(merged[0].excludedOccurrences).toEqual(['2026-11-03T10:00:00-08:00']);
+  });
+
   it('keeps the local reminder when remote content wins', () => {
     const local = appointment({
       id: 'local-9',

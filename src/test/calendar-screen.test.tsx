@@ -13,7 +13,11 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
-function setup(appointments: CalendarAppointment[], createRequest = 0) {
+function setup(
+  appointments: CalendarAppointment[],
+  createRequest = 0,
+  openRequest: { id: string; nonce: number } | null = null,
+) {
   const saveCalendar = vi.fn(async (items: CalendarAppointment[]) => items);
   const vault = {
     getCalendar: vi.fn(async () => appointments),
@@ -33,6 +37,7 @@ function setup(appointments: CalendarAppointment[], createRequest = 0) {
       onOpenEntry={vi.fn(async () => undefined)}
       announce={vi.fn()}
       createRequest={request}
+      openRequest={openRequest}
     />
   );
   const { rerender } = render(element(createRequest));
@@ -165,6 +170,85 @@ describe('calendar screen', () => {
     await waitFor(() => expect(saveCalendar).toHaveBeenCalledWith([]));
   });
 
+  it('deletes only the occurrence it opened from and keeps the rest of the series', async () => {
+    const today = new Date();
+    const secondDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+    const recurring: CalendarAppointment = {
+      id: 'weekly-1',
+      title: 'Standup',
+      start: combineDateTime(dayKey(today), '09:00')!,
+      allDay: false,
+      recurrence: { frequency: 'weekly', interval: 1 },
+    };
+    const { saveCalendar } = setup([recurring]);
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit Standup' });
+    expect(editButtons.length).toBeGreaterThan(1);
+    fireEvent.click(editButtons[1]);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Delete appointment' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Delete appointment' });
+    expect(within(confirm).getByText(/Delete only the occurrence on/)).toBeInTheDocument();
+    expect(
+      within(confirm).getByRole('button', { name: 'Delete this appointment only' }),
+    ).toBeInTheDocument();
+    fireEvent.click(within(confirm).getByRole('button', { name: 'Delete this appointment only' }));
+    await waitFor(() => expect(saveCalendar).toHaveBeenCalled());
+    const saved = saveCalendar.mock.calls[0][0] as CalendarAppointment[];
+    expect(saved).toHaveLength(1);
+    expect(saved[0].id).toBe('weekly-1');
+    expect(saved[0].recurrence).toEqual({ frequency: 'weekly', interval: 1 });
+    expect(saved[0].excludedOccurrences).toEqual([combineDateTime(dayKey(secondDate), '09:00')]);
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(await screen.findAllByRole('button', { name: 'Edit Standup' })).toHaveLength(
+      editButtons.length - 1,
+    );
+    expect(screen.getByRole('status')).toHaveTextContent('Deleted this occurrence.');
+  });
+
+  it('offers only the whole series when no occurrence is left to delete singly', async () => {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const recurring: CalendarAppointment = {
+      id: 'weekly-1',
+      title: 'Standup',
+      start: combineDateTime(dayKey(yesterday), '09:00')!,
+      allDay: false,
+      recurrence: { frequency: 'weekly', interval: 1, count: 1 },
+    };
+    setup([recurring], 0, { id: 'weekly-1', nonce: 1 });
+    await screen.findByRole('dialog', { name: 'Edit appointment' });
+    fireEvent.click(screen.getByRole('button', { name: 'Delete appointment' }));
+    const confirm = await screen.findByRole('alertdialog', { name: 'Delete appointment' });
+    expect(
+      within(confirm).getByText('Deleting removes the whole series, not just one occurrence.'),
+    ).toBeInTheDocument();
+    expect(
+      within(confirm).queryByRole('button', { name: 'Delete this appointment only' }),
+    ).not.toBeInTheDocument();
+  });
+
+  it('keeps deleted occurrences when the series is edited and saved', async () => {
+    const today = new Date();
+    const secondDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 7);
+    const excluded = combineDateTime(dayKey(secondDate), '09:00')!;
+    const recurring: CalendarAppointment = {
+      id: 'weekly-1',
+      title: 'Standup',
+      start: combineDateTime(dayKey(today), '09:00')!,
+      allDay: false,
+      recurrence: { frequency: 'weekly', interval: 1 },
+      excludedOccurrences: [excluded],
+    };
+    const { saveCalendar } = setup([recurring]);
+    const editButtons = await screen.findAllByRole('button', { name: 'Edit Standup' });
+    fireEvent.click(editButtons[0]);
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
+    await waitFor(() => expect(saveCalendar).toHaveBeenCalled());
+    const saved = saveCalendar.mock.calls[0][0] as CalendarAppointment[];
+    expect(saved[0].excludedOccurrences).toEqual([excluded]);
+  });
+
   it('asks in a separate dialog that takes focus, with series wording only for recurring appointments', async () => {
     // jsdom's document is not focused by default; the alertdialog only
     // restores focus when the document has it, as in real use.
@@ -186,10 +270,11 @@ describe('calendar screen', () => {
     screen.getByRole('button', { name: 'Delete appointment' }).focus();
     fireEvent.click(screen.getByRole('button', { name: 'Delete appointment' }));
     const confirm = await screen.findByRole('alertdialog', { name: 'Delete appointment' });
-    expect(
-      within(confirm).getByText('Deleting removes the whole series, not just one occurrence.'),
-    ).toBeInTheDocument();
-    expect(document.activeElement).toBe(within(confirm).getByRole('button', { name: 'Delete the whole series' }));
+    expect(within(confirm).getByText(/Delete only the occurrence on/)).toBeInTheDocument();
+    expect(within(confirm).getByRole('button', { name: 'Delete the whole series' })).toBeInTheDocument();
+    expect(document.activeElement).toBe(
+      within(confirm).getByRole('button', { name: 'Delete this appointment only' }),
+    );
     fireEvent.click(within(confirm).getByRole('button', { name: 'Keep appointment' }));
     await waitFor(() =>
       expect(screen.queryByRole('alertdialog', { name: 'Delete appointment' })).not.toBeInTheDocument(),

@@ -279,6 +279,113 @@ describe('calendar expansion', () => {
   });
 });
 
+describe('deleted single occurrences', () => {
+  it('removes only the excluded occurrence and leaves the rest of the series', () => {
+    const occurrences = expandAppointments(
+      [
+        appointment({
+          id: 'daily',
+          start: timed('2026-10-27', '09:00'),
+          end: timed('2026-10-27', '09:30'),
+          recurrence: { frequency: 'daily', count: 3 },
+          excludedOccurrences: [timed('2026-10-28', '09:00')],
+        }),
+      ],
+      rangeStart,
+      rangeEnd,
+    );
+    expect(occurrences.map((item) => item.start)).toEqual([
+      timed('2026-10-27', '09:00'),
+      timed('2026-10-29', '09:00'),
+    ]);
+    // The count still ends the series after the third start: no
+    // fourth occurrence appears to replace the deleted one.
+    expect(occurrences).toHaveLength(2);
+  });
+
+  it('excludes one weekday without touching the others', () => {
+    const occurrences = expandAppointments(
+      [
+        appointment({
+          id: 'weekly',
+          // Monday 2026-10-26.
+          start: timed('2026-10-26', '09:00'),
+          recurrence: { frequency: 'weekly', weekdays: [1, 3], until: '2026-11-06' },
+          excludedOccurrences: [timed('2026-10-28', '09:00')],
+        }),
+      ],
+      rangeStart,
+      rangeEnd,
+    );
+    expect(occurrences.map((item) => item.start.slice(0, 10))).toEqual([
+      '2026-10-26',
+      '2026-11-02',
+      '2026-11-04',
+    ]);
+  });
+
+  it('removes every day of an excluded multi-day all-day occurrence', () => {
+    const occurrences = expandAppointments(
+      [
+        appointment({
+          id: 'span',
+          start: '2026-10-28',
+          end: '2026-10-31',
+          allDay: true,
+          recurrence: { frequency: 'weekly', count: 2 },
+          excludedOccurrences: ['2026-10-28'],
+        }),
+      ],
+      rangeStart,
+      rangeEnd,
+    );
+    // The first recurrence's three days are all gone. The second
+    // recurrence shows as a single day: a recurring multi-day span
+    // only spans on its first occurrence (pre-existing behavior, the
+    // stored end anchors to the series start, not the recurrence).
+    expect(occurrences.map((item) => item.start)).toEqual(['2026-11-04']);
+  });
+
+  it('records the recurrence start on each occurrence', () => {
+    const occurrences = expandAppointments(
+      [
+        appointment({
+          id: 'span',
+          start: '2026-10-28',
+          end: '2026-10-31',
+          allDay: true,
+          recurrence: { frequency: 'weekly', count: 1 },
+        }),
+        appointment({
+          id: 'timed',
+          start: timed('2026-10-27', '09:00'),
+          end: timed('2026-10-27', '10:00'),
+        }),
+      ],
+      rangeStart,
+      rangeEnd,
+    );
+    // A spanned day carries the first day of its span, not its own day.
+    expect(occurrences.find((item) => item.start === '2026-10-29')?.recurrenceStart).toBe('2026-10-28');
+    expect(occurrences.find((item) => item.appointmentId === 'timed')?.recurrenceStart).toBe(
+      timed('2026-10-27', '09:00'),
+    );
+  });
+
+  it('keeps valid excluded occurrences, drops invalid ones, and drops them without a recurrence', () => {
+    const cleaned = cleanAppointments([
+      appointment({
+        id: 'ok',
+        recurrence: { frequency: 'daily' },
+        excludedOccurrences: [timed('2026-10-28', '09:00'), 'not a date', timed('2026-10-28', '09:00')],
+      }),
+      appointment({ id: 'no-recurrence', excludedOccurrences: [timed('2026-10-28', '09:00')] }),
+    ]);
+    expect(cleaned[0].excludedOccurrences).toEqual([timed('2026-10-28', '09:00')]);
+    expect(cleaned[1].excludedOccurrences).toBeUndefined();
+  });
+});
+
 describe('dialog date helpers', () => {
   it('combines a date and time into a local ISO datetime', () => {
     const combined = combineDateTime('2026-10-27', '14:30');

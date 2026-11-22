@@ -99,7 +99,7 @@ export default function CalendarScreen({
     return { year: now.getFullYear(), month: now.getMonth() };
   });
   const [selectedDay, setSelectedDay] = useState(() => atMidnight(new Date()));
-  const [dialog, setDialog] = useState<{ appointment?: CalendarAppointment } | null>(null);
+  const [dialog, setDialog] = useState<{ appointment?: CalendarAppointment; occurrenceStart?: string } | null>(null);
   const alive = useRef(false);
   const operation = useRef(false);
   const request = useRef(0);
@@ -210,8 +210,36 @@ export default function CalendarScreen({
       const updated = appointments.filter((item) => item.id !== id);
       await bridge.saveCalendar(updated);
       setAppointments(updated);
-      setNotice('Appointment deleted.');
-      announce('Appointment deleted.');
+      setNotice('Deleted the whole series.');
+      announce('Deleted the whole series.');
+    } finally {
+      operation.current = false;
+    }
+  }
+
+  /**
+   * Delete one occurrence of a recurring appointment: record its
+   * recurrence start on the series and leave the rest of the series —
+   * and the series definition — untouched. The occurrence stays gone
+   * after close and reopen because the exclusion is stored with the
+   * series in calendar.json.
+   */
+  async function deleteOccurrence(id: string, occurrenceStart: string) {
+    if (!bridge?.saveCalendar) throw new Error('The calendar is unavailable in this version.');
+    operation.current = true;
+    try {
+      const updated = appointments.map((item) =>
+        item.id === id
+          ? {
+              ...item,
+              excludedOccurrences: [...new Set([...(item.excludedOccurrences ?? []), occurrenceStart])].sort(),
+            }
+          : item,
+      );
+      await bridge.saveCalendar(updated);
+      setAppointments(updated);
+      setNotice('Deleted this occurrence.');
+      announce('Deleted this occurrence.');
     } finally {
       operation.current = false;
     }
@@ -250,7 +278,10 @@ export default function CalendarScreen({
           <span> — Reminder: {formatReminderMinutes(appointment.reminderMinutesBefore)}</span>
         )}
         {appointment && (
-          <button type="button" onClick={() => setDialog({ appointment })}>
+          <button
+            type="button"
+            onClick={() => setDialog({ appointment, occurrenceStart: occurrence.recurrenceStart })}
+          >
             Edit {occurrence.title}
           </button>
         )}
@@ -424,11 +455,15 @@ export default function CalendarScreen({
       {dialog && (
         <AppointmentDialog
           appointment={dialog.appointment}
+          occurrenceStart={dialog.occurrenceStart}
           notePaths={notePaths}
           filePaths={filePaths}
           tasks={tasks}
           onSave={(input) => saveAppointment(input, dialog.appointment?.id)}
           onDelete={dialog.appointment ? (id) => deleteAppointment(id) : undefined}
+          onDeleteOccurrence={
+            dialog.appointment ? (id, occurrenceStart) => deleteOccurrence(id, occurrenceStart) : undefined
+          }
           onClose={() => setDialog(null)}
         />
       )}
