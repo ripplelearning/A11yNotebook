@@ -126,7 +126,9 @@ export function localChangesSince(
  * field is added to CalendarAppointment, add it here if it should count
  * toward a conflict. The link is deliberately excluded: links are local-only
  * metadata that providers never see, so a link edit must neither trigger a
- * push nor count as a conflicting change.
+ * push nor count as a conflicting change. Deleted single occurrences are
+ * excluded for the same reason: they live only in the local series and a
+ * provider must never resurrect them or be pushed a series update for them.
  */
 export function sameAppointmentContent(a: CalendarAppointment, b: CalendarAppointment): boolean {
   return contentOf(a) === contentOf(b);
@@ -230,6 +232,11 @@ export function applySync(
           // silently drop the reminder the user set on this appointment.
           ...(entry.local.reminderMinutesBefore !== undefined
             ? { reminderMinutesBefore: entry.local.reminderMinutesBefore }
+            : {}),
+          // Deleted single occurrences are local-only too: a remote win
+          // must not resurrect an occurrence the user deleted locally.
+          ...(entry.local.excludedOccurrences
+            ? { excludedOccurrences: entry.local.excludedOccurrences }
             : {}),
         };
       }

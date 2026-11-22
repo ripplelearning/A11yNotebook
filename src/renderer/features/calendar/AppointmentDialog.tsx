@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState } from 'react';
 import {
   shiftDateText,
   combineDateTime,
+  expandAppointments,
   parseAppointmentTime,
   parseDateOnly,
   type AppointmentInput,
@@ -30,21 +31,45 @@ function taskOptionValue(task: VaultTask): string {
   return `${task.path}\0${task.taskId ?? task.id}`;
 }
 
+function formatOccurrenceStart(value: string): string {
+  const parts = parseAppointmentTime(value);
+  if (!parts) return value;
+  const date = new Date(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute);
+  const day = date.toLocaleDateString(undefined, {
+    weekday: 'long',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+  });
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return day;
+  return `${day} at ${date.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })}`;
+}
+
 export default function AppointmentDialog({
   appointment,
+  occurrenceStart,
   notePaths,
   filePaths,
   tasks,
   onSave,
   onDelete,
+  onDeleteOccurrence,
   onClose,
 }: {
   appointment?: CalendarAppointment;
+  /**
+   * Start of the occurrence being edited, in the same string shape as
+   * the appointment's start. Set when the dialog opens from one
+   * occurrence in the agenda or month grid; absent when it opens from
+   * a search result, where the next upcoming occurrence is the target.
+   */
+  occurrenceStart?: string;
   notePaths: string[];
   filePaths: string[];
   tasks: VaultTask[];
   onSave: (input: AppointmentInput) => Promise<void>;
   onDelete?: (id: string) => Promise<void>;
+  onDeleteOccurrence?: (id: string, occurrenceStart: string) => Promise<void>;
   onClose: () => void;
 }) {
   const id = useId();
@@ -91,6 +116,20 @@ export default function AppointmentDialog({
       mounted.current = false;
     };
   }, []);
+
+  /**
+   * The occurrence a delete-this-only action would remove: the
+   * occurrence the dialog opened from, or the next upcoming one when
+   * the dialog opened without an occurrence (for example, from a
+   * search result). Undefined when the series has no occurrence left
+   * to delete singly, so only the whole series can go.
+   */
+  const deleteTarget =
+    appointment?.recurrence === undefined
+      ? undefined
+      : (occurrenceStart ??
+        expandAppointments([appointment], new Date(), new Date(Date.now() + 365 * 86400_000))[0]
+          ?.recurrenceStart);
 
   function close() {
     if (saving.current) return;
@@ -166,6 +205,9 @@ export default function AppointmentDialog({
       ...(link ? { link } : {}),
       ...(reminder !== '' ? { reminderMinutesBefore: Number(reminder) } : {}),
       ...(recurrence ? { recurrence } : {}),
+      // Saving an edit replaces the stored series, so carry over any
+      // deleted single occurrences or the edit would resurrect them.
+      ...(appointment?.excludedOccurrences ? { excludedOccurrences: appointment.excludedOccurrences } : {}),
     };
   }
 
@@ -197,6 +239,26 @@ export default function AppointmentDialog({
     setError('');
     try {
       await onDelete(appointment.id);
+      if (mounted.current) onClose();
+    } catch (reason) {
+      if (mounted.current) {
+        // Close the confirmation so the error in the edit dialog is visible.
+        setConfirmDelete(false);
+        setError(reason instanceof Error ? reason.message : 'Could not delete appointment.');
+      }
+    } finally {
+      saving.current = false;
+      if (mounted.current) setBusy(false);
+    }
+  }
+
+  async function removeOccurrence() {
+    if (!appointment || !onDeleteOccurrence || !deleteTarget || saving.current) return;
+    saving.current = true;
+    setBusy(true);
+    setError('');
+    try {
+      await onDeleteOccurrence(appointment.id, deleteTarget);
       if (mounted.current) onClose();
     } catch (reason) {
       if (mounted.current) {
@@ -484,11 +546,23 @@ export default function AppointmentDialog({
         >
           <p id={`${id}-delete-message`}>
             {appointment.recurrence
-              ? 'Deleting removes the whole series, not just one occurrence.'
+              ? deleteTarget
+                ? `Delete only the occurrence on ${formatOccurrenceStart(deleteTarget)}, or delete the whole series?`
+                : 'Deleting removes the whole series, not just one occurrence.'
               : 'Delete this appointment?'}
           </p>
           <div className="modal-actions">
-            <button type="button" data-autofocus disabled={busy} onClick={() => void remove()}>
+            {appointment.recurrence && deleteTarget && onDeleteOccurrence && (
+              <button type="button" data-autofocus disabled={busy} onClick={() => void removeOccurrence()}>
+                Delete this appointment only
+              </button>
+            )}
+            <button
+              type="button"
+              data-autofocus={appointment.recurrence && deleteTarget && onDeleteOccurrence ? undefined : true}
+              disabled={busy}
+              onClick={() => void remove()}
+            >
               {appointment.recurrence ? 'Delete the whole series' : 'Delete appointment'}
             </button>
             <button type="button" disabled={busy} onClick={() => setConfirmDelete(false)}>

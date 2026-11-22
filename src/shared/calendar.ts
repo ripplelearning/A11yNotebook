@@ -62,6 +62,16 @@ export interface CalendarAppointment {
    */
   reminderMinutesBefore?: number;
   recurrence?: CalendarRecurrence;
+  /**
+   * Starts of deleted single occurrences, in the same string shape as
+   * `start` (ISO datetime with offset, or YYYY-MM-DD when allDay). Only
+   * meaningful on a recurring appointment: expansion skips these starts
+   * and the rest of the series is untouched. Local-only, like the link
+   * and the reminder: never sent to providers and excluded from sync
+   * change detection, so deleting one occurrence does not push a series
+   * update or count as a conflicting change.
+   */
+  excludedOccurrences?: string[];
   /** Sync bookkeeping, filled in by the sync phases; unused locally. */
   provider?: CalendarSyncProvider;
   externalId?: string;
@@ -80,6 +90,14 @@ export interface CalendarOccurrence {
   /** Same string shape as the appointment's end; absent for instant events. */
   end?: string;
   link?: CalendarLink;
+  /**
+   * Start of the recurrence that produced this occurrence, in the same
+   * string shape as the appointment's start. Equals `start` for timed
+   * and single-day occurrences; for a multi-day all-day occurrence it
+   * is the first day of the span, so deleting that occurrence removes
+   * the whole span instead of just the day shown.
+   */
+  recurrenceStart: string;
 }
 
 /** Human wording for a reminder offset, shared by the dialog and the agenda. */
@@ -310,6 +328,12 @@ export function cleanAppointment(value: unknown): CalendarAppointment | null {
   }
   const recurrence = cleanRecurrence(item.recurrence);
   if (recurrence) cleaned.recurrence = recurrence;
+  if (recurrence && Array.isArray(item.excludedOccurrences)) {
+    const excluded = [...new Set(item.excludedOccurrences)].filter(
+      (entry): entry is string => typeof entry === 'string' && parseAppointmentTime(entry) !== null,
+    );
+    if (excluded.length) cleaned.excludedOccurrences = excluded.sort();
+  }
   if (item.provider !== undefined && PROVIDERS.includes(item.provider)) cleaned.provider = item.provider;
   if (typeof item.externalId === 'string' && item.externalId) cleaned.externalId = item.externalId;
   if (typeof item.updatedAt === 'string' && item.updatedAt) cleaned.updatedAt = item.updatedAt;
@@ -455,8 +479,14 @@ export function expandAppointments(
   for (const appointment of appointments) {
     const anchor = parseAppointmentTime(appointment.start);
     if (!anchor) continue;
+    const excluded = new Set(appointment.excludedOccurrences ?? []);
     for (const start of recurrenceStarts(appointment, anchor)) {
       if (occurrences.length >= MAX_OCCURRENCES) break;
+      // A deleted single occurrence removes only its own recurrence
+      // start; the rest of the series expands untouched, and the
+      // series definition (count, until, interval) never changes.
+      const recurrenceStart = appointment.allDay ? formatDateOnly(start) : formatDateTime(start);
+      if (excluded.has(recurrenceStart)) continue;
       const range = occurrenceRange(appointment, start);
       // Starts arrive in ascending order, so an occurrence starting at or
       // after the range end means every later one does too.
@@ -477,6 +507,7 @@ export function expandAppointments(
               start: formatDateOnly(dayStart),
               end: formatDateOnly(dayEnd),
               link: appointment.link,
+              recurrenceStart,
             });
           }
           day = addDays(day, 1);
@@ -489,6 +520,7 @@ export function expandAppointments(
           start: formatDateTime(range.start),
           end: appointment.end !== undefined ? formatDateTime(range.end) : undefined,
           link: appointment.link,
+          recurrenceStart,
         });
       }
     }
