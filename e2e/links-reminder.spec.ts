@@ -71,7 +71,9 @@ test('the context menu on a link offers Create reminder with the link linked', a
     // Creating the reminder lands on the Reminders view, where the new
     // reminder lists under today's agenda.
     await expect(page.getByRole('heading', { name: 'Reminders' })).toBeVisible({ timeout: 5000 });
-    await expect(page.getByRole('button', { name: 'Check example link' })).toBeVisible({ timeout: 5000 });
+    await expect(page.getByRole('button', { name: 'Check example link', exact: true })).toBeVisible({
+      timeout: 5000,
+    });
   } finally {
     await closeApp(app, paths);
   }
