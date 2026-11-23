@@ -5,7 +5,8 @@ import {
   renderedHeadingAtSelection,
   selectDomMatch,
   selectElementText,
-  selectRenderedLine,
+  selectRenderedLineAt,
+  selectionRenderedSegments,
 } from '../shared/find-dom';
 
 describe('find-dom', () => {
@@ -82,17 +83,115 @@ describe('find-dom', () => {
     const root = document.createElement('div');
     root.innerHTML = '<p>Intro text.</p><p>More text here.</p>';
     document.body.appendChild(root);
-    expect(selectRenderedLine(root, 'More text here.')).toBe(true);
+    expect(selectRenderedLineAt(root, 'More text here.', [0, 0, 0])).toBe(true);
     expect(window.getSelection()?.toString()).toBe('More text here.');
     root.remove();
   });
 
-  it('falls back to the first text when a line cannot be found', () => {
+  it('returns false when a line cannot be found instead of falling back to the top', () => {
+    // The old fallback selected the container's first text — the top of
+    // the note — while the jump announced success. A missing line is a
+    // miss: the caller falls back to the containing heading instead.
     const root = document.createElement('div');
     root.innerHTML = '<p>Intro text.</p><p>More text.</p>';
     document.body.appendChild(root);
-    expect(selectRenderedLine(root, 'a line that is not rendered')).toBe(true);
-    expect(window.getSelection()?.toString()).toBe('Intro text.');
+    expect(selectRenderedLineAt(root, 'a line that is not rendered', [0, 0, 0])).toBe(false);
+    expect(window.getSelection()?.toString()).toBe('');
+    root.remove();
+  });
+
+  it('selects the second occurrence of a repeated line, not the first', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Details here.</p><p>Details here.</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLineAt(root, 'Details here.', [1, 1, 1])).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('Details here.');
+    const second = root.querySelectorAll('p')[1]!;
+    expect(second.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+    root.remove();
+  });
+
+  it('ignores the same words in the middle of another line', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>See Details here for more.</p><p>Details here.</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLineAt(root, 'Details here.', [0, 0, 0])).toBe(true);
+    const second = root.querySelectorAll('p')[1]!;
+    expect(second.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+    root.remove();
+  });
+
+  it('shortens the query when formatting splits the first words across text nodes', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p><strong>More</strong> text here.</p>';
+    document.body.appendChild(root);
+    // "More text here." spans two text nodes, so the three-word query
+    // never matches one node; the one-word query does.
+    expect(selectRenderedLineAt(root, 'More text here.', [0, 0, 0])).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('More');
+    root.remove();
+  });
+
+  it('finds a line after a soft break inside its paragraph', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>First line\nSecond line</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLineAt(root, 'Second line', [0, 0, 0])).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('Second line');
+    root.remove();
+  });
+
+  it('finds a line after a hard break inside its paragraph', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>First line<br>Second line</p>';
+    document.body.appendChild(root);
+    expect(selectRenderedLineAt(root, 'Second line', [0, 0, 0])).toBe(true);
+    expect(window.getSelection()?.toString()).toBe('Second line');
+    root.remove();
+  });
+
+  it('reports the rendered lines and the selection’s line', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<h1>Title</h1><p>Intro text.</p><h2>Setup</h2><p>Details here.</p>';
+    document.body.appendChild(root);
+    const details = root.querySelectorAll('p')[1]!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(details, 2);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    expect(selectionRenderedSegments(root)).toEqual({
+      segments: ['Title', 'Intro text.', 'Setup', 'Details here.'],
+      selectedIndex: 3,
+    });
+    root.remove();
+  });
+
+  it('splits a soft-broken paragraph into its lines for the selection', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>First line\nSecond line</p>';
+    document.body.appendChild(root);
+    const node = root.querySelector('p')!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(node, node.data.indexOf('Second') + 1);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    expect(selectionRenderedSegments(root)).toEqual({
+      segments: ['First line', 'Second line'],
+      selectedIndex: 1,
+    });
+    root.remove();
+  });
+
+  it('returns null when there is no selection in the document', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Intro text.</p>';
+    document.body.appendChild(root);
+    window.getSelection()?.removeAllRanges();
+    expect(selectionRenderedSegments(root)).toBeNull();
     root.remove();
   });
 

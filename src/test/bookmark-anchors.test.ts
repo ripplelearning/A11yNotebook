@@ -7,19 +7,24 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createVaultService } from '../../electron/vault/service';
 import type { BookmarkAnchor } from '../shared/types';
 import {
+  alignRenderedSegmentsToSourceLines,
   headingAnchorAt,
   headingAnchorAtSourceIndex,
   headingAnchorForRenderedText,
   headingSourceIndex,
   headingTextSpan,
+  lineQueryOccurrence,
   lineSpanAt,
   listHeadings,
   normalizeHeadingText,
   orderBookmarksByOffset,
   readingJumpHeading,
+  renderedFormOfSourceLine,
+  renderedLineAtOffset,
   resolveBookmarkAnchor,
   sameAnchor,
   sanitizeBookmarkAnchor,
+  sourceOffsetForRenderedSegment,
   surroundingText,
 } from '../shared/bookmark-anchors';
 
@@ -416,5 +421,111 @@ describe('headingSourceIndex and headingAnchorAtSourceIndex', () => {
       occurrence: 0,
     });
     expect(headingAnchorAtSourceIndex(markdown, false, 9)).toBeNull();
+  });
+});
+
+describe('renderedFormOfSourceLine', () => {
+  it('strips block and inline markers to the rendered text', () => {
+    expect(renderedFormOfSourceLine('## Hello *world*', false)).toBe('Hello world');
+    expect(renderedFormOfSourceLine('- [ ] Buy milk', false)).toBe('Buy milk');
+    expect(renderedFormOfSourceLine('> Quoted text', false)).toBe('Quoted text');
+    expect(renderedFormOfSourceLine('1. First item', false)).toBe('First item');
+    expect(renderedFormOfSourceLine('See [the guide](https://example.com) here', false)).toBe(
+      'See the guide here',
+    );
+  });
+
+  it('renders image-only and setext lines as no text', () => {
+    expect(renderedFormOfSourceLine('![logo](logo.png)', false)).toBe('');
+    expect(renderedFormOfSourceLine('===', false)).toBe('');
+    expect(renderedFormOfSourceLine('---', false)).toBe('');
+  });
+
+  it('renders fenced code lines literally', () => {
+    expect(renderedFormOfSourceLine('const x = 1; // *not* emphasis', true)).toBe(
+      'const x = 1; // *not* emphasis',
+    );
+    expect(renderedFormOfSourceLine('# not a heading', true)).toBe('# not a heading');
+  });
+});
+
+describe('lineQueryOccurrence and renderedLineAtOffset', () => {
+  const repeated = '# Title\n\nDetails here are many.\n\nDetails here are few.\n';
+
+  it('counts earlier lines that start with the same first words', () => {
+    const first = repeated.indexOf('Details here are many.');
+    const second = repeated.indexOf('Details here are few.');
+    expect(lineQueryOccurrence(repeated, first, 3)).toBe(0);
+    expect(lineQueryOccurrence(repeated, second, 3)).toBe(1);
+    expect(lineQueryOccurrence(repeated, second, 1)).toBe(1);
+    expect(lineQueryOccurrence(repeated, first, 1)).toBe(0);
+  });
+
+  it('returns the rendered line and its occurrences at an offset', () => {
+    const offset = repeated.indexOf('Details here are few.');
+    expect(renderedLineAtOffset(repeated, offset)).toEqual({
+      text: 'Details here are few.',
+      occurrences: [1, 1, 1],
+    });
+    expect(renderedLineAtOffset(repeated, 0)).toEqual({ text: 'Title', occurrences: [0, 0, 0] });
+  });
+
+  it('lands on the nearest non-blank line from a blank line, forward first', () => {
+    // One character before the second Details line: the blank line above it.
+    const blankOffset = repeated.indexOf('Details here are few.') - 1;
+    expect(renderedLineAtOffset(repeated, blankOffset)?.text).toBe('Details here are few.');
+    const trailing = '# Title\n\nIntro.\n\n';
+    expect(renderedLineAtOffset(trailing, trailing.length)?.text).toBe('Intro.');
+    expect(renderedLineAtOffset('', 0)).toBeNull();
+  });
+});
+
+describe('alignRenderedSegmentsToSourceLines', () => {
+  const content = '# Title\n\nIntro text.\n\n## Setup\n\nDetails here.\n\n![logo](logo.png)\n\nMore text.\n';
+
+  it('maps rendered lines to source lines in order, skipping lines with no text', () => {
+    const segments = ['Title', 'Intro text.', 'Setup', 'Details here.', 'More text.'];
+    expect(alignRenderedSegmentsToSourceLines(content, segments)).toEqual([0, 2, 4, 6, 10]);
+    expect(sourceOffsetForRenderedSegment(content, false, segments, 4)).toBe(content.indexOf('More text.'));
+    expect(sourceOffsetForRenderedSegment(content, false, segments, 2)).toBe(content.indexOf('## Setup'));
+  });
+
+  it('maps duplicate segments to duplicate lines in order', () => {
+    const doubled = 'Same line.\n\nSame line.\n';
+    expect(alignRenderedSegmentsToSourceLines(doubled, ['Same line.', 'Same line.'])).toEqual([0, 2]);
+  });
+
+  it('leaves unmappable segments unmapped, and HTML notes unmapped', () => {
+    expect(alignRenderedSegmentsToSourceLines(content, ['No such line'])).toEqual([-1]);
+    expect(sourceOffsetForRenderedSegment(content, false, ['No such line'], 0)).toBeNull();
+    expect(sourceOffsetForRenderedSegment('<h1>Title</h1>\n<p>Intro.</p>', true, ['Title'], 0)).toBeNull();
+    expect(sourceOffsetForRenderedSegment(content, false, ['Title'], 9)).toBeNull();
+  });
+});
+
+describe('heading occurrence counting across raw and rendered text', () => {
+  // Two headings read the same after formatting is stripped, but their
+  // source texts differ — so an occurrence counted one way indexes the
+  // wrong heading the other way. A bookmark made from reading mode on
+  // the third heading used to store occurrence 2 (among readings) and
+  // then jump to the second heading.
+  const mixed = '# Hello *world*\n\n# Hello world\n\n# Hello world\n';
+
+  it('returns the source-text occurrence from a rendered heading', () => {
+    expect(headingAnchorForRenderedText(mixed, false, 'Hello world', 2)).toEqual({
+      kind: 'heading',
+      text: 'Hello world',
+      occurrence: 1,
+    });
+    expect(headingAnchorForRenderedText(mixed, false, 'Hello world', 0)).toEqual({
+      kind: 'heading',
+      text: 'Hello *world*',
+      occurrence: 0,
+    });
+  });
+
+  it('resolves a legacy normalized occurrence to the heading it meant', () => {
+    const legacy = { kind: 'heading', text: 'Hello world', occurrence: 2 } as const;
+    expect(resolveBookmarkAnchor(mixed, false, legacy)).toBe(mixed.lastIndexOf('# Hello world'));
   });
 });

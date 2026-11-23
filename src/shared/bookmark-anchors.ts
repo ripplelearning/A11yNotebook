@@ -170,8 +170,17 @@ export function resolveBookmarkAnchor(content: string, isHtml: boolean, anchor: 
   if (anchor.kind === 'page') return null;
   if (anchor.kind === 'offset') return Math.max(0, Math.min(anchor.offset, content.length));
   const matches = listHeadings(content, isHtml).filter((hit) => hit.text === anchor.text);
-  const hit = matches[anchor.occurrence] ?? matches[0];
-  return hit ? hit.start : null;
+  const hit = matches[anchor.occurrence];
+  if (hit) return hit.start;
+  // The occurrence may have been counted among headings that read the
+  // same after formatting is stripped (a reading-mode bookmark made
+  // when the two counts disagreed): the normalized list still holds the
+  // heading the occurrence meant. Only when neither reading finds it
+  // does the jump fall back to the first raw match, as before.
+  const normalized = listHeadings(content, isHtml).filter(
+    (item) => normalizeHeadingText(item.text) === normalizeHeadingText(anchor.text),
+  );
+  return normalized[anchor.occurrence]?.start ?? matches[0]?.start ?? null;
 }
 
 /**
@@ -210,6 +219,194 @@ export function headingAnchorAtSourceIndex(
   if (!hit) return null;
   const occurrence = hits.filter((item) => item.text === hit.text && item.start < hit.start).length;
   return { kind: 'heading', text: hit.text, occurrence };
+}
+
+function wordsOf(text: string): string[] {
+  return text.trim().split(/\s+/).filter(Boolean);
+}
+
+function firstWords(text: string, count: number): string[] {
+  return wordsOf(text).slice(0, count);
+}
+
+/** Whether `text` starts with `query` as whole words, ignoring case. */
+function startsWithWords(text: string, query: readonly string[]): boolean {
+  const words = wordsOf(text);
+  if (words.length < query.length) return false;
+  return query.every((word, index) => words[index]!.toLowerCase() === word.toLowerCase());
+}
+
+/**
+ * The rendered text of one source line: block markers stripped (heading
+ * markers, blockquote markers, list markers, task markers), then inline
+ * Markdown stripped the way normalizeHeadingText does. A line inside a
+ * fenced code block renders literally, markers and all. A blank line, a
+ * fence marker, or a line with no rendered text (an image-only line, a
+ * setext underline) renders as the empty string.
+ */
+export function renderedFormOfSourceLine(line: string, inFence: boolean): string {
+  if (inFence) return line.trim();
+  const stripped = line.trim();
+  if (/^(=+|-+)\s*$/.test(stripped)) return '';
+  const withoutMarkers = stripped
+    .replace(/^(>\s*)+/, '')
+    .replace(/^([-*+]|\d+[.)])\s+/, '')
+    .replace(/^ {0,3}#{1,6}\s+/, '')
+    .replace(/^\[[ xX]\]\s*/, '');
+  return normalizeHeadingText(withoutMarkers);
+}
+
+/** The rendered form of every source line, tracking fenced code blocks. */
+function renderedForms(content: string): string[] {
+  const forms: string[] = [];
+  let inFence = false;
+  for (const line of content.split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      inFence = !inFence;
+      forms.push('');
+      continue;
+    }
+    forms.push(renderedFormOfSourceLine(line, inFence));
+  }
+  return forms;
+}
+
+/** The 0-based index of the source line containing `offset`. */
+function lineIndexAtOffset(content: string, offset: number): number {
+  const clamped = Math.max(0, Math.min(offset, content.length));
+  return content.slice(0, clamped).split('\n').length - 1;
+}
+
+/** The character offset where the source line at `index` starts. */
+function offsetOfLine(content: string, index: number): number {
+  const lines = content.split('\n');
+  let offset = 0;
+  for (let i = 0; i < index && i < lines.length; i += 1) offset += lines[i]!.length + 1;
+  return offset;
+}
+
+function occurrenceForLine(forms: readonly string[], target: number, wordCount: number): number {
+  const query = firstWords(forms[target] ?? '', wordCount);
+  if (!query.length) return 0;
+  let count = 0;
+  for (let i = 0; i < target; i += 1) {
+    if (startsWithWords(forms[i] ?? '', query)) count += 1;
+  }
+  return count;
+}
+
+/**
+ * How many earlier source lines start with the same first `wordCount`
+ * words as the line at `offset`. A rendered line is found by its first
+ * words, the way Find finds a match — and when several lines start the
+ * same way, the occurrence among them identifies which one the
+ * bookmark means, so a jump never lands on an earlier look-alike line.
+ */
+export function lineQueryOccurrence(content: string, offset: number, wordCount: number): number {
+  return occurrenceForLine(renderedForms(content), lineIndexAtOffset(content, offset), wordCount);
+}
+
+/**
+ * The rendered line at `offset`, with the occurrence of its first-words
+ * queries (1, 2, and 3 words) among earlier lines. The offset sits on
+ * the line itself when it has rendered text; on a blank line (or a line
+ * with no rendered text) the nearest non-blank line is used instead —
+ * the next one first, so the jump moves forward — because a blank line
+ * has no text to land on. Null when the note has no rendered text.
+ */
+export function renderedLineAtOffset(
+  content: string,
+  offset: number,
+): { text: string; occurrences: number[] } | null {
+  const forms = renderedForms(content);
+  let index = lineIndexAtOffset(content, offset);
+  if (!forms[index]) {
+    let forward = -1;
+    let backward = -1;
+    for (let i = index + 1; i < forms.length; i += 1) {
+      if (forms[i]) {
+        forward = i;
+        break;
+      }
+    }
+    for (let i = index - 1; i >= 0; i -= 1) {
+      if (forms[i]) {
+        backward = i;
+        break;
+      }
+    }
+    index = forward !== -1 ? forward : backward;
+    if (index === -1) return null;
+  }
+  const text = forms[index] ?? '';
+  if (!text) return null;
+  return {
+    text,
+    occurrences: [1, 2, 3].map((wordCount) => occurrenceForLine(forms, index, wordCount)),
+  };
+}
+
+function segmentMatchesForm(segmentWords: readonly string[], formWords: readonly string[]): boolean {
+  if (!segmentWords.length || !formWords.length) return false;
+  if (segmentWords[0]!.toLowerCase() !== formWords[0]!.toLowerCase()) return false;
+  const count = Math.min(3, segmentWords.length, formWords.length);
+  for (let i = 1; i < count; i += 1) {
+    if (segmentWords[i]!.toLowerCase() !== formWords[i]!.toLowerCase()) return false;
+  }
+  return true;
+}
+
+/**
+ * Which source line each rendered segment belongs to, by greedy in-order
+ * alignment: rendering preserves order, so a segment matches the next
+ * source line whose rendered form starts the same way. Source lines with
+ * no rendered text (blank lines, fence markers, image-only lines) are
+ * skipped, and a segment no later line matches maps to -1. HTML notes
+ * have no line mapping: their source lines are markup, not text.
+ */
+export function alignRenderedSegmentsToSourceLines(
+  content: string,
+  segments: readonly string[],
+): number[] {
+  const forms = renderedForms(content);
+  const aligned: number[] = segments.map(() => -1);
+  let line = 0;
+  for (let s = 0; s < segments.length; s += 1) {
+    // A footnote reference renders as a superscript number after its
+    // word (`Usage[1]`), so strip the number before comparing words.
+    const segmentWords = wordsOf((segments[s] ?? '').replace(/\[\d+\]/g, ''));
+    if (!segmentWords.length) continue;
+    while (line < forms.length) {
+      const form = forms[line] ?? '';
+      line += 1;
+      if (!form) continue;
+      if (segmentMatchesForm(segmentWords, wordsOf(form))) {
+        aligned[s] = line - 1;
+        break;
+      }
+    }
+  }
+  return aligned;
+}
+
+/**
+ * The source offset of the start of the source line the rendered
+ * segment at `index` belongs to — the exact line the reader is on, for
+ * bookmarking a position from the reading view. Null when the segment
+ * does not map to a source line (an HTML note, or a segment the source
+ * scan cannot place): the caller falls back to the containing heading.
+ */
+export function sourceOffsetForRenderedSegment(
+  content: string,
+  isHtml: boolean,
+  segments: readonly string[],
+  index: number,
+): number | null {
+  if (isHtml) return null;
+  if (index < 0 || index >= segments.length) return null;
+  const lineIndex = alignRenderedSegmentsToSourceLines(content, segments)[index];
+  if (lineIndex === undefined || lineIndex < 0) return null;
+  return offsetOfLine(content, lineIndex);
 }
 
 /**
@@ -305,7 +502,17 @@ export function headingAnchorForRenderedText(
   const matches = listHeadings(content, isHtml).filter((hit) => normalizeHeadingText(hit.text) === wanted);
   const hit = matches[occurrence] ?? null;
   if (!hit) return null;
-  return { kind: 'heading', text: hit.text, occurrence };
+  // The occurrence that comes back is counted among headings with the
+  // same source text, as resolveBookmarkAnchor reads it — not the
+  // occurrence among headings that merely read the same, which is what
+  // selected this hit. Two headings can read the same while their
+  // source texts differ (`Hello *world*` and `Hello world`), so
+  // returning the rendered count would point the anchor at the wrong
+  // heading on the next jump.
+  const rawOccurrence = listHeadings(content, isHtml).filter(
+    (item) => item.text === hit.text && item.start < hit.start,
+  ).length;
+  return { kind: 'heading', text: hit.text, occurrence: rawOccurrence };
 }
 
 /** Whether two anchors point at the same place, by value rather than by object identity. */

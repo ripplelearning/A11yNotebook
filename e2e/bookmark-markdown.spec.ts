@@ -23,8 +23,9 @@ import {
  * edit mode, or from another open note, and headings whose source text
  * differs from the rendered text — wiki links ([[Usage]]), images, and
  * other inline formatting. A jump is only a pass when focus AND the DOM
- * selection land on the bookmarked heading: focus alone does not move a
- * screen reader's virtual cursor. The 1.9.20 retest added two more
+ * selection land on the bookmarked spot: the heading for a heading
+ * bookmark, the exact line for a position bookmark. Focus alone does
+ * not move a screen reader's virtual cursor. The 1.9.20 retest added two more
  * forms that still landed at the top of the note: image-only headings,
  * which have no text to select, and footnote headings, whose rendered
  * `Usage[1]` never matches the stored `Usage[^1]`. Ctrl+Alt+H sets a
@@ -97,23 +98,30 @@ async function openNote(page: import('@playwright/test').Page, fileName: string,
 }
 
 /** Place the DOM selection inside rendered reading text, the way a screen reader's virtual cursor leaves it. */
-async function placeReadingSelection(page: import('@playwright/test').Page, text: string): Promise<void> {
-  await page.evaluate((wanted) => {
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-    let node: Text | null;
-    while ((node = walker.nextNode() as Text | null)) {
-      if (node.data.includes(wanted)) {
-        const range = document.createRange();
-        range.setStart(node, 1);
-        range.collapse(true);
-        const selection = window.getSelection();
-        selection?.removeAllRanges();
-        selection?.addRange(range);
-        return;
+async function placeReadingSelection(
+  page: import('@playwright/test').Page,
+  text: string,
+  occurrence = 0,
+): Promise<void> {
+  await page.evaluate(
+    ({ wanted, which }) => {
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      const nodes: Text[] = [];
+      let node: Text | null;
+      while ((node = walker.nextNode() as Text | null)) {
+        if (node.data.includes(wanted)) nodes.push(node);
       }
-    }
-    throw new Error(`Reading text not found: ${wanted}`);
-  }, text);
+      const target = nodes[which];
+      if (!target) throw new Error(`Reading text not found: ${wanted} (occurrence ${which})`);
+      const range = document.createRange();
+      range.setStart(target, 1);
+      range.collapse(true);
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range);
+    },
+    { wanted: text, which: occurrence },
+  );
 }
 
 async function readingJumpState(page: import('@playwright/test').Page) {
@@ -154,6 +162,23 @@ async function jumpToBookmark(
   await expect(statusLine(page)).toContainText(`Jumped to ${expectedHeading}.`, { timeout: 30000 });
 }
 
+/** Jump to a position bookmark from the Bookmarks list: focus AND the DOM selection land on the bookmarked line itself — the paragraph holding it — not on the section heading before it. */
+async function jumpToLine(
+  page: import('@playwright/test').Page,
+  buttonName: string | RegExp,
+  expectedParagraph: string,
+  expectedSelection: string,
+  expectedStatus: string,
+): Promise<void> {
+  const bookmarkButton = page.getByRole('button', { name: buttonName });
+  await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
+  await bookmarkButton.click();
+  await expect
+    .poll(() => readingJumpState(page), { timeout: 10000 })
+    .toEqual({ tag: 'P', text: expectedParagraph, selection: expectedSelection });
+  await expect(statusLine(page)).toContainText(expectedStatus, { timeout: 30000 });
+}
+
 test('jump to a later heading bookmarked from reading mode in a markdown note', async () => {
   const { app, page, paths, pageErrors } = await launchSeededApp(seedMarkdownLibrary());
   try {
@@ -185,12 +210,17 @@ test('Ctrl+Alt+J jumps to the next note bookmark in reading and edit mode, wrapp
     await pressShortcut(page, 'Control+Alt+B');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
-    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Reference');
+    // B bookmarks the exact line the reader is on, named for it — not
+    // the section heading. Keep a short name for the jump announcements.
+    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue(
+      'Reference details here. Look things up here.',
+    );
+    await nameDialog.getByLabel('Bookmark name').fill('Reference details');
     await nameDialog.getByRole('button', { name: 'Save bookmark' }).click();
     await expect(nameDialog).toBeHidden({ timeout: 30000 });
-    await expect(statusLine(page)).toContainText('Bookmarked "Reference".', { timeout: 30000 });
+    await expect(statusLine(page)).toContainText('Bookmarked "Reference details".', { timeout: 30000 });
     // Reading mode: from the top, J lands on Usage, then on the
-    // Reference position bookmark (on its heading), then wraps to Usage.
+    // Reference position bookmark's line, then wraps to Usage.
     await placeReadingSelection(page, 'Intro paragraph');
     await pressShortcut(page, 'Control+Alt+J');
     await expect
@@ -200,8 +230,12 @@ test('Ctrl+Alt+J jumps to the next note bookmark in reading and edit mode, wrapp
     await pressShortcut(page, 'Control+Alt+J');
     await expect
       .poll(() => readingJumpState(page), { timeout: 10000 })
-      .toEqual({ tag: 'H2', text: 'Reference', selection: 'Reference' });
-    await expect(statusLine(page)).toContainText('Jumped to Reference.', { timeout: 30000 });
+      .toEqual({
+        tag: 'P',
+        text: 'Reference details here. Look things up here.',
+        selection: 'Reference details here.',
+      });
+    await expect(statusLine(page)).toContainText('Jumped to Reference details.', { timeout: 30000 });
     await pressShortcut(page, 'Control+Alt+J');
     await expect
       .poll(() => readingJumpState(page), { timeout: 10000 })
@@ -229,7 +263,8 @@ test('Ctrl+Alt+J jumps to the next note bookmark in reading and edit mode, wrapp
         };
       });
     const usageStart = NOTE_CONTENT.indexOf('## Usage') + '## '.length;
-    const referenceLine = NOTE_CONTENT.indexOf('## Reference');
+    const referenceLineStart = NOTE_CONTENT.indexOf('Reference details here.');
+    const referenceLine = 'Reference details here. Look things up here.';
     await pressShortcut(page, 'Control+Alt+J');
     await expect
       .poll(() => editSelection(), { timeout: 10000 })
@@ -239,11 +274,11 @@ test('Ctrl+Alt+J jumps to the next note bookmark in reading and edit mode, wrapp
     await expect
       .poll(() => editSelection(), { timeout: 10000 })
       .toEqual({
-        start: referenceLine,
-        end: referenceLine + '## Reference'.length,
-        selected: '## Reference',
+        start: referenceLineStart,
+        end: referenceLineStart + referenceLine.length,
+        selected: referenceLine,
       });
-    await expect(statusLine(page)).toContainText('Jumped to Reference.', { timeout: 30000 });
+    await expect(statusLine(page)).toContainText('Jumped to Reference details.', { timeout: 30000 });
     await pressShortcut(page, 'Control+Alt+J');
     await expect
       .poll(() => editSelection(), { timeout: 10000 })
@@ -280,15 +315,69 @@ test('jump to a position bookmark in a later section of a markdown note', async 
   try {
     await openNote(page, 'Field Notes.md', 'Field Notes');
     await placeReadingSelection(page, 'Usage details here.');
-    // Ctrl+Alt+B sets a position bookmark, named for the section.
+    // Ctrl+Alt+B sets a position bookmark on the exact line, named for it.
     await pressShortcut(page, 'Control+Alt+B');
     const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
     await expect(nameDialog).toBeVisible();
-    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Usage');
+    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue(
+      'Usage details here. This is the section to bookmark.',
+    );
     await nameDialog.getByRole('button', { name: 'Save bookmark' }).click();
     await expect(nameDialog).toBeHidden({ timeout: 30000 });
     await placeReadingSelection(page, 'Intro paragraph');
-    await jumpToBookmark(page, /\(position\)/, 'Usage');
+    await jumpToLine(
+      page,
+      /\(position\)/,
+      'Usage details here. This is the section to bookmark.',
+      'Usage details here.',
+      'Jumped to Usage.',
+    );
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('position bookmark lands on the second of two identical lines', async () => {
+  // The first-words query matches both lines: only the occurrence among
+  // them identifies the bookmarked one, so the jump must not land on
+  // the first.
+  const paths = seedLibrary([
+    {
+      name: 'Seeded',
+      files: [
+        {
+          name: 'Edge.md',
+          content: '# Edge\n\nIntro.\n\n## Setup\n\nDetails here.\n\n## Later\n\nDetails here.\n',
+        },
+      ],
+    },
+  ]);
+  const { app, page, pageErrors } = await launchSeededApp(paths);
+  try {
+    await openNote(page, 'Edge.md', 'Edge');
+    await placeReadingSelection(page, 'Details here.', 1);
+    await pressShortcut(page, 'Control+Alt+B');
+    const nameDialog = page.getByRole('dialog', { name: 'Name bookmark' });
+    await expect(nameDialog).toBeVisible();
+    await expect(nameDialog.getByLabel('Bookmark name')).toHaveValue('Details here.');
+    await nameDialog.getByRole('button', { name: 'Save bookmark' }).click();
+    await expect(nameDialog).toBeHidden({ timeout: 30000 });
+    await placeReadingSelection(page, 'Intro.');
+    const bookmarkButton = page.getByRole('button', { name: 'Details here. (position)' });
+    await expect(bookmarkButton).toBeVisible({ timeout: 30000 });
+    await bookmarkButton.click();
+    await expect
+      .poll(() => readingJumpState(page), { timeout: 10000 })
+      .toEqual({ tag: 'P', text: 'Details here.', selection: 'Details here.' });
+    // And it must be the SECOND Details line: the selection must sit inside it.
+    const secondLine = await page.evaluate(() => {
+      const paragraphs = [...document.querySelectorAll('p')].filter((p) => p.textContent === 'Details here.');
+      const anchor = window.getSelection()?.anchorNode;
+      return { count: paragraphs.length, landedOnSecond: paragraphs[1] ? paragraphs[1].contains(anchor) : false };
+    });
+    expect(secondLine).toEqual({ count: 2, landedOnSecond: true });
+    await expect(statusLine(page)).toContainText('Jumped to Later.', { timeout: 30000 });
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);

@@ -116,24 +116,151 @@ export function renderedHeadingAtSelection(root: HTMLElement): RenderedHeadingPo
   return { heading: focusedHeading, hasPosition: true };
 }
 
+const BLOCK_SELECTOR = 'p, li, h1, h2, h3, h4, h5, h6, td, th, pre, dt, dd, figcaption';
+
+function closestBlock(node: Node, container: HTMLElement): HTMLElement {
+  const element = node instanceof Element ? node : node.parentElement;
+  return element?.closest(BLOCK_SELECTOR) ?? container;
+}
+
 /**
- * Select the rendered text of a source line inside a rendered container:
- * the line's first words are located like a Find query and selected, so
- * the virtual cursor lands on that line. Falls back to the container's
- * first text when the line cannot be found (for example, when its words
- * are split across text nodes by inline formatting).
+ * Whether a match starts a rendered line: the text before it inside its
+ * block is blank, ends at a soft line break, or follows a hard break.
+ * A match in the middle of a line is not a line start, even when its
+ * words are the line's first words — another line further down may
+ * repeat them. A `<br>` counts as a line break, the way plain-text
+ * notes render single line breaks; a soft break is the newline inside
+ * the text node itself.
  */
-export function selectRenderedLine(container: HTMLElement, lineText: string): boolean {
-  const words = lineText.trim().split(/\s+/).filter(Boolean);
-  const query = words.slice(0, 3).join(' ');
-  if (query) {
-    const matches = findDomMatches(container, query, false);
-    if (matches.length) return selectDomMatch(matches, 0);
+function isLineStartMatch(container: HTMLElement, node: Text, start: number): boolean {
+  const block = closestBlock(node, container);
+  const walker = document.createTreeWalker(block, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT, {
+    acceptNode(candidate) {
+      if (candidate.nodeType === Node.TEXT_NODE) return NodeFilter.FILTER_ACCEPT;
+      if (candidate instanceof HTMLBRElement) return NodeFilter.FILTER_ACCEPT;
+      return NodeFilter.FILTER_SKIP;
+    },
+  });
+  let before = '';
+  let current: Node | null;
+  while ((current = walker.nextNode())) {
+    if (current === node) {
+      before += node.data.slice(0, start);
+      break;
+    }
+    before += current.nodeType === Node.TEXT_NODE ? (current as Text).data : '\n';
   }
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  const node = walker.nextNode() as Text | null;
-  if (!node || !node.data.trim()) return false;
-  return selectElementText(node.parentElement ?? container);
+  return before.trim() === '' || before.endsWith('\n');
+}
+
+/**
+ * Select the rendered line `lineText` at `occurrences[wordCount - 1]`,
+ * the way Find selects a match: a range anchored on the line's own
+ * text nodes at an exact character offset. The query is the line's
+ * first words — up to three, shortening to two, then one, when inline
+ * formatting splits the words across text nodes — and the occurrence
+ * counts lines that start the same way, so a jump lands on the
+ * bookmarked line and never on an earlier look-alike. A line-start
+ * match only: the same words in the middle of another line do not
+ * count. Returns false when the line cannot be found, instead of
+ * falling back to the top of the document — the caller falls back to
+ * the containing heading.
+ */
+export function selectRenderedLineAt(
+  container: HTMLElement,
+  lineText: string,
+  occurrences: readonly number[],
+): boolean {
+  const words = lineText.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return false;
+  for (let wordCount = Math.min(3, words.length); wordCount >= 1; wordCount -= 1) {
+    const query = words.slice(0, wordCount).join(' ');
+    const matches = findDomMatches(container, query, false).filter((match) =>
+      isLineStartMatch(container, match.node, match.start),
+    );
+    const occurrence = occurrences[wordCount - 1] ?? 0;
+    if (matches[occurrence]) return selectDomMatch(matches, occurrence);
+  }
+  return false;
+}
+
+export interface RenderedSegments {
+  /** The rendered lines of the document in order: each block's text split at line breaks, blank pieces dropped. */
+  segments: string[];
+  /** The segment the selection sits in, or -1 when the selection is not in the document. */
+  selectedIndex: number;
+}
+
+function blockTexts(root: HTMLElement): { element: HTMLElement; nodes: Text[]; text: string }[] {
+  const walker = root.ownerDocument.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const blocks: { element: HTMLElement; nodes: Text[]; text: string }[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    const block = closestBlock(node, root);
+    const last = blocks[blocks.length - 1];
+    if (last && last.element === block) {
+      last.nodes.push(node);
+      last.text += node.data;
+    } else {
+      blocks.push({ element: block, nodes: [node], text: node.data });
+    }
+  }
+  return blocks;
+}
+
+/**
+ * The rendered lines of `root` in document order, and which one the
+ * selection sits in — the reader's exact line, for bookmarking a
+ * position from the reading view. The selection anchor is the reading
+ * position, as renderedHeadingAtSelection reads it. Returns null when
+ * there is no selection in the document, or when the selection cannot
+ * be placed inside a text node: the caller falls back to the heading
+ * the reader is under.
+ */
+export function selectionRenderedSegments(root: HTMLElement): RenderedSegments | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  let anchorNode: Text | null = null;
+  let anchorOffset = 0;
+  if (selection.anchorNode?.nodeType === Node.TEXT_NODE) {
+    anchorNode = selection.anchorNode as Text;
+    anchorOffset = selection.anchorOffset;
+  } else if (selection.anchorNode instanceof Element) {
+    const child = selection.anchorNode.childNodes[selection.anchorOffset];
+    const scope = child ?? selection.anchorNode;
+    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
+    anchorNode = walker.nextNode() as Text | null;
+    anchorOffset = 0;
+  }
+  if (!anchorNode || !root.contains(anchorNode)) return null;
+  const segments: string[] = [];
+  let selectedIndex = -1;
+  for (const block of blockTexts(root)) {
+    const pieces = block.text.split('\n');
+    let pieceStart = 0;
+    const anchorInBlock = block.nodes.includes(anchorNode);
+    const beforeAnchor = anchorInBlock
+      ? block.nodes.slice(0, block.nodes.indexOf(anchorNode)).reduce((sum, item) => sum + item.data.length, 0) +
+        anchorOffset
+      : -1;
+    for (const piece of pieces) {
+      if (piece.trim()) {
+        // The anchor sits in this piece when its offset inside the
+        // block falls within the piece (or on its final character, at
+        // the line break that ends it).
+        if (
+          selectedIndex === -1 &&
+          beforeAnchor >= pieceStart &&
+          beforeAnchor <= pieceStart + piece.length
+        ) {
+          selectedIndex = segments.length;
+        }
+        segments.push(piece.trim());
+      }
+      pieceStart += piece.length + 1;
+    }
+  }
+  return selectedIndex === -1 ? null : { segments, selectedIndex };
 }
 
 /**
