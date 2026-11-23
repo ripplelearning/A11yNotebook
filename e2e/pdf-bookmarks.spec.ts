@@ -347,8 +347,17 @@ test('PDF bookmark list scopes to the open file, jumps into a closed PDF, and de
     await expect(page.getByRole('heading', { name: 'Field Notes', level: 1 })).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toBeVisible();
     expect(page.getByRole('button', { name: 'Guide spot (Page 1)' })).toHaveCount(0);
-    // With nothing open, every bookmark shows, and the PDF one names its file.
+    // Back to the grid with the note still open in a tab: the list
+    // stays scoped to it instead of falling back to the whole library.
     await pressShortcut(page, 'Control+2');
+    await expect(page.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toBeVisible({
+      timeout: 30000,
+    });
+    expect(page.getByRole('button', { name: 'Guide spot (Page 1)' })).toHaveCount(0);
+    // With nothing open — both tabs closed — every bookmark shows, and
+    // the PDF one names its file.
+    await page.getByRole('button', { name: 'Close Field Notes' }).click();
+    await page.getByRole('button', { name: 'Close Guide.pdf' }).click();
     await expect(page.getByRole('button', { name: 'Guide spot (Page 1) — Guide.pdf' })).toBeVisible({
       timeout: 30000,
     });

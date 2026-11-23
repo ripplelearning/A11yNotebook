@@ -401,6 +401,41 @@ test('bookmarks list follows the current note: another note hides the first note
   }
 });
 
+test('bookmarks list stays scoped to the open note when the grid view is current', async () => {
+  const { app, page, paths, pageErrors } = await launchSeededApp(seedMarkdownLibrary());
+  try {
+    await openNote(page, 'Field Notes.md', 'Field Notes');
+    await placeReadingSelection(page, 'Usage details here.');
+    await bookmarkCurrentHeading(page, 'Usage');
+    // Bookmark a heading in the other note too, so a whole-library
+    // list would show a second bookmark.
+    await switchView(page, 'Control+2', async () =>
+      page.getByRole('gridcell', { name: 'Other.md', exact: true }).count(),
+    );
+    await openGridEntry(page, 'Other.md');
+    await expect(page.getByRole('heading', { name: 'Other note', level: 1 })).toBeVisible({ timeout: 30000 });
+    await placeReadingSelection(page, 'Some other content here.');
+    await bookmarkCurrentHeading(page, 'Other note');
+    await expect(
+      page.getByRole('button', { name: 'Usage — Field Notes.md', exact: true }),
+    ).toHaveCount(0, { timeout: 30000 });
+    // Back to the grid: Other.md is still open in a tab, so the list
+    // stays scoped to it instead of falling back to the whole library.
+    await switchView(page, 'Control+2', async () =>
+      page.getByRole('gridcell', { name: 'Other.md', exact: true }).count(),
+    );
+    await expect(
+      page.getByRole('button', { name: 'Other note — Other.md', exact: true }),
+    ).toHaveCount(1, { timeout: 30000 });
+    await expect(
+      page.getByRole('button', { name: 'Usage — Field Notes.md', exact: true }),
+    ).toHaveCount(0, { timeout: 30000 });
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
 test('jump works after the app restarts with the bookmark saved', async () => {
   // Two app launches in one test need more than the default 90s on a slow machine.
   test.setTimeout(180000);

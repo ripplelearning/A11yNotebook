@@ -420,6 +420,11 @@ export default function App() {
   // mode memory: tabbing away and back restores it, closing forgets it.
   const noteCaretRef = useRef<Partial<Record<string, { start: number; end: number }>>>({});
   const currentNoteIdRef = useRef<string | undefined>(undefined);
+  // The file open in a tab most recently: switching to a view (Notes &
+  // Files, Tasks, ...) leaves the file open in its tab, so the
+  // Bookmarks list stays scoped to it instead of falling back to the
+  // whole library. Updated only while a file is the current tab.
+  const lastOpenFilePathRef = useRef<string | null>(null);
   const [rightPaneOpen, setRightPaneOpen] = useState(true);
   const [focusMode, setFocusMode] = useState(false);
   const [focusAnnouncement, setFocusAnnouncement] = useState('');
@@ -1044,8 +1049,25 @@ export default function App() {
   const editorToolsRef = useRef<EditorToolsHandle>(null);
   const editLockStart = useRef<{ path: string; timestamp: number } | null>(null);
   const currentNote = openNotes.find((item) => item.id === selectedTab);
-  /** The file the Bookmarks list is scoped to: the open note, the open attachment, or none — then the list shows every bookmark. */
+  /** The file the current tab shows: the open note, the open attachment, or none when a view is current. */
   const openFilePath = currentNote?.path ?? (selectedTab === 'attachment' ? (attachment?.path ?? null) : null);
+  if (openFilePath) lastOpenFilePathRef.current = openFilePath;
+  /**
+   * The file the Bookmarks list is scoped to. The current tab's file
+   * when one is current; otherwise the file most recently open in a
+   * tab, so switching to a view while a file is open does not un-scope
+   * the list back to the whole library. When that file has since
+   * closed, the most recently opened file still open wins; with no
+   * file open at all the scope is null and the list shows every
+   * bookmark — the only way to jump into a closed file at its bookmark.
+   */
+  const lastOpenFilePath = lastOpenFilePathRef.current;
+  const scopedBookmarkPath =
+    openFilePath ??
+    (lastOpenFilePath !== null &&
+    (openNotes.some((note) => note.path === lastOpenFilePath) || attachment?.path === lastOpenFilePath)
+      ? lastOpenFilePath
+      : (openNotes.at(-1)?.path ?? attachment?.path ?? null));
   const currentNoteId = currentNote?.id;
   currentNoteIdRef.current = currentNoteId;
   const contextualNewCommand: CommandId =
@@ -8295,14 +8317,16 @@ export default function App() {
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
               <ul>
-                {/* Only the open file's bookmarks: bookmarks for other
+                {/* Only the scoped file's bookmarks: bookmarks for other
                     files open those files when activated, so listing
                     them here reads as bookmarks of the file on screen.
-                    With no file open there is no open file to scope to,
-                    so the library's bookmarks show — the list is the
-                    only way to jump into a closed file at its bookmark. */}
+                    The scope is the current tab's file, or the file most
+                    recently open in a tab while a view is current. With
+                    no file open there is no file to scope to, so the
+                    library's bookmarks show — the list is the only way
+                    to jump into a closed file at its bookmark. */}
                 {bookmarks
-                  .filter((bookmark) => !openFilePath || bookmark.path === openFilePath)
+                  .filter((bookmark) => !scopedBookmarkPath || bookmark.path === scopedBookmarkPath)
                   .map((bookmark) => {
                     // A user-chosen name wins; otherwise the title as the
                     // reader sees it (a heading stored from source may
@@ -8331,7 +8355,7 @@ export default function App() {
                             : bookmark.anchor?.kind === 'offset'
                               ? `${label} (position)`
                               : bookmark.anchor?.kind === 'page'
-                                ? `${label} (Page ${bookmark.anchor.page})${openFilePath ? '' : ` — ${bookmark.path.split('/').pop()}`}`
+                                ? `${label} (Page ${bookmark.anchor.page})${scopedBookmarkPath ? '' : ` — ${bookmark.path.split('/').pop()}`}`
                                 : label}
                         </button>{' '}
                         <button type="button" onClick={() => void removeBookmarkById(bookmark.id)}>
