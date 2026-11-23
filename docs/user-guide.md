@@ -1,5 +1,9 @@
 # User guide
 
+Press F1 at any time to open this guide. It is searchable, has a table of contents, and its
+Keyboard shortcuts section is always current: it is generated from the app's commands when the
+guide opens, so a remapped or added shortcut appears there on its own.
+
 ## Open a library
 
 Choose **File → Open library** and select a folder. The folder stays on disk as an ordinary folder. Subfolders appear
@@ -510,10 +514,12 @@ The **Agenda** view lists upcoming occurrences grouped under date headings, with
 Today controls. The **Month grid** is a table with a button per day labelled with its appointment count;
 choosing a day lists that day's appointments below the grid. **New appointment** offers title, all-day or
 timed start and end, location, description, recurrence (daily, weekly, monthly, yearly, with interval, count,
-end date, and weekly weekdays), and an optional link. Editing or deleting a recurring appointment changes or
-removes the whole series, not just one occurrence; deletion asks for confirmation in a separate dialog —
-a single appointment asks "Delete this appointment?", and a recurring one warns that deleting removes the
-whole series. Live two-way
+end date, and weekly weekdays), and an optional link. Editing a recurring appointment changes the
+whole series, not just one occurrence. Deleting asks for confirmation in a separate dialog —
+a single appointment asks "Delete this appointment?", and a recurring one offers **Delete this
+appointment only** or **Delete the whole series**. Deleting one occurrence removes it in the app
+only: it stays on Google, Outlook, or Apple calendars, because the deletion is not sent to
+providers. Live two-way
 sync with Google Calendar, Outlook Calendar, and Apple Calendar is built in (see Calendar sync
 setup below). Windows screen-reader verification has not been run.
 
@@ -683,6 +689,9 @@ DOCX uses a local bounded parser and semantic reader with headings, lists, table
 navigation and search. Encrypted Office archives, macros, embedded OLE packages and unsafe external resources are
 rejected. DOCX annotations are not available; legacy binary `.doc` is unsupported.
 **Open in external app** remains available. Text previews are limited to 5 MB and images to 20 MB.
+In the PDF Page Navigation section, **PDF view** offers Paginated view (one page at a time) or
+Continuous view (the whole PDF as one continuous page); the Previous and Next Page buttons only
+appear in Paginated view.
 
 ### OCR scanned PDFs and ePubs
 
@@ -778,6 +787,10 @@ renames the file; the address is stored in the file.
 **Delete a link.** Delete it like a note: select it in the grid and press Delete, or choose **Delete
 selected item** from its context menu. A protected link must be unprotected first, like any protected
 item.
+
+**Create a reminder for a link.** Open the context menu on a link (Shift+F10, Applications key, or
+right-click) and choose **Create reminder**: the new reminder dialog opens with that link already
+linked to the reminder.
 
 **Find a link.** Link titles and addresses are searchable like note titles: search the library for the
 title or part of the address.
