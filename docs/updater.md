@@ -191,10 +191,17 @@ After release preparation is reviewed and merged through normal branch protectio
    Package versions must be `X.Y.Z` or `X.Y.Z-rc.N`, without a `v` prefix; both lockfile version fields must match.
    Ensure the selected version, tag and release are unused. If an RC is desired, choose an unused `X.Y.Z-rc.N`
    and update both package files in a reviewed change first; do not tag stable package contents as an RC.
-2. Only after readiness checks and explicit publication approval, an authorized maintainer creates and pushes
+2. Update the User Guide (`docs/user-guide.md`) for everything the release adds, changes, or removes, in the
+   same reviewed change as the release notes (`docs/releases/vX.md` and `src/shared/release-notes.ts`).
+   The guide is bundled into the app and shown in full from F1, so a feature that ships without a guide
+   update ships undocumented. The "Keyboard shortcuts" section needs no hand edits: it is generated from
+   the command registry when the guide opens, so a remapped or added shortcut appears there on its own —
+   but do regenerate `docs/keyboard-shortcuts.md` (`npm run docs:shortcuts`) when bindings change, and
+   open the guide in the app (F1) to confirm the new or changed content is there before tagging.
+3. Only after readiness checks and explicit publication approval, an authorized maintainer creates and pushes
    the **new** `v<package-version>` tag on the exact merged commit.
    Tag pushes trigger publication, not a dry run. No tag is created or pushed by this preparation work.
-3. The Release workflow checks out that exact tag, verifies its commit and package version,
+4. The Release workflow checks out that exact tag, verifies its commit and package version,
    requires ancestry in `main`, and refuses to overwrite an existing release. The commands
    `node scripts/verify-release.mjs tag <tag>` and `node scripts/verify-release.mjs artifacts <tag>`
    still require an existing tag on the exact checkout; package-only validation does not bypass them.
@@ -257,23 +264,23 @@ After release preparation is reviewed and merged through normal branch protectio
    inspect its provenance, download the actual release assets and verify `SHA256SUMS.txt`.
    Packaging, signing status, desktop checks and downloadable assets remain unverified until then.
 
-4. The Windows job runs typecheck, lint, tests, release-tool formatting, generated-document drift checks, build and packaging
+5. The Windows job runs typecheck, lint, tests, release-tool formatting, generated-document drift checks, build and packaging
    without publishing. It requires nonempty installer, portable, blockmap and channel metadata; verifies the
    metadata's version, installer name, size and SHA-512; and rejects cross-channel metadata.
    RC builds produce `rc.yml`, **not `latest.yml`**, and publish with `--prerelease --latest=false`.
    Existing stable installations retain `allowPrerelease = false`; they will not offer this RC.
-5. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
+6. With owner-provisioned `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD` repository secrets, packaging
    requires signing and verifies Authenticode on the installer, portable and unpacked app.
    Without the certificate, both RC and stable builds are explicitly **UNSIGNED**; the workflow verifies `NotSigned`.
    Stable publication requires passing desktop checks by default; only the explicit manual workflow override above
    can waive those checks. Signed production distribution remains recommended;
    unsigned publication does not satisfy signed-updater/publisher validation. Never send credentials in chat.
-6. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
+7. Desktop UI Automation and disposable installed-upgrade smoke checks run on Windows. Their actual outcomes
    are attached as `desktop-validation.json`, including failures and not-run outcomes (hosted runners may lack a usable
    desktop). An RC remains downloadable if these desktop checks fail; stable publication is blocked unless the
    explicit manual override is used. An override is a recorded exception, not a passing result.
    These are not JAWS/NVDA/Narrator tests, and installer-over-install is **not** full updater E2E.
-7. The workflow retains downloadable Actions artifacts, then creates a new GitHub prerelease with installer,
+8. The workflow retains downloadable Actions artifacts, then creates a new GitHub prerelease with installer,
    portable executable, update metadata, `SHA256SUMS.txt`, `signatures.json`, `desktop-validation.json` and
    `provenance.json` (exact commit/tag and run URL). Use the release page and verify the attached checksums
    before running downloaded executables. Publication verifies asset sizes against the local build.

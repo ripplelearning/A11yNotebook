@@ -121,17 +121,21 @@ describe('Help menu', () => {
 
   it('lists keyboard shortcuts including F6 and Shift+F6', () => {
     render(<App />);
+    // F1 opens the full User Guide; its shortcuts section is generated
+    // from the registry, so it lists every live binding.
     fireEvent.keyDown(document.body, { key: 'F1' });
-    const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
-    expect(within(dialog).getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
-    expect(within(dialog).getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
+    const dialog = screen.getByRole('dialog', { name: 'User Guide' });
+    const shortcutsSection = dialog.querySelector('section[aria-labelledby="keyboard-shortcuts"]')!;
+    const shortcuts = within(shortcutsSection as HTMLElement);
+    expect(shortcuts.getByRole('rowheader', { name: 'Move to the next pane' })).toBeInTheDocument();
+    expect(shortcuts.getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
     // Ctrl+K belongs to Insert link only; the Command Palette is Ctrl+Shift+P.
-    expect(within(dialog).getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
-    const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
+    expect(shortcuts.getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
+    const searchRow = shortcuts.getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
     expect(within(searchRow).getByRole('cell', { name: 'Alt+Q' })).toBeInTheDocument();
-    expect(within(dialog).queryByRole('cell', { name: 'Ctrl+L' })).not.toBeInTheDocument();
+    expect(shortcuts.queryByRole('cell', { name: 'Ctrl+L' })).not.toBeInTheDocument();
     for (const { label, shortcut } of getKeyboardShortcuts()) {
-      expect(within(dialog).getByRole('row', { name: `${label} ${shortcut}` })).toBeInTheDocument();
+      expect(shortcuts.getByRole('row', { name: `${label} ${shortcut}` })).toBeInTheDocument();
     }
   }, 30_000);
 

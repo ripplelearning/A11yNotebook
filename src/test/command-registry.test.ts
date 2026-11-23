@@ -31,6 +31,7 @@ function createContext(overrides: Partial<CommandActionContext> = {}): CommandAc
     focusTarget: vi.fn(),
     checkForUpdates: vi.fn(),
     showKeyboardShortcuts: vi.fn(),
+    showUserGuide: vi.fn(),
     showAbout: vi.fn(),
     showFeedback: vi.fn(),
     showTutorial: vi.fn(),
@@ -113,6 +114,21 @@ describe('command registry', () => {
     expect(getCommandById('check-for-updates')?.label).toBe('Check for Updates');
     expect(getCommandById('show-keyboard-shortcuts')?.label).toBe('Keyboard Shortcuts');
     expect(getCommandById('show-about')?.label).toBe('About A11y Notebook');
+  });
+
+  it('binds F1 to the User Guide, leaving the shortcuts dialog unbound', () => {
+    // F1 opens the full guide (which contains the generated shortcuts
+    // section); the shortcuts-only dialog stays reachable from the Help
+    // menu and the command palette, with no default shortcut of its own.
+    expect(getCommandById('show-user-guide')?.label).toBe('User Guide');
+    expect(getCommandById('show-user-guide')?.shortcut).toBe('F1');
+    expect(getCommandById('show-keyboard-shortcuts')?.shortcut).toBeUndefined();
+  });
+
+  it('dispatches show-user-guide', () => {
+    const context = createContext();
+    expect(dispatchCommand('show-user-guide', context)).toBeUndefined();
+    expect(context.showUserGuide).toHaveBeenCalledTimes(1);
   });
 
   it('has unique command ids and labels', () => {

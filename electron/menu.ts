@@ -158,6 +158,7 @@ export function buildApplicationMenu(
     {
       label: '&Help',
       submenu: [
+        commandItem('show-user-guide'),
         // Explicit U mnemonic, so Alt+H then U checks for updates. The
         // registry label stays plain so in-app surfaces are unaffected.
         { ...commandItem('check-for-updates'), label: 'Check for &Updates' },

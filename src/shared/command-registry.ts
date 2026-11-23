@@ -48,6 +48,7 @@ export type CommandId =
   | 'refresh-links'
   | 'repair-broken-links'
   | 'show-keyboard-shortcuts'
+  | 'show-user-guide'
   | 'check-for-updates'
   | 'show-about'
   | 'show-feedback'
@@ -155,6 +156,7 @@ export type CommandActionContext = {
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
   showKeyboardShortcuts: () => void;
+  showUserGuide: () => void;
   showAbout: () => void;
   showFeedback: () => void;
   showTutorial: () => void;
@@ -894,6 +896,11 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'show-keyboard-shortcuts',
     label: 'Keyboard Shortcuts',
     description: 'Display keyboard shortcuts and navigation help.',
+  },
+  {
+    id: 'show-user-guide',
+    label: 'User Guide',
+    description: 'Open the full, searchable User Guide, including the current keyboard shortcuts.',
     shortcut: 'F1',
   },
   {
@@ -1199,6 +1206,9 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       return 'Library and links refreshed.';
     case 'show-keyboard-shortcuts':
       context.showKeyboardShortcuts();
+      return undefined;
+    case 'show-user-guide':
+      context.showUserGuide();
       return undefined;
     case 'check-for-updates':
       context.checkForUpdates();
