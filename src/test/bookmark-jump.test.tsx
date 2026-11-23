@@ -145,7 +145,7 @@ describe('bookmark jump from the side pane', () => {
     expect(editor.selectionEnd).toBe(setupOffset + 8);
   });
 
-  it('lands a position bookmark on its containing heading in reading mode', async () => {
+  it('lands a position bookmark on its bookmarked line in reading mode', async () => {
     const positionBookmark: VaultBookmark = {
       id: 'bm-position',
       path: 'Note.md',
@@ -155,13 +155,22 @@ describe('bookmark jump from the side pane', () => {
     };
     setup([positionBookmark]);
     await openNote();
-    const setupHeading = screen.getByRole('heading', { name: 'Setup' });
-    fireEvent.click(screen.getByRole('button', { name: 'Setup (position)' }));
+    const jumpButton = screen.getByRole('button', { name: 'Setup (position)' });
+    // A real click focuses the button first; the jump must move focus
+    // away from it onto the reading document.
+    jumpButton.focus();
+    fireEvent.click(jumpButton);
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('Jumped to Setup.'),
     );
-    expect(document.activeElement).toBe(setupHeading);
-    expect(window.getSelection()?.toString()).toBe('Setup');
+    // Focus AND selection land on the bookmarked line itself — not on
+    // the section heading before it, as the jump used to do. A jump
+    // that lands on the heading the reader is already under reads as
+    // doing nothing at all.
+    expect(document.activeElement).toBe(screen.getByText('Details here.'));
+    expect(window.getSelection()?.toString()).toBe('Details here.');
+    // The selection is a text-node range, as Find selects a match.
+    expect(window.getSelection()?.anchorNode?.nodeType).toBe(Node.TEXT_NODE);
   });
 
   it('selects the line at a position bookmark in edit mode', async () => {
@@ -265,12 +274,10 @@ describe('bookmark jump from the side pane', () => {
     await waitFor(() =>
       expect(statusBar()).toHaveTextContent('Jumped to the bookmarked place.'),
     );
-    // Focus lands on the reading document with the bookmarked line
-    // selected — not on the side-pane button, the body, or the top of
-    // the note with no selection.
-    expect(document.activeElement).not.toBe(document.body);
-    expect(document.activeElement).not.toBe(jumpButton);
-    expect(document.activeElement?.contains(screen.getByText('Intro text.'))).toBe(true);
+    // Focus lands on the bookmarked line itself — not on the side-pane
+    // button, the body, or the top of the note with no selection — and
+    // the line's first words are selected, as a Find match is.
+    expect(document.activeElement).toBe(screen.getByText('More text.'));
     expect(window.getSelection()?.toString()).toBe('More text.');
   });
 
@@ -528,17 +535,16 @@ describe('bookmark jump from the side pane', () => {
     placeReadingSelection('Details here.');
     fireEvent.keyDown(document.body, { key: 'b', ctrlKey: true, altKey: true });
     const dialog = await screen.findByRole('dialog', { name: 'Name bookmark' });
-    // The reader is in the Setup section, so the bookmark is named for
-    // it — but it is a position bookmark at the section's start, not a
-    // heading bookmark: Ctrl+Alt+B sets a position bookmark.
-    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Setup');
+    // The reader is on the Details line, so B bookmarks that exact
+    // line — not the section heading, as it used to do.
+    expect(within(dialog).getByLabelText('Bookmark name')).toHaveValue('Details here.');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save bookmark' }));
     await waitFor(() =>
       expect(addBookmark).toHaveBeenCalledWith(
         'Note.md',
-        { kind: 'offset', offset: setupOffset },
-        'Setup',
-        'Setup',
+        { kind: 'offset', offset: content.indexOf('Details here.') },
+        'Details here.',
+        'Details here.',
       ),
     );
   });
@@ -612,13 +618,12 @@ describe('bookmark jump from the side pane', () => {
     expect(document.activeElement).toBe(setupHeading);
     expect(window.getSelection()?.toString()).toBe('Setup');
     // Still on Setup: the next bookmark is the position bookmark in its
-    // section. A position bookmark lands on its containing heading in
-    // reading mode, as a list activation does — announced under its
-    // chosen name.
+    // section, and it lands on its bookmarked line — not on the section
+    // heading again, as the jump used to do.
     fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to The details.'));
-    expect(document.activeElement).toBe(setupHeading);
-    expect(window.getSelection()?.toString()).toBe('Setup');
+    expect(document.activeElement).toBe(screen.getByText('Details here.'));
+    expect(window.getSelection()?.toString()).toBe('Details here.');
     // Past the last bookmark: J wraps to the first.
     fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
@@ -695,6 +700,117 @@ describe('bookmark jump from the side pane', () => {
     await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Setup.'));
     expect(editor.selectionStart).toBe(setupOffset + 3);
     expect(editor.selectionEnd).toBe(setupOffset + 8);
+  });
+
+  it('lands on the third heading when two earlier headings read the same', async () => {
+    // Two headings read `Hello world` after formatting is stripped, but
+    // their source texts differ (`Hello *world*` and `Hello world`) —
+    // an occurrence counted one way indexed the wrong heading the other
+    // way, so the jump landed on the heading before the bookmarked one.
+    const mixedContent = '# Hello *world*\n\n# Hello world\n\n# Hello world\n';
+    const mixedBookmark: VaultBookmark = {
+      id: 'bm-mixed',
+      path: 'Note.md',
+      title: 'Hello world',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Hello world', occurrence: 1 },
+    };
+    setup([mixedBookmark], mixedContent);
+    await openNote();
+    fireEvent.click(screen.getByRole('button', { name: 'Hello world — Note.md' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Hello world.'));
+    const headings = screen.getAllByRole('heading', { name: 'Hello world' });
+    expect(headings).toHaveLength(3);
+    expect(document.activeElement).toBe(headings[2]);
+    expect(window.getSelection()?.toString()).toBe('Hello world');
+  });
+
+  it('lands on the second of two identical lines in reading mode', async () => {
+    const doubledContent = '# Title\n\n## Setup\n\nDetails here.\n\n## Later\n\nDetails here.\n';
+    const doubledBookmark: VaultBookmark = {
+      id: 'bm-doubled',
+      path: 'Note.md',
+      title: 'Later',
+      name: 'Later details',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: doubledContent.lastIndexOf('Details here.') },
+    };
+    setup([doubledBookmark], doubledContent);
+    await openNote();
+    fireEvent.click(screen.getByRole('button', { name: 'Later details (position)' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Later.'));
+    // The first-words query matches both lines: the occurrence among
+    // them is what picks the second, not the first.
+    const paragraphs = screen.getAllByText('Details here.');
+    expect(paragraphs).toHaveLength(2);
+    expect(document.activeElement).toBe(paragraphs[1]);
+    expect(window.getSelection()?.toString()).toBe('Details here.');
+    expect(paragraphs[1]?.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+  });
+
+  it('lands on the second of two identical lines in rich-text edit mode', async () => {
+    const doubledContent = '# Title\n\n## Setup\n\nDetails here.\n\n## Later\n\nDetails here.\n';
+    const doubledBookmark: VaultBookmark = {
+      id: 'bm-doubled-rich',
+      path: 'Note.md',
+      title: 'Later',
+      name: 'Later details',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: doubledContent.lastIndexOf('Details here.') },
+    };
+    setup([doubledBookmark], doubledContent);
+    await openNote();
+    fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
+    await screen.findByRole('textbox', { name: 'Markdown source' });
+    fireEvent.click(screen.getByRole('button', { name: 'Rich text' }));
+    const editor = await screen.findByRole('textbox', { name: 'Rich text editor' });
+    fireEvent.click(screen.getByRole('button', { name: 'Later details (position)' }));
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Later.'));
+    expect(document.activeElement).toBe(editor);
+    const paragraphs = screen.getAllByText('Details here.');
+    expect(paragraphs).toHaveLength(2);
+    expect(window.getSelection()?.toString()).toBe('Details here.');
+    expect(paragraphs[1]?.contains(window.getSelection()?.anchorNode ?? null)).toBe(true);
+  });
+
+  it('Ctrl+Alt+J from mid-section jumps forward, not back to an earlier bookmark in the section', async () => {
+    // "Next" is after the exact line the reader is on, not after its
+    // section heading: from the second line, the next bookmark is the
+    // one in the later section — not the one on the first line, which
+    // the heading-granular reading position used to pick.
+    const sectionContent =
+      '# Title\n\n## Setup\n\nFirst line here.\n\nSecond line here.\n\n## Later\n\nLater line here.\n';
+    const firstBookmark: VaultBookmark = {
+      id: 'bm-first',
+      path: 'Note.md',
+      title: 'Setup',
+      name: 'First line',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: sectionContent.indexOf('First line here.') },
+    };
+    const secondBookmark: VaultBookmark = {
+      id: 'bm-second',
+      path: 'Note.md',
+      title: 'Setup',
+      name: 'Second line',
+      created: new Date().toISOString(),
+      anchor: { kind: 'offset', offset: sectionContent.indexOf('Second line here.') },
+    };
+    const laterBookmark: VaultBookmark = {
+      id: 'bm-later',
+      path: 'Note.md',
+      title: 'Later',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Later', occurrence: 0 },
+    };
+    setup([firstBookmark, secondBookmark, laterBookmark], sectionContent);
+    await openNote();
+    placeReadingSelection('Second line here.');
+    fireEvent.keyDown(document.body, { key: 'j', ctrlKey: true, altKey: true });
+    const laterHeading = screen.getByRole('heading', { name: 'Later' });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Jumped to Later.'));
+    expect(document.activeElement).toBe(laterHeading);
+    expect(window.getSelection()?.toString()).toBe('Later');
   });
 
   it('Ctrl+Alt+J with no note open says to open a note or PDF first', async () => {

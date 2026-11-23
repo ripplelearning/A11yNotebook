@@ -68,8 +68,10 @@ import {
   normalizeHeadingText,
   orderBookmarksByOffset,
   readingJumpHeading,
+  renderedLineAtOffset,
   resolveBookmarkAnchor,
   sameAnchor,
+  sourceOffsetForRenderedSegment,
   surroundingText,
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
@@ -79,7 +81,8 @@ import {
   renderedHeadingAtSelection,
   selectDomMatch,
   selectElementText,
-  selectRenderedLine,
+  selectRenderedLineAt,
+  selectionRenderedSegments,
 } from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
 import {
@@ -3741,6 +3744,23 @@ export default function App() {
     return first ? anchorForRenderedHeading(first) : null;
   };
 
+  // The exact source offset the reader is on in the rendered document:
+  // the source line the selection sits in, by in-order alignment of the
+  // rendered lines with the source lines. Null when there is no
+  // selection in the document (a focused heading, or nothing yet) — the
+  // heading-based reading position is the fallback then. The reading
+  // position used to be heading-granular only, so a position bookmark
+  // set while reading stored the section heading's offset and a jump to
+  // it landed on the heading before the bookmarked spot.
+  const readingPositionOffset = (content: string, isHtml: boolean): number | null => {
+    const richEditor = document.querySelector<HTMLElement>('[role="textbox"][aria-label="Rich text editor"]');
+    const root = mode === 'edit' ? richEditor : annotationTools.documentRef.current;
+    if (!root) return null;
+    const found = selectionRenderedSegments(root);
+    if (!found || found.selectedIndex < 0) return null;
+    return sourceOffsetForRenderedSegment(content, isHtml, found.segments, found.selectedIndex);
+  };
+
   const addAnchoredBookmark = async (kind: 'heading' | 'position') => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note) {
@@ -3814,8 +3834,17 @@ export default function App() {
         }
         anchor = readingAnchor;
       } else {
-        // A position bookmark lands on the section the reader is in.
-        anchor = { kind: 'offset', offset: readingAnchor ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0) : 0 };
+        // A position bookmark records the exact line the reader is on,
+        // not the section heading: the selection's rendered line maps
+        // back to its source line. Only when there is no selection in
+        // the document does it fall back to the section heading's
+        // offset (the saved reading position, or the top of the note).
+        const exact = readingPositionOffset(note.content, isHtml);
+        anchor = {
+          kind: 'offset',
+          offset:
+            exact ?? (readingAnchor ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0) : 0),
+        };
       }
       offset = anchor.kind === 'offset' ? anchor.offset : (resolveBookmarkAnchor(note.content, isHtml, anchor) ?? 0);
     }
@@ -3895,11 +3924,11 @@ export default function App() {
         return;
       }
       // The current position: the edit caret when there is a plain-text
-      // editor, otherwise the reading position (the heading at or before
-      // the selection, or the saved position when reading has not
-      // started). The reading position is heading-granular, so a
-      // position bookmark inside the current section sits after it —
-      // that is what "next" means while reading.
+      // editor, otherwise the exact line the reader is on (or the
+      // heading at or before the selection, or the saved position when
+      // reading has not started). "Next" is after that line, not after
+      // its section heading: a bookmark earlier in the same section is
+      // behind the reader, not next.
       const textarea = editorRef.current;
       let currentOffset: number;
       let readingAnchor: Extract<BookmarkAnchor, { kind: 'heading' }> | null = null;
@@ -3907,20 +3936,21 @@ export default function App() {
         currentOffset = textarea.selectionStart;
       } else {
         readingAnchor = await readingPositionAnchor(note.content, isHtml, note.path);
-        currentOffset = readingAnchor
-          ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0)
-          : 0;
+        const exact = readingPositionOffset(note.content, isHtml);
+        currentOffset =
+          exact ?? (readingAnchor ? (resolveBookmarkAnchor(note.content, isHtml, readingAnchor) ?? 0) : 0);
       }
       // A position bookmark the last jump landed on, when the reader is
-      // still on it: in reading mode it lands on its containing heading
-      // (or its line, when there is no heading), and in edit mode its
-      // line starts before its offset, so the "next after the position"
-      // search below would pick the bookmark just landed on instead of
-      // the one after it. A heading bookmark needs no such check: the
-      // reading position is its heading, and the edit caret lands past
-      // its line start, so the search already moves past it. When the
-      // reader is still on the landed position bookmark, the next
-      // bookmark is the one after it in document order.
+      // still on it: in reading mode it lands on its bookmarked line
+      // (or its containing heading, when the line cannot be located),
+      // and in edit mode its line starts before its offset, so the
+      // "next after the position" search below would pick the bookmark
+      // just landed on instead of the one after it. A heading bookmark
+      // needs no such check: the reading position is its heading, and
+      // the edit caret lands past its line start, so the search already
+      // moves past it. When the reader is still on the landed position
+      // bookmark, the next bookmark is the one after it in document
+      // order.
       let target: VaultBookmark | undefined;
       const landed = bookmarkJumpRef.current;
       if (landed && landed.path === note.path && landed.anchor.kind === 'offset') {
@@ -3934,28 +3964,19 @@ export default function App() {
           } else {
             const selection = window.getSelection();
             const selectionText = selection?.toString().trim() ?? '';
-            const anchorNode = selection?.anchorNode;
-            const anchorElement =
-              anchorNode instanceof Element ? anchorNode : anchorNode?.parentElement ?? null;
-            const inHeading = !!anchorElement?.closest('h1, h2, h3, h4, h5, h6');
             const landedHeading = headingAnchorAt(note.content, isHtml, landedOffset);
-            if (inHeading) {
-              // The landing focused the containing heading and selected
-              // its text; a selection still in it means the reader is
-              // still on the landed bookmark.
-              stillOn = sameAnchor(landedHeading, readingAnchor);
-            } else {
-              // No containing heading: the landing selected the
-              // bookmarked line's first words, in the section the
-              // bookmark sits in.
-              const line = lineSpanAt(note.content, landedOffset);
-              const lineText = line ? normalizeHeadingText(note.content.slice(line.start, line.end)) : '';
-              stillOn =
-                lineText !== '' &&
-                selectionText !== '' &&
-                lineText.startsWith(selectionText) &&
-                sameAnchor(landedHeading, readingAnchor);
-            }
+            // The landing selects the bookmarked line's first words
+            // (the Find method), so a selection starting that line
+            // means the reader is still on the landed bookmark — in
+            // the same section, so a same-words line in another
+            // section does not count.
+            const landedLine = renderedLineAtOffset(note.content, landedOffset);
+            const lineText = landedLine?.text ?? '';
+            stillOn =
+              lineText !== '' &&
+              selectionText !== '' &&
+              lineText.startsWith(selectionText) &&
+              sameAnchor(landedHeading, readingAnchor);
           }
           if (stillOn) target = ordered[(landedIndex + 1) % ordered.length].bookmark;
         }
@@ -4023,6 +4044,36 @@ export default function App() {
     setStatusMessage('Open a note or PDF to jump to a bookmark.');
   };
 
+  // The rendered heading an anchor points at. The heading at the
+  // anchor's source index wins when the rendered list lines up with the
+  // source list: its position cannot be confused by two headings that
+  // read the same after formatting is stripped (`Hello *world*` and
+  // `Hello world` both read `Hello world`, and an occurrence counted
+  // one way indexes the wrong one the other way). When the text cannot
+  // be compared at all (a footnote reference, an HTML entity, or
+  // another form the normalizer does not understand), the position is
+  // the only reading — the reading view renders headings in source
+  // order. Text matching is the fallback when the lists do not line up
+  // (a note with headings the source scan misses: setext, blockquoted).
+  const findRenderedHeading = (
+    headings: HTMLElement[],
+    content: string,
+    isHtml: boolean,
+    jumpHeading: Extract<BookmarkAnchor, { kind: 'heading' }>,
+  ): HTMLElement | null => {
+    const wanted = normalizeHeadingText(jumpHeading.text);
+    const matches = headings.filter(
+      (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
+    );
+    const index = headingSourceIndex(content, isHtml, jumpHeading);
+    const positioned =
+      index !== null && listHeadings(content, isHtml).length === headings.length
+        ? (headings[index] ?? null)
+        : null;
+    if (positioned && normalizeHeadingText(positioned.textContent?.trim() ?? '') === wanted) return positioned;
+    return matches[jumpHeading.occurrence] ?? matches[0] ?? positioned;
+  };
+
   // Focus the heading a bookmark points at in the reading view. Returns
   // the focused heading, or null when there is no heading to land on (a
   // position bookmark before the first heading, or a note with no
@@ -4051,21 +4102,7 @@ export default function App() {
     const headings = container
       ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')]
       : [];
-    const wanted = normalizeHeadingText(jumpHeading.text);
-    const matches = headings.filter(
-      (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
-    );
-    // The heading's text cannot be compared: fall back to its position
-    // among the note's headings, only when the rendered list has the
-    // same length as the source list — a note with headings the source
-    // scan misses (setext, blockquoted) keeps the old behavior instead
-    // of landing on the wrong heading.
-    const byPosition = (): HTMLElement | null => {
-      const index = headingSourceIndex(content, isHtml, jumpHeading);
-      if (index === null) return null;
-      return listHeadings(content, isHtml).length === headings.length ? headings[index] ?? null : null;
-    };
-    const target = matches[jumpHeading.occurrence] ?? matches[0] ?? byPosition();
+    const target = findRenderedHeading(headings, content, isHtml, jumpHeading);
     if (!target) return null;
     if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
     target.focus();
@@ -4087,34 +4124,61 @@ export default function App() {
       : null;
   };
 
-  // Land a position bookmark that sits before the first heading: there is
-  // no heading to focus, so focus the reading document and select the
-  // rendered text of the source line at the bookmarked offset instead of
-  // silently falling back to the top of the note. Returns the container
-  // only when both focus and a live selection are in place.
-  const focusBookmarkPosition = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
+  // Land a bookmark on the exact line it points at in the reading view,
+  // the Find way: select the line's first words as a text-node range at
+  // the occurrence the source offset identifies, then focus the line's
+  // element and re-select (focus can drop the selection, as Find's
+  // repeat path re-selects after moving focus). The line's own element
+  // takes focus — a screen reader's virtual cursor follows the
+  // selection, not the focus alone. Returns the focused element, or
+  // null when the line cannot be located: the caller falls back to the
+  // containing heading. A position bookmark used to land on its
+  // containing heading instead, because the heading landing ran first
+  // and always succeeded — the jump announced the bookmark's name but
+  // moved focus to the heading before the bookmarked spot.
+  const focusBookmarkLine = (content: string, isHtml: boolean, anchor: BookmarkAnchor): HTMLElement | null => {
     const container = annotationTools.documentRef.current;
     if (!container) return null;
     const offset = resolveBookmarkAnchor(content, isHtml, anchor);
     if (offset === null) return null;
-    const line = lineSpanAt(content, offset);
-    if (!line) return null;
-    if (!container.hasAttribute('tabindex')) container.setAttribute('tabindex', '-1');
-    container.focus();
-    const selected = selectRenderedLine(container, normalizeHeadingText(content.slice(line.start, line.end)));
+    const line = renderedLineAtOffset(content, offset);
+    if (!line || !line.text) return null;
+    if (!selectRenderedLineAt(container, line.text, line.occurrences)) return null;
+    const selection = window.getSelection();
+    const element = selection?.anchorNode?.parentElement ?? null;
+    if (!element || !container.contains(element)) return null;
+    if (!element.hasAttribute('tabindex')) element.setAttribute('tabindex', '-1');
+    element.focus();
+    // Focusing can drop the selection: re-select the line, as Find does
+    // after moving focus to a match.
+    if (!selectRenderedLineAt(container, line.text, line.occurrences)) return null;
     try {
-      container.scrollIntoView({ block: 'start' });
+      element.scrollIntoView({ block: 'center' });
     } catch {
       // Scrolling is best-effort; the focus landing is what matters.
     }
-    const selection = window.getSelection();
-    return document.activeElement === container &&
-      selected &&
-      !!selection?.anchorNode &&
-      selection.anchorNode.nodeType === Node.TEXT_NODE &&
-      container.contains(selection.anchorNode)
-      ? container
+    const reselected = window.getSelection();
+    return document.activeElement === element &&
+      !!reselected?.anchorNode &&
+      reselected.anchorNode.nodeType === Node.TEXT_NODE &&
+      container.contains(reselected.anchorNode)
+      ? element
       : null;
+  };
+
+  // The reading-mode landing for a bookmark: a position bookmark lands
+  // on its exact line; a heading bookmark lands on its heading, falling
+  // back to its line when the heading cannot be found. Either way the
+  // fallback is the containing heading, never the top of the note.
+  const landReadingBookmark = (
+    content: string,
+    isHtml: boolean,
+    anchor: BookmarkAnchor,
+  ): HTMLElement | null => {
+    if (anchor.kind === 'heading') {
+      return focusBookmarkHeading(content, isHtml, anchor) ?? focusBookmarkLine(content, isHtml, anchor);
+    }
+    return focusBookmarkLine(content, isHtml, anchor) ?? focusBookmarkHeading(content, isHtml, anchor);
   };
 
   // Move the caret to the bookmarked place in the rich-text editor, which
@@ -4135,21 +4199,8 @@ export default function App() {
     if (anchor.kind === 'heading') {
       const jumpHeading = readingJumpHeading(content, isHtml, anchor);
       if (!jumpHeading) return false;
-      const wanted = normalizeHeadingText(jumpHeading.text);
       const headings = [...editor.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')];
-      const matches = headings.filter(
-        (heading) => normalizeHeadingText(heading.textContent?.trim() ?? '') === wanted,
-      );
-      // The heading's text cannot be compared (a footnote reference, an
-      // HTML entity, or another form the normalizer does not understand):
-      // fall back to its position among the note's headings, only when
-      // the rendered list has the same length as the source list.
-      const byPosition = (): HTMLElement | null => {
-        const index = headingSourceIndex(content, isHtml, jumpHeading);
-        if (index === null) return null;
-        return listHeadings(content, isHtml).length === headings.length ? headings[index] ?? null : null;
-      };
-      const target = matches[jumpHeading.occurrence] ?? matches[0] ?? byPosition();
+      const target = findRenderedHeading(headings, content, isHtml, jumpHeading);
       if (!target) return false;
       // A heading with no text (an image-only heading) has nothing to
       // select: the editor holding focus is the landing.
@@ -4157,11 +4208,8 @@ export default function App() {
       if (!selectElementText(target)) return false;
     } else {
       const offset = resolveBookmarkAnchor(content, isHtml, anchor);
-      const line = offset === null ? null : lineSpanAt(content, offset);
-      if (
-        !line ||
-        !selectRenderedLine(editor, normalizeHeadingText(content.slice(line.start, line.end)))
-      ) {
+      const line = offset === null ? null : renderedLineAtOffset(content, offset);
+      if (!line || !line.text || !selectRenderedLineAt(editor, line.text, line.occurrences)) {
         const range = document.createRange();
         range.selectNodeContents(editor);
         range.collapse(true);
@@ -4253,8 +4301,7 @@ export default function App() {
         announce();
         return;
       } else if (mode !== 'edit') {
-        const target =
-          focusBookmarkHeading(content, isHtml, anchor) ?? focusBookmarkPosition(content, isHtml, anchor);
+        const target = landReadingBookmark(content, isHtml, anchor);
         if (target && document.activeElement === target) {
           bookmarkJumpRef.current = { path, anchor };
           setPendingBookmarkAnchor(null);
@@ -4333,22 +4380,18 @@ export default function App() {
     if (jumped && jumped.path === path) {
       bookmarkJumpRef.current = null;
       // The reader just landed on a bookmark (or switched views after
-      // one): keep the reader at the bookmarked heading instead of
-      // resuming to the saved reading position. A position bookmark with
-      // no heading lands on its line instead; only when neither landing
-      // works does it fall through to the normal resume below.
-      const jumpedHeading = focusBookmarkHeading(
+      // one): keep the reader at the bookmarked place instead of
+      // resuming to the saved reading position. Only when the landing
+      // cannot be made does it fall through to the normal resume below.
+      const jumpedTarget = landReadingBookmark(
         currentNote.content,
         /\.html?$/i.test(currentNote.path),
         jumped.anchor,
       );
-      const jumpedTarget =
-        jumpedHeading ??
-        focusBookmarkPosition(currentNote.content, /\.html?$/i.test(currentNote.path), jumped.anchor);
       if (jumpedTarget) {
         setStatusMessage(
-          jumpedHeading
-            ? `Jumped to ${jumpedHeading.textContent?.trim() ?? 'the bookmarked heading'}.`
+          jumped.anchor.kind === 'heading'
+            ? `Jumped to ${jumpedTarget.textContent?.trim() ?? 'the bookmarked heading'}.`
             : 'Jumped to the bookmarked place.',
         );
         return;
