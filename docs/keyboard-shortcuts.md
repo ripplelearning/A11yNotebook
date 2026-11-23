@@ -76,7 +76,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Alt+Q          | Focus search                            |
 | Ctrl+Shift+P   | Command Palette                         |
 | F5             | Refresh links                           |
-| F1             | Keyboard Shortcuts                      |
+| F1             | User Guide                              |
 | Ctrl+Shift+U   | Check for Updates                       |
 | Ctrl+Shift+H   | About A11y Notebook                     |
 

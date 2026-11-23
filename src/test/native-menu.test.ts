@@ -28,6 +28,7 @@ describe('native command menu', () => {
     ['&Tools', 'new-asset'],
     ['&View', 'toggle-read-only-mode'],
     ['&Window', 'focus-search'],
+    ['&Help', 'show-user-guide'],
     ['&Help', 'show-keyboard-shortcuts'],
   ] as const)('dispatches %s / %s with its registry label exactly once', (group, id: CommandId) => {
     const sendCommand = vi.fn();

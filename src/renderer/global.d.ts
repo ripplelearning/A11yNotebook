@@ -10,4 +10,10 @@ declare global {
   const __APP_VERSION__: string;
 }
 
+/** Markdown bundled as text at build time (docs/user-guide.md for the F1 guide). */
+declare module '*.md?raw' {
+  const content: string;
+  export default content;
+}
+
 export {};

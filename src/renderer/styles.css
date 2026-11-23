@@ -539,6 +539,134 @@ a:focus-visible,
   width: min(720px, 100%);
 }
 
+/* User Guide dialog (F1): a large dialog with its own search, Table of
+   Contents, and scrollable guide text. The modal itself does not scroll;
+   the TOC and the guide content scroll independently so the search and
+   the TOC stay visible while reading. */
+.modal.guide-modal {
+  width: min(960px, 100%);
+  height: calc(100vh - 2rem);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.guide-search {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.guide-search input {
+  flex: 1 1 16rem;
+  min-width: 0;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: rgba(2, 6, 23, 0.55);
+  color: inherit;
+}
+
+.guide-search button {
+  padding: 0.5rem 0.9rem;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  background: rgba(30, 41, 59, 0.9);
+  color: inherit;
+  cursor: pointer;
+}
+
+.guide-layout {
+  display: grid;
+  grid-template-columns: minmax(12rem, 15rem) minmax(0, 1fr);
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+.guide-toc {
+  overflow: auto;
+  border-right: 1px solid rgba(148, 163, 184, 0.25);
+  padding-right: 0.75rem;
+}
+
+.guide-toc ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
+.guide-toc button {
+  width: 100%;
+  text-align: left;
+  padding: 0.25rem 0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.guide-toc button:hover {
+  background: rgba(148, 163, 184, 0.15);
+}
+
+.guide-toc-sub button {
+  padding-left: 1.25rem;
+}
+
+.guide-content {
+  overflow: auto;
+  min-width: 0;
+  padding-right: 0.25rem;
+}
+
+.guide-content h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1.25rem;
+}
+
+.guide-content h3 {
+  margin: 1rem 0 0.5rem;
+  font-size: 1.1rem;
+}
+
+.guide-content table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 0.75rem;
+}
+
+.guide-content th,
+.guide-content td {
+  text-align: left;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.guide-content pre {
+  overflow: auto;
+}
+
+@media (max-width: 640px) {
+  .guide-layout {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .guide-toc {
+    max-height: 12rem;
+    border-right: none;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+    padding-right: 0;
+    padding-bottom: 0.5rem;
+  }
+}
+
 .settings-shortcut-row {
   display: flex;
   flex-wrap: wrap;

@@ -4,6 +4,7 @@ import path from 'node:path';
 import ts from 'typescript';
 import { describe, expect, it } from 'vitest';
 import { getKeyboardShortcuts } from '../shared/command-registry';
+import { buildGuideMarkdown } from '../shared/user-guide';
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -48,7 +49,13 @@ describe('user-facing library terminology and shortcuts', () => {
       expect(rows).toContainEqual([shortcut, label]);
     }
     expect(rows).toContainEqual(['Alt+Q', 'Focus search']);
-    expect(readFileSync('docs/user-guide.md', 'utf8')).toMatch(/\| Alt\+Q\s+\| Focus global search/);
+    // The guide file keeps no hand-maintained shortcuts table: its
+    // shortcuts section is generated from the registry when the guide
+    // opens (F1), and the generated table carries the live bindings.
+    const guideSource = readFileSync('docs/user-guide.md', 'utf8');
+    expect(guideSource).toContain('guide-shortcuts: generated');
+    expect(guideSource).not.toMatch(/\| Alt\+Q\s+\| Focus global search/);
+    expect(buildGuideMarkdown(guideSource, getKeyboardShortcuts())).toMatch(/\| Focus search \| Alt\+Q \|/);
     expect(reference + readFileSync('docs/user-guide.md', 'utf8')).not.toContain('Ctrl+L');
   });
 

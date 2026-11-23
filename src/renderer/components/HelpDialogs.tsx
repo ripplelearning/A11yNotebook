@@ -6,7 +6,7 @@ import Modal from './Modal';
 
 type DialogProps = { onClose: () => void };
 
-const NAVIGATION_SHORTCUTS = [
+export const NAVIGATION_SHORTCUTS = [
   { label: 'Move to the next pane', shortcut: 'F6' },
   { label: 'Move to the previous pane', shortcut: 'Shift+F6' },
   { label: 'Move between open tabs', shortcut: 'Left Arrow / Right Arrow, Home, End' },

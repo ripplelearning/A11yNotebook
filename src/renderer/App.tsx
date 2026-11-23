@@ -48,6 +48,7 @@ import CommandPalette from './components/CommandPalette';
 import NoteMetadataDialog from './components/NoteMetadataDialog';
 import GlobalContextMenu from './components/GlobalContextMenu';
 import { AboutDialog, FeedbackDialog, KeyboardShortcutsDialog } from './components/HelpDialogs';
+import UserGuideDialog from './components/UserGuideDialog';
 import TutorialDialog, { readTutorialState, writeTutorialState } from './components/TutorialDialog';
 import FindDialog, { type FindMatchJump } from './components/FindDialog';
 import { findGridFocusTarget } from './grid-focus';
@@ -222,6 +223,7 @@ type DialogId =
   | 'palette'
   | 'updates'
   | 'shortcuts'
+  | 'user-guide'
   | 'about'
   | 'feedback'
   | 'settings'
@@ -389,7 +391,7 @@ const menuGroups: { label: string; items: CommandId[] }[] = [
       'focus-search',
     ],
   },
-  { label: 'Help', items: ['check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-whats-new', 'show-about', 'show-feedback'] },
+  { label: 'Help', items: ['show-user-guide', 'check-for-updates', 'show-keyboard-shortcuts', 'show-tutorial', 'show-whats-new', 'show-about', 'show-feedback'] },
 ];
 
 export default function App() {
@@ -6749,6 +6751,7 @@ export default function App() {
       focusTarget: setPendingFocus,
       checkForUpdates,
       showKeyboardShortcuts: () => setActiveDialog('shortcuts'),
+      showUserGuide: () => setActiveDialog('user-guide'),
       showAbout: () => setActiveDialog('about'),
       showFeedback: () => setActiveDialog('feedback'),
       showTutorial: () => setTutorialOpen(true),
@@ -8363,6 +8366,14 @@ export default function App() {
       ) : null}
       {activeDialog === 'shortcuts' ? (
         <KeyboardShortcutsDialog
+          shortcuts={settings.shortcuts}
+          aliasShortcuts={settings.shortcutAliases}
+          isMac={isMac}
+          onClose={closeDialog}
+        />
+      ) : null}
+      {activeDialog === 'user-guide' ? (
+        <UserGuideDialog
           shortcuts={settings.shortcuts}
           aliasShortcuts={settings.shortcutAliases}
           isMac={isMac}
