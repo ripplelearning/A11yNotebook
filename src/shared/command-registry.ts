@@ -606,7 +606,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'create-reminder',
     label: 'Create reminder',
     description: 'Open the Create reminder dialog.',
-    contexts: ['general', 'tree-note', 'attachment'],
+    contexts: ['general', 'tree-note', 'attachment', 'link'],
   },
   {
     id: 'show-calendar',

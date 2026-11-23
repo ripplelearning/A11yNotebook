@@ -29,7 +29,7 @@ describe('add-link command defaults', () => {
 });
 
 describe('link context menu', () => {
-  it('offers opening, editing, renaming, moving, deleting, revealing, protecting, properties, and email — and nothing else', () => {
+  it('offers opening, editing, renaming, moving, deleting, revealing, protecting, properties, email, and creating a reminder — and nothing else', () => {
     const labels = getContextMenuCommands('link').map((command) => command.label);
     expect(labels).toEqual([
       'Open selected item',
@@ -41,6 +41,7 @@ describe('link context menu', () => {
       'Protect selected item',
       'Properties',
       'Send to email',
+      'Create reminder',
     ]);
   });
 });

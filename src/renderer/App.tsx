@@ -1204,6 +1204,14 @@ export default function App() {
     .filter((entry) => entry.kind === 'note' && !assetRegistry.resolve(entry.path))
     .map((entry) => entry.path);
   const filePaths = allEntries.filter((entry) => entry.kind === 'attachment').map((entry) => entry.path);
+  // A reminder can also link to a web link saved in the library: the
+  // link's .url entry opens in the browser, like any other file the
+  // reminder points at. Appointments and task links keep the
+  // attachment-only list, so only the reminder dialog sees links here.
+  const reminderFilePaths = [
+    ...filePaths,
+    ...allEntries.filter((entry) => entry.kind === 'link').map((entry) => entry.path),
+  ];
   const beginExport = async (relativePath: string) => {
     try {
       const protectedNote = (await window.a11yNotebook?.vault.isNoteEncrypted?.(relativePath)) ?? false;
@@ -7838,7 +7846,7 @@ export default function App() {
                 title={viewTitles.reminders}
                 reminders={reminderState.reminders}
                 notePaths={reminderNotePaths}
-                filePaths={filePaths}
+                filePaths={reminderFilePaths}
                 createRequest={reminderCreateRequest}
                 initialPath={reminderCreatePath}
                 defaults={reminderState.defaults}
