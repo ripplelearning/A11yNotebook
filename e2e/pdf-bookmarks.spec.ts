@@ -314,8 +314,8 @@ test('PDF bookmarks jump with Ctrl+Alt+J in continuous view', async () => {
     await placePdfSelection(page, 'Gamma line one.');
     await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 3', 'Gamma spot');
     await expect(statusLine(page)).toContainText('Bookmarked "Gamma spot" on page 3.', { timeout: 30000 });
-    await page.getByRole('button', { name: 'Paginated view' }).click();
-    await expect(page.getByRole('button', { name: 'Continuous view' })).toHaveAttribute('aria-pressed', 'true');
+    await page.getByRole('radio', { name: 'Continuous view' }).click();
+    await expect(page.getByRole('radio', { name: 'Continuous view' })).toBeChecked();
     // Past the last bookmark on page 3: J wraps to the first.
     await placeContinuousSelection(page, 'Gamma line two.');
     await jumpToNextBookmark(page, 'Beta line two.', 'Jumped to Beta second.');
