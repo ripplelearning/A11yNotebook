@@ -967,4 +967,36 @@ describe('contextual shell document workflows', () => {
       ),
     );
   });
+
+  it('offers Create reminder from the context menu on a link and pre-selects it', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Example.url', path: 'Research/Example.url', kind: 'link', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Example.url' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create reminder' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Create reminder' });
+    expect(within(dialog).getByLabelText('Link to')).toHaveValue('file');
+    expect(within(dialog).getByLabelText('File')).toHaveValue('Research/Example.url');
+    fireEvent.change(within(dialog).getByLabelText('Reminder title'), { target: { value: 'Check example' } });
+    fireEvent.change(within(dialog).getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-11-09' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(bridge.vault.createReminder).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Check example', path: 'Research/Example.url' }),
+      ),
+    );
+  });
 });

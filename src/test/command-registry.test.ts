@@ -200,6 +200,13 @@ describe('command registry', () => {
       expect(getContextMenuCommands(context).map(({ id }) => id)).toContain('import-file');
   });
 
+  it('offers Create reminder from the context menu on a link', () => {
+    // Notes, files, and saved web links all offer it; a link entry in
+    // the Notes and Files grid used to be the one that did not.
+    for (const context of ['general', 'tree-note', 'attachment', 'link'] as const)
+      expect(getContextMenuCommands(context).map(({ id }) => id)).toContain('create-reminder');
+  });
+
   it('dispatches check-for-updates to the updater', () => {
     const context = createContext();
     expect(dispatchCommand('check-for-updates', context)).toBeUndefined();
