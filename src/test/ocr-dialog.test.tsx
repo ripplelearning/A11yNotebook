@@ -76,6 +76,33 @@ describe('OCR dialog', () => {
     expect(screen.getByRole('radio', { name: /Spanish/ })).not.toBeChecked();
   });
 
+  it('announces itself on open: focus moves inside the dialog and the opening message is its accessible description', async () => {
+    // Regression: the Start button carries data-autofocus but is disabled
+    // until a language is picked, so focus used to stay outside the dialog
+    // and the message "silently appeared" — never announced.
+    renderDialog({ kind: '.epub', total: 23 });
+    await waitFor(() => expect(screen.getByRole('radio', { name: /English/ })).toBeInTheDocument());
+    const dialog = screen.getByRole('dialog', {
+      name: 'OCR this file',
+      description:
+        /OCR runs entirely on this computer\. Nothing is uploaded\. It reads the whole file — 23 sections have no extractable text — and can take a few minutes for a long file\./,
+    });
+    expect(dialog).toContainElement(document.activeElement as HTMLElement);
+    expect(document.activeElement).not.toBe(screen.getByRole('button', { name: 'Start OCR' }));
+  });
+
+  it('closes on Escape and returns focus to the element that opened it', async () => {
+    const opener = document.createElement('button');
+    opener.textContent = 'OCR this file';
+    document.body.appendChild(opener);
+    opener.focus();
+    const { onClose } = renderDialog();
+    await waitFor(() => expect(screen.getByRole('radio', { name: /English/ })).toBeInTheDocument());
+    fireEvent.keyDown(screen.getByRole('dialog', { name: 'OCR this file' }), { key: 'Escape' });
+    expect(onClose).toHaveBeenCalledTimes(1);
+    document.body.removeChild(opener);
+  });
+
   it('runs the whole file and hands the results to the reader', async () => {
     const { onComplete } = renderDialog();
     await waitFor(() => expect(screen.getByRole('radio', { name: /English/ })).toBeInTheDocument());

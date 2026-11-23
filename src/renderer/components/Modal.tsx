@@ -13,9 +13,19 @@ export function getFocusableElements(container: HTMLElement): HTMLElement[] {
   return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }
 
-/** Focus the element marked with data-autofocus, or else the first focusable element. */
+/**
+ * Focus the element marked with data-autofocus, or else the first focusable element.
+ * A marked element that is disabled cannot take focus (calling focus() on it is a
+ * no-op, so focus would silently stay outside the dialog and a screen reader
+ * would never announce the dialog) — skip it and fall through to the first
+ * focusable element instead. The OCR dialog's Start button is marked this way
+ * while no language is picked yet, which is exactly how its opening message
+ * used to appear without ever being announced.
+ */
 export function focusInitialElement(container: HTMLElement) {
-  const preferred = container.querySelector<HTMLElement>('[data-autofocus]');
+  const preferred = Array.from(container.querySelectorAll<HTMLElement>('[data-autofocus]')).find(
+    (element) => !element.hasAttribute('disabled') && (element as { disabled?: boolean }).disabled !== true,
+  );
   const target = preferred ?? getFocusableElements(container)[0] ?? container;
   target.focus();
 }

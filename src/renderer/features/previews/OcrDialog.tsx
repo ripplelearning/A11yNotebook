@@ -243,12 +243,18 @@ export default function OcrDialog({
   const unitPlural = kind === '.pdf' ? 'pages' : 'sections';
 
   return (
-    <Modal titleId={`${id}-title`} title="OCR this file" onClose={busy ? cancel : onClose}>
+    <Modal
+      titleId={`${id}-title`}
+      title="OCR this file"
+      describedBy={phase === 'pick' ? `${id}-intro` : undefined}
+      onClose={busy ? cancel : onClose}
+    >
       {phase === 'pick' ? (
         <>
-          <p>
-            OCR runs entirely on this computer. Nothing is uploaded. It reads the whole file — {total} {total === 1 ? unitLabel : unitPlural}{' '}
-            {total === 1 ? 'has' : 'have'} no extractable text — and can take a few minutes for a long file.
+          <p id={`${id}-intro`}>
+            OCR runs entirely on this computer. Nothing is uploaded. It reads the whole file — {total}{' '}
+            {total === 1 ? unitLabel : unitPlural} {total === 1 ? 'has' : 'have'} no extractable text — and can take a
+            few minutes for a long file.
           </p>
           <fieldset>
             <legend>OCR language</legend>

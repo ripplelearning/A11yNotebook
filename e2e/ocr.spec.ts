@@ -40,6 +40,55 @@ async function runOcr(page: Awaited<ReturnType<typeof launchApp>>['page']) {
   return dialog;
 }
 
+test('OCR dialog is announced: focus moves inside it on open and Escape closes it', async () => {
+  const paths = seedLibrary([
+    {
+      name: 'OCR',
+      files: [{ name: 'ocr-image-only.pdf', content: fixtureBytes('ocr-image-only.pdf') }],
+    },
+  ]);
+  let app: ElectronApplication | null = null;
+  try {
+    ({ app } = await launchApp(paths.userDataDir));
+    const page = await app.firstWindow();
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+    await waitForApp(page);
+    await openSeededFile(page, 'ocr-image-only.pdf');
+
+    await page.getByRole('button', { name: 'OCR this file' }).first().click();
+    const dialog = page.getByRole('dialog', { name: 'OCR this file' });
+    await expect(dialog).toBeVisible();
+    // The opening message is the dialog's accessible description, and
+    // focus is inside the dialog, so a screen reader announces the title
+    // and the message when it opens instead of it appearing silently.
+    await expect(dialog).toHaveAttribute('aria-describedby');
+    const descriptionId = await dialog.getAttribute('aria-describedby');
+    const description = await page.evaluate(
+      (id) => document.getElementById(id ?? '')?.textContent ?? '',
+      descriptionId,
+    );
+    expect(description).toMatch(/OCR runs entirely on this computer\. Nothing is uploaded\./);
+    const focusInside = await page.evaluate(() => {
+      const dialogElement = document.querySelector('[role="dialog"]');
+      return !!dialogElement?.contains(document.activeElement);
+    });
+    expect(focusInside).toBe(true);
+
+    await page.keyboard.press('Escape');
+    await expect(dialog).toHaveCount(0);
+    // Focus returns to the button that opened the dialog.
+    const focusReturned = await page.evaluate(() => {
+      const active = document.activeElement;
+      return active?.tagName === 'BUTTON' && active.textContent === 'OCR this file';
+    });
+    expect(focusReturned).toBe(true);
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
 test('OCR a scanned PDF: text shows temporarily, then Ctrl+S saves it into the file', async () => {
   const paths = seedLibrary([
     {
