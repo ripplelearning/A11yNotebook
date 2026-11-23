@@ -865,6 +865,68 @@ describe('bookmark jump from the side pane', () => {
     expect(screen.queryByRole('button', { name: 'Setup — Note.md' })).not.toBeInTheDocument();
   });
 
+  it("stays scoped to the open note when a view is current", async () => {
+    // Switching to a view (Notes & Files, Tasks, ...) leaves the note
+    // open in its tab: the list must stay scoped to that note instead
+    // of falling back to the whole library, which read as if every
+    // bookmark belonged to the file on screen.
+    const otherBookmark: VaultBookmark = {
+      id: 'bm-other',
+      path: 'Other.md',
+      title: 'Other heading',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Other heading', occurrence: 0 },
+    };
+    const { menu } = setup(
+      [headingBookmark, otherBookmark],
+      content,
+      null,
+      {},
+      undefined,
+      [
+        { name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' },
+        { name: 'Other.md', path: 'Other.md', kind: 'note', provenance: 'created' },
+      ],
+    );
+    await openNote();
+    expect(screen.queryByRole('button', { name: 'Other heading — Other.md' })).not.toBeInTheDocument();
+    menu('show-notes-files');
+    await screen.findByRole('heading', { name: 'Study' });
+    expect(screen.getByRole('button', { name: 'Setup — Note.md' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Other heading — Other.md' })).not.toBeInTheDocument();
+  });
+
+  it("shows the whole library again once the open note's tab is closed", async () => {
+    // The hybrid is kept: with no file open in any tab there is no
+    // file to scope to, so the library's bookmarks show — the list is
+    // the way to jump into a closed note at its bookmark.
+    const otherBookmark: VaultBookmark = {
+      id: 'bm-other',
+      path: 'Other.md',
+      title: 'Other heading',
+      created: new Date().toISOString(),
+      anchor: { kind: 'heading', text: 'Other heading', occurrence: 0 },
+    };
+    const { menu } = setup(
+      [headingBookmark, otherBookmark],
+      content,
+      null,
+      {},
+      undefined,
+      [
+        { name: 'Note.md', path: 'Note.md', kind: 'note', provenance: 'created' },
+        { name: 'Other.md', path: 'Other.md', kind: 'note', provenance: 'created' },
+      ],
+    );
+    await openNote();
+    menu('show-notes-files');
+    await screen.findByRole('heading', { name: 'Study' });
+    expect(screen.queryByRole('button', { name: 'Other heading — Other.md' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close Note' }));
+    expect(await screen.findByRole('button', { name: 'Other heading — Other.md' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Setup — Note.md' })).toBeInTheDocument();
+  });
+
   it('Ctrl+Alt+H with no note open says to open a note or PDF first', async () => {
     // The keyboard path reaches the bookmark command even when the
     // palette shows it disabled (a preview open, or no note open at
