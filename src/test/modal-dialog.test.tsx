@@ -40,4 +40,31 @@ describe('Modal dialog title and default button', () => {
     fireEvent.keyDown(screen.getByLabelText('Name'), { key: 'Enter' });
     expect(onDefault).not.toHaveBeenCalled();
   });
+
+  it('skips a disabled data-autofocus target and focuses the first focusable element instead', () => {
+    // A disabled control cannot take focus: focusing it is a no-op, so the
+    // dialog would open without focus ever entering it and a screen reader
+    // would never announce it.
+    render(
+      <Modal titleId="test-dialog-title" title="Software update" onClose={vi.fn()}>
+        <button type="button" data-autofocus disabled>
+          Download
+        </button>
+        <button type="button">Not now</button>
+      </Modal>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Not now' }));
+  });
+
+  it('still honours an enabled data-autofocus target', () => {
+    render(
+      <Modal titleId="test-dialog-title" title="Software update" onClose={vi.fn()}>
+        <button type="button">Not now</button>
+        <button type="button" data-autofocus>
+          Download
+        </button>
+      </Modal>,
+    );
+    expect(document.activeElement).toBe(screen.getByRole('button', { name: 'Download' }));
+  });
 });
