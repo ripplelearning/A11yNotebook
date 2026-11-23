@@ -3,22 +3,15 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
-import {
-  closeApp,
-  dismissTutorial,
-  launchApp,
-  openGridEntry,
-  openNotebook,
-  seedLibrary,
-  waitForApp,
-} from './helpers';
+import { closeApp, dismissTutorial, launchApp, openGridEntry, openNotebook, seedLibrary, waitForApp } from './helpers';
 
 /**
  * PDF continuous view end-to-end pass: a three-page PDF opens paginated,
- * the toggle in the Page Navigation section (before Previous/Next) shows
- * the whole document as one continuous page with the pressed state
- * exposed, Previous/Next and scrolling move the current page, and
- * toggling back restores paginated navigation on the current page.
+ * the view choice in the Page Navigation section (before Previous/Next)
+ * is a radio group with exactly one view checked, switching to
+ * Continuous view shows the whole document as one continuous page and
+ * hides Previous/Next, scrolling moves the current page, and switching
+ * back restores paginated navigation on the current page.
  *
  * The fixture is generated with pdf-lib, so no third-party file is
  * involved: one distinct line of text per page.
@@ -43,7 +36,7 @@ async function openThreePagePdf(page: Page): Promise<void> {
   await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
 }
 
-test('PDF continuous view toggle switches between paginated and continuous view, tracking the current page', async () => {
+test('PDF continuous view radio group switches views, hides Previous/Next in continuous view, tracks the current page', async () => {
   let app: ElectronApplication | null = null;
   const paths = seedLibrary([{ name: 'Docs', files: [{ name: 'Guide.pdf', content: await threePagePdf() }] }]);
   try {
@@ -54,47 +47,58 @@ test('PDF continuous view toggle switches between paginated and continuous view,
     page.on('pageerror', (error) => pageErrors.push(String(error)));
     await openThreePagePdf(page);
     const navigation = page.getByRole('group', { name: 'PDF page navigation' });
-    const toggle = navigation.getByRole('button', { name: 'Paginated view' });
-    await expect(toggle).toBeVisible();
-    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
-    // The toggle sits before the Previous/Next page buttons.
+    const paginated = navigation.getByRole('radio', { name: 'Paginated view' });
+    const continuous = navigation.getByRole('radio', { name: 'Continuous view' });
+    await expect(paginated).toBeVisible();
+    // Exactly one view reads as active: Paginated checked, Continuous unchecked.
+    await expect(paginated).toBeChecked();
+    await expect(continuous).not.toBeChecked();
+    // The view choice sits before the Previous/Next page buttons.
     const buttons = navigation.getByRole('button');
-    await expect(buttons.nth(0)).toHaveText('Paginated view');
-    await expect(buttons.nth(1)).toHaveText('Previous page');
-    await expect(buttons.nth(2)).toHaveText('Next page');
+    await expect(buttons.nth(0)).toHaveText('Previous page');
+    await expect(buttons.nth(1)).toHaveText('Next page');
     // Paginated: only the first page's text is shown.
     const pageText = page.locator('section[aria-label^="Accessible text for PDF"]');
     await expect(pageText.getByText('Continuous first page text')).toBeVisible();
     await expect(pageText.getByText('Continuous second page text')).toHaveCount(0);
 
-    await toggle.click();
-    const continuousToggle = navigation.getByRole('button', { name: 'Continuous view' });
-    await expect(continuousToggle).toHaveAttribute('aria-pressed', 'true');
-    // Continuous: the whole document is shown as one page.
+    // Paginated navigation still works: Previous/Next move the current page.
+    await navigation.getByRole('button', { name: 'Next page' }).click();
+    await expect(page.getByRole('heading', { name: 'Page 2 of 3' })).toBeVisible();
+    await navigation.getByRole('button', { name: 'Previous page' }).click();
+    await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible();
+
+    await continuous.click();
+    // Exactly one view reads as active the other way round.
+    await expect(continuous).toBeChecked();
+    await expect(paginated).not.toBeChecked();
+    // Continuous: the whole document is shown as one page, with no
+    // Previous/Next buttons.
     await expect(pageText.getByText('Continuous first page text')).toBeVisible();
     await expect(pageText.getByText('Continuous second page text')).toBeVisible();
     await expect(pageText.getByText('Continuous third page text')).toBeVisible();
+    await expect(navigation.getByRole('button', { name: 'Previous page' })).toHaveCount(0);
+    await expect(navigation.getByRole('button', { name: 'Next page' })).toHaveCount(0);
 
-    // Previous/Next move the current page in continuous view.
-    await navigation.getByRole('button', { name: 'Next page' }).click();
-    await expect(page.getByRole('heading', { name: 'Page 2 of 3' })).toBeVisible();
-    await navigation.getByRole('button', { name: 'Next page' }).click();
-    await expect(page.getByRole('heading', { name: 'Page 3 of 3' })).toBeVisible();
-
-    // Scrolling back to the first page moves the current page with it.
+    // Scrolling to the last page moves the current page with it.
+    await page.evaluate(() => {
+      document.querySelector<HTMLElement>('[data-pdf-page="3"]')?.scrollIntoView();
+    });
+    await expect(page.getByRole('heading', { name: 'Page 3 of 3' })).toBeVisible({ timeout: 10000 });
     await page.evaluate(() => {
       document.querySelector<HTMLElement>('[data-pdf-page="1"]')?.scrollIntoView();
     });
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 10000 });
 
-    // Toggling back restores paginated navigation, on the current page,
-    // with the keyboard: focus the toggle and press Enter.
-    await navigation.getByRole('button', { name: 'Continuous view' }).focus();
-    await page.keyboard.press('Enter');
-    await expect(navigation.getByRole('button', { name: 'Paginated view' })).toHaveAttribute(
-      'aria-pressed',
-      'false',
-    );
+    // Switching back with the keyboard restores paginated navigation on
+    // the current page: focus the Continuous radio and arrow left to
+    // the Paginated radio.
+    await continuous.focus();
+    await page.keyboard.press('ArrowLeft');
+    await expect(paginated).toBeChecked();
+    await expect(continuous).not.toBeChecked();
+    await expect(navigation.getByRole('button', { name: 'Previous page' })).toBeVisible();
+    await expect(navigation.getByRole('button', { name: 'Next page' })).toBeVisible();
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible();
     await expect(pageText.getByText('Continuous first page text')).toBeVisible();
     await expect(pageText.getByText('Continuous second page text')).toHaveCount(0);

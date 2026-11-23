@@ -157,10 +157,8 @@ describe('PDF bookmarks in the reader', () => {
 
   it('jumps to a spot in continuous view', async () => {
     const apiRef = await renderReader();
-    fireEvent.click(screen.getByRole('button', { name: 'Paginated view' }));
-    await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Continuous view' })).toHaveAttribute('aria-pressed', 'true'),
-    );
+    fireEvent.click(screen.getByRole('radio', { name: 'Continuous view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Continuous view' })).toBeChecked());
     const landed = await apiRef.current!.jumpToSpot({ page: 1, offset: 2 });
     expect(landed).toBe(true);
     const block = screen.getByText('Alpha').closest('p') as HTMLElement;

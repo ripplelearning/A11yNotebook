@@ -1260,19 +1260,30 @@ function PdfReader({
         </p>
       ) : null}
       <div role="group" aria-label="PDF page navigation">
-        <button type="button" aria-pressed={continuous} onClick={() => setContinuous((value) => !value)}>
-          {continuous ? 'Continuous view' : 'Paginated view'}
-        </button>
-        <button type="button" disabled={pageNumber <= 1} onClick={() => goToPage(Math.max(1, pageNumber - 1))}>
-          Previous page
-        </button>
-        <button
-          type="button"
-          disabled={pageNumber >= pageCount}
-          onClick={() => goToPage(Math.min(pageCount, pageNumber + 1))}
-        >
-          Next page
-        </button>
+        <div role="radiogroup" aria-label="PDF view">
+          <label>
+            <input type="radio" name="pdf-view" checked={!continuous} onChange={() => setContinuous(false)} />
+            Paginated view
+          </label>
+          <label>
+            <input type="radio" name="pdf-view" checked={continuous} onChange={() => setContinuous(true)} />
+            Continuous view
+          </label>
+        </div>
+        {continuous ? null : (
+          <>
+            <button type="button" disabled={pageNumber <= 1} onClick={() => goToPage(Math.max(1, pageNumber - 1))}>
+              Previous page
+            </button>
+            <button
+              type="button"
+              disabled={pageNumber >= pageCount}
+              onClick={() => goToPage(Math.min(pageCount, pageNumber + 1))}
+            >
+              Next page
+            </button>
+          </>
+        )}
       </div>
       <div role="group" aria-label="PDF view controls">
         <button type="button" onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))} disabled={zoom <= 0.5}>

@@ -49,7 +49,7 @@ function mockPdf(pageCount = 3) {
   };
 }
 
-describe('PDF continuous view toggle', () => {
+describe('PDF continuous view radio group', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue({} as CanvasRenderingContext2D);
@@ -95,46 +95,64 @@ describe('PDF continuous view toggle', () => {
     return within(screen.getByLabelText(/Accessible text for PDF/));
   }
 
-  it('places the toggle before Previous/Next, paginated by default with the pressed state exposed', async () => {
+  /** Exactly one view is active at all times: one radio checked, the other unchecked. */
+  function expectExactlyOneViewChecked(paginatedChecked: boolean) {
+    const paginated = screen.getByRole('radio', { name: 'Paginated view' });
+    const continuous = screen.getByRole('radio', { name: 'Continuous view' });
+    if (paginatedChecked) {
+      expect(paginated).toBeChecked();
+      expect(continuous).not.toBeChecked();
+    } else {
+      expect(paginated).not.toBeChecked();
+      expect(continuous).toBeChecked();
+    }
+  }
+
+  it('places the view choice before Previous/Next, paginated by default with exactly one view checked', async () => {
     await openPdf();
     const group = pageNavigationGroup();
-    const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((button) => button.textContent)).toEqual([
+    const radios = within(group).getAllByRole('radio');
+    expect(radios.map((radio) => radio.closest('label')?.textContent?.trim())).toEqual([
       'Paginated view',
-      'Previous page',
-      'Next page',
+      'Continuous view',
     ]);
-    const toggle = screen.getByRole('button', { name: 'Paginated view' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    expect(radios[0].compareDocumentPosition(radios[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // The radios come before the Previous/Next buttons in the group.
+    const buttons = [...group.querySelectorAll('button')];
+    expect(buttons.map((button) => button.textContent)).toEqual(['Previous page', 'Next page']);
+    expect(radios[1].compareDocumentPosition(buttons[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expectExactlyOneViewChecked(true);
     expect(screen.queryByText('Page 2 searchable text')).not.toBeInTheDocument();
     expect(document.querySelectorAll('canvas')).toHaveLength(1);
   });
 
-  it('shows the whole document as one continuous page, then restores paginated navigation', async () => {
+  it('hides Previous/Next in continuous view and restores them in paginated view', async () => {
     await openPdf();
-    fireEvent.click(screen.getByRole('button', { name: 'Paginated view' }));
-    const toggle = await screen.findByRole('button', { name: 'Continuous view' });
-    expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByRole('radio', { name: 'Continuous view' }));
+    expectExactlyOneViewChecked(false);
     expect(await pageText().findByText('Page 2 searchable text')).toBeInTheDocument();
     expect(pageText().getByText('Page 3 searchable text')).toBeInTheDocument();
     // Every page has a canvas and a text layer in continuous view.
     await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(3));
     expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(3);
     expect(document.querySelectorAll('[data-pdf-page]')).toHaveLength(6);
+    // No Previous/Next buttons while the whole document is shown.
+    expect(screen.queryByRole('button', { name: 'Previous page' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
     // Notes keep working on the current page.
     expect(await screen.findByRole('button', { name: 'Create PDF note' })).toBeEnabled();
 
-    fireEvent.click(toggle);
-    expect(await screen.findByRole('button', { name: 'Paginated view' })).toHaveAttribute('aria-pressed', 'false');
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    expectExactlyOneViewChecked(true);
     await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(1));
+    expect(screen.getByRole('button', { name: 'Previous page' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Next page' })).toBeInTheDocument();
     expect(screen.queryByText('Page 2 searchable text')).not.toBeInTheDocument();
     expect(pageText().getByText('Page 1 searchable text')).toBeInTheDocument();
   });
 
-  it('moves the current page with Previous/Next in continuous view and restores it paginated', async () => {
+  it('moves the current page with Previous/Next in paginated view, and keeps it across a continuous round trip', async () => {
     await openPdf();
-    fireEvent.click(screen.getByRole('button', { name: 'Paginated view' }));
-    await screen.findByRole('button', { name: 'Continuous view' });
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByRole('heading', { name: 'Page 2 of 3' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
@@ -142,9 +160,15 @@ describe('PDF continuous view toggle', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Previous page' }));
     expect(await screen.findByRole('heading', { name: 'Page 2 of 3' })).toBeInTheDocument();
 
+    // Continuous view hides Previous/Next but keeps the current page.
+    fireEvent.click(screen.getByRole('radio', { name: 'Continuous view' }));
+    expectExactlyOneViewChecked(false);
+    expect(screen.queryByRole('button', { name: 'Previous page' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('heading', { name: 'Page 2 of 3' })).toBeInTheDocument();
+
     // Switching back restores paginated navigation on the current page.
-    fireEvent.click(screen.getByRole('button', { name: 'Continuous view' }));
-    await screen.findByRole('button', { name: 'Paginated view' });
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    expectExactlyOneViewChecked(true);
     await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(1));
     expect(pageText().getByText('Page 2 searchable text')).toBeInTheDocument();
     expect(screen.queryByText('Page 1 searchable text')).not.toBeInTheDocument();
