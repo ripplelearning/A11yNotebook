@@ -9,16 +9,31 @@ const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   // ocr-data: serves the on-device OCR runtime (Tesseract worker, core,
   // and language data) from this computer; see electron/ocr-runtime.ts.
-  "script-src 'self' ocr-data:",
+  // 'wasm-unsafe-eval' lets the Tesseract WebAssembly core compile: it
+  // allows WebAssembly compilation only, not eval() of JavaScript.
+  // Without it the packaged app reports "OCR could not run" (1.9.21).
+  "script-src 'self' ocr-data: 'wasm-unsafe-eval'",
   "style-src 'self'",
-  "img-src 'self' data: vault-file:",
+  // blob: for the same epubjs reason: images inside a section resolve
+  // to blob: URLs, so a packaged ePub would show no pictures without it.
+  "img-src 'self' data: vault-file: blob:",
   "font-src 'self'",
-  "connect-src 'self' vault-file: ocr-data:",
-  "worker-src 'self'",
+  // blob: lets epubjs render sections: every spine href resolves to a
+  // blob: URL, loaded in an iframe and fetched as section content. The
+  // packaged file:// page blocks both without it, so ePub sections show
+  // "No extractable text" and OCR results have nowhere to display.
+  "connect-src 'self' vault-file: ocr-data: blob:",
+  // blob: lets Tesseract.js create its worker: createWorker builds the
+  // worker from a blob URL (importScripts of the ocr-data: worker
+  // script) by default. 'self' alone blocks blob: workers on the
+  // packaged file:// page, so OCR could not start at all (1.9.21).
+  "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
   "form-action 'none'",
-  "frame-src 'self' vault-file:",
+  // blob: here too: epubjs renders each section in an iframe whose src
+  // is the section's blob: URL (see connect-src above).
+  "frame-src 'self' vault-file: blob:",
 ].join('; ');
 
 function contentSecurityPolicy(): Plugin {
