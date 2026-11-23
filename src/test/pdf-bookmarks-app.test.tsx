@@ -313,8 +313,17 @@ describe('PDF bookmarks in the app', () => {
       expect(screen.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toBeInTheDocument(),
     );
     expect(screen.queryByRole('button', { name: 'My spot (Page 1)' })).not.toBeInTheDocument();
-    // Back to the file grid with nothing open: every bookmark shows.
+    // Back to the file grid with the note still open in a tab: the list
+    // stays scoped to it instead of falling back to the whole library.
     fireEvent.keyDown(document.body, { key: '2', ctrlKey: true });
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toBeInTheDocument(),
+    );
+    expect(screen.queryByRole('button', { name: /My spot \(Page 1\)/ })).not.toBeInTheDocument();
+    // With nothing open at all — both tabs closed — every bookmark
+    // shows, the PDF one with its file.
+    fireEvent.click(screen.getByRole('button', { name: 'Close Field Notes' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Close Guide.pdf' }));
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Setup mark — Field Notes.md' })).toBeInTheDocument(),
     );
