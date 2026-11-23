@@ -6162,6 +6162,15 @@ export default function App() {
         exportRequest)
     )
       return;
+    // Running any command from the palette dismisses the palette first,
+    // so the command's own dialog or view can take focus: while the
+    // palette's modal is mounted, its focus trap pulls focus back inside
+    // it instead of into what the command opened. This is the one
+    // palette close for every command — the branches below return early,
+    // so a close placed any lower misses some of them (Create reminder
+    // was the reported case). The palette-opening command itself is
+    // exempt: it re-opens the palette below.
+    if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
     if (commandId === 'open-citation-generator' || commandId === 'open-bibliography') {
       if (!currentNote || !citationNotebookPath) {
         setStatusMessage('Open a note in a notebook first.');
@@ -6279,7 +6288,6 @@ export default function App() {
       setActiveDialog('attachment-insert');
       return;
     }
-    if (commandId !== 'command-search' && activeDialog === 'palette') setActiveDialog(null);
     if (commandId === 'import-file') {
       // In the Notes and Files view the notebook was already chosen to enter the
       // view, so import into it instead of demanding a fresh tree selection.
@@ -6601,9 +6609,6 @@ export default function App() {
         setStatusMessage('Nothing to close.');
       }
       return;
-    }
-    if (activeDialog === 'palette' && commandId !== 'command-search') {
-      setActiveDialog(null);
     }
     if (commandId === 'toggle-read-only-mode' && !currentNote) {
       setStatusMessage('This view has no note editor. Open a managed Markdown or HTML note to enable editing.');
