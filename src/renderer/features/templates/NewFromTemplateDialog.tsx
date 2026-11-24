@@ -3,7 +3,6 @@ import Modal from '../../components/Modal';
 import { convertNoteContent } from '../vault/format-conversion';
 import { sanitizeNoteHtml } from '../vault/sanitize-html';
 import {
-  BUILT_IN_TEMPLATES,
   expandTemplate,
   templateNotePath,
   validateNoteTitle,
@@ -19,7 +18,11 @@ export interface NewFromTemplateDialogProps {
   notebooks: TemplateNotebook[];
   onCreate: (path: string, content: string, cursor: number) => void | Promise<void>;
   onClose: () => void;
-  /** Additional templates read by the host; built-ins are always available. IDs must be unique. */
+  /**
+   * Templates read from the library's Templates folder by the host; the
+   * five built-ins arrive there by seeding, not as a separate list.
+   * IDs must be unique.
+   */
   templates?: NoteTemplate[];
   now?: Date;
   initialNotebookPath?: string;
@@ -34,8 +37,8 @@ export default function NewFromTemplateDialog({
   initialNotebookPath,
 }: NewFromTemplateDialogProps) {
   const id = useId();
-  const availableTemplates = [...BUILT_IN_TEMPLATES, ...templates];
-  const [templateId, setTemplateId] = useState(availableTemplates[0].id);
+  const availableTemplates = templates;
+  const [templateId, setTemplateId] = useState(availableTemplates[0]?.id ?? '');
   const [notebookPath, setNotebookPath] = useState(initialNotebookPath ?? notebooks[0]?.path ?? '');
   const [title, setTitle] = useState('');
   const [format, setFormat] = useState<'markdown' | 'html'>('markdown');
@@ -44,7 +47,7 @@ export default function NewFromTemplateDialog({
   const [openedAt] = useState(() => now ?? new Date());
   const template = availableTemplates.find((item) => item.id === templateId) ?? availableTemplates[0];
   const notebook = notebooks.find((item) => item.path === notebookPath);
-  const sourceFormat = template.format ?? 'markdown';
+  const sourceFormat = template?.format ?? 'markdown';
   const templateTitle = title.trim().replace(/\.(?:md|html)$/i, '') || 'Untitled';
   const previewPath = templateNotePath(
     notebookPath,
@@ -58,7 +61,7 @@ export default function NewFromTemplateDialog({
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
-  const expanded = expandTemplate(template.content, {
+  const expanded = expandTemplate(template?.content ?? '', {
     title: sourceFormat === 'html' ? escapeHtml(templateTitle) : templateTitle,
     notebook: sourceFormat === 'html' ? escapeHtml(notebook?.name ?? '') : (notebook?.name ?? ''),
     now: openedAt,
@@ -106,6 +109,21 @@ export default function NewFromTemplateDialog({
         if (!creating) onClose();
       }}
     >
+      {!template ? (
+        <>
+          <div className="modal-body">
+            <p>
+              No templates in this library yet. Save a note as a template, or wait for the built-in templates
+              to appear in the Templates folder.
+            </p>
+          </div>
+          <div className="modal-actions">
+            <button type="button" onClick={onClose}>
+              Close
+            </button>
+          </div>
+        </>
+      ) : (
       <form
         onSubmit={(event) => {
           event.preventDefault();
@@ -178,6 +196,7 @@ export default function NewFromTemplateDialog({
           </button>
         </div>
       </form>
+      )}
     </Modal>
   );
 }

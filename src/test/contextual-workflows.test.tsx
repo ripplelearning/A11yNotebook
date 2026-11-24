@@ -29,6 +29,12 @@ function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
           { name: 'Other.md', path: 'Research/Other.md', kind: 'note', provenance: 'created' },
         ],
       },
+      {
+        name: 'Templates',
+        path: 'Templates',
+        kind: 'notebook',
+        children: [{ name: 'Daily.md', path: 'Templates/Daily.md', kind: 'note', provenance: 'created' }],
+      },
       { name: 'Root.md', path: 'Root.md', kind: 'note', provenance: 'created' },
     ],
   };
@@ -57,6 +63,7 @@ function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
         showCommandButtons: true,
         autosaveDelay: 0,
         defaultNoteOpenMode,
+        templatesSeeded: true,
       })),
       getSecurityStatus: vi.fn(async () => ({ enabled: false, locked: false, recoveryAvailable: false })),
       isNoteEncrypted: vi.fn(async () => false),
@@ -315,6 +322,7 @@ describe('default note opening mode', () => {
       autosaveDelay: 0,
       defaultNoteOpenMode: 'edit',
       noteEditLockMinutes: 1,
+      templatesSeeded: true,
     });
     await selectResearch();
     const panel = screen.getByRole('tabpanel');

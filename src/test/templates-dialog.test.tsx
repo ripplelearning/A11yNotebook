@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { BUILT_IN_TEMPLATES } from '../shared/templates';
 import NewFromTemplateDialog from '../renderer/features/templates/NewFromTemplateDialog';
 
 afterEach(cleanup);
@@ -13,6 +14,7 @@ describe('new note from template dialog', () => {
         notebooks={[{ path: 'Work', name: 'Work' }]}
         onCreate={onCreate}
         onClose={onClose}
+        templates={BUILT_IN_TEMPLATES}
         now={new Date(2026, 9, 3)}
       />,
     );
@@ -34,7 +36,12 @@ describe('new note from template dialog', () => {
     const onClose = vi.fn();
     const onCreate = vi.fn().mockRejectedValue(new Error('A note with this name already exists.'));
     render(
-      <NewFromTemplateDialog notebooks={[{ path: '', name: 'Library root' }]} onCreate={onCreate} onClose={onClose} />,
+      <NewFromTemplateDialog
+        notebooks={[{ path: '', name: 'Library root' }]}
+        templates={BUILT_IN_TEMPLATES}
+        onCreate={onCreate}
+        onClose={onClose}
+      />,
     );
     fireEvent.change(screen.getByRole('textbox', { name: 'Note title' }), { target: { value: '../escape' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
@@ -70,6 +77,7 @@ describe('new note from template dialog', () => {
         notebooks={[{ path: 'Notes', name: 'Notes' }]}
         onCreate={onCreate}
         onClose={vi.fn()}
+        templates={BUILT_IN_TEMPLATES}
         now={new Date(2026, 9, 3)}
       />,
     );
@@ -109,7 +117,40 @@ describe('new note from template dialog', () => {
   });
 
   it('disables creation when there are no notebooks', () => {
-    render(<NewFromTemplateDialog notebooks={[]} onCreate={vi.fn()} onClose={vi.fn()} />);
+    render(
+      <NewFromTemplateDialog
+        notebooks={[]}
+        templates={BUILT_IN_TEMPLATES}
+        onCreate={vi.fn()}
+        onClose={vi.fn()}
+      />,
+    );
     expect(screen.getByRole('button', { name: 'Create note' })).toBeDisabled();
+  });
+
+  it('lists only the library templates and explains an empty Templates folder', () => {
+    const onClose = vi.fn();
+    const { rerender } = render(
+      <NewFromTemplateDialog
+        notebooks={[{ path: 'Notes', name: 'Notes' }]}
+        templates={[{ id: 'custom', name: 'Custom', content: '{{title}}{{cursor}} end' }]}
+        onCreate={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    expect(screen.getByRole('combobox', { name: 'Template' })).toHaveValue('custom');
+    expect(screen.queryByRole('option', { name: 'Daily' })).not.toBeInTheDocument();
+    rerender(
+      <NewFromTemplateDialog
+        notebooks={[{ path: 'Notes', name: 'Notes' }]}
+        templates={[]}
+        onCreate={vi.fn()}
+        onClose={onClose}
+      />,
+    );
+    expect(screen.getByText(/No templates in this library yet/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Create note' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+    expect(onClose).toHaveBeenCalledOnce();
   });
 });

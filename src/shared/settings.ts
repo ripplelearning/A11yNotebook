@@ -56,6 +56,12 @@ export interface NotebookSettings {
   transcriptionModel?: 'smaller' | 'larger';
   /** Last notebook open in this library, restored on reopen. Not a user setting; recorded as notebooks are selected. */
   lastNotebookPath?: string;
+  /**
+   * Built-in templates have been copied into this library's Templates
+   * folder. Not a user setting; once set, a built-in copy the user later
+   * deletes stays deleted instead of being re-seeded on the next open.
+   */
+  templatesSeeded?: boolean;
 }
 
 export const DEFAULT_SETTINGS: NotebookSettings = {
@@ -341,6 +347,7 @@ export function validateSettings(
   const transcriptionModel =
     settings.transcriptionModel === undefined ? undefined : settings.transcriptionModel;
   const lastNotebookPath = settings.lastNotebookPath === undefined ? undefined : settings.lastNotebookPath;
+  const templatesSeeded = settings.templatesSeeded === undefined ? undefined : settings.templatesSeeded;
   if (
     !Number.isInteger(settings.autosaveDelay) ||
     settings.autosaveDelay < 0 ||
@@ -386,6 +393,7 @@ export function validateSettings(
     typeof autoFocusGridsOnViewSwitch !== 'boolean' ||
     (transcriptionModel !== undefined && transcriptionModel !== 'smaller' && transcriptionModel !== 'larger') ||
     (lastNotebookPath !== undefined && typeof lastNotebookPath !== 'string') ||
+    (templatesSeeded !== undefined && typeof templatesSeeded !== 'boolean') ||
     !settings.shortcuts ||
     typeof settings.shortcuts !== 'object' ||
     Array.isArray(settings.shortcuts)
@@ -453,6 +461,7 @@ export function validateSettings(
     autoFocusGridsOnViewSwitch,
     transcriptionModel,
     lastNotebookPath,
+    templatesSeeded,
   };
 }
 

@@ -67,11 +67,16 @@ export function canonicalTempDir(): string {
  * treats a note as an external file and opens an "Open external file"
  * dialog instead. Attachments (.csv, .xlsx, .pdf, .epub, …) need no
  * provenance record: the vault scan picks them up as attachments.
+ *
+ * The library lives under the platform temp dir by default. Pass
+ * `baseDir` to seed elsewhere: deleting a note moves it to the Recycle
+ * Bin, and some mounts (a tmpfs /tmp) refuse trashing, so a test that
+ * deletes a note seeds under a trashable folder instead.
  */
-export function seedLibrary(notebooks: SeedNotebook[]): SeedPaths {
-  const baseDir = mkdtempSync(path.join(canonicalTempDir(), 'a11y-e2e-verify-'));
-  const libraryDir = path.join(baseDir, 'library');
-  const userDataDir = path.join(baseDir, 'user-data');
+export function seedLibrary(notebooks: SeedNotebook[], baseDir?: string): SeedPaths {
+  const base = baseDir ?? mkdtempSync(path.join(canonicalTempDir(), 'a11y-e2e-verify-'));
+  const libraryDir = path.join(base, 'library');
+  const userDataDir = path.join(base, 'user-data');
   mkdirSync(path.join(libraryDir, '.a11ynotebook'), { recursive: true });
   mkdirSync(userDataDir, { recursive: true });
   const provenance: Record<string, string> = {};
@@ -109,7 +114,7 @@ export function seedLibrary(notebooks: SeedNotebook[]): SeedPaths {
     ),
     'utf8',
   );
-  return { libraryDir, userDataDir, baseDir };
+  return { libraryDir, userDataDir, baseDir: base };
 }
 
 /**

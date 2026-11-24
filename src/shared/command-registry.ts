@@ -58,6 +58,7 @@ export type CommandId =
   | 'check-spelling-grammar'
   | 'open-thesaurus'
   | 'new-from-template'
+  | 'save-as-template'
   | 'annotate-selection'
   | 'annotate-pdf-selection'
   | 'annotate-current-semantic-element'
@@ -575,6 +576,12 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'New note from template',
     description: 'Choose a built-in or library template.',
     shortcut: 'Ctrl+Shift+N',
+  },
+  {
+    id: 'save-as-template',
+    label: 'Save note as template…',
+    description: 'Save the open note as a template in the Templates folder.',
+    shortcut: 'Ctrl+Shift+S',
   },
   {
     id: 'annotate-selection',

@@ -91,6 +91,7 @@ function setup(
           noteEditLockMinutes: options.noteEditLockMinutes ?? 0,
           theme: options.protectedVault ? ('dark' as const) : DEFAULT_SETTINGS.theme,
           shortcuts: customBold ? { 'format-bold': 'Ctrl+Alt+B' } : {},
+          templatesSeeded: true,
         };
       }),
       getSecurityStatus: vi.fn(async () => ({

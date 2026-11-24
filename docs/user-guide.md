@@ -622,11 +622,20 @@ into the app.
 
 ## Templates and cognitive tools
 
-**New note from template** (Ctrl+Shift+N) offers Daily, Meeting, Project, Reading, and Lecture templates with a
-read-only preview and Markdown/HTML output selector (Markdown is the default). Place safe editable Markdown or HTML
-templates in `Templates/` to add your own; HTML templates are sanitized after expansion. Supported placeholders are
+**New note from template** (Ctrl+Shift+N) lists the templates in the library's `Templates/` folder with a
+read-only preview and Markdown/HTML output selector (Markdown is the default). Every library has a `Templates/`
+folder at its root: the first time a library is opened, the five built-in templates — Daily, Meeting, Project,
+Reading, and Lecture — are copied there, and new libraries get fresh copies. Templates are ordinary notes, so
+open one to edit it; editing a library's copy changes only that library's copy, and deleting a built-in copy
+leaves it deleted. Place safe editable Markdown or HTML templates in `Templates/` to add your own; HTML templates
+are sanitized after expansion. Supported placeholders are
 `{{title}}`, `{{date}}`, `{{time}}`, `{{weekday}}`, `{{notebook}}`, and `{{cursor}}`; the first cursor marker sets
 the editing position. Built-ins convert to the selected format.
+
+**Save note as template** (Ctrl+Shift+S) saves the open note as a template: choose a template name (prefilled
+with the note's title) and whether to keep the original note or discard it once the template is created. The
+template keeps the note's format (Markdown or HTML). If a template with that name already exists, the dialog
+asks whether to replace it.
 
 Choose **Cognitive tools** to create/open `.outline.md`, `.mindmap.json`, `.cards.md`, `.csv`, or `.grid.md` assets.
 Outline and mind-map trees use arrows for navigation, Enter for a new sibling, Tab/Shift+Tab for indentation,

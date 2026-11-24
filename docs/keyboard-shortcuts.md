@@ -33,6 +33,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | F7             | Spelling and Grammar Check              |
 | Shift+F7       | Thesaurus                               |
 | Ctrl+Shift+N   | New note from template                  |
+| Ctrl+Shift+S   | Save note as template…                  |
 | Ctrl+Shift+A   | Annotate selection                      |
 | Ctrl+Alt+A     | Annotate PDF selection                  |
 | Ctrl+Alt+P     | Annotate this paragraph/heading/cell    |

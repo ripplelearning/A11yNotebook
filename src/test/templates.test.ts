@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { BUILT_IN_TEMPLATES, expandTemplate, templateNotePath, validateNoteTitle } from '../shared/templates';
+import {
+  BUILT_IN_TEMPLATES,
+  expandTemplate,
+  missingBuiltInTemplates,
+  templateNameExists,
+  templateNotePath,
+  validateNoteTitle,
+} from '../shared/templates';
 
 const now = new Date(2026, 9, 3, 9, 5);
 
@@ -70,5 +77,49 @@ describe('template note file names', () => {
     expect(templateNotePath('', 'Idea.md')).toBe('Idea.md');
     expect(validateNoteTitle('日本語 notes')).toBeNull();
     expect(validateNoteTitle('x'.repeat(201))).not.toBeNull();
+  });
+});
+
+describe('built-in template seeding', () => {
+  it('seeds all five built-ins into an empty Templates folder', () => {
+    expect(missingBuiltInTemplates([]).map((template) => template.name)).toEqual([
+      'Daily',
+      'Meeting',
+      'Project',
+      'Reading',
+      'Lecture',
+    ]);
+  });
+
+  it('skips built-ins already present and ignores notes outside Templates', () => {
+    expect(
+      missingBuiltInTemplates([
+        'Templates/Daily.md',
+        'Templates/meeting.html',
+        'Work/Daily.md',
+        'Templates/My notes.md',
+      ]).map((template) => template.name),
+    ).toEqual(['Project', 'Reading', 'Lecture']);
+  });
+
+  it('seeds nothing once every built-in is present', () => {
+    expect(
+      missingBuiltInTemplates([
+        'Templates/Daily.md',
+        'Templates/Meeting.md',
+        'Templates/Project.md',
+        'Templates/Reading.md',
+        'Templates/Lecture.md',
+      ]),
+    ).toEqual([]);
+  });
+
+  it('matches template names case-insensitively with either extension', () => {
+    expect(templateNameExists(['Templates/Daily.md'], 'daily')).toBe(true);
+    expect(templateNameExists(['Templates/Daily.md'], 'Daily')).toBe(true);
+    expect(templateNameExists(['Templates/Meeting.html'], 'Meeting')).toBe(true);
+    expect(templateNameExists(['Templates/Meeting.html'], 'Lecture')).toBe(false);
+    expect(templateNameExists(['Work/Daily.md'], 'Daily')).toBe(false);
+    expect(templateNameExists([], 'Daily')).toBe(false);
   });
 });

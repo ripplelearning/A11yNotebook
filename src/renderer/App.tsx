@@ -160,7 +160,13 @@ import { isAllowedLinkUrl, parseLinkUrl } from '../shared/links';
 import { isAliusPath, type ImportPending } from '../shared/alius';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
-import type { NoteTemplate } from '../shared/templates';
+import SaveAsTemplateDialog, { type SaveAsTemplateResult } from './features/templates/SaveAsTemplateDialog';
+import {
+  TEMPLATES_FOLDER,
+  missingBuiltInTemplates,
+  templateNotePath,
+  type NoteTemplate,
+} from '../shared/templates';
 import { useAnnotations } from './features/annotations/useAnnotations';
 import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
@@ -231,6 +237,7 @@ type DialogId =
   | 'feedback'
   | 'settings'
   | 'template'
+  | 'save-as-template'
   | 'attachment-insert'
   | 'web-capture'
   | 'note-metadata'
@@ -1389,6 +1396,46 @@ export default function App() {
       cancelled = true;
     };
   }, [vault?.path, securityLocked]);
+
+  // Seed the built-in templates into this library's Templates folder on
+  // first open: new libraries get fresh copies, and existing libraries
+  // get any built-in that is missing. The templatesSeeded marker in the
+  // library's settings makes this once-per-library, so a built-in copy
+  // the user later deletes stays deleted; a failed seed leaves the
+  // marker unset and retries on the next open.
+  const templatesSeededRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!vault || securityLocked || settingsLoadFailed) return;
+    if (settingsVaultPath !== vault.path) return;
+    if (settings.templatesSeeded) return;
+    if (templatesSeededRef.current === vault.path) return;
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge?.createNote) return;
+    templatesSeededRef.current = vault.path;
+    const root = vault.path;
+    const generation = vaultGenerationRef.current;
+    const missing = missingBuiltInTemplates(allEntries.map((entry) => entry.path));
+    const stillCurrent = () =>
+      !switchingRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation;
+    void (async () => {
+      let latest = vault;
+      try {
+        for (const template of missing) {
+          if (!stillCurrent()) return;
+          latest = await bridge.createNote(
+            templateNotePath(TEMPLATES_FOLDER, template.name, template.format ?? 'markdown'),
+            template.content,
+          );
+        }
+      } catch {
+        if (stillCurrent()) setStatusMessage('Could not copy the built-in templates into the Templates folder.');
+        return;
+      }
+      if (!stillCurrent()) return;
+      setVault(latest);
+      if (stillCurrent()) void persistSettings({ ...settings, templatesSeeded: true });
+    })();
+  }, [vault, securityLocked, settingsLoadFailed, settingsVaultPath, settings, persistSettings, allEntries]);
 
   useLayoutEffect(() => {
     setSelectedNotebookPath(undefined);
@@ -6500,6 +6547,18 @@ export default function App() {
       navigateScreen('assets');
       return;
     }
+    if (commandId === 'save-as-template') {
+      if (!vault) {
+        setStatusMessage('Open a library before saving a note as a template.');
+        return;
+      }
+      if (!currentNote) {
+        setStatusMessage('Open a note before saving it as a template.');
+        return;
+      }
+      setActiveDialog('save-as-template');
+      return;
+    }
     if (commandId === 'new-from-template') {
       if (selectedTab === 'notes-files' && !selectedNotebookPath) {
         setStatusMessage('Select a notebook before creating a note from a template.');
@@ -8699,6 +8758,56 @@ export default function App() {
                 ? `Web page captured as ${format.toUpperCase()}. ${result.omittedImages} image${result.omittedImages === 1 ? ' was' : 's were'} unavailable; the note explains the omissions.`
                 : `Web page captured as ${format.toUpperCase()}. Open it from Notes and Files when ready.`,
             );
+          }}
+        />
+      ) : null}
+      {activeDialog === 'save-as-template' && currentNote ? (
+        <SaveAsTemplateDialog
+          initialName={currentNote.title}
+          existingNames={allEntries
+            .filter((entry) => entry.kind === 'note' && entry.path.startsWith(`${TEMPLATES_FOLDER}/`))
+            .map((entry) => entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''))}
+          onClose={closeDialog}
+          onSave={async ({ name, action, replace }: SaveAsTemplateResult) => {
+            const note = currentNote;
+            const bridge = window.a11yNotebook?.vault;
+            if (!note || !bridge || !vault) throw new Error('No note is open.');
+            // The template keeps the open note's format and its current
+            // content, including unsaved edits.
+            const format = /\.html?$/i.test(note.path) ? ('html' as const) : ('markdown' as const);
+            const targetPath = templateNotePath(TEMPLATES_FOLDER, name, format);
+            if (findEntry(vault.entries, targetPath)) {
+              if (!replace) throw new Error(`A template named “${name}” already exists.`);
+              await bridge.saveNote(targetPath, note.content);
+              await refreshVault();
+            } else {
+              setVault(await bridge.createNote(targetPath, note.content));
+            }
+            if (action === 'discard') {
+              // The delete reuses the app's own safeguards: a note with
+              // tasks or protection asks first instead of vanishing, and
+              // unsaved edits ask too (the template already holds them).
+              // The Recycle Bin confirmation can also be cancelled, and
+              // the move itself can fail, so check the library afterwards
+              // instead of assuming the original is gone.
+              const deleteNeedsConfirmation =
+                tasks.some((task) => task.path === note.path) ||
+                Boolean(findProtectionBlockInTree(vault.entries, note.path));
+              await deleteEntry(note.path);
+              if (deleteNeedsConfirmation) {
+                setStatusMessage(`Saved ${name} as a template.`);
+              } else {
+                const fresh = await bridge.get().catch(() => null);
+                const discarded = fresh ? !findEntry(fresh.entries, note.path) : false;
+                setStatusMessage(
+                  discarded
+                    ? `Saved ${name} as a template and discarded the original note.`
+                    : `Saved ${name} as a template. The original note was kept.`,
+                );
+              }
+            } else {
+              setStatusMessage(`Saved ${name} as a template.`);
+            }
           }}
         />
       ) : null}

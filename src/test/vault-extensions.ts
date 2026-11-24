@@ -71,7 +71,7 @@ export function vaultExtensions() {
     saveSpreadsheetAsXlsx: vi.fn(async () => ''),
     getImageAlt: vi.fn(async () => ''),
     saveImageAlt: vi.fn(async () => undefined),
-    getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true })),
+    getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true, templatesSeeded: true })),
     saveSettings: vi.fn(async () => undefined),
     getReminders: vi.fn(async () => []),
     createReminder: vi.fn(async () => []),
