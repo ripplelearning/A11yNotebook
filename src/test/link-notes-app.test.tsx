@@ -46,7 +46,7 @@ function installBridge() {
     vault: {
       ...vaultExtensions(),
       get: vi.fn(async () => vault),
-      getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true, autosaveDelay: 0 })),
+      getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true, autosaveDelay: 0, templatesSeeded: true })),
       readNote: vi.fn(async () => '# Idea'),
       saveNote: vi.fn(async () => undefined),
       createNote: vi.fn(async () => vault),

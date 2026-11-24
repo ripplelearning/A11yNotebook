@@ -5,6 +5,35 @@ export interface NoteTemplate {
   format?: 'markdown' | 'html';
 }
 
+/** Folder at the library root holding every template as an editable note. */
+export const TEMPLATES_FOLDER = 'Templates';
+
+/**
+ * Built-in templates not yet present as notes in the Templates folder.
+ * Matching is by template name (without extension, case-insensitive), so
+ * a built-in the user renamed or moved out stays missing, and one they
+ * deleted stays deleted once the seeding marker is set.
+ */
+export function missingBuiltInTemplates(templatePaths: string[]): NoteTemplate[] {
+  const present = new Set(
+    templatePaths
+      .filter((path) => path.startsWith(`${TEMPLATES_FOLDER}/`))
+      .map((path) => path.slice(TEMPLATES_FOLDER.length + 1).replace(/\.(?:md|html|htm|txt)$/i, '').toLowerCase()),
+  );
+  return BUILT_IN_TEMPLATES.filter((template) => !present.has(template.name.toLowerCase()));
+}
+
+/** Whether a template with this name already exists in the Templates folder. */
+export function templateNameExists(templatePaths: string[], name: string): boolean {
+  const wanted = name.trim().toLowerCase();
+  return templatePaths.some(
+    (path) =>
+      path.startsWith(`${TEMPLATES_FOLDER}/`) &&
+      path.slice(TEMPLATES_FOLDER.length + 1).replace(/\.(?:md|html|htm|txt)$/i, '').toLowerCase() ===
+        wanted,
+  );
+}
+
 export interface TemplateContext {
   title: string;
   notebook: string;

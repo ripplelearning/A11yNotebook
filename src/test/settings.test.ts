@@ -325,4 +325,20 @@ describe('settings load conflict tolerance', () => {
     );
     expect(() => validateSettings({ ...DEFAULT_SETTINGS, showOriginalFiles: 'yes' as never })).toThrow();
   });
+  it('keeps the built-in template seeding marker and rejects a non-boolean one', () => {
+    // Once-per-library marker: set after the built-ins are copied into
+    // the library's Templates folder, so a deleted built-in copy stays
+    // deleted instead of being re-seeded on the next open.
+    expect(
+      validateSettings({ autosaveDelay: 900, theme: 'dark', fontSize: 16, shortcuts: {} }).templatesSeeded,
+    ).toBeUndefined();
+    expect(validateSettings({ ...DEFAULT_SETTINGS, templatesSeeded: true }).templatesSeeded).toBe(true);
+    expect(
+      validateSettings(JSON.parse(JSON.stringify({ ...DEFAULT_SETTINGS, templatesSeeded: true })))
+        .templatesSeeded,
+    ).toBe(true);
+    expect(() => validateSettings({ ...DEFAULT_SETTINGS, templatesSeeded: 'yes' as never })).toThrow(
+      'Invalid settings values.',
+    );
+  });
 });
