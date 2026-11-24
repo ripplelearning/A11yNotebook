@@ -20,7 +20,7 @@ export interface NewFromTemplateDialogProps {
     path: string,
     content: string,
     cursor: number,
-    /** Library path of the chosen user template, when it has one; built-ins have none. */
+    /** Library path of the chosen template; every template listed here is a file in the Templates folder (seeded built-ins included), so all record one. */
     sourceTemplatePath?: string,
   ) => void | Promise<void>;
   onClose: () => void;
@@ -98,9 +98,9 @@ export default function NewFromTemplateDialog({
     setError('');
     setCreating(true);
     try {
-      // A user template lives in the library's Templates folder, so the
-      // new note can remember it and offer a fresh fillable copy later.
-      // Built-ins have no library file yet, so they record no link.
+      // Every template listed here is a file in the library's Templates
+      // folder — seeded built-ins included — so the new note can remember
+      // it and offer a fresh fillable copy later.
       const sourceTemplatePath = template.id.startsWith('user:') ? template.id.slice('user:'.length) : undefined;
       await onCreate(templateNotePath(notebook.path, title, format), previewContent, cursor, sourceTemplatePath);
       onClose();

@@ -21,7 +21,9 @@ import {
  *   its source template;
  * - filling a template note itself never changes the template: saving
  *   offers a filled copy with format, location, and name prompts;
- * - a filled note whose source template is gone says so on its button.
+ * - a filled note whose source template is gone says so on its button;
+ * - a note created from a seeded built-in template (Meeting) records a
+ *   link to it and offers a working fresh fillable copy.
  *
  * Rename-follow for the source-template link is covered at the store
  * level (template-links-store.test.ts: migratePaths retargets both the
@@ -198,6 +200,66 @@ test('a filled note whose source template is gone says so on its button', async 
     const gone = page.getByRole('button', { name: 'Source template no longer in this library' });
     await expect(gone).toBeVisible();
     await expect(gone).toBeDisabled();
+
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('a note created from a seeded built-in template records a link and offers a fresh copy', async () => {
+  let app: ElectronApplication | null = null;
+  // No Templates folder and no settings file: the app seeds the
+  // built-ins itself on first open, so Meeting arrives as a real file
+  // in Templates/ and must record a link like any user template.
+  const paths = seedLibrary([
+    { name: 'Notes', files: [{ name: 'Scratch.md', content: '# Scratch\n' }] },
+  ]);
+  try {
+    const launched = await launchApp(paths.userDataDir);
+    app = launched.app;
+    const page = launched.page;
+    const pageErrors: string[] = [];
+    page.on('pageerror', (error) => pageErrors.push(String(error)));
+    await waitForApp(page);
+
+    // Seeding runs just after the first open; the Templates notebook
+    // appears once the five built-in copies land.
+    await expect(page.getByRole('gridcell', { name: 'Templates' })).toBeVisible({ timeout: 30000 });
+    await dismissTutorial(page);
+
+    await openNotebook(page, 'Notes');
+    await page.keyboard.press(platformShortcut('Control+Shift+N'));
+    const dialog = page.getByRole('dialog', { name: 'New note from template' });
+    await expect(dialog).toBeVisible();
+    await dialog.getByLabel('Template').selectOption('user:Templates/Meeting.md');
+    await dialog.getByLabel('Notebook').selectOption('Notes');
+    await dialog.getByLabel('Note title').fill('Team sync');
+    await dialog.getByRole('button', { name: 'Create note' }).click();
+    await expect(dialog).toHaveCount(0);
+
+    // The new note opens in editing mode; switch to reading mode, where
+    // the fresh-copy button lives.
+    await page.keyboard.press(platformShortcut('Control+E'));
+    const freshCopy = page.getByRole('button', { name: 'New fillable copy from this template' });
+    await expect(freshCopy).toBeVisible();
+
+    // The link is recorded on disk, pointing at the seeded built-in.
+    const links = JSON.parse(
+      readFileSync(path.join(paths.libraryDir, '.a11ynotebook', 'template-links.json'), 'utf8'),
+    ) as { records: { path: string; templatePath: string }[] };
+    expect(links.records).toContainEqual(
+      expect.objectContaining({ path: 'Notes/Team sync.md', templatePath: 'Templates/Meeting.md' }),
+    );
+
+    // The button works: a fresh copy of the seeded template is created.
+    await freshCopy.click();
+    await expect(statusLine(page)).toHaveText('Created a fresh fillable copy from Meeting.md.', {
+      timeout: 10000,
+    });
+    expect(readFileSync(path.join(paths.libraryDir, 'Notes', 'Team sync (copy).md'), 'utf8')).toContain(
+      '## Agenda',
+    );
 
     expect(pageErrors).toEqual([]);
   } finally {
