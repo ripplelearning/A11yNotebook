@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { ElectronApplication } from '@playwright/test';
+import type { ElectronApplication, Page } from '@playwright/test';
 import path from 'node:path';
 import { readFileSync, writeFileSync } from 'node:fs';
 import {
@@ -82,6 +82,28 @@ async function openNote(page: Awaited<ReturnType<typeof launchApp>>['page'], fil
   await noteCell.dblclick();
 }
 
+/**
+ * Fill a template field and verify the value stuck. The field inputs
+ * live inside dangerouslySetInnerHTML, so a vault refresh that lands
+ * between Playwright resolving the input and setting its value can
+ * detach the node mid-fill: the value is set on the detached node and
+ * never reaches the app, while the fill itself reports success. Refill
+ * (re-resolving the fresh input) until the value sticks.
+ */
+async function fillTemplateField(page: Page, name: string, value: string): Promise<void> {
+  const field = page.getByRole('textbox', { name });
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await field.fill(value);
+    try {
+      await expect(field).toHaveValue(value, { timeout: 1000 });
+      return;
+    } catch {
+      // Detached mid-fill: loop around and fill the fresh input.
+    }
+  }
+  await expect(field).toHaveValue(value);
+}
+
 test('filling a note from a template bakes values on save and offers a fresh copy', async () => {
   let app: ElectronApplication | null = null;
   const paths = seed();
@@ -112,8 +134,8 @@ test('filling a note from a template bakes values on save and offers a fresh cop
     await page.keyboard.press(platformShortcut('Control+E'));
     const clientField = page.getByRole('textbox', { name: 'Client Name' });
     await expect(clientField).toBeVisible();
-    await clientField.fill('Ada Lovelace');
-    await page.getByRole('textbox', { name: 'Project' }).fill('Apollo');
+    await fillTemplateField(page, 'Client Name', 'Ada Lovelace');
+    await fillTemplateField(page, 'Project', 'Apollo');
 
     await page.keyboard.press(platformShortcut('Control+S'));
     await expect(statusLine(page)).toHaveText('Saved Intake one.', { timeout: 10000 });
@@ -158,8 +180,8 @@ test('filling a template note offers a filled copy and leaves the template uncha
 
     const clientField = page.getByRole('textbox', { name: 'Client Name' });
     await expect(clientField).toBeVisible();
-    await clientField.fill('Grace Hopper');
-    await page.getByRole('textbox', { name: 'Project' }).fill('Beacon');
+    await fillTemplateField(page, 'Client Name', 'Grace Hopper');
+    await fillTemplateField(page, 'Project', 'Beacon');
 
     await page.keyboard.press(platformShortcut('Control+S'));
     const dialog = page.getByRole('dialog', { name: 'Save filled copy' });
