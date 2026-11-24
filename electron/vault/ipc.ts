@@ -9,6 +9,7 @@ import { IPC_CHANNELS } from '../../src/shared/ipc';
 import { createVaultService, NoteReadSizeLimitError } from './service';
 import { createAnnotationStore } from './annotations';
 import { createPdfFormValueStore } from './pdf-form-values';
+import { createTemplateLinkStore } from './template-links';
 import { applyPdfFormValues } from './pdf-form-export';
 import { createMetadataStore } from './metadata';
 import {
@@ -123,6 +124,7 @@ let service: VaultService | null = null;
 let metadata: ReturnType<typeof createMetadataStore> | null = null;
 let annotations: ReturnType<typeof createAnnotationStore> | null = null;
 let pdfFormValues: ReturnType<typeof createPdfFormValueStore> | null = null;
+let templateLinks: ReturnType<typeof createTemplateLinkStore> | null = null;
 let protectedMetadata: ReturnType<typeof createProtectedMetadataStore> | null = null;
 let sendChanged: (event: VaultChangedEvent) => void = () => undefined;
 let reminderService: ReturnType<typeof createReminderService> | null = null;
@@ -695,6 +697,7 @@ async function recoverInterruptedMove(vaultService: VaultService, vault: VaultIn
         await vaultService.migrateMoveMetadata(journal.source, journal.destination).catch(() => undefined);
         await annotations?.migratePaths(journal.source, journal.destination).catch(() => undefined);
         await pdfFormValues?.migratePaths(journal.source, journal.destination).catch(() => undefined);
+        await templateLinks?.migratePaths(journal.source, journal.destination).catch(() => undefined);
         if (protectedMetadata?.enabled()) {
           await draftStore(() => {
             if (service !== vaultService) throw new Error('The open library changed.');
@@ -1065,6 +1068,39 @@ async function openVaultNow(vaultPath: string, assertCurrent: () => void = () =>
       }
     },
   });
+  // Template links live in their own metadata file, routed through
+  // encrypted protection like filled PDF form values when the library
+  // has migrated that store. Both ends of a link are notes, so the
+  // validator only checks that each file exists and is a note.
+  templateLinks = createTemplateLinkStore({
+    read: () => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
+      return routedMetadataFor(nextService).read('template-links.json');
+    },
+    write: (value) => {
+      if (securityConfig && !masterKey) throw new Error('Unlock the library before accessing its contents.');
+      return routedMetadataFor(nextService).write('template-links.json', value);
+    },
+    captureAuthorization: () => {
+      const key = masterKey;
+      const generation = securityGeneration;
+      return () => {
+        if (
+          service !== nextService ||
+          generation !== securityGeneration ||
+          masterKey !== key ||
+          (securityConfig && !key)
+        )
+          throw new Error('The open library or lock state changed.');
+      };
+    },
+    validateNote: async (relative) => {
+      if (!/\.(?:md|html?|txt)$/i.test(relative)) throw new Error('Template links require a note.');
+      const effective = await effectiveContentPath(nextService, relative);
+      if (!/\.(?:md|html?|txt)$/i.test(effective)) throw new Error('Template links require a note.');
+      await nextService.resolveEntry(relative);
+    },
+  });
   if (masterKey || !securityConfig) await startReminders(nextService, vault);
   else {
     reminderService = null;
@@ -1300,6 +1336,7 @@ const PROTECTED_FILE_STORES: Record<string, ProtectedStoreName> = {
   'reminders.json': 'reminders',
   'settings.json': 'settings',
   'pdf-form-values.json': 'pdf-form-values',
+  'template-links.json': 'template-links',
 };
 
 /**
@@ -1433,6 +1470,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
   const vault = requireService();
   const currentAnnotations = annotations;
   const currentFormValues = pdfFormValues;
+  const currentTemplateLinks = templateLinks;
   const currentReminders = reminderService;
   const currentProtected = protectedMetadata;
   assertCurrent();
@@ -1525,6 +1563,7 @@ async function relocate(relative: string, destination: string, assertCurrent: ()
       }
       await currentAnnotations?.migratePaths(relative, destination);
       await currentFormValues?.migratePaths(relative, destination);
+      await currentTemplateLinks?.migratePaths(relative, destination);
       if (currentProtected?.enabled()) await draftStore(assertCurrent).migratePaths(relative, destination);
       for (const [filename, snapshot] of [
         ['flashcards.json', flashcards],
@@ -3494,6 +3533,35 @@ export function setupVaultIpc(
         values as PdfFormValues,
         identity as PdfFormValuesRecord['documentIdentity'],
       );
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultTemplateLink, async (event, relative: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relative !== 'string' || !templateLinks) throw new Error('Invalid template link request.');
+    const current = templateLinks;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.get(relative);
+      access.assertCurrent();
+      return result;
+    });
+  });
+  ipcMain.handle(IPC_CHANNELS.vaultTemplateLinkSave, async (event, relative: unknown, templatePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (
+      typeof relative !== 'string' ||
+      (typeof templatePath !== 'string' && templatePath !== null) ||
+      !templateLinks
+    )
+      throw new Error('Invalid template link request.');
+    const current = templateLinks;
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const result = await current.save(relative, templatePath);
       access.assertCurrent();
       return result;
     });

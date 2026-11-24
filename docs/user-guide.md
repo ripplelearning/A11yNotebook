@@ -637,6 +637,16 @@ with the note's title) and whether to keep the original note or discard it once 
 template keeps the note's format (Markdown or HTML). If a template with that name already exists, the dialog
 asks whether to replace it.
 
+Any other `{{Name}}` in a template is a fillable textbox: opening a note made from the template shows a textbox
+named for it in the reading view (a repeated name gets numbered names, such as "Client Name 1" and "Client Name 2").
+Fill the boxes in while reading; the rest of the note stays read-only. Saving bakes the typed values into the note
+text as plain filled text, and the filled note remembers its template: a "New fillable copy from this template"
+button in its reading view creates a fresh fillable copy. If the template was renamed or moved, the button follows
+it; if the template is gone, the button says so. Filling in a template note itself never changes the template:
+saving it asks for the filled copy's format, location, and name instead. Edit a template's structure in editing
+mode, where the `{{Name}}` markers are plain text. A misspelled placeholder such as `{{dat}}` becomes a textbox
+rather than staying visible as text.
+
 Choose **Cognitive tools** to create/open `.outline.md`, `.mindmap.json`, `.cards.md`, `.csv`, or `.grid.md` assets.
 Outline and mind-map trees use arrows for navigation, Enter for a new sibling, Tab/Shift+Tab for indentation,
 and Alt+Up/Down to reorder. Mind-map SVG is decorative; the accessible tree is authoritative. Mind maps export

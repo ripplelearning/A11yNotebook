@@ -161,12 +161,20 @@ import { isAliusPath, type ImportPending } from '../shared/alius';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
 import SaveAsTemplateDialog, { type SaveAsTemplateResult } from './features/templates/SaveAsTemplateDialog';
+import FilledCopyDialog from './features/templates/FilledCopyDialog';
 import {
   TEMPLATES_FOLDER,
+  expandTemplate,
   missingBuiltInTemplates,
   templateNotePath,
   type NoteTemplate,
 } from '../shared/templates';
+import {
+  fillTemplateFields,
+  hasFilledTemplateValues,
+  isTemplateNotePath,
+  parseTemplateFields,
+} from '../shared/template-fields';
 import { useAnnotations } from './features/annotations/useAnnotations';
 import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
@@ -238,6 +246,7 @@ type DialogId =
   | 'settings'
   | 'template'
   | 'save-as-template'
+  | 'filled-copy'
   | 'attachment-insert'
   | 'web-capture'
   | 'note-metadata'
@@ -449,6 +458,22 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [focusAnnouncement]);
   const [activeDialog, setActiveDialog] = useState<DialogId | null>(null);
+  // Source template path per filled note, from the template-links
+  // sidecar: null once loaded means the note has no source template.
+  const [templateLinksByPath, setTemplateLinksByPath] = useState<Record<string, string | null>>({});
+  // Typed {{Name}} field values per open note, in field order. A ref,
+  // not state: typing must not re-render (re-rendering replaces the
+  // reading view's inputs and would steal focus). Values are read at
+  // save time and dropped when the note's content changes or it saves.
+  const templateFieldValuesRef = useRef<Record<string, string[]>>({});
+  // A filled-in template note awaiting its filled-copy dialog: the baked
+  // content and the template it came from.
+  const [filledCopyRequest, setFilledCopyRequest] = useState<{
+    notePath: string;
+    templatePath: string;
+    baked: string;
+    format: 'markdown' | 'html';
+  } | null>(null);
   const [tutorialOpen, setTutorialOpen] = useState(false);
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
@@ -606,6 +631,10 @@ export default function App() {
     if (switchingRef.current) return;
     const note = openNotes.find((item) => item.id === id);
     if (note && note.content !== content) {
+      // Typed field values belong to the text they were typed against:
+      // any content edit drops them rather than baking a stale value
+      // into a shifted field.
+      delete templateFieldValuesRef.current[note.path];
       const textarea = editorRef.current;
       const caret =
         textarea && document.activeElement === textarea ? (textarea.selectionStart ?? content.length) : content.length;
@@ -1109,6 +1138,25 @@ export default function App() {
       action,
     });
   };
+  // A filled note's source template, loaded when it becomes current:
+  // the reading view offers a fresh fillable copy from that template.
+  // A renamed or moved template still resolves, because the sidecar's
+  // migratePaths retargets the link with the rename; a deleted template
+  // simply has no entry to resolve to.
+  const currentNotePath = currentNote?.path;
+  useEffect(() => {
+    if (!currentNotePath || !window.a11yNotebook?.vault.getTemplateLink) return;
+    let cancelled = false;
+    void window.a11yNotebook.vault
+      .getTemplateLink(currentNotePath)
+      .then((link) => {
+        if (!cancelled) setTemplateLinksByPath((current) => ({ ...current, [currentNotePath]: link }));
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [currentNotePath]);
   useEffect(() => {
     const forced = forceEditNoteRef.current;
     if (forced) {
@@ -5479,6 +5527,98 @@ export default function App() {
     setStatusMessage('Note conflict resolved.');
   };
 
+  /**
+   * Template fields on save (hybrid save): typed values are baked into
+   * the saved note text — markers replaced by plain filled text, so the
+   * note stays searchable and exportable — while fields left blank keep
+   * their markers and stay fillable. Returns true when the save was
+   * handled here (a baked save, or the filled-copy dialog for a
+   * template note), false when the normal save should proceed.
+   *
+   * A template note itself is never changed by filling: saving it opens
+   * the filled-copy dialog instead, asking for format, location, and
+   * name. Editing the template happens in editing mode, where the raw
+   * {{Name}} markers are plain text.
+   */
+  const saveTemplateFields = async (note: OpenNote): Promise<boolean> => {
+    const bridge = window.a11yNotebook?.vault;
+    if (!bridge) return false;
+    const format = /\.html?$/i.test(note.path) ? 'html' : /\.md$/i.test(note.path) ? 'markdown' : null;
+    if (!format) return false;
+    const fields = parseTemplateFields(note.content, format);
+    if (!fields.length) return false;
+    const values = templateFieldValuesRef.current[note.path] ?? [];
+    if (!hasFilledTemplateValues(values)) return false;
+    const baked = fillTemplateFields(
+      note.content,
+      fields.map((field) => {
+        const value = values[field.index];
+        return value !== undefined && value.trim() !== '' ? value : null;
+      }),
+      format,
+    );
+    if (isTemplateNotePath(note.path)) {
+      setFilledCopyRequest({ notePath: note.path, templatePath: note.path, baked, format });
+      setActiveDialog('filled-copy');
+      return true;
+    }
+    const contentToSave = format === 'html' ? sanitizeNoteHtml(baked, note.path) : baked;
+    try {
+      await bridge.saveNote(note.path, contentToSave, note.saved);
+      setOpenNotes((current) =>
+        current.map((item) =>
+          item.id === note.id ? { ...item, content: contentToSave, saved: contentToSave } : item,
+        ),
+      );
+      delete templateFieldValuesRef.current[note.path];
+      clearEditLock(note.path);
+      setStatusMessage(`Saved ${note.title}.`);
+      await refreshVault();
+      await refreshLinkIndex();
+    } catch {
+      setStatusMessage(`Could not save ${note.title}.`);
+      await synchronization.checkDisk(note.path);
+    }
+    return true;
+  };
+
+  /** Create a fresh fillable copy of the current note's source template. */
+  const createFreshCopyFromTemplate = async () => {
+    const note = openNotes.find((item) => item.id === selectedTab);
+    const bridge = window.a11yNotebook?.vault;
+    if (!note || !bridge) return;
+    const templatePath = templateLinksByPath[note.path];
+    if (!templatePath) return;
+    const templateEntry = allEntries.find((entry) => entry.path === templatePath);
+    if (!templateEntry) {
+      setStatusMessage('The source template is no longer in this library.');
+      return;
+    }
+    try {
+      const templateContent = await bridge.readNote(templatePath);
+      const directory = note.path.split('/').slice(0, -1).join('/');
+      const extension = /\.html?$/i.test(templatePath) ? '.html' : '.md';
+      const base = note.title.replace(/\.html?$/i, '').replace(/\.md$/i, '');
+      let copyName = `${base} (copy)`;
+      let copyPath = directory ? `${directory}/${copyName}${extension}` : `${copyName}${extension}`;
+      let copyNumber = 2;
+      while (allEntries.some((entry) => entry.path === copyPath)) {
+        copyName = `${base} (copy ${copyNumber})`;
+        copyPath = directory ? `${directory}/${copyName}${extension}` : `${copyName}${extension}`;
+        copyNumber += 1;
+      }
+      const notebookName = directory.split('/').at(-1) ?? '';
+      const expanded = expandTemplate(templateContent, { title: copyName, notebook: notebookName });
+      setVault(await bridge.createNote(copyPath, expanded.content));
+      await bridge.saveTemplateLink?.(copyPath, templatePath)?.catch(() => undefined);
+      setTemplateLinksByPath((current) => ({ ...current, [copyPath]: templatePath }));
+      await openEntry({ path: copyPath, name: copyPath.split('/').at(-1)!, kind: 'note', provenance: 'created' });
+      setStatusMessage(`Created a fresh fillable copy from ${templateEntry.name}.`);
+    } catch {
+      setStatusMessage('Could not create a fresh copy from the template.');
+    }
+  };
+
   const saveActiveNote = async () => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note) {
@@ -5490,6 +5630,9 @@ export default function App() {
       return;
     }
     if (!window.a11yNotebook || activeConflict || synchronization.checking) return;
+    // A filled-in template note saves as a filled copy (or bakes its
+    // values into its own text); that path handles the save itself.
+    if (await saveTemplateFields(note)) return;
     // A manual save supersedes any pending autosave: clear its timer
     // now, before the disk write, so the autosave cannot fire during
     // this save with the pre-save baseline and throw "Note changed on
@@ -8191,6 +8334,21 @@ export default function App() {
                       : 'Bookmark note'}
                   </button>
                 ) : null}
+                {mode === 'read-only' && currentNote && templateLinksByPath[currentNote.path] ? (
+                  // Not gated on the command-buttons setting: unlike the
+                  // Bookmark and Export buttons, this action has no
+                  // command-palette equivalent, so hiding it would leave
+                  // a filled note with no way to make a fresh copy.
+                  allEntries.some((entry) => entry.path === templateLinksByPath[currentNote.path]) ? (
+                    <button type="button" onClick={() => void createFreshCopyFromTemplate()}>
+                      New fillable copy from this template
+                    </button>
+                  ) : (
+                    <button type="button" disabled>
+                      Source template no longer in this library
+                    </button>
+                  )
+                ) : null}
                 {mode === 'read-only' && securityEnabled ? (
                   encryptedNotePath === currentNote.path ? (
                     <span role="status">Encrypted note</span>
@@ -8312,6 +8470,16 @@ export default function App() {
                               (item) => item.path === currentNote.path && !item.htmlTask && item.line === line,
                             );
                             if (task) void toggleTask(task);
+                          }
+                        : undefined
+                    }
+                    templateFieldValues={templateFieldValuesRef.current[currentNote.path] ?? []}
+                    onTemplateFieldChange={
+                      mode === 'read-only' && !currentNoteProtected && !currentNoteEditLocked && !switchingVault
+                        ? (index, value) => {
+                            const values = [...(templateFieldValuesRef.current[currentNote.path] ?? [])];
+                            values[index] = value;
+                            templateFieldValuesRef.current[currentNote.path] = values;
                           }
                         : undefined
                     }
@@ -8823,8 +8991,14 @@ export default function App() {
           ]}
           templates={userTemplates}
           onClose={closeDialog}
-          onCreate={async (relative, content, cursor) => {
+          onCreate={async (relative, content, cursor, sourceTemplatePath) => {
             setVault(await window.a11yNotebook!.vault.createNote(relative, content));
+            if (sourceTemplatePath) {
+              await window.a11yNotebook!.vault
+                .saveTemplateLink?.(relative, sourceTemplatePath)
+                ?.catch(() => undefined);
+              setTemplateLinksByPath((current) => ({ ...current, [relative]: sourceTemplatePath }));
+            }
             await openEntry({ path: relative, name: relative.split('/').at(-1)!, kind: 'note', provenance: 'created' });
             setStatusMessage('Note created from template.');
             // A note that was just created is created to be written in:
@@ -8833,6 +9007,39 @@ export default function App() {
             forceEditNoteRef.current = relative;
             pendingEditorFocusRef.current = { path: relative, cursor };
             setMode('edit');
+          }}
+        />
+      ) : null}
+      {activeDialog === 'filled-copy' && filledCopyRequest ? (
+        <FilledCopyDialog
+          templateName={
+            filledCopyRequest.templatePath.split('/').at(-1)?.replace(/\.(?:md|html?)$/i, '') ?? 'Template'
+          }
+          defaultName={
+            filledCopyRequest.templatePath.split('/').at(-1)?.replace(/\.(?:md|html?)$/i, '') ?? 'Template'
+          }
+          notebooks={notebooks}
+          initialNotebookPath=""
+          sourceFormat={filledCopyRequest.format}
+          onClose={() => {
+            setFilledCopyRequest(null);
+            closeDialog();
+          }}
+          onCreate={async (path, format) => {
+            const request = filledCopyRequest;
+            const bridge = window.a11yNotebook?.vault;
+            if (!request || !bridge) return;
+            const content =
+              request.format === format
+                ? request.baked
+                : convertNoteContent(request.baked, request.format, format, path);
+            setVault(await bridge.createNote(path, content));
+            await bridge.saveTemplateLink?.(path, request.templatePath)?.catch(() => undefined);
+            setTemplateLinksByPath((current) => ({ ...current, [path]: request.templatePath }));
+            delete templateFieldValuesRef.current[request.notePath];
+            setFilledCopyRequest(null);
+            await openEntry({ path, name: path.split('/').at(-1)!, kind: 'note', provenance: 'created' });
+            setStatusMessage('Filled copy saved.');
           }}
         />
       ) : null}

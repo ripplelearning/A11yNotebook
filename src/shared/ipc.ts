@@ -118,6 +118,8 @@ export const IPC_CHANNELS = {
   vaultPdfAnnotationDelete: 'vault:pdf-annotation-delete',
   vaultPdfFormValues: 'vault:pdf-form-values',
   vaultPdfFormValuesSave: 'vault:pdf-form-values-save',
+  vaultTemplateLink: 'vault:template-link',
+  vaultTemplateLinkSave: 'vault:template-link-save',
   vaultPdfFilledDownload: 'vault:pdf-filled-download',
   vaultPdfFilledCopy: 'vault:pdf-filled-copy',
   vaultOcrSave: 'vault:ocr-save',
