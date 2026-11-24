@@ -2,11 +2,12 @@
 import DOMPurify from 'dompurify';
 import MarkdownIt from 'markdown-it';
 import footnote from 'markdown-it-footnote';
-import { useState, type RefObject } from 'react';
+import { useEffect, useRef, useState, type RefObject } from 'react';
 import type { VaultLink } from '../../../shared/types';
 import type { VaultTask } from '../../../shared/types';
 import { attachmentPathFromUrl, imageUrl } from '../../../shared/attachments';
 import { extractPastedImageDescription } from '../../../shared/paste-content';
+import { KNOWN_TEMPLATE_PLACEHOLDERS, parseTemplateFields, type TemplateField } from '../../../shared/template-fields';
 import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
 import { expandMathSpans, htmlToMarkdown, markdownImageReference, markdownToHtml } from './format-conversion';
@@ -49,6 +50,84 @@ function markdownTaskLines(markdown: InstanceType<typeof MarkdownIt>, content: s
     }
   }
   return lines;
+}
+
+const KNOWN_PLACEHOLDERS = new Set<string>(KNOWN_TEMPLATE_PLACEHOLDERS);
+
+/**
+ * Reading view renders a template's {{Name}} markers as fillable
+ * textboxes. The six known placeholders are left as literal text; every
+ * other marker becomes an <input> whose accessible name is the field
+ * name (numbered when the name repeats: "Client Name 1", "Client Name
+ * 2"). The walk only visits visible text: markers inside <code> or
+ * <pre> stay literal, matching parseTemplateFields, which skips fenced
+ * and inline code when the note is saved.
+ *
+ * Inputs are built through the DOM after sanitizing, like the Markdown
+ * task checkboxes, so a typed value can never inject markup. Values
+ * are owned by the parent (templateFieldValues) and reported through
+ * onTemplateFieldChange; the parent never re-renders on a keystroke,
+ * so typing never steals focus by replacing the rendered HTML.
+ * Without a change handler the inputs render disabled, display-only.
+ */
+function renderTemplateFields(
+  html: string,
+  fields: TemplateField[],
+  values: readonly string[],
+  editable: boolean,
+): string {
+  if (!fields.length) return html;
+  const template = document.createElement('template');
+  template.innerHTML = html;
+  const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let node: Text | null;
+  while ((node = walker.nextNode() as Text | null)) {
+    const parent = node.parentElement;
+    if (parent?.closest('code, pre, script, style, textarea')) continue;
+    textNodes.push(node);
+  }
+  // Match each rendered marker to the next unclaimed field with the same
+  // name, so a marker the raw scan counted but the renderer did not
+  // (for example one inside a link destination) can never shift a label
+  // or a value onto a different field.
+  const byName = new Map<string, TemplateField[]>();
+  for (const field of fields) {
+    const list = byName.get(field.name) ?? [];
+    list.push(field);
+    byName.set(field.name, list);
+  }
+  const seen = new Map<string, number>();
+  for (const textNode of textNodes) {
+    const text = textNode.textContent ?? '';
+    if (!text.includes('{{')) continue;
+    const fragment = document.createDocumentFragment();
+    let previous = 0;
+    let replaced = false;
+    for (const match of text.matchAll(/\{\{([^{}]*)\}\}/g)) {
+      const name = match[1].trim();
+      if (!name || KNOWN_PLACEHOLDERS.has(name)) continue;
+      const occurrence = (seen.get(name) ?? 0) + 1;
+      seen.set(name, occurrence);
+      const field = byName.get(name)?.shift();
+      const label = field?.label ?? (occurrence > 1 ? `${name} ${occurrence}` : name);
+      const value = field ? (values[field.index] ?? '') : '';
+      fragment.append(document.createTextNode(text.slice(previous, match.index)));
+      const input = document.createElement('input');
+      input.type = 'text';
+      if (field) input.dataset.templateFieldIndex = String(field.index);
+      input.setAttribute('aria-label', label);
+      input.setAttribute('value', value);
+      if (!editable) input.disabled = true;
+      fragment.append(input);
+      previous = match.index + match[0].length;
+      replaced = true;
+    }
+    if (!replaced) continue;
+    fragment.append(document.createTextNode(text.slice(previous)));
+    textNode.replaceWith(fragment);
+  }
+  return template.innerHTML;
 }
 
 function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable: boolean): string {
@@ -178,6 +257,10 @@ interface MarkdownDocumentProps {
   onToggleHtmlTask?: (taskId: string) => void;
   /** Reading-view Markdown task toggle: called with the 1-based source line. Absent keeps checkboxes disabled. */
   onToggleMarkdownTask?: (line: number) => void;
+  /** Typed values for the note's {{Name}} template fields, in field order. */
+  templateFieldValues?: string[];
+  /** Called with the field index and typed value; absent keeps the field inputs disabled. */
+  onTemplateFieldChange?: (index: number, value: string) => void;
   /** Status announcements for automatic edits, such as list continuation. */
   announce?: (message: string) => void;
   /**
@@ -210,11 +293,38 @@ export default function MarkdownDocument({
   htmlTasks = [],
   onToggleHtmlTask,
   onToggleMarkdownTask,
+  templateFieldValues = [],
+  onTemplateFieldChange,
   announce,
   onPasteImage,
   hideModeToggle = false,
 }: MarkdownDocumentProps) {
   const [richText, setRichText] = useState(false);
+  // Template field inputs live inside dangerouslySetInnerHTML, so
+  // React's synthetic onChange never fires for them (its value tracker
+  // only knows elements React created). A native 'input' listener on
+  // the reading container catches their typing instead.
+  const readingRef = useRef<HTMLDivElement | null>(null);
+  const templateFieldChangeRef = useRef(onTemplateFieldChange);
+  useEffect(() => {
+    templateFieldChangeRef.current = onTemplateFieldChange;
+  });
+  useEffect(() => {
+    const element = readingRef.current;
+    if (!element) return;
+    const handler = (event: Event) => {
+      const input = (event.target as HTMLElement | null)?.closest?.(
+        'input[data-template-field-index]',
+      ) as HTMLInputElement | null;
+      if (!input) return;
+      const index = Number(input.dataset.templateFieldIndex);
+      if (Number.isInteger(index)) templateFieldChangeRef.current?.(index, input.value);
+    };
+    element.addEventListener('input', handler);
+    return () => {
+      element.removeEventListener('input', handler);
+    };
+  });
   if (mode === 'edit' && format === 'text') {
     // Plain-text notes have no rich-text form; the textarea is the editor.
     return (
@@ -402,8 +512,22 @@ export default function MarkdownDocument({
             onToggleMarkdownTask !== undefined,
           )
         : html;
+  // Template fields render in the reading view only (editing mode shows
+  // the raw {{Name}} markers). Markdown and HTML notes share this path:
+  // both render to sanitized HTML first, and the field walk replaces
+  // markers in visible text for either format.
+  const withTemplateFields =
+    mode === 'read-only' && (format === 'markdown' || format === 'html')
+      ? renderTemplateFields(
+          renderedHtml,
+          parseTemplateFields(content, format),
+          templateFieldValues,
+          onTemplateFieldChange !== undefined,
+        )
+      : renderedHtml;
   return (
     <div
+      ref={readingRef}
       className="document-body markdown-body"
       onClick={(event) => {
         const markdownCheckbox = (event.target as HTMLElement).closest<HTMLInputElement>(
@@ -436,7 +560,7 @@ export default function MarkdownDocument({
         }
         onNavigate(href);
       }}
-      dangerouslySetInnerHTML={{ __html: renderedHtml }}
+      dangerouslySetInnerHTML={{ __html: withTemplateFields }}
     />
   );
 }

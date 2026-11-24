@@ -22,6 +22,7 @@ const EXTENDABLE_STORE_LABELS: Record<string, string> = {
   settings: 'Settings',
   'search-index': 'Search index',
   'pdf-form-values': 'Filled PDF form values',
+  'template-links': 'Template links',
 };
 import { playReminderSound, stopReminderSound } from '../reminders/reminderSound';
 import { useShortcutCapture } from './useShortcutCapture';

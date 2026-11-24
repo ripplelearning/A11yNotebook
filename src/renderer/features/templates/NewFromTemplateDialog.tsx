@@ -16,7 +16,13 @@ export interface TemplateNotebook {
 
 export interface NewFromTemplateDialogProps {
   notebooks: TemplateNotebook[];
-  onCreate: (path: string, content: string, cursor: number) => void | Promise<void>;
+  onCreate: (
+    path: string,
+    content: string,
+    cursor: number,
+    /** Library path of the chosen template; every template listed here is a file in the Templates folder (seeded built-ins included), so all record one. */
+    sourceTemplatePath?: string,
+  ) => void | Promise<void>;
   onClose: () => void;
   /**
    * Templates read from the library's Templates folder by the host; the
@@ -92,7 +98,11 @@ export default function NewFromTemplateDialog({
     setError('');
     setCreating(true);
     try {
-      await onCreate(templateNotePath(notebook.path, title, format), previewContent, cursor);
+      // Every template listed here is a file in the library's Templates
+      // folder — seeded built-ins included — so the new note can remember
+      // it and offer a fresh fillable copy later.
+      const sourceTemplatePath = template.id.startsWith('user:') ? template.id.slice('user:'.length) : undefined;
+      await onCreate(templateNotePath(notebook.path, title, format), previewContent, cursor, sourceTemplatePath);
       onClose();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Unable to create the note.');

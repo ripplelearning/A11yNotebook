@@ -17,6 +17,7 @@ import type { VaultChangedEvent, VaultSearchQuery, VaultSearchResult } from './s
 import type { AnnotationUpdate, NewAnnotation, NoteAnnotation } from './annotations';
 import type { NewPdfAnnotation, PdfAnnotation, PdfAnnotationUpdate } from './pdf-annotation';
 import type { PdfFormSkippedField, PdfFormValues, PdfFormValuesRecord } from './pdf-form';
+import type { TemplateLinkRecord } from './template-fields';
 import type { OcrLanguageStatus } from './ocr';
 import type { DocxAnnotation, DocxAnnotationUpdate, NewDocxAnnotation } from './docx-annotations';
 import type { EpubAnnotation, EpubAnnotationUpdate, NewEpubAnnotation } from './epub-annotations';
@@ -120,6 +121,9 @@ export interface VaultBridge {
     values: PdfFormValues,
     identity: PdfFormValuesRecord['documentIdentity'],
   ): Promise<PdfFormValuesRecord>;
+  /** Source template of a filled note, stored in the app like filled PDF values. Null when unlinked. */
+  getTemplateLink?(path: string): Promise<string | null>;
+  saveTemplateLink?(path: string, templatePath: string | null): Promise<TemplateLinkRecord | null>;
   /** Write the stored values into a filled file chosen with a save dialog. */
   downloadFilledPdf(path: string): Promise<{
     saved: boolean;

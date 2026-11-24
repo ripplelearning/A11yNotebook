@@ -26,6 +26,20 @@ export function useVaultChanges(
   const [checking, setChecking] = useState(false);
   const vaultPath = vault?.path;
   const operations = useRef(0);
+  // Waiters for the disk-check queue to drain, so a manual save that
+  // lands mid-check can wait instead of being dropped silently.
+  const idleWaitersRef = useRef<Array<() => void>>([]);
+
+  /**
+   * Resolves once the current disk-check queue has drained (no check in
+   * flight). Resolves immediately when nothing is checking.
+   */
+  const whenIdle = useCallback(() => {
+    if (operations.current === 0) return Promise.resolve();
+    return new Promise<void>((resolve) => {
+      idleWaitersRef.current.push(resolve);
+    });
+  }, []);
 
   const checkDisk = useCallback(
     async (notePath?: string) => {
@@ -78,7 +92,10 @@ export function useVaultChanges(
         announce('Could not refresh external library changes. Your unsaved edits are preserved.');
       } finally {
         operations.current -= 1;
-        if (!operations.current) setChecking(false);
+        if (!operations.current) {
+          setChecking(false);
+          idleWaitersRef.current.splice(0).forEach((resolve) => resolve());
+        }
       }
     },
     [announce, setNotes, setVault],
@@ -101,6 +118,7 @@ export function useVaultChanges(
     conflicts,
     checking,
     checkDisk,
+    whenIdle,
     clearAllConflicts,
     clearConflict: (relative: string) => setConflicts((items) => items.filter((item) => item.path !== relative)),
   };

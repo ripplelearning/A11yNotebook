@@ -28,7 +28,7 @@ describe('new note from template dialog', () => {
     expect(preview.value).not.toContain('{{cursor}}');
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
     await waitFor(() => expect(onClose).toHaveBeenCalledOnce());
-    expect(onCreate).toHaveBeenCalledWith('Work/Planning.md', preview.value, expect.any(Number));
+    expect(onCreate).toHaveBeenCalledWith('Work/Planning.md', preview.value, expect.any(Number), undefined);
     expect(preview.value.slice(onCreate.mock.calls[0][2])).toMatch(/^\n\n## Agenda/);
   });
 
@@ -89,8 +89,35 @@ describe('new note from template dialog', () => {
     expect(preview.value).not.toContain('{{cursor}}');
     fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
     await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
-    expect(onCreate).toHaveBeenCalledWith('Notes/Daily plan.html', preview.value, expect.any(Number));
+    expect(onCreate).toHaveBeenCalledWith('Notes/Daily plan.html', preview.value, expect.any(Number), undefined);
     expect(preview.value.slice(onCreate.mock.calls[0][2])).toMatch(/<\/li>/);
+  });
+
+  it('passes a user template library path so the new note can remember its source', async () => {
+    const onCreate = vi.fn();
+    render(
+      <NewFromTemplateDialog
+        notebooks={[{ path: 'Notes', name: 'Notes' }]}
+        templates={[
+          { id: 'user:Templates/Intake.md', name: 'Intake', content: 'Client: {{Client Name}}{{cursor}}' },
+        ]}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+        now={new Date(2026, 9, 3)}
+      />,
+    );
+    fireEvent.change(screen.getByRole('combobox', { name: 'Template' }), {
+      target: { value: 'user:Templates/Intake.md' },
+    });
+    fireEvent.change(screen.getByRole('textbox', { name: 'Note title' }), { target: { value: 'Intake one' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create note' }));
+    await waitFor(() => expect(onCreate).toHaveBeenCalledOnce());
+    expect(onCreate).toHaveBeenCalledWith(
+      'Notes/Intake one.md',
+      'Client: {{Client Name}}',
+      expect.any(Number),
+      'Templates/Intake.md',
+    );
   });
 
   it('sanitizes custom HTML templates and keeps the Markdown default', () => {

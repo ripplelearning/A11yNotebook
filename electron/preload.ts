@@ -124,6 +124,8 @@ const CHANNELS: typeof SharedChannels = {
   vaultPdfAnnotationDelete: 'vault:pdf-annotation-delete',
   vaultPdfFormValues: 'vault:pdf-form-values',
   vaultPdfFormValuesSave: 'vault:pdf-form-values-save',
+  vaultTemplateLink: 'vault:template-link',
+  vaultTemplateLinkSave: 'vault:template-link-save',
   vaultPdfFilledDownload: 'vault:pdf-filled-download',
   vaultPdfFilledCopy: 'vault:pdf-filled-copy',
   vaultOcrSave: 'vault:ocr-save',
@@ -290,6 +292,9 @@ const bridge: NotebookBridge = {
     getPdfFormValues: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFormValues, relativePath),
     savePdfFormValues: (relativePath, values, identity) =>
       ipcRenderer.invoke(CHANNELS.vaultPdfFormValuesSave, relativePath, values, identity),
+    getTemplateLink: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultTemplateLink, relativePath),
+    saveTemplateLink: (relativePath, templatePath) =>
+      ipcRenderer.invoke(CHANNELS.vaultTemplateLinkSave, relativePath, templatePath),
     downloadFilledPdf: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledDownload, relativePath),
     saveFilledPdfCopy: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultPdfFilledCopy, relativePath),
     saveOcrText: (relativePath, kind, bytes) =>
