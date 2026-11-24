@@ -466,6 +466,9 @@ export default function App() {
   // reading view's inputs and would steal focus). Values are read at
   // save time and dropped when the note's content changes or it saves.
   const templateFieldValuesRef = useRef<Record<string, string[]>>({});
+  // Latest saveActiveNote, so a save deferred while a disk check drains
+  // can re-enter with fresh state (see saveActiveNote).
+  const saveActiveNoteRef = useRef<(skipCheckWait?: boolean) => Promise<void>>(async () => {});
   // A filled-in template note awaiting its filled-copy dialog: the baked
   // content and the template it came from.
   const [filledCopyRequest, setFilledCopyRequest] = useState<{
@@ -5619,7 +5622,7 @@ export default function App() {
     }
   };
 
-  const saveActiveNote = async () => {
+  const saveActiveNote = async (skipCheckWait = false): Promise<void> => {
     const note = openNotes.find((item) => item.id === selectedTab);
     if (!note) {
       if (selectedTab === 'attachment' && window.a11yNotebook && spreadsheetSaveRef.current) {
@@ -5629,7 +5632,23 @@ export default function App() {
       }
       return;
     }
-    if (!window.a11yNotebook || activeConflict || synchronization.checking) return;
+    if (!window.a11yNotebook || activeConflict) return;
+    if (synchronization.checking && !skipCheckWait) {
+      // A manual save that lands while a disk check is in flight (for
+      // example, the check queue draining after the built-in templates
+      // were seeded on first open) must not vanish silently: wait for
+      // the check to settle, then save with fresh state. The wait is
+      // bounded, so a check that never settles still saves — the write's
+      // baseline check rejects a genuinely conflicting write instead.
+      await Promise.race([
+        synchronization.whenIdle(),
+        new Promise((resolve) => window.setTimeout(resolve, 5000)),
+      ]);
+      // Re-enter on the next tick, after React has flushed the check's
+      // state, so a conflict it found is visible to the retry.
+      window.setTimeout(() => void saveActiveNoteRef.current(true), 0);
+      return;
+    }
     // A filled-in template note saves as a filled copy (or bakes its
     // values into its own text); that path handles the save itself.
     if (await saveTemplateFields(note)) return;
@@ -5656,6 +5675,7 @@ export default function App() {
       await synchronization.checkDisk(note.path);
     }
   };
+  saveActiveNoteRef.current = saveActiveNote;
 
   const toggleTask = async (task: VaultTask, recordUndo = true) => {
     if (openNotes.some((note) => note.path === task.path && note.content !== note.saved) || activeConflict) {
