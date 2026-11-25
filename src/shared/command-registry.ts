@@ -232,12 +232,6 @@ export const COMMANDS: CommandDefinition[] = [
     contexts: ['general'],
   },
   {
-    id: 'new-task',
-    label: 'New task',
-    description: 'Add a persisted task to an associated note.',
-    contexts: ['general', 'tree-note', 'attachment', 'link'],
-  },
-  {
     id: 'quick-task',
     label: 'Quick Task',
     description: 'Open a Quick Task dialog to add a task to the current library and notebook.',
@@ -610,6 +604,16 @@ export const COMMANDS: CommandDefinition[] = [
     description: 'Show reminders and the grouped agenda.',
     shortcut: 'Ctrl+7',
     shortcutAliases: ['Ctrl+Shift+R'],
+  },
+  {
+    // Beside Create reminder: in a grid context menu these are the two
+    // "make something from this item" actions, and keeping them together
+    // at the end leaves Open selected item first, so Enter on a freshly
+    // opened menu still opens the item instead of starting a task.
+    id: 'new-task',
+    label: 'New task',
+    description: 'Add a persisted task to an associated note.',
+    contexts: ['general', 'tree-note', 'attachment', 'link'],
   },
   {
     id: 'create-reminder',
