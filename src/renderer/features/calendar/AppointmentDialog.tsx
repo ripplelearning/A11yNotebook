@@ -4,7 +4,8 @@ import {
   combineDateTime,
   expandAppointments,
   parseAppointmentTime,
-  parseDateOnly,
+  displayDateText,
+  normalizeDateText,
   type AppointmentInput,
   type CalendarAppointment,
   type CalendarLink,
@@ -21,7 +22,8 @@ function splitDateTime(value: string): { date: string; time: string; meridiem: M
   const parts = parseAppointmentTime(value);
   if (!parts) return { date: '', time: '', meridiem: 'AM' };
   const pad = (item: number) => String(item).padStart(2, '0');
-  const date = `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
+  // Stored dates are ISO; show them as MM/DD/YYYY.
+  const date = displayDateText(`${parts.year}-${pad(parts.month)}-${pad(parts.day)}`);
   if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return { date, time: '', meridiem: 'AM' };
   const split = splitStoredTime(`${pad(parts.hour)}:${pad(parts.minute)}`);
   return { date, time: split.time, meridiem: split.meridiem };
@@ -81,7 +83,9 @@ export default function AppointmentDialog({
   const [startTime, setStartTime] = useState(startParts.time);
   const [startMeridiem, setStartMeridiem] = useState<Meridiem>(startParts.meridiem);
   const [endDate, setEndDate] = useState(
-    appointment?.allDay && appointment.end ? (shiftDateText(appointment.end, -1) ?? '') : endParts.date,
+    appointment?.allDay && appointment.end
+      ? displayDateText(shiftDateText(appointment.end, -1) ?? '')
+      : endParts.date,
   );
   const [endTime, setEndTime] = useState(endParts.time);
   const [endMeridiem, setEndMeridiem] = useState<Meridiem>(endParts.meridiem);
@@ -94,7 +98,7 @@ export default function AppointmentDialog({
   const [count, setCount] = useState(
     appointment?.recurrence?.count === undefined ? '' : String(appointment.recurrence.count),
   );
-  const [until, setUntil] = useState(appointment?.recurrence?.until ?? '');
+  const [until, setUntil] = useState(displayDateText(appointment?.recurrence?.until ?? ''));
   const [weekdays, setWeekdays] = useState<number[]>(appointment?.recurrence?.weekdays ?? []);
   const [linkKind, setLinkKind] = useState<CalendarLink['kind'] | 'none'>(appointment?.link?.kind ?? 'none');
   const [linkTarget, setLinkTarget] = useState(
@@ -140,20 +144,28 @@ export default function AppointmentDialog({
   function buildInput(): AppointmentInput | string {
     if (!title.trim()) return 'Enter an appointment title.';
     if (title.trim().length > 500) return 'Keep the title to 500 characters or fewer.';
-    if (!parseDateOnly(startDate)) return 'Enter a valid start date.';
+    // The dates the user typed are MM/DD/YYYY; convert them to stored
+    // ISO before any calendar helper sees them.
+    const startDateIso = normalizeDateText(startDate);
+    if (!startDateIso) return 'Enter a valid start date.';
     const startTimeNormalized = allDay ? null : composeDialogTime(startTime, startMeridiem);
-    const start = allDay ? startDate : startTimeNormalized ? combineDateTime(startDate, startTimeNormalized) : null;
+    const start = allDay
+      ? startDateIso
+      : startTimeNormalized
+        ? combineDateTime(startDateIso, startTimeNormalized)
+        : null;
     if (!start) return allDay ? 'Enter a valid start date.' : 'Enter a valid start date and time.';
     let end: string | undefined;
     if (endDate) {
-      if (!parseDateOnly(endDate)) return 'Enter a valid end date.';
+      const endDateIso = normalizeDateText(endDate);
+      if (!endDateIso) return 'Enter a valid end date.';
       if (allDay) {
-        end = shiftDateText(endDate, 1) ?? undefined;
+        end = shiftDateText(endDateIso, 1) ?? undefined;
         if (!end) return 'Enter a valid end date.';
       } else {
         if (!endTime) return 'Enter an end time when an end date is set.';
         const endTimeNormalized = composeDialogTime(endTime, endMeridiem);
-        end = endTimeNormalized ? (combineDateTime(endDate, endTimeNormalized) ?? undefined) : undefined;
+        end = endTimeNormalized ? (combineDateTime(endDateIso, endTimeNormalized) ?? undefined) : undefined;
         if (!end) return 'Enter a valid end date and time.';
       }
       const startPartsValue = parseAppointmentTime(start);
@@ -174,12 +186,13 @@ export default function AppointmentDialog({
       const parsedCount = count.trim() === '' ? undefined : Number(count);
       if (parsedCount !== undefined && (!Number.isInteger(parsedCount) || parsedCount < 1))
         return 'The recurrence count must be 1 or more.';
-      if (until && !parseDateOnly(until)) return 'Enter a valid recurrence end date.';
+      const untilIso = until ? normalizeDateText(until) : null;
+      if (until && !untilIso) return 'Enter a valid recurrence end date.';
       recurrence = {
         frequency,
         interval,
         ...(parsedCount !== undefined ? { count: parsedCount } : {}),
-        ...(until ? { until } : {}),
+        ...(untilIso ? { until: untilIso } : {}),
         ...(frequency === 'weekly' && weekdays.length
           ? { weekdays: [...weekdays].sort((a, b) => a - b) }
           : {}),

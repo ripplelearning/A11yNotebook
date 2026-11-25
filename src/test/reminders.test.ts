@@ -731,16 +731,16 @@ describe('reminder dialog AM/PM time helpers', () => {
 });
 
 describe('task due date display', () => {
-  it('shows MM-DD-YYYY with a 12-hour time when both are set', () => {
-    expect(formatTaskDueDate('2026-11-07', '14:30')).toBe('11-07-2026 at 2:30 PM');
-    expect(formatTaskDueDate('2026-11-07', '09:30')).toBe('11-07-2026 at 9:30 AM');
-    expect(formatTaskDueDate('2026-11-07', '00:30')).toBe('11-07-2026 at 12:30 AM');
-    expect(formatTaskDueDate('2026-11-07', '12:00')).toBe('11-07-2026 at 12:00 PM');
+  it('shows MM/DD/YYYY with a 12-hour time when both are set', () => {
+    expect(formatTaskDueDate('2026-11-07', '14:30')).toBe('11/07/2026 at 2:30 PM');
+    expect(formatTaskDueDate('2026-11-07', '09:30')).toBe('11/07/2026 at 9:30 AM');
+    expect(formatTaskDueDate('2026-11-07', '00:30')).toBe('11/07/2026 at 12:30 AM');
+    expect(formatTaskDueDate('2026-11-07', '12:00')).toBe('11/07/2026 at 12:00 PM');
   });
 
   it('shows the date alone when no time is set, and no due date when unset', () => {
-    expect(formatTaskDueDate('2026-11-07', undefined)).toBe('11-07-2026');
-    expect(formatTaskDueDate('2026-11-07', '')).toBe('11-07-2026');
+    expect(formatTaskDueDate('2026-11-07', undefined)).toBe('11/07/2026');
+    expect(formatTaskDueDate('2026-11-07', '')).toBe('11/07/2026');
     expect(formatTaskDueDate(undefined, undefined)).toBe('No due date');
     expect(formatTaskDueDate(undefined, '09:30')).toBe('No due date');
   });

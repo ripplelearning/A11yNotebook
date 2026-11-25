@@ -47,10 +47,10 @@ function formatSerialDate(serial: number): string {
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
   const day = String(date.getUTCDate()).padStart(2, '0');
   const hasTime = Math.abs(serial - Math.floor(serial)) > 0.0000001;
-  if (!hasTime) return `${year}-${month}-${day}`;
+  if (!hasTime) return `${month}/${day}/${year}`;
   const hours = String(date.getUTCHours()).padStart(2, '0');
   const minutes = String(date.getUTCMinutes()).padStart(2, '0');
-  return `${year}-${month}-${day} ${hours}:${minutes}`;
+  return `${month}/${day}/${year} ${hours}:${minutes}`;
 }
 
 function isDateFormat(formatCode: string | undefined, formatId: number): boolean {

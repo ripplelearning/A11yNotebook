@@ -152,13 +152,20 @@ function chicagoAuthors(authors: CitationAuthor[]): string {
 }
 
 function formatDateLong(value: string): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value.trim());
+  const trimmed = value.trim();
+  const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  const display = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(trimmed);
+  const match = iso ?? display;
   if (!match) return value;
+  // The ISO shape is year-month-day; the display shape is month/day/year.
+  const year = iso ? match[1] : match[3];
+  const month = iso ? match[2] : match[1];
+  const day = iso ? match[3] : match[2];
   const months = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December',
   ];
-  return `${months[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
+  return `${months[Number(month) - 1]} ${Number(day)}, ${year}`;
 }
 
 function doiUrl(entry: BibliographyEntry): string {

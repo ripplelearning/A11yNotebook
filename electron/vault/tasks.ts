@@ -224,7 +224,7 @@ export function toggleHtmlTask(content: string, taskId: string, complete: boolea
 
 /** Update the due-date field on one stable HTML task, leaving all other source bytes intact. */
 export function updateHtmlTaskDueDate(content: string, taskId: string, dueDate: string) {
-  if (dueDate && !validDate(dueDate)) throw new Error('Enter a real date in YYYY-MM-DD format.');
+  if (dueDate && !validDate(dueDate)) throw new Error('Enter a real date.');
   const matches = htmlTaskRecords(content).filter((item) => item.id === taskId);
   if (matches.length !== 1) throw new Error('The HTML task no longer exists or its identity is ambiguous.');
   const token = matches[0].token;
@@ -280,7 +280,7 @@ function validTime(value: string): boolean {
 
 /** Update the due date, due time, and reminder of one stable HTML task. */
 export function updateHtmlTaskSchedule(content: string, taskId: string, schedule: TaskSchedule): string {
-  if (schedule.dueDate && !validDate(schedule.dueDate)) throw new Error('Enter a real date in YYYY-MM-DD format.');
+  if (schedule.dueDate && !validDate(schedule.dueDate)) throw new Error('Enter a real date.');
   if (schedule.dueTime && !validTime(schedule.dueTime)) throw new Error('Enter a time in HH:mm format.');
   if (schedule.remindAt && !parseReminderDate(schedule.remindAt)) {
     throw new Error('Enter a real reminder date and time.');

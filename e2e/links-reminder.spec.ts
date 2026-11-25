@@ -62,8 +62,16 @@ test('the context menu on a link offers Create reminder with the link linked', a
 
     const dialog = page.getByRole('dialog', { name: 'Create reminder' });
     await expect(dialog).toBeVisible({ timeout: 5000 });
-    await expect(dialog.getByLabel('Link to')).toHaveValue('file');
-    await expect(dialog.getByLabel('File')).toHaveValue('Archive/Example.url');
+    // Links are their own Link to kind, not lumped under File.
+    await expect(dialog.getByLabel('Link to')).toHaveValue('link');
+    await expect(dialog.getByLabel('Link', { exact: true })).toHaveValue('Archive/Example.url');
+    // The date field asks for MM/DD/YYYY.
+    await expect(dialog.getByLabel('Date, MM/DD/YYYY')).toBeVisible();
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    const pad = (value: number) => String(value).padStart(2, '0');
+    const displayDate = `${pad(tomorrow.getMonth() + 1)}/${pad(tomorrow.getDate())}/${tomorrow.getFullYear()}`;
+    await dialog.getByLabel('Date, MM/DD/YYYY').fill(displayDate);
 
     await dialog.getByLabel('Reminder title').fill('Check example link');
     await dialog.getByRole('button', { name: 'Create reminder' }).click();

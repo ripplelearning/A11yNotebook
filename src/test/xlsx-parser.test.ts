@@ -47,10 +47,10 @@ describe('xlsx parser', () => {
     expect(workbook.sheets[1].rows).toEqual([[{ text: 'Groceries' }]]);
   });
 
-  it('renders date-formatted serials as ISO dates', () => {
+  it('renders date-formatted serials as MM/DD/YYYY dates', () => {
     const workbook = parseXlsxWorkbook(zip(validEntries()));
-    expect(workbook.sheets[0].rows[0][4].text).toBe('2026-01-01');
-    expect(workbook.sheets[0].rows[0][5].text).toBe('2026-01-01');
+    expect(workbook.sheets[0].rows[0][4].text).toBe('01/01/2026');
+    expect(workbook.sheets[0].rows[0][5].text).toBe('01/01/2026');
     expect(workbook.sheets[0].rows[0][4].value).toBe(46023);
   });
 

@@ -71,7 +71,26 @@ export function serialToDate(serial: number): Date {
   return new Date(Math.round((serial - 25569) * 86400 * 1000));
 }
 
+/**
+ * Display a serial date as the user sees it: MM/DD/YYYY, with a
+ * HH:MM time when the serial carries one. The file writers keep their
+ * own ISO form (formatSerialDateIso) because the file formats require
+ * it; this is only the text shown in the app.
+ */
 export function formatSerialDate(serial: number): string {
+  const date = serialToDate(serial);
+  const year = date.getUTCFullYear();
+  const month = String(date.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(date.getUTCDate()).padStart(2, '0');
+  const hasTime = Math.abs(serial - Math.floor(serial)) > 0.0000001;
+  if (!hasTime) return `${month}/${day}/${year}`;
+  const hours = String(date.getUTCHours()).padStart(2, '0');
+  const minutes = String(date.getUTCMinutes()).padStart(2, '0');
+  return `${month}/${day}/${year} ${hours}:${minutes}`;
+}
+
+/** The ISO form of a serial date, for file writers (ODS date-value). */
+export function formatSerialDateIso(serial: number): string {
   const date = serialToDate(serial);
   const year = date.getUTCFullYear();
   const month = String(date.getUTCMonth() + 1).padStart(2, '0');
@@ -84,24 +103,34 @@ export function formatSerialDate(serial: number): string {
 }
 
 function dateTextToSerial(text: string): number | undefined {
-  const match = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/.exec(text.trim());
+  const trimmed = text.trim();
+  // Accept the MM/DD/YYYY the user types as well as the YYYY-MM-DD
+  // the files store; both may carry an optional HH:MM time.
+  const display = /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:[ T](\d{2}):(\d{2}))?$/.exec(trimmed);
+  const iso = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?$/.exec(trimmed);
+  const match = display ?? iso;
   if (!match) return undefined;
-  const date = Date.UTC(
-    Number(match[1]),
-    Number(match[2]) - 1,
-    Number(match[3]),
-    Number(match[4] ?? 0),
-    Number(match[5] ?? 0),
-  );
-  const serial = date / 86400000 + 25569;
+  const year = Number(display ? match[3] : match[1]);
+  const month = Number(display ? match[1] : match[2]);
+  const day = Number(display ? match[2] : match[3]);
+  const hour = Number(match[4] ?? 0);
+  const minute = Number(match[5] ?? 0);
+  if (month < 1 || month > 12 || day < 1 || hour > 23 || minute > 59) return undefined;
+  const date = new Date(Date.UTC(year, month - 1, day, hour, minute));
+  // Date.UTC silently rolls impossible dates over (February 30 becomes
+  // March 2); only accept it when the parts round-trip.
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day)
+    return undefined;
+  const serial = date.getTime() / 86400000 + 25569;
   return Number.isFinite(serial) && serial >= 0 ? serial : undefined;
 }
 
 /**
  * Apply a typed edit to a cell. Editing replaces any formula with the
  * typed value. Numbers and TRUE/FALSE become typed values; a
- * YYYY-MM-DD date typed into a cell that already held a date keeps the
- * cell a date (serial value plus its style) instead of becoming text.
+ * MM/DD/YYYY (or YYYY-MM-DD) date typed into a cell that already held
+ * a date keeps the cell a date (serial value plus its style) instead
+ * of becoming text.
  */
 export function applyCellEdit(cell: SpreadsheetCell, text: string): SpreadsheetCell {
   const trimmed = text.trim();

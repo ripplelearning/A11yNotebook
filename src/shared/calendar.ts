@@ -113,6 +113,8 @@ export function formatReminderMinutes(minutes: number): string {
 }
 
 const DATE_ONLY = /^(\d{4})-(\d{2})-(\d{2})$/;
+/** A date as the user types and sees it: MM/DD/YYYY, one or two digits for month and day. */
+const DISPLAY_DATE = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
 const DATE_TIME = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(:\d{2})?([+-]\d{2}:?\d{2}|Z)?$/;
 const FREQUENCIES: CalendarRecurrenceFrequency[] = ['daily', 'weekly', 'monthly', 'yearly'];
 const LINK_KINDS: CalendarLinkKind[] = ['note', 'file', 'task'];
@@ -142,6 +144,47 @@ export function parseDateOnly(value: unknown): DateParts | null {
   const day = Number(match[3]);
   if (!isRealDate(year, month, day)) return null;
   return { year, month, day, hour: 0, minute: 0, second: 0 };
+}
+
+/**
+ * Parse a date in either shape the app accepts: MM/DD/YYYY as the user
+ * types and sees it, or YYYY-MM-DD as it is stored. Both are validated
+ * as real calendar dates, so 02/30/2026 and 2026-02-30 both fail.
+ */
+export function parseDisplayDate(value: unknown): DateParts | null {
+  if (typeof value !== 'string') return null;
+  const display = DISPLAY_DATE.exec(value.trim());
+  if (display) {
+    const month = Number(display[1]);
+    const day = Number(display[2]);
+    const year = Number(display[3]);
+    if (!isRealDate(year, month, day)) return null;
+    return { year, month, day, hour: 0, minute: 0, second: 0 };
+  }
+  return parseDateOnly(value.trim());
+}
+
+/** Format date parts as MM/DD/YYYY — the one date format the app shows the user. */
+export function formatDisplayDate(parts: DateParts): string {
+  return `${pad(parts.month)}/${pad(parts.day)}/${parts.year}`;
+}
+
+/**
+ * Convert a typed or stored date (MM/DD/YYYY or YYYY-MM-DD) to the
+ * YYYY-MM-DD storage form, or null when it is not a real date.
+ */
+export function normalizeDateText(value: string): string | null {
+  const parts = parseDisplayDate(value);
+  return parts ? formatDateOnly(parts) : null;
+}
+
+/**
+ * Convert a stored YYYY-MM-DD date to the MM/DD/YYYY the user sees.
+ * Anything else passes through unchanged, so a blank stays blank.
+ */
+export function displayDateText(value: string): string {
+  const parts = parseDateOnly(value);
+  return parts ? formatDisplayDate(parts) : value;
 }
 
 function parseDateTimeParts(value: unknown): DateParts | null {

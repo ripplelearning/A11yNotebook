@@ -6,6 +6,7 @@ import {
   isValidDateText,
   splitStoredTime,
 } from '../../../shared/reminders';
+import { displayDateText, normalizeDateText } from '../../../shared/calendar';
 import type { VaultTask } from '../../../shared/types';
 
 export interface TaskSchedule {
@@ -29,10 +30,10 @@ function splitReminder(value: string | undefined): [string, string] {
 
 export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
   const id = useId();
-  const [dueDate, setDueDate] = useState(task.dueDate ?? '');
+  const [dueDate, setDueDate] = useState(displayDateText(task.dueDate ?? ''));
   const [dueTime, setDueTime] = useState(() => splitStoredTime(task.dueTime ?? '').time);
   const [dueMeridiem, setDueMeridiem] = useState(() => splitStoredTime(task.dueTime ?? '').meridiem);
-  const [reminderDate, setReminderDate] = useState(splitReminder(task.remindAt)[0]);
+  const [reminderDate, setReminderDate] = useState(displayDateText(splitReminder(task.remindAt)[0]));
   const [reminderTime, setReminderTime] = useState(() => splitStoredTime(splitReminder(task.remindAt)[1]).time);
   const [reminderMeridiem, setReminderMeridiem] = useState(
     () => splitStoredTime(splitReminder(task.remindAt)[1]).meridiem,
@@ -57,7 +58,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             return;
           }
           if (dueDate && !isValidDateText(dueDate)) {
-            setError('Enter a due date as YYYY-MM-DD.');
+            setError('Enter a due date as MM/DD/YYYY.');
             return;
           }
           // The AM/PM combobox supplies the meridiem when the typed time
@@ -70,7 +71,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
             return;
           }
           if (reminderDate && !isValidDateText(reminderDate)) {
-            setError('Enter a reminder date as YYYY-MM-DD.');
+            setError('Enter a reminder date as MM/DD/YYYY.');
             return;
           }
           const normalizedReminderTime = reminderTime
@@ -83,10 +84,12 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
           setBusy(true);
           setError('');
           void onSave({
-            dueDate,
+            dueDate: normalizeDateText(dueDate) ?? '',
             dueTime: normalizedDueTime ?? '',
             remindAt:
-              reminderDate && normalizedReminderTime ? `${reminderDate} ${normalizedReminderTime}` : '',
+              reminderDate && normalizedReminderTime
+                ? `${normalizeDateText(reminderDate) ?? ''} ${normalizedReminderTime}`
+                : '',
           })
             .then(onClose)
             .catch((failure: Error) => setError(failure.message))
@@ -100,7 +103,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
         </p>
         <DatePickerField
           id={`${id}-due-date`}
-          label="Due date, YYYY-MM-DD"
+          label="Due date, MM/DD/YYYY"
           value={dueDate}
           onChange={setDueDate}
           disabled={busy}
@@ -126,7 +129,7 @@ export default function TaskScheduleDialog({ task, onSave, onClose }: Props) {
         </select>
         <DatePickerField
           id={`${id}-reminder-date`}
-          label="Reminder date, YYYY-MM-DD"
+          label="Reminder date, MM/DD/YYYY"
           value={reminderDate}
           onChange={setReminderDate}
           disabled={busy}

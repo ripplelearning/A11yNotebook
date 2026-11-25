@@ -13,6 +13,11 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function displayDay(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}/${date.getFullYear()}`;
+}
+
 function setup(appointment?: CalendarAppointment) {
   const onSave = vi.fn<(input: AppointmentInput) => Promise<void>>(async () => undefined);
   render(
@@ -54,7 +59,7 @@ describe('appointment dialog AM/PM comboboxes', () => {
     expect(within(dialog).queryByLabelText('End AM or PM')).toBeNull();
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('End date (optional)'), {
-      target: { value: dayKey(today) },
+      target: { value: displayDay(today) },
     });
     const meridiem = within(dialog).getByLabelText('End AM or PM');
     expect(meridiem.tagName).toBe('SELECT');
@@ -66,7 +71,7 @@ describe('appointment dialog AM/PM comboboxes', () => {
     const { dialog, onSave } = setup();
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Evening review' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '9:30' } });
     fireEvent.change(within(dialog).getByLabelText('Start AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
@@ -80,10 +85,10 @@ describe('appointment dialog AM/PM comboboxes', () => {
     const { dialog, onSave } = setup();
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Workshop' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '9:00' } });
     fireEvent.change(within(dialog).getByLabelText('End date (optional)'), {
-      target: { value: dayKey(today) },
+      target: { value: displayDay(today) },
     });
     fireEvent.change(within(dialog).getByLabelText('End time'), { target: { value: '2:00' } });
     fireEvent.change(within(dialog).getByLabelText('End AM or PM'), { target: { value: 'PM' } });
@@ -98,11 +103,11 @@ describe('appointment dialog AM/PM comboboxes', () => {
     const { dialog, onSave } = setup();
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Midnight to noon' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '12:30' } });
     fireEvent.change(within(dialog).getByLabelText('Start AM or PM'), { target: { value: 'AM' } });
     fireEvent.change(within(dialog).getByLabelText('End date (optional)'), {
-      target: { value: dayKey(today) },
+      target: { value: displayDay(today) },
     });
     fireEvent.change(within(dialog).getByLabelText('End time'), { target: { value: '12:30' } });
     fireEvent.change(within(dialog).getByLabelText('End AM or PM'), { target: { value: 'PM' } });

@@ -49,7 +49,7 @@ describe('ods parser', () => {
     expect(sheet.rows[0][1]).toMatchObject({ text: '1200', value: 1200 });
     expect(sheet.rows[0][2]).toMatchObject({ text: 'TRUE', value: true });
     expect(sheet.rows[0][3]).toMatchObject({ text: '2400', value: 2400, formula: 'B1*2' });
-    expect(sheet.rows[0][4].text).toBe('2026-01-01');
+    expect(sheet.rows[0][4].text).toBe('01/01/2026');
     expect(sheet.rows[1]).toMatchObject([{ text: 'Repeated' }, { text: 'x' }, { text: 'x' }]);
     expect(sheet.rows[2]).toMatchObject([{ text: 'Repeated' }, { text: 'x' }, { text: 'x' }]);
     expect(sheet.rows[3][0].text).toBe('Merged');

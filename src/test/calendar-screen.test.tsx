@@ -13,6 +13,11 @@ function dayKey(date: Date): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function displayDay(date: Date): string {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${pad(date.getMonth() + 1)}/${pad(date.getDate())}/${date.getFullYear()}`;
+}
+
 function setup(
   appointments: CalendarAppointment[],
   createRequest = 0,
@@ -76,7 +81,7 @@ describe('calendar screen', () => {
     expect(await within(dialog).findByRole('alert')).toHaveTextContent('Enter an appointment title.');
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Team sync' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '10:00' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
     await waitFor(() => expect(saveCalendar).toHaveBeenCalled());
@@ -110,7 +115,7 @@ describe('calendar screen', () => {
     const dialog = await screen.findByRole('dialog');
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Dentist' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '10:00' } });
     fireEvent.change(within(dialog).getByLabelText('Remind me'), { target: { value: '15' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Save appointment' }));
@@ -126,7 +131,7 @@ describe('calendar screen', () => {
     const dialog = await screen.findByRole('dialog');
     const today = new Date();
     fireEvent.change(within(dialog).getByLabelText('Title'), { target: { value: 'Holiday' } });
-    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: dayKey(today) } });
+    fireEvent.change(within(dialog).getByLabelText('Start date'), { target: { value: displayDay(today) } });
     fireEvent.change(within(dialog).getByLabelText('Start time'), { target: { value: '10:00' } });
     fireEvent.change(within(dialog).getByLabelText('Remind me'), { target: { value: '15' } });
     fireEvent.click(within(dialog).getByLabelText('All-day appointment'));

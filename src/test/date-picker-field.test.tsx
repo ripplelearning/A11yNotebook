@@ -6,17 +6,18 @@ describe('DatePickerField', () => {
   it('types a date in text and offers a Show Date Picker button, with no native date input', () => {
     const onChange = vi.fn();
     const { container } = render(
-      <DatePickerField id="test-date" label="Start date" value="2026-10-30" onChange={onChange} />,
+      <DatePickerField id="test-date" label="Start date" value="10/30/2026" onChange={onChange} />,
     );
-    expect(screen.getByLabelText('Start date')).toHaveValue('2026-10-30');
-    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '2026-11-02' } });
-    expect(onChange).toHaveBeenCalledWith('2026-11-02');
+    expect(screen.getByLabelText('Start date')).toHaveValue('10/30/2026');
+    fireEvent.change(screen.getByLabelText('Start date'), { target: { value: '11/02/2026' } });
+    expect(onChange).toHaveBeenCalledWith('11/02/2026');
+    expect(screen.getByPlaceholderText('MM/DD/YYYY')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Show Date Picker' })).toBeInTheDocument();
     expect(container.querySelector('input[type="date"]')).toBeNull();
   });
 
   it('writes a picked date into the text field and returns focus there', () => {
-    let value = '2026-11-01';
+    let value = '11/01/2026';
     const { rerender } = render(
       <DatePickerField id="test-date" label="Start date" value={value} onChange={(next) => (value = next)} />,
     );
@@ -24,7 +25,7 @@ describe('DatePickerField', () => {
     // November 5 is today on 2026-11-05, so the grid names it
     // "November 5, 2026, today"; a regex matches either name.
     fireEvent.click(screen.getByRole('button', { name: /November 5, 2026/ }));
-    expect(value).toBe('2026-11-05');
+    expect(value).toBe('11/05/2026');
     rerender(<DatePickerField id="test-date" label="Start date" value={value} onChange={(next) => (value = next)} />);
     expect(document.activeElement).toBe(screen.getByLabelText('Start date'));
   });
@@ -38,7 +39,7 @@ describe('DatePickerField', () => {
     target.setDate(15);
     const monthName = target.toLocaleDateString('en-US', { month: 'long' });
     const year = target.getFullYear();
-    const value = `${year}-${String(target.getMonth() + 1).padStart(2, '0')}-15`;
+    const value = `${String(target.getMonth() + 1).padStart(2, '0')}/15/${year}`;
     render(<DatePickerField id="test-date" label="Start date" value={value} onChange={() => undefined} />);
     fireEvent.click(screen.getByRole('button', { name: 'Show Date Picker' }));
     const day15 = screen.getByRole('button', { name: `${monthName} 15, ${year}, selected` });
@@ -53,7 +54,7 @@ describe('DatePickerField', () => {
 
   it('keeps exactly one day tabbable (roving tabIndex)', () => {
     const { container } = render(
-      <DatePickerField id="test-date" label="Start date" value="2026-11-15" onChange={() => undefined} />,
+      <DatePickerField id="test-date" label="Start date" value="11/15/2026" onChange={() => undefined} />,
     );
     fireEvent.click(screen.getByRole('button', { name: 'Show Date Picker' }));
     const days = Array.from(container.querySelectorAll('[data-date]'));
