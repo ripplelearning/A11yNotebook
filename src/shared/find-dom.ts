@@ -264,6 +264,58 @@ export function selectionRenderedSegments(root: HTMLElement): RenderedSegments |
 }
 
 /**
+ * A captured document selection: the range to put back, plus the anchor
+ * node it was taken from. The range alone cannot tell whether its text
+ * is still in the document — a range's boundary points are live, and
+ * removing nodes adjusts them to the removal point, so a removed node
+ * reads as connected through the range. The anchor node is a plain
+ * reference and does not move, so it is the check that the text the
+ * selection sat in survived.
+ */
+export interface CapturedSelection {
+  range: Range;
+  anchorNode: Node | null;
+}
+
+/**
+ * The current document selection as a detached range, for restoring
+ * the reader's place after a dialog closes. Returns null when there is
+ * no selection to keep.
+ */
+export function captureDocumentSelection(): CapturedSelection | null {
+  const selection = window.getSelection();
+  if (!selection || selection.rangeCount === 0) return null;
+  return { range: selection.getRangeAt(0).cloneRange(), anchorNode: selection.anchorNode };
+}
+
+/**
+ * Restore a captured document selection. Returns false — and leaves
+ * the selection alone — when there is nothing captured, or when the
+ * anchor node it was taken from is no longer in the document (the view
+ * re-rendered while the dialog was open), so a stale range can never
+ * yank the reader to a detached node.
+ *
+ * A modal dialog destroys the selection it opens over: focusing the
+ * dialog's input re-anchors the selection to the input, and when the
+ * dialog unmounts that anchor is removed, so the browser collapses the
+ * selection to the end of the document (the status bar). The reader's
+ * position in the note is lost — the next position bookmark, and
+ * Ctrl+Alt+J's "current position", fall back to the first heading
+ * instead of the line the reader was on, so a second bookmark made
+ * from the same place stores the top of the note and a jump to it
+ * lands on the heading before the bookmarked text.
+ */
+export function restoreDocumentSelection(captured: CapturedSelection | null): boolean {
+  if (!captured) return false;
+  if (captured.anchorNode && !captured.anchorNode.isConnected) return false;
+  const selection = window.getSelection();
+  if (!selection) return false;
+  selection.removeAllRanges();
+  selection.addRange(captured.range);
+  return selection.rangeCount > 0;
+}
+
+/**
  * Focus the search box of an open PDF, ePub, or DOCX reader inside root.
  * The readers label their boxes "Find in PDF", "Find in ePub", and
  * "Find in DOCX". Returns false when no reader search box is present.

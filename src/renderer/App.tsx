@@ -76,13 +76,16 @@ import {
 } from '../shared/bookmark-anchors';
 import { findAllMatches, findMatchSnippets, matchSnippet } from '../shared/find-text';
 import {
+  captureDocumentSelection,
   findDomMatches,
   focusReaderSearchBox,
   renderedHeadingAtSelection,
+  restoreDocumentSelection,
   selectDomMatch,
   selectElementText,
   selectRenderedLineAt,
   selectionRenderedSegments,
+  type CapturedSelection,
 } from '../shared/find-dom';
 import { updateMarkdownTaskLine } from '../shared/task-line';
 import {
@@ -540,6 +543,13 @@ export default function App() {
   // resume effect, and forgotten when the note is left, so reopening
   // the note resumes normally.
   const bookmarkJumpRef = useRef<{ path: string; anchor: BookmarkAnchor } | null>(null);
+  // The reader's document selection while the bookmark naming dialog
+  // is open: the dialog destroys it (see restoreDocumentSelection), so
+  // it is captured before the dialog opens and put back when the dialog
+  // closes, whether the bookmark was saved or the naming was cancelled.
+  // Null when the reading position lives in a textarea caret instead
+  // (plain-source edit mode), which survives focus changes on its own.
+  const bookmarkSelectionRef = useRef<CapturedSelection | null>(null);
   // Fallback undo: one recorded edit history per open note, so undo works
   // even when the textarea's native undo stack is unavailable.
   const editHistoriesRef = useRef(new Map<string, EditHistory>());
@@ -3946,6 +3956,14 @@ export default function App() {
       }
       offset = anchor.kind === 'offset' ? anchor.offset : (resolveBookmarkAnchor(note.content, isHtml, anchor) ?? 0);
     }
+    // The naming dialog destroys the document selection — its input
+    // re-anchors the selection, and unmounting drops it at the end of
+    // the document — so capture the reader's place first and put it
+    // back when the dialog closes. A plain-text edit caret is not a
+    // document selection and survives focus changes on its own, so
+    // nothing is captured for it.
+    bookmarkSelectionRef.current =
+      editorRef.current && mode === 'edit' ? null : captureDocumentSelection();
     if (kind === 'heading') {
       const headingAnchor = anchor as Extract<BookmarkAnchor, { kind: 'heading' }>;
       // The name prompt is pre-filled with the heading as the reader sees
@@ -4000,6 +4018,19 @@ export default function App() {
     } catch {
       setStatusMessage('Could not remove the bookmark.');
     }
+  };
+
+  // Closing the naming dialog — saved or cancelled — puts the reader's
+  // document selection back where it was when the dialog opened, so the
+  // next bookmark set, or Ctrl+Alt+J's "current position", reads the
+  // line the reader was on instead of falling back to the first heading.
+  // The dialog's own focus restore (to the previously focused element)
+  // runs on unmount, after this, and leaves the selection alone.
+  const closeBookmarkNameDialog = () => {
+    setBookmarkNameRequest(null);
+    const captured = bookmarkSelectionRef.current;
+    bookmarkSelectionRef.current = null;
+    restoreDocumentSelection(captured);
   };
 
   // Jump to the next bookmark after the cursor in the open note or PDF,
@@ -9215,7 +9246,7 @@ export default function App() {
       {!securityLocked && bookmarkNameRequest ? (
         <BookmarkNameDialog
           request={bookmarkNameRequest}
-          onClose={() => setBookmarkNameRequest(null)}
+          onClose={closeBookmarkNameDialog}
           onSubmit={submitBookmarkName}
         />
       ) : null}

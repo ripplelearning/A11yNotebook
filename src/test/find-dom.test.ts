@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  captureDocumentSelection,
   findDomMatches,
   focusReaderSearchBox,
   renderedHeadingAtSelection,
+  restoreDocumentSelection,
   selectDomMatch,
   selectElementText,
   selectRenderedLineAt,
@@ -253,5 +255,59 @@ describe('find-dom', () => {
     expect(found.hasPosition).toBe(false);
     expect(found.heading).toBeNull();
     root.remove();
+  });
+
+  it('restores a captured selection after it is moved elsewhere, as a dialog close does', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Usage details here.</p><p>and a third line here.</p>';
+    document.body.appendChild(root);
+    const note = root.querySelectorAll('p')[1]!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(note, 2);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const captured = captureDocumentSelection();
+    expect(captured).not.toBeNull();
+    // The naming dialog re-anchors the selection to its input and the
+    // unmount drops it at the end of the document: simulate that move.
+    const elsewhere = document.createRange();
+    elsewhere.selectNodeContents(document.body);
+    elsewhere.collapse(false);
+    selection?.removeAllRanges();
+    selection?.addRange(elsewhere);
+    expect(selection?.anchorNode).not.toBe(note);
+    expect(restoreDocumentSelection(captured)).toBe(true);
+    expect(selection?.anchorNode).toBe(note);
+    expect(selection?.anchorOffset).toBe(2);
+    expect(selection?.isCollapsed).toBe(true);
+    root.remove();
+  });
+
+  it('captures nothing when there is no selection to keep', () => {
+    window.getSelection()?.removeAllRanges();
+    expect(captureDocumentSelection()).toBeNull();
+    expect(restoreDocumentSelection(null)).toBe(false);
+  });
+
+  it('refuses to restore a range whose nodes left the document', () => {
+    const root = document.createElement('div');
+    root.innerHTML = '<p>Usage details here.</p>';
+    document.body.appendChild(root);
+    const node = root.querySelector('p')!.firstChild as Text;
+    const range = document.createRange();
+    range.setStart(node, 1);
+    range.collapse(true);
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range);
+    const captured = captureDocumentSelection();
+    // The view re-rendered while the dialog was open: the range's nodes
+    // are detached, so the restore must leave the selection alone.
+    root.remove();
+    const before = selection?.anchorNode;
+    expect(restoreDocumentSelection(captured)).toBe(false);
+    expect(selection?.anchorNode).toBe(before);
   });
 });
