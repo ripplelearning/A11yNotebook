@@ -44,6 +44,14 @@ declare module 'epubjs/src/index.js' {
     display: (target?: string | number) => Promise<unknown>;
     attachTo: (element: HTMLElement) => void;
     destroy: () => void;
+    /** The Contents of the currently displayed views, for resolving a CFI to a DOM range. */
+    getContents: () => EpubContents[];
+  }
+
+  /** One displayed section view's document, as epubjs's Contents exposes it. */
+  interface EpubContents {
+    document?: Document;
+    range: (cfi: string) => Range | null;
   }
 
   /** The reader's view of an opened ePub, as produced by epub-book.ts. */

@@ -29,10 +29,17 @@ function installBook() {
   const handlers = new Map<string, (...args: never[]) => void>();
   const annotationsApi = { add: vi.fn(), remove: vi.fn() };
   const display = vi.fn(async () => undefined);
+  const getContents = vi.fn(() => [
+    {
+      document,
+      range: () => rangeOverQuote(),
+    },
+  ]);
   const rendition = {
     display,
     destroy: vi.fn(),
     annotations: annotationsApi,
+    getContents,
     attachTo: vi.fn((element: HTMLElement) => {
       element.appendChild(document.createElement('iframe'));
     }),
@@ -76,7 +83,25 @@ function installBook() {
   (ePub as unknown as Record<string, unknown>).ViewManagers = { default: class {} };
   (ePub as unknown as Record<string, unknown>).Views = { iframe: class {} };
   ePub.mockResolvedValue(epub);
-  return { rendition, handlers, annotationsApi, display };
+  return { rendition, handlers, annotationsApi, display, getContents };
+}
+
+/**
+ * The range epub.js would resolve for the annotation's CFI: the words
+ * "chapter text" inside the section text the reader renders. Built
+ * lazily from the rendered article, so it follows the current section.
+ */
+function rangeOverQuote(): Range | null {
+  const paragraph = document.querySelector('article p');
+  const textNode = paragraph?.firstChild;
+  if (!textNode || textNode.nodeType !== Node.TEXT_NODE) return null;
+  const text = textNode.textContent ?? '';
+  const start = text.indexOf('chapter text');
+  if (start < 0) return null;
+  const range = document.createRange();
+  range.setStart(textNode, start);
+  range.setEnd(textNode, start + 'chapter text'.length);
+  return range;
 }
 
 function installVault(overrides: Record<string, unknown> = {}) {
@@ -171,5 +196,70 @@ describe('ePub annotations in the reader', () => {
     expect(await screen.findByText('First chapter text here')).toBeInTheDocument();
     const section = container.querySelector('section[aria-label="ePub annotations"]')!;
     expect(await within(section as HTMLElement).findByText(/Highlight unavailable/)).toBeTruthy();
+  });
+
+  it('jump to an annotation in the current section moves focus and selection to the annotated text', async () => {
+    installBook();
+    installVault();
+    const { container } = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    expect(await screen.findByText('First chapter text here')).toBeInTheDocument();
+    const section = container.querySelector('section[aria-label="ePub annotations"]')!;
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: 'Jump to annotation: Start' }));
+    // Focus the element holding the annotated text and select that text
+    // as a text-node range — the Find way — so the screen reader's
+    // virtual cursor lands on the annotation, not just the button.
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByText('First chapter text here'));
+      expect(window.getSelection()?.toString()).toBe('chapter text');
+    });
+    expect(await within(section as HTMLElement).findByText('Jumped to annotation: Start.')).toBeTruthy();
+  });
+
+  it('jump to an annotation in another section navigates there first, then lands on the spot', async () => {
+    const { display, handlers } = installBook();
+    const otherSection: EpubAnnotation = {
+      ...existing,
+      anchor: {
+        cfiRange: 'epubcfi(/6/4!/4/2,/1:0,/1:6)',
+        sectionHref: 'Text/two.xhtml',
+        quote: 'chapter text',
+        prefix: 'Second ',
+        suffix: '',
+      },
+      label: 'Later',
+    };
+    installVault({ listEpubAnnotations: vi.fn(async () => [otherSection]) });
+    const { container } = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    expect(await screen.findByText('First chapter text here')).toBeInTheDocument();
+    const section = container.querySelector('section[aria-label="ePub annotations"]')!;
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: 'Jump to annotation: Later' }));
+    // The section change routes through the display effect, which shows
+    // the annotation's CFI — not the section start.
+    await waitFor(() => expect(display).toHaveBeenCalledWith(otherSection.anchor.cfiRange));
+    await waitFor(() => expect(screen.getByText('Section 2 of 2')).toBeInTheDocument());
+    // Nothing has landed yet: the rendition has not confirmed the move.
+    expect(window.getSelection()?.toString()).toBe('');
+    act(() => {
+      handlers.get('relocated')!({ start: { cfi: otherSection.anchor.cfiRange } } as never);
+    });
+    expect(await screen.findByText('Second chapter text')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(document.activeElement).toBe(screen.getByText('Second chapter text'));
+      expect(window.getSelection()?.toString()).toBe('chapter text');
+    });
+    expect(await within(section as HTMLElement).findByText('Jumped to annotation: Later.')).toBeTruthy();
+  });
+
+  it('jump reports honestly when the annotation spot can no longer be located', async () => {
+    const { getContents } = installBook();
+    getContents.mockReturnValue([]);
+    installVault();
+    const { container } = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
+    expect(await screen.findByText('First chapter text here')).toBeInTheDocument();
+    const section = container.querySelector('section[aria-label="ePub annotations"]')!;
+    fireEvent.click(within(section as HTMLElement).getByRole('button', { name: 'Jump to annotation: Start' }));
+    expect(
+      await within(section as HTMLElement).findByText('That annotation could not be located in the book view.', {}, { timeout: 5000 }),
+    ).toBeTruthy();
   });
 });

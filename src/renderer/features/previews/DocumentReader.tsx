@@ -1730,6 +1730,159 @@ function EpubReader({
     [path],
   );
 
+  const pendingAnnotationJumpRef = useRef<EpubAnnotation | null>(null);
+  const annotationRetryTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Land on an annotation's exact spot in the book view, the Find way:
+  // resolve the stored CFI to a DOM range in the rendered section,
+  // focus the element holding that range, and select the annotated text
+  // as a text-node range — focus alone does not move a screen reader's
+  // virtual cursor, and a whole-element selection leaves it where it
+  // was. Returns true only when the landing is verified: the element
+  // holds focus and a live, non-collapsed selection sits in its
+  // document.
+  const landOnEpubAnnotation = useCallback((annotation: EpubAnnotation): boolean => {
+    const contents = renditionRef.current?.getContents() ?? [];
+    for (const content of contents) {
+      const doc = content?.document;
+      let range: Range | null = null;
+      try {
+        range = content?.range(annotation.anchor.cfiRange) ?? null;
+      } catch {
+        range = null;
+      }
+      if (!doc || !range || range.collapsed) continue;
+      // The range's start may sit on an element boundary: descend to
+      // its first text node so the selection anchors on a text node,
+      // the way Find anchors a match.
+      let startNode: Node | null = range.startContainer;
+      if (startNode.nodeType === Node.ELEMENT_NODE) {
+        startNode = doc.createTreeWalker(startNode, NodeFilter.SHOW_TEXT).nextNode();
+      }
+      const element =
+        startNode?.nodeType === Node.TEXT_NODE
+          ? startNode.parentElement
+          : (range.startContainer as HTMLElement | null);
+      if (!element || !doc.contains(element)) continue;
+      if (!element.hasAttribute('tabindex')) element.setAttribute('tabindex', '-1');
+      element.focus();
+      // Focus can drop the selection: re-select the annotated range,
+      // as Find does after moving focus to a match.
+      const selection = doc.getSelection();
+      if (!selection) continue;
+      selection.removeAllRanges();
+      selection.addRange(range);
+      try {
+        element.scrollIntoView({ block: 'center' });
+      } catch {
+        // Scrolling is best-effort; the focus landing is what matters.
+      }
+      const reselected = doc.getSelection();
+      if (
+        doc.activeElement === element &&
+        reselected &&
+        reselected.rangeCount > 0 &&
+        !reselected.isCollapsed &&
+        !!reselected.anchorNode &&
+        doc.contains(reselected.anchorNode)
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }, []);
+
+  const clearAnnotationRetryTimer = useCallback(() => {
+    if (annotationRetryTimerRef.current) {
+      clearTimeout(annotationRetryTimerRef.current);
+      annotationRetryTimerRef.current = null;
+    }
+  }, []);
+
+  // Attempt the landing for a pending annotation jump. The rendition's
+  // contents may not be ready the moment a display resolves, so one
+  // failure schedules a single delayed retry; if the spot still cannot
+  // be found, say so honestly instead of silently doing nothing.
+  const attemptAnnotationLanding = useCallback(
+    (annotation: EpubAnnotation): boolean => {
+      if (landOnEpubAnnotation(annotation)) {
+        clearAnnotationRetryTimer();
+        pendingAnnotationJumpRef.current = null;
+        setEpubStatus(`Jumped to annotation: ${annotation.label}.`);
+        return true;
+      }
+      if (!annotationRetryTimerRef.current) {
+        annotationRetryTimerRef.current = setTimeout(() => {
+          annotationRetryTimerRef.current = null;
+          if (pendingAnnotationJumpRef.current?.id !== annotation.id) return;
+          if (landOnEpubAnnotation(annotation)) {
+            pendingAnnotationJumpRef.current = null;
+            setEpubStatus(`Jumped to annotation: ${annotation.label}.`);
+          } else {
+            pendingAnnotationJumpRef.current = null;
+            setEpubStatus('That annotation could not be located in the book view.');
+          }
+        }, 500);
+      }
+      return false;
+    },
+    [clearAnnotationRetryTimer, landOnEpubAnnotation],
+  );
+  const attemptAnnotationLandingRef = useRef(attemptAnnotationLanding);
+  attemptAnnotationLandingRef.current = attemptAnnotationLanding;
+
+  // Jump to an annotation: navigate to its section when needed, then
+  // land on its exact spot. Routing a cross-section jump through the
+  // section display effect (with the CFI as the pending target)
+  // matters: a bare display() here would be undone when the section
+  // change re-displays the section's href, landing the reader at the
+  // section start instead of the annotation.
+  const jumpToEpubAnnotation = useCallback(
+    async (annotation: EpubAnnotation) => {
+      const rendition = renditionRef.current;
+      if (!rendition || !book) {
+        setEpubStatus('That annotation could not be opened in the book view.');
+        return;
+      }
+      const targetIndex = book.spine.spineItems.findIndex(
+        (section) => section.href === annotation.anchor.sectionHref,
+      );
+      if (targetIndex < 0) {
+        setEpubStatus('That annotation could not be found in this book.');
+        return;
+      }
+      clearAnnotationRetryTimer();
+      pendingAnnotationJumpRef.current = annotation;
+      if (targetIndex !== sectionIndexRef.current) {
+        pendingCfiRef.current = annotation.anchor.cfiRange;
+        setSectionIndex(targetIndex);
+        return;
+      }
+      try {
+        await rendition.display(annotation.anchor.cfiRange);
+      } catch {
+        pendingAnnotationJumpRef.current = null;
+        setEpubStatus('That annotation could not be opened in the book view.');
+        return;
+      }
+      // display() resolves once the section is shown, but the relocated
+      // report lags behind it (queued + requestAnimationFrame), so land
+      // here as well; the relocated path retries if this attempt fails,
+      // and a successful landing clears the pending jump so the later
+      // report is a no-op.
+      if (pendingAnnotationJumpRef.current) attemptAnnotationLanding(annotation);
+    },
+    [attemptAnnotationLanding, book, clearAnnotationRetryTimer],
+  );
+
+  // A pending jump's delayed retry must not fire after the reader closes.
+  useEffect(
+    () => () => {
+      if (annotationRetryTimerRef.current) clearTimeout(annotationRetryTimerRef.current);
+    },
+    [],
+  );
+
   useEffect(() => {
     let cancelled = false;
     let book: EpubBook | undefined;
@@ -1897,6 +2050,20 @@ function EpubReader({
         pendingTargetRef.current = null;
         if (index !== sectionIndexRef.current) setSectionIndex(index);
         queueSavePosition(cfi, index);
+        // A pending annotation jump lands once the rendition has
+        // confirmed the move — but only when the report is for the
+        // annotation's own section; a report for another section (the
+        // user navigated away mid-jump) leaves the jump pending for a
+        // return to that section.
+        const pendingAnnotation = pendingAnnotationJumpRef.current;
+        if (pendingAnnotation) {
+          const annotationIndex = book.spine.spineItems.findIndex(
+            (section) => section.href === pendingAnnotation.anchor.sectionHref,
+          );
+          if (annotationIndex >= 0 && annotationIndex === index) {
+            attemptAnnotationLandingRef.current(pendingAnnotation);
+          }
+        }
       });
     }
     return () => {
@@ -2165,9 +2332,7 @@ function EpubReader({
                   disabled={status === 'orphan'}
                   aria-label={`Jump to annotation: ${annotation.label}`}
                   onClick={() => {
-                    void renditionRef.current?.display(annotation.anchor.cfiRange).catch(() => {
-                      setEpubStatus('That annotation could not be opened in the book view.');
-                    });
+                    void jumpToEpubAnnotation(annotation);
                   }}
                 >
                   Jump to text
