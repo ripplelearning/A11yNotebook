@@ -41,6 +41,18 @@ describe('updateMarkdownTaskLine', () => {
     expect(replaced).not.toContain('remind:');
   });
 
+  it('replaces a hand-typed MM/DD/YYYY marker instead of duplicating it', () => {
+    const handTyped =
+      '- [ ] Read chapter due:11/07/2026 📅 11/08/2026 remind:11/06/2026 08:00 <!-- a11y-task-id:task-1234abcd -->';
+    const replaced = updateMarkdownTaskLine(handTyped, {
+      schedule: { dueDate: '2026-11-09', dueTime: '', remindAt: '' },
+    });
+    expect(replaced).toBe('- [ ] Read chapter due:2026-11-09 <!-- a11y-task-id:task-1234abcd -->');
+    expect(replaced).not.toContain('11/07/2026');
+    expect(replaced).not.toContain('11/08/2026');
+    expect(replaced).not.toContain('remind:');
+  });
+
   it('clears the priority without moving the id comment', () => {
     const withPriority = updateMarkdownTaskLine(LINE_WITH_ID, { priority: 'high' });
     expect(updateMarkdownTaskLine(withPriority, { priority: '' })).toBe(LINE_WITH_ID);

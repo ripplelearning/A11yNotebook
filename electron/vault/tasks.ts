@@ -1,8 +1,14 @@
 // Parses task metadata from Markdown and semantic HTML without changing note formats.
 import type { VaultTask } from '../../src/shared/types';
 import { createHash } from 'node:crypto';
-import { decodeHtmlEntities } from './html-entities';
 import { parseReminderDate } from '../../src/shared/reminders';
+import {
+  normalizeTaskDate,
+  normalizeTaskDateTime,
+  TASK_DATE_PATTERN,
+  TASK_DATE_TIME_PATTERN,
+} from '../../src/shared/task-line';
+import { decodeHtmlEntities } from './html-entities';
 
 /** Return Markdown checkbox tasks with their source line and optional due date/priority. */
 export function parseMarkdownTasks(content: string, relativePath: string): VaultTask[] {
@@ -11,15 +17,29 @@ export function parseMarkdownTasks(content: string, relativePath: string): Vault
     if (!checkbox) return [];
     const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->$/.exec(checkbox[2])?.[1];
     const text = checkbox[2].replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '').trim();
-    const dueDate = text.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
+    // Dates accept the stored YYYY-MM-DD form and the MM/DD/YYYY form
+    // the guide documents; both are stored as YYYY-MM-DD. A marker whose
+    // date is not a real calendar date is left in the visible text rather
+    // than silently dropped.
+    const dueDate = [...text.matchAll(new RegExp(`(?:📅\\s*|due:)(${TASK_DATE_PATTERN})`, 'gi'))]
+      .map((match) => normalizeTaskDate(match[1]))
+      .find((date) => date !== undefined);
     const dueTime = text.match(/due-time:(\d{2}:\d{2})/i)?.[1];
     const priority = text.match(/priority:([A-Za-z0-9][A-Za-z0-9_-]{0,29})/i)?.[1]?.toLowerCase();
-    const remindAt = text.match(/(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
+    const remindAt = [...text.matchAll(new RegExp(`(?:\\bremind:|⏰\\s*)(${TASK_DATE_TIME_PATTERN})`, 'gi'))]
+      .map((match) => normalizeTaskDateTime(match[1]))
+      .find((dateTime) => dateTime !== undefined);
     const title = text
-      .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+      // Only markers with a real date are stripped; an impossible date
+      // stays in the visible text instead of vanishing silently.
+      .replace(new RegExp(`(?:📅\\s*|due:)(${TASK_DATE_PATTERN})`, 'gi'), (whole, date: string) =>
+        normalizeTaskDate(date) ? '' : whole,
+      )
+      .replace(new RegExp(`(?:\\bremind:|⏰\\s*)(${TASK_DATE_TIME_PATTERN})`, 'gi'), (whole, dateTime: string) =>
+        normalizeTaskDateTime(dateTime) ? '' : whole,
+      )
       .replace(/due-time:\d{2}:\d{2}/gi, '')
       .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
-      .replace(/(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '')
       .trim();
     return [
       {
@@ -163,9 +183,13 @@ function htmlTaskRecords(content: string) {
     // must not carry stored markers, exactly as the Markdown parser strips
     // them — otherwise a task or its linked reminder surfaces raw marker
     // text ("remind:YYYY-MM-DD HH:MM") in search results and the task list.
+    // Attribute dates accept the MM/DD/YYYY form the guide documents and
+    // are stored as YYYY-MM-DD, like Markdown dates.
+    const dueDate = normalizeTaskDate(due);
+    const normalizedReminder = normalizeTaskDateTime(reminder);
     const text = taskText(content.slice(token.end, close))
-      .replace(/(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '')
-      .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+      .replace(new RegExp(`(?:\\bremind:|⏰\\s*)${TASK_DATE_TIME_PATTERN}`, 'gi'), '')
+      .replace(new RegExp(`(?:📅\\s*|due:)${TASK_DATE_PATTERN}`, 'gi'), '')
       .replace(/due-time:\d{2}:\d{2}/gi, '')
       .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
       .replace(/\s+/g, ' ')
@@ -176,10 +200,10 @@ function htmlTaskRecords(content: string) {
         token,
         text,
         complete: complete === 'true',
-        ...(validDate(due) ? { dueDate: due } : {}),
+        ...(dueDate ? { dueDate } : {}),
         ...(/^\d{2}:\d{2}$/.test(dueTime) ? { dueTime } : {}),
         ...(/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(priority) ? { priority } : {}),
-        ...(parseReminderDate(reminder) ? { reminder } : {}),
+        ...(normalizedReminder && parseReminderDate(normalizedReminder) ? { reminder: normalizedReminder } : {}),
       },
     ];
   });

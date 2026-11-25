@@ -240,6 +240,22 @@ export function composeDialogTime(text: string, meridiem: Meridiem): string | nu
 
 export function parseReminderDate(value: string): Date | null {
   if (typeof value !== 'string') return null;
+  // The guide documents reminder dates as MM/DD/YYYY; they are local
+  // time, like the YYYY-MM-DD form, and read field by field so no
+  // timezone conversion can shift them.
+  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})[ T](\d{2}):(\d{2})$/.exec(value);
+  if (us) {
+    const [, m, d, y, h, min] = us.map(Number);
+    if (y < 1000 || m < 1 || m > 12 || d < 1 || h > 23 || min > 59) return null;
+    const date = new Date(y, m - 1, d, h, min);
+    return date.getFullYear() === y &&
+      date.getMonth() === m - 1 &&
+      date.getDate() === d &&
+      date.getHours() === h &&
+      date.getMinutes() === min
+      ? date
+      : null;
+  }
   const local = /^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2})$/.exec(value);
   if (local) {
     const [, y, m, d, h, min] = local.map(Number);

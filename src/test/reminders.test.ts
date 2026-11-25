@@ -80,6 +80,23 @@ describe('reminder parsing and validation', () => {
     ]);
   });
 
+  it('accepts MM/DD/YYYY reminder markers as the guide documents them', () => {
+    const tasks = parseTaskReminders(
+      [
+        '- [ ] Read remind:10/03/2026 09:00',
+        '- [X] Submit ⏰ 10/05/2026 12:30',
+        '- [ ] Bad remind:02/29/2026 10:00',
+        '- [ ] Bad remind:13/01/2026 10:00',
+      ].join('\n'),
+      'Study.md',
+    );
+    expect(tasks).toHaveLength(2);
+    expect(tasks[0]).toMatchObject({ title: 'Read', line: 1, complete: false });
+    expect(tasks[1]).toMatchObject({ title: 'Submit', line: 2, complete: true });
+    // The stored time is the same local time either way the date was typed.
+    expect(tasks[0].scheduledAt).toBe(new Date(2026, 9, 3, 9, 0).toISOString());
+  });
+
   it('strips stored markers from an HTML task reminder title', () => {
     expect(
       parseTaskReminders(
@@ -120,6 +137,14 @@ describe('reminder parsing and validation', () => {
     expect(parseReminderDate('2026-10-03T10:00:00.000Z')?.toISOString()).toBe('2026-10-03T10:00:00.000Z');
     expect(() => validateReminderStore({ version: 1, standalone: [], states: { bad: {} } })).toThrow();
     expect(validateReminderStore(null)).toEqual({ version: 1, standalone: [], states: {}, reviewStates: {} });
+  });
+
+  it('accepts MM/DD/YYYY local date-times, rejecting impossible ones', () => {
+    expect(parseReminderDate('10/03/2026 09:00')).toEqual(new Date(2026, 9, 3, 9, 0));
+    expect(parseReminderDate('2/29/2028 10:00')).toEqual(new Date(2028, 1, 29, 10, 0));
+    for (const value of ['2/29/2026 10:00', '13/01/2026 10:00', '10/03/2026 25:00', '10/03/2026 10:60']) {
+      expect(parseReminderDate(value)).toBeNull();
+    }
   });
 });
 

@@ -13,9 +13,10 @@
 export const GUIDE_SHORTCUTS_HEADING = 'Keyboard shortcuts';
 
 /**
- * Marker that heads the generated shortcuts section, in the guide file and
- * in the rendered guide alike: it tells the next editor the section is
- * not hand-maintained.
+ * Marker that heads the generated shortcuts section in the guide file:
+ * it tells the next editor the section is not hand-maintained. It lives
+ * in docs/user-guide.md only — it is stripped from the rendered guide,
+ * where markdown-it would show it as visible text.
  */
 export const GUIDE_SHORTCUTS_MARKER =
   '<!-- guide-shortcuts: generated from the command registry when the guide opens; do not hand-edit this section. -->';
@@ -104,7 +105,9 @@ export function extractGuideSections(markdown: string): GuideSection[] {
 /**
  * Build the shortcuts section body (without its heading) from the rows
  * the shortcuts dialog shows: navigation keys first, then every command
- * binding from the registry, in the caller's order.
+ * binding from the registry, in the caller's order. The body carries no
+ * HTML comment: markdown-it renders raw HTML as escaped visible text,
+ * so the generation marker must stay in the guide file only.
  */
 export function buildShortcutsSectionMarkdown(rows: readonly GuideShortcutRow[]): string {
   const intro =
@@ -116,37 +119,81 @@ export function buildShortcutsSectionMarkdown(rows: readonly GuideShortcutRow[])
     '| --- | --- |',
     ...rows.map((row) => `| ${row.label} | ${row.shortcut} |`),
   ].join('\n');
-  return `${GUIDE_SHORTCUTS_MARKER}\n\n${intro}\n\n${macNote}\n\n${table}`;
+  return `${intro}\n\n${macNote}\n\n${table}`;
+}
+
+/**
+ * Remove HTML comments from guide markdown outside fenced code blocks.
+ * markdown-it renders raw HTML as escaped visible text, so a comment in
+ * the guide file showed up in the app as literal "<!-- ... -->" text.
+ * Comments inside code examples are kept: they are example content.
+ */
+export function stripGuideHtmlComments(markdown: string): string {
+  const lines = markdown.split('\n');
+  const output: string[] = [];
+  let inFence = false;
+  let inComment = false;
+  for (const line of lines) {
+    if (!inComment && /^```/.test(line)) inFence = !inFence;
+    if (inFence) {
+      output.push(line);
+      continue;
+    }
+    let text = line;
+    if (inComment) {
+      const end = text.indexOf('-->');
+      if (end === -1) continue;
+      inComment = false;
+      text = text.slice(end + 3);
+    }
+    let start = text.indexOf('<!--');
+    while (start !== -1) {
+      const end = text.indexOf('-->', start + 4);
+      if (end === -1) {
+        inComment = true;
+        text = text.slice(0, start);
+        break;
+      }
+      text = text.slice(0, start) + text.slice(end + 3);
+      start = text.indexOf('<!--');
+    }
+    output.push(text);
+  }
+  return output.join('\n');
 }
 
 /**
  * Replace the "Keyboard shortcuts" section of the guide source with the
  * generated table. The old section runs from its heading to the next
- * level-2 heading (or the end of the file); everything else is kept
- * verbatim. If the heading is missing, the generated section is appended,
- * so the guide never silently loses its shortcuts.
+ * heading at the same level or higher (or the end of the file); everything
+ * else is kept verbatim. If the heading is missing, the generated section
+ * is appended, so the guide never silently loses its shortcuts. HTML
+ * comments are stripped from the result, so a comment in the guide file
+ * never shows as visible text in the app.
  */
 export function buildGuideMarkdown(source: string, rows: readonly GuideShortcutRow[]): string {
   const lines = source.split('\n');
-  const headingIndex = lines.findIndex((line) => line.trim() === `## ${GUIDE_SHORTCUTS_HEADING}`);
-  const generated = `## ${GUIDE_SHORTCUTS_HEADING}\n\n${buildShortcutsSectionMarkdown(rows)}`;
+  const headingIndex = lines.findIndex((line) => /^#{2,3}\s+Keyboard shortcuts\s*$/.test(line));
+  const level = headingIndex === -1 || lines[headingIndex].startsWith('## ') ? '##' : '###';
+  const generated = `${level} ${GUIDE_SHORTCUTS_HEADING}\n\n${buildShortcutsSectionMarkdown(rows)}`;
   if (headingIndex === -1) {
     const trimmed = source.replace(/\s+$/, '');
-    return `${trimmed}\n\n${generated}\n`;
+    return stripGuideHtmlComments(`${trimmed}\n\n${generated}\n`);
   }
   let end = lines.length;
   let inFence = false;
+  const nextHeading = level === '##' ? /^##\s+/ : /^#{2,3}\s+/;
   for (let index = headingIndex + 1; index < lines.length; index += 1) {
     if (/^```/.test(lines[index])) {
       inFence = !inFence;
       continue;
     }
-    if (!inFence && /^##\s+/.test(lines[index])) {
+    if (!inFence && nextHeading.test(lines[index])) {
       end = index;
       break;
     }
   }
-  return [...lines.slice(0, headingIndex), generated, ...lines.slice(end)].join('\n');
+  return stripGuideHtmlComments([...lines.slice(0, headingIndex), generated, ...lines.slice(end)].join('\n'));
 }
 
 /**
