@@ -113,7 +113,7 @@ describe('searchTasksRemindersAppointments', () => {
     expect(appointment.snippet).toContain('Room 4');
     expect(appointment.snippet).toMatch(/\d{2}\/\d{2}\/\d{4}, \d{1,2}:\d{2} [AP]M/);
     const [due] = search({ text: 'accessibility report', kind: 'task' });
-    expect(due.snippet).toContain('Due 11-10-2026');
+    expect(due.snippet).toContain('Due 11/10/2026');
     expect(due.snippet).not.toContain('2026-11-10');
     expect(due.snippet).toContain('high priority');
   });
