@@ -625,6 +625,12 @@ export default function App() {
   const [taskCreateError, setTaskCreateError] = useState('');
   const [taskCreating, setTaskCreating] = useState(false);
   const [taskNotePaths, setTaskNotePaths] = useState<string[]>([]);
+  // A task started from a grid context menu carries its selection with
+  // it: a note becomes the dialog's associated note, and a file or link
+  // becomes the link attached to the created task. Both are cleared when
+  // the dialog closes, so a later task never inherits a stale selection.
+  const [taskInitialPath, setTaskInitialPath] = useState<string | undefined>(undefined);
+  const [taskLinkTarget, setTaskLinkTarget] = useState<{ kind: TaskLinkKind; target: string } | null>(null);
   const [switchingVault, setSwitchingVault] = useState(false);
   const switchingRef = useRef(false);
   const vaultGenerationRef = useRef(0);
@@ -2564,12 +2570,16 @@ export default function App() {
       if (await bridge.isNoteEncrypted?.(path))
         throw new Error('Add tasks to an unencrypted note so they can appear in Tasks.');
       const baseline = await bridge.readNote(path);
+      // One stable id for the new task, in both formats: the link a
+      // grid menu asked for is attached by that id once the note is
+      // saved, so the created task can be found again reliably.
+      const stableId = crypto.randomUUID();
       let content: string;
       if (/\.html?$/i.test(path)) {
         const document = new DOMParser().parseFromString(baseline, 'text/html');
         const list = document.createElement('ul');
         const item = document.createElement('li');
-        item.setAttribute('data-a11y-task-id', crypto.randomUUID());
+        item.setAttribute('data-a11y-task-id', stableId);
         item.setAttribute('data-a11y-task-complete', 'false');
         if (due) item.setAttribute('data-a11y-task-due', due);
         if (reminder) item.setAttribute('data-a11y-task-remind', reminder.replace('T', ' '));
@@ -2581,7 +2591,7 @@ export default function App() {
       } else {
         const description = text.replace(/[\r\n]+/g, ' ');
         const reminderSuffix = reminder ? ` remind:${reminder.replace('T', ' ')}` : '';
-        content = `${baseline}${baseline.endsWith('\n') || !baseline ? '' : '\n'}- [ ] ${description}${due ? ` due:${due}` : ''} priority:${priority}${reminderSuffix} <!-- a11y-task-id:${crypto.randomUUID()} -->\n`;
+        content = `${baseline}${baseline.endsWith('\n') || !baseline ? '' : '\n'}- [ ] ${description}${due ? ` due:${due}` : ''} priority:${priority}${reminderSuffix} <!-- a11y-task-id:${stableId} -->\n`;
       }
       if (!isCurrent()) return;
       await bridge.saveNote(path, content, baseline);
@@ -2597,7 +2607,28 @@ export default function App() {
       setStatusMessage('Task created in its associated note.');
       try {
         const refreshedTasks = await bridge.getTasks();
-        if (isCurrent()) setTasks(refreshedTasks);
+        if (!isCurrent()) return;
+        // A file or link the task was started from is attached here,
+        // before the task list refresh: the auto-link reconciliation
+        // that runs on the refresh then adds the link to the task's own
+        // note on top of it, instead of either save dropping the other.
+        if (taskLinkTarget) {
+          const created = refreshedTasks.find((task) => task.id === `${path}#${stableId}`);
+          if (created) {
+            try {
+              await saveTaskLink(created, taskLinkTarget.kind, taskLinkTarget.target);
+              setStatusMessage(`Task created in its associated note and linked to ${taskLinkTarget.target}.`);
+            } catch {
+              // The task itself is saved; only its link failed, so the
+              // list still refreshes and the link can be added by hand.
+              setStatusMessage(
+                `Task created in its associated note. The link to ${taskLinkTarget.target} could not be saved.`,
+              );
+            }
+          }
+          setTaskLinkTarget(null);
+        }
+        setTasks(refreshedTasks);
       } catch {
         if (isCurrent()) setStatusMessage('Task created. Refresh Tasks to update the list.');
       }
@@ -6511,6 +6542,23 @@ export default function App() {
       setActiveDialog(null);
       setTaskCreateError('');
       setTaskNotePaths([]);
+      // From a grid context menu the selected item is the link target:
+      // a note is pre-selected as the associated note, while a file or
+      // saved web link is attached to the task once it is created (a
+      // task can only live in a note, so the dialog still asks which
+      // note holds it). From anywhere else there is no selection, so
+      // the open note stays the default associated note.
+      const menuEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
+      if (menuEntry?.kind === 'note') {
+        setTaskInitialPath(contextMenu?.path);
+        setTaskLinkTarget(null);
+      } else if (menuEntry?.kind === 'attachment' || menuEntry?.kind === 'link') {
+        setTaskInitialPath(currentNote?.path);
+        setTaskLinkTarget({ kind: 'file', target: contextMenu?.path ?? '' });
+      } else {
+        setTaskInitialPath(currentNote?.path);
+        setTaskLinkTarget(null);
+      }
       setTaskCreating(true);
       setTaskDialogOpen(true);
       const root = vaultPathRef.current;
@@ -7465,12 +7513,17 @@ export default function App() {
               ? { ...command, label: 'Unpin tab' }
               : command.id === 'context-protect' && contextEntry?.protected
                 ? { ...command, label: 'Unprotect selected item' }
-                : command.id === 'context-delete' &&
-                    contextEntry &&
-                    isAliusPath(contextEntry.path) &&
-                    contextEntry.aliusBroken
-                  ? { ...command, label: 'Remove the Alius' }
-                  : command,
+                : command.id === 'new-task' &&
+                    (contextMenu.context === 'tree-note' ||
+                      contextMenu.context === 'attachment' ||
+                      contextMenu.context === 'link')
+                  ? { ...command, label: 'Create task' }
+                  : command.id === 'context-delete' &&
+                      contextEntry &&
+                      isAliusPath(contextEntry.path) &&
+                      contextEntry.aliusBroken
+                    ? { ...command, label: 'Remove the Alius' }
+                    : command,
         )
     : [];
   // Alius records share the link context, but their extra actions live
@@ -7627,12 +7680,16 @@ export default function App() {
       {taskDialogOpen ? (
         <AssociatedTaskDialog
           paths={taskNotePaths}
-          initialPath={currentNote?.path}
+          initialPath={taskInitialPath}
           busy={taskCreating}
           error={taskCreateError}
           priorityOptions={priorityOptions}
           onCreate={createTask}
-          onClose={() => setTaskDialogOpen(false)}
+          onClose={() => {
+            setTaskDialogOpen(false);
+            setTaskLinkTarget(null);
+            setTaskInitialPath(undefined);
+          }}
         />
       ) : null}
       {taskScheduleDialog ? (
