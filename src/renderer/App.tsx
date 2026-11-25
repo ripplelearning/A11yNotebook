@@ -1993,6 +1993,22 @@ export default function App() {
     reminderState.reminders,
   ]);
 
+  // Escape in the search UI clears the whole search — text and filters —
+  // so the results leave the display, and announces the change. The text
+  // alone is not enough: a filter on its own keeps the search active and
+  // the results on screen. Scoped to the search input and the results
+  // section (App.tsx header, SearchResults): dialogs and the command
+  // palette keep their own Escape handling, and with no search active
+  // this is a no-op. Focus lands back in the search input, ready for a
+  // new search.
+  const clearSearch = () => {
+    if (!searchText.trim() && !Object.values(searchFilters).some(Boolean)) return;
+    setSearchText('');
+    setSearchFilters({});
+    setStatusMessage('Search cleared.');
+    searchRef.current?.focus();
+  };
+
   const availableRegions = FOCUS_REGION_ORDER.filter(
     (region) => (region !== 'right-pane' || rightPaneOpen) && (!focusMode || region === 'main'),
   );
@@ -7732,6 +7748,15 @@ export default function App() {
             type="search"
             value={searchText}
             onChange={(event) => setSearchText(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape') {
+                // Stop the browser's native search-input clear: it empties
+                // the text only, leaving any filters (and their results) in
+                // place. clearSearch empties both and announces it.
+                event.preventDefault();
+                clearSearch();
+              }
+            }}
             placeholder="Search library, notes, tasks, files"
           />
         </div>
@@ -7911,6 +7936,7 @@ export default function App() {
               selectedNotebookPath={selectedNotebookPath}
               selectedNotebookName={selectedNotebookName}
               scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
+              onClearSearch={clearSearch}
               onOpen={(result) => {
                 if (result.kind === 'task' && result.targetId) {
                   // The task filters could hide the row (a done task under

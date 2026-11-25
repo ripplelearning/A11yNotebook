@@ -9,6 +9,7 @@ interface Props {
   results: VaultSearchResult[];
   active: boolean;
   onOpen: (result: VaultSearchResult) => void;
+  onClearSearch: () => void;
   scope: SearchScope;
   selectedNotebookPath?: string;
   selectedNotebookName?: string;
@@ -31,6 +32,7 @@ export default function SearchResults({
   results,
   active,
   onOpen,
+  onClearSearch,
   scope,
   selectedNotebookPath,
   selectedNotebookName,
@@ -41,7 +43,19 @@ export default function SearchResults({
       ? `Current notebook${selectedNotebookName ? `: ${selectedNotebookName}` : ''}`
       : 'Whole library';
   return (
-    <section aria-labelledby="search-results-heading">
+    <section
+      aria-labelledby="search-results-heading"
+      onKeyDown={(event) => {
+        // Escape anywhere in the results section — a result row or a
+        // filter field — clears the whole search. The guard lives in
+        // onClearSearch: with no search active this is a no-op, so it
+        // never swallows Escape meant for a dialog or the palette.
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          onClearSearch();
+        }
+      }}
+    >
       <h3 id="search-results-heading">Search</h3>
       <details>
         <summary>Search filters</summary>
