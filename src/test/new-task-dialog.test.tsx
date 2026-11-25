@@ -8,8 +8,8 @@ describe('new task dialogs', () => {
     render(<NewTaskDialog onCreate={onCreate} onClose={() => undefined} />);
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     const name = within(dialog).getByRole('textbox', { name: 'Task text' });
-    const due = within(dialog).getByLabelText('Due date, YYYY-MM-DD');
-    const reminderDate = within(dialog).getByLabelText('Reminder date, YYYY-MM-DD');
+    const due = within(dialog).getByLabelText('Due date, MM/DD/YYYY');
+    const reminderDate = within(dialog).getByLabelText('Reminder date, MM/DD/YYYY');
     const reminderTime = within(dialog).getByLabelText('Reminder time, HH:MM');
     const priority = within(dialog).getByLabelText('Priority');
     // Tab order is document order for native controls.
@@ -18,8 +18,8 @@ describe('new task dialogs', () => {
     expect(reminderDate.compareDocumentPosition(reminderTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(reminderTime.compareDocumentPosition(priority) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     fireEvent.change(name, { target: { value: 'Plan review' } });
-    fireEvent.change(due, { target: { value: '2026-11-01' } });
-    fireEvent.change(reminderDate, { target: { value: '2026-11-01' } });
+    fireEvent.change(due, { target: { value: '11/01/2026' } });
+    fireEvent.change(reminderDate, { target: { value: '11/01/2026' } });
     fireEvent.change(reminderTime, { target: { value: '09:00' } });
     fireEvent.change(priority, { target: { value: 'high' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
@@ -36,7 +36,7 @@ describe('new task dialogs', () => {
     render(<NewTaskDialog onCreate={onCreate} onClose={() => undefined} />);
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task text' }), { target: { value: 'Plan' } });
-    fireEvent.change(within(dialog).getByLabelText('Reminder date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
+    fireEvent.change(within(dialog).getByLabelText('Reminder date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Set both a reminder date and time');
     expect(onCreate).not.toHaveBeenCalled();
@@ -47,11 +47,11 @@ describe('new task dialogs', () => {
     render(<NewTaskDialog onCreate={onCreate} onClose={() => undefined} />);
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task text' }), { target: { value: 'Plan' } });
-    fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-02-30' } });
+    fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '02/30/2026' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter a due date as YYYY-MM-DD.');
-    fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
-    fireEvent.change(within(dialog).getByLabelText('Reminder date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter a due date as MM/DD/YYYY.');
+    fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
+    fireEvent.change(within(dialog).getByLabelText('Reminder date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
     fireEvent.change(within(dialog).getByLabelText('Reminder time, HH:MM'), { target: { value: '25:00' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter a reminder time as HH:MM or H:MM AM/PM.');
@@ -71,8 +71,8 @@ describe('new task dialogs', () => {
     const onCreate = vi.fn(async () => undefined);
     render(<NewTaskDialog onCreate={onCreate} onClose={() => undefined} />);
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    const due = within(dialog).getByLabelText('Due date, YYYY-MM-DD');
-    const reminderDate = within(dialog).getByLabelText('Reminder date, YYYY-MM-DD');
+    const due = within(dialog).getByLabelText('Due date, MM/DD/YYYY');
+    const reminderDate = within(dialog).getByLabelText('Reminder date, MM/DD/YYYY');
     const reminderTime = within(dialog).getByLabelText('Reminder time, HH:MM');
     const pickers = within(dialog).getAllByRole('button', { name: 'Show Date Picker' });
     expect(pickers).toHaveLength(2);
@@ -81,14 +81,14 @@ describe('new task dialogs', () => {
     expect((pickers[0] as Node).compareDocumentPosition(reminderDate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(reminderDate.compareDocumentPosition(pickers[1] as Node) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect((pickers[1] as Node).compareDocumentPosition(reminderTime) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    fireEvent.change(due, { target: { value: '2026-11-01' } });
+    fireEvent.change(due, { target: { value: '11/01/2026' } });
     fireEvent.click(pickers[0] as HTMLElement);
     fireEvent.click(within(dialog).getByRole('button', { name: /November 15, 2026/ }));
-    expect(due).toHaveValue('2026-11-15');
-    fireEvent.change(reminderDate, { target: { value: '2026-11-01' } });
+    expect(due).toHaveValue('11/15/2026');
+    fireEvent.change(reminderDate, { target: { value: '11/01/2026' } });
     fireEvent.click(pickers[1] as HTMLElement);
     fireEvent.click(within(dialog).getByRole('button', { name: /November 20, 2026/ }));
-    expect(reminderDate).toHaveValue('2026-11-20');
+    expect(reminderDate).toHaveValue('11/20/2026');
   });
 
   it('offers a Show Date Picker button for both dates in the associated-note dialog', async () => {
@@ -103,17 +103,17 @@ describe('new task dialogs', () => {
       />,
     );
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    const due = within(dialog).getByLabelText('Due date, YYYY-MM-DD');
-    const reminderDate = within(dialog).getByLabelText('Reminder date, YYYY-MM-DD');
+    const due = within(dialog).getByLabelText('Due date, MM/DD/YYYY');
+    const reminderDate = within(dialog).getByLabelText('Reminder date, MM/DD/YYYY');
     const pickers = within(dialog).getAllByRole('button', { name: 'Show Date Picker' });
     expect(pickers).toHaveLength(2);
-    fireEvent.change(due, { target: { value: '2026-11-01' } });
+    fireEvent.change(due, { target: { value: '11/01/2026' } });
     fireEvent.click(pickers[0] as HTMLElement);
     fireEvent.click(within(dialog).getByRole('button', { name: /November 15, 2026/ }));
-    expect(due).toHaveValue('2026-11-15');
-    fireEvent.change(reminderDate, { target: { value: '2026-11-01' } });
+    expect(due).toHaveValue('11/15/2026');
+    fireEvent.change(reminderDate, { target: { value: '11/01/2026' } });
     fireEvent.click(pickers[1] as HTMLElement);
     fireEvent.click(within(dialog).getByRole('button', { name: /November 20, 2026/ }));
-    expect(reminderDate).toHaveValue('2026-11-20');
+    expect(reminderDate).toHaveValue('11/20/2026');
   });
 });

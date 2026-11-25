@@ -1,7 +1,7 @@
 import { readZipEntries } from './zip-archive';
 import { escapeXml, writeZipEntries } from './zip-write';
 import {
-  formatSerialDate,
+  formatSerialDateIso,
   parseCellReference,
   type SpreadsheetCell,
   type SpreadsheetSheet,
@@ -61,7 +61,8 @@ function cellXml(cell: SpreadsheetCell, sheet: SpreadsheetSheet, column: number,
   if (typeof cell.value === 'number') {
     // A numeric cell whose display text is not the number itself holds a date.
     if (cell.text !== String(cell.value)) {
-      const dateValue = formatSerialDate(cell.value).slice(0, 10);
+      // The file's date-value stays ISO; the displayed text is cell.text.
+      const dateValue = formatSerialDateIso(cell.value).slice(0, 10);
       return `<table:table-cell${style}${spanAttrs}${formula} office:value-type="date" office:date-value="${dateValue}">${textParagraphs(cell.text)}</table:table-cell>`;
     }
     return `<table:table-cell${style}${spanAttrs}${formula} office:value-type="float" office:value="${cell.value}">${textParagraphs(cell.text)}</table:table-cell>`;

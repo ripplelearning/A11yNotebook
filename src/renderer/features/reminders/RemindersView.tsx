@@ -14,6 +14,8 @@ export interface RemindersViewProps {
   notePaths: string[];
   /** Files a new reminder may link to, alongside notes. */
   filePaths?: string[];
+  /** Saved web links a new reminder may link to, alongside notes and files. */
+  linkPaths?: string[];
   /** Increment to open the Create reminder dialog (for example, from Ctrl+N). */
   createRequest?: number;
   /** Path to pre-select when the dialog opens from a create request. */
@@ -33,6 +35,7 @@ export default function RemindersView({
   reminders,
   notePaths,
   filePaths = [],
+  linkPaths = [],
   createRequest = 0,
   initialPath,
   onCreate,
@@ -146,7 +149,7 @@ export default function RemindersView({
       <h2 id={`${id}-heading`}>{headingTitle}</h2>
       <button
         type="button"
-        disabled={notePaths.length === 0 && filePaths.length === 0}
+        disabled={notePaths.length === 0 && filePaths.length === 0 && linkPaths.length === 0}
         onClick={() => {
           setCreatePath(undefined);
           setCreating(true);
@@ -154,8 +157,8 @@ export default function RemindersView({
       >
         Create reminder
       </button>
-      {notePaths.length === 0 && filePaths.length === 0 ? (
-        <p>Create reminder needs at least one note or file in the library.</p>
+      {notePaths.length === 0 && filePaths.length === 0 && linkPaths.length === 0 ? (
+        <p>Create reminder needs at least one note, file, or link in the library.</p>
       ) : null}
       <label htmlFor={`${id}-view`}>Reminder view</label>
       <select id={`${id}-view`} value={view} onChange={(event) => setView(event.target.value)}>
@@ -225,6 +228,7 @@ export default function RemindersView({
         <CreateReminderDialog
           notePaths={notePaths}
           filePaths={filePaths}
+          linkPaths={linkPaths}
           initialPath={createPath}
           defaults={defaults}
           onSaveDefaults={onSaveDefaults}

@@ -9,12 +9,15 @@ import {
   type SnoozeDuration,
 } from '../../../shared/reminders';
 import { DEFAULT_REMINDER_DEFAULTS, type ReminderDefaults } from '../../../shared/reminder-defaults';
+import { normalizeDateText } from '../../../shared/calendar';
 
 export interface CreateReminderDialogProps {
   notePaths: string[];
   /** Files the reminder may link to, alongside notes. */
   filePaths?: string[];
-  /** Path to pre-select, for example the note or file a context menu was opened on. */
+  /** Saved web links the reminder may link to, alongside notes and files. */
+  linkPaths?: string[];
+  /** Path to pre-select, for example the note, file, or link a context menu was opened on. */
   initialPath?: string;
   onCreate: (input: CreateReminderInput) => void | Promise<unknown>;
   defaults?: ReminderDefaults;
@@ -22,14 +25,17 @@ export interface CreateReminderDialogProps {
   onClose: () => void;
 }
 
+export type ReminderLinkKind = 'note' | 'file' | 'link';
+
 function localDate() {
   const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  return `${String(now.getMonth() + 1).padStart(2, '0')}/${String(now.getDate()).padStart(2, '0')}/${now.getFullYear()}`;
 }
 
 export default function CreateReminderDialog({
   notePaths,
   filePaths = [],
+  linkPaths = [],
   initialPath,
   onCreate,
   defaults = DEFAULT_REMINDER_DEFAULTS,
@@ -38,23 +44,30 @@ export default function CreateReminderDialog({
 }: CreateReminderDialogProps) {
   const id = useId();
   const [title, setTitle] = useState('');
-  // The linked item is a note or a file, mirroring the appointment link
-  // picker. When both kinds are available the kind is chosen first; when
-  // only one kind exists the kind is forced and the picker is hidden.
-  const initialKind: 'note' | 'file' =
-    initialPath && filePaths.includes(initialPath)
-      ? 'file'
-      : initialPath && notePaths.includes(initialPath)
-        ? 'note'
-        : notePaths.length > 0
+  // The linked item is a note, a file, or a saved web link, mirroring
+  // the appointment link picker. When more than one kind is available
+  // the kind is chosen first; when only one kind exists the kind is
+  // forced and the picker is hidden.
+  const targetsFor = (kind: ReminderLinkKind) =>
+    kind === 'note' ? notePaths : kind === 'file' ? filePaths : linkPaths;
+  const initialKind: ReminderLinkKind =
+    initialPath && linkPaths.includes(initialPath)
+      ? 'link'
+      : initialPath && filePaths.includes(initialPath)
+        ? 'file'
+        : initialPath && notePaths.includes(initialPath)
           ? 'note'
-          : 'file';
-  const initialTargets = initialKind === 'note' ? notePaths : filePaths;
-  const [linkKind, setLinkKind] = useState<'note' | 'file'>(initialKind);
+          : notePaths.length > 0
+            ? 'note'
+            : filePaths.length > 0
+              ? 'file'
+              : 'link';
+  const initialTargets = targetsFor(initialKind);
+  const [linkKind, setLinkKind] = useState<ReminderLinkKind>(initialKind);
   const [path, setPath] = useState(
     initialPath && initialTargets.includes(initialPath) ? initialPath : (initialTargets[0] ?? ''),
   );
-  const linkTargets = linkKind === 'note' ? notePaths : filePaths;
+  const linkTargets = targetsFor(linkKind);
   const [date, setDate] = useState(localDate);
   const [time, setTime] = useState(() => splitStoredTime(defaults.time).time);
   const [meridiem, setMeridiem] = useState(() => splitStoredTime(defaults.time).meridiem);
@@ -79,12 +92,14 @@ export default function CreateReminderDialog({
     if (busy) return;
     const normalizedTime = composeDialogTime(time, meridiem);
     if (!normalizedTime) {
-      setError('Enter a title, note, and valid date and time.');
+      setError('Enter a title, a note, file, or link, and a valid date and time.');
       return;
     }
-    const scheduledAt = `${date} ${normalizedTime}`;
+    // The date the user typed is MM/DD/YYYY; store it as YYYY-MM-DD.
+    const isoDate = normalizeDateText(date);
+    const scheduledAt = isoDate ? `${isoDate} ${normalizedTime}` : '';
     if (!title.trim() || !linkTargets.includes(path) || !parseReminderDate(scheduledAt)) {
-      setError('Enter a title, note or file, and valid date and time.');
+      setError('Enter a title, a note, file, or link, and a valid date and time.');
       return;
     }
     setBusy(true);
@@ -128,24 +143,25 @@ export default function CreateReminderDialog({
           required
           data-autofocus
         />
-        {notePaths.length > 0 && filePaths.length > 0 && (
+        {[notePaths, filePaths, linkPaths].filter((targets) => targets.length > 0).length > 1 && (
           <>
             <label htmlFor={`${id}-link-kind`}>Link to</label>
             <select
               id={`${id}-link-kind`}
               value={linkKind}
               onChange={(event) => {
-                const next = event.target.value as 'note' | 'file';
+                const next = event.target.value as ReminderLinkKind;
                 setLinkKind(next);
-                setPath((next === 'note' ? notePaths : filePaths)[0] ?? '');
+                setPath(targetsFor(next)[0] ?? '');
               }}
             >
-              <option value="note">Note</option>
-              <option value="file">File</option>
+              {notePaths.length > 0 && <option value="note">Note</option>}
+              {filePaths.length > 0 && <option value="file">File</option>}
+              {linkPaths.length > 0 && <option value="link">Link</option>}
             </select>
           </>
         )}
-        <label htmlFor={`${id}-note`}>{linkKind === 'note' ? 'Note' : 'File'}</label>
+        <label htmlFor={`${id}-note`}>{linkKind === 'note' ? 'Note' : linkKind === 'file' ? 'File' : 'Link'}</label>
         <select id={`${id}-note`} value={path} onChange={(event) => setPath(event.target.value)} required>
           {linkTargets.map((target) => (
             <option key={target} value={target}>
@@ -153,7 +169,7 @@ export default function CreateReminderDialog({
             </option>
           ))}
         </select>
-        <DatePickerField id={`${id}-date`} label="Date, YYYY-MM-DD" value={date} onChange={setDate} required />
+        <DatePickerField id={`${id}-date`} label="Date, MM/DD/YYYY" value={date} onChange={setDate} required />
         <label htmlFor={`${id}-time`}>Time, HH:MM</label>
         <input
           id={`${id}-time`}

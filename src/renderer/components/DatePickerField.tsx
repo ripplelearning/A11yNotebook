@@ -1,9 +1,10 @@
 import { useRef, useState } from 'react';
 import CalendarGrid from './CalendarGrid';
+import { displayDateText, normalizeDateText } from '../../shared/calendar';
 
 /**
  * A typed date field with a "Show Date Picker" button. Typing stays in a
- * plain text field (YYYY-MM-DD), which screen readers handle reliably.
+ * plain text field (MM/DD/YYYY), which screen readers handle reliably.
  * The button opens an in-dialog calendar grid (never the browser's
  * native date popup: that popup is browser UI outside the dialog, so
  * Tab cycles inside it instead of moving to the next dialog control,
@@ -11,6 +12,10 @@ import CalendarGrid from './CalendarGrid';
  * tabIndex, so it costs one Tab stop and arrow keys move between days;
  * picking a date writes it back into the text field and returns focus
  * there, and closing the grid returns focus to the button.
+ *
+ * The value is the MM/DD/YYYY text the user sees and types. The grid
+ * still works in stored YYYY-MM-DD, so this field converts at that
+ * boundary: a typed ISO date is accepted too, but it is never shown.
  */
 export default function DatePickerField({
   id,
@@ -39,7 +44,7 @@ export default function DatePickerField({
         ref={textRef}
         id={id}
         type="text"
-        placeholder="YYYY-MM-DD"
+        placeholder="MM/DD/YYYY"
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
@@ -59,9 +64,9 @@ export default function DatePickerField({
         <CalendarGrid
           id={calendarId}
           label={label}
-          value={value}
+          value={normalizeDateText(value) ?? ''}
           onSelect={(date) => {
-            onChange(date);
+            onChange(displayDateText(date));
             setShowCalendar(false);
             textRef.current?.focus();
           }}

@@ -111,7 +111,7 @@ export default function SearchResults({
           Modified on or after
           <input
             type="text"
-            placeholder="YYYY-MM-DD"
+            placeholder="MM/DD/YYYY"
             value={filters.modifiedAfter ?? ''}
             onChange={(event) => onFilters({ ...filters, modifiedAfter: event.target.value || undefined })}
           />
@@ -120,7 +120,7 @@ export default function SearchResults({
           Modified on or before
           <input
             type="text"
-            placeholder="YYYY-MM-DD"
+            placeholder="MM/DD/YYYY"
             value={filters.modifiedBefore ?? ''}
             onChange={(event) => onFilters({ ...filters, modifiedBefore: event.target.value || undefined })}
           />

@@ -75,7 +75,10 @@ function parseCell(
     if (dateValue) {
       const datePart = dateValue.slice(0, 10);
       const timePart = dateValue.length > 11 ? dateValue.slice(11, 16) : '';
-      result.text = timePart && timePart !== '00:00' ? `${datePart} ${timePart}` : datePart;
+      // The file stores ISO; the app shows MM/DD/YYYY.
+      const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(datePart);
+      const display = iso ? `${iso[2]}/${iso[3]}/${iso[1]}` : datePart;
+      result.text = timePart && timePart !== '00:00' ? `${display} ${timePart}` : display;
     }
   } else if (valueType === 'time') {
     result.text = attr(cell, 'office:time-value') || result.text;

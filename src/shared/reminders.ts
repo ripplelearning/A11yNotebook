@@ -1,3 +1,5 @@
+import { parseDisplayDate } from './calendar';
+
 export type SnoozeDuration = 5 | 15 | 30 | 60 | 1440 | 'tomorrow';
 export type ReminderStatus = 'pending' | 'fired' | 'dismissed' | 'completed';
 
@@ -109,12 +111,7 @@ export function lockedDueText(
 
 /** Calendar validation avoids Date's silent rollover of impossible dates. */
 export function isValidDateText(value: string): boolean {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
-  if (!match) return false;
-  const [, y, m, d] = match.map(Number);
-  if (y < 1000 || m < 1 || m > 12 || d < 1) return false;
-  const date = new Date(y, m - 1, d);
-  return date.getFullYear() === y && date.getMonth() === m - 1 && date.getDate() === d;
+  return parseDisplayDate(value) !== null;
 }
 
 /** HH:MM with real hour and minute ranges; text fields use this instead of native time pickers. */
@@ -166,7 +163,7 @@ export function splitStoredTime(stored: string): { time: string; meridiem: Merid
 
 /**
  * Display a task's due date (and time, when set) for the Tasks table:
- * "MM-DD-YYYY", or "MM-DD-YYYY at H:MM AM/PM" when a time is set. The
+ * "MM/DD/YYYY", or "MM/DD/YYYY at H:MM AM/PM" when a time is set. The
  * time is shown 12-hour with AM/PM, matching the schedule dialog. A
  * missing date reads "No due date"; a date with no time shows the date
  * alone, never a dangling "at".
@@ -174,7 +171,7 @@ export function splitStoredTime(stored: string): { time: string; meridiem: Merid
 export function formatTaskDueDate(dueDate: string | undefined, dueTime: string | undefined): string {
   if (!dueDate) return 'No due date';
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dueDate.trim());
-  const date = match ? `${match[2]}-${match[3]}-${match[1]}` : dueDate;
+  const date = match ? `${match[2]}/${match[3]}/${match[1]}` : dueDate;
   if (!dueTime) return date;
   const stored = splitStoredTime(dueTime);
   const time = /^\d{2}:\d{2}$/.test(stored.time) ? stored.time.replace(/^0/, '') : stored.time;

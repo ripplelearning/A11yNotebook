@@ -353,7 +353,7 @@ export default function CitationDialog({
                 {FIELD_LABELS[key]}
                 <input
                   type="text"
-                  placeholder="YYYY-MM-DD"
+                  placeholder="MM/DD/YYYY"
                   value={form[key] ?? ''}
                   onChange={(event) => setField(key, event.target.value)}
                 />

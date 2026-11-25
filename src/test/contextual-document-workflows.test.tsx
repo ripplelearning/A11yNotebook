@@ -427,7 +427,7 @@ describe('contextual shell document workflows', () => {
         target: { value: `Research/Plan.${format}` },
       });
       fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
-      fireEvent.change(within(dialog).getByLabelText('Due date, YYYY-MM-DD'), { target: { value: '2026-11-01' } });
+      fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
       fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
       fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
       await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalledOnce());
@@ -959,7 +959,7 @@ describe('contextual shell document workflows', () => {
     expect(within(dialog).getByLabelText('Link to')).toHaveValue('file');
     expect(within(dialog).getByLabelText('File')).toHaveValue('Research/Report.pdf');
     fireEvent.change(within(dialog).getByLabelText('Reminder title'), { target: { value: 'Review report' } });
-    fireEvent.change(within(dialog).getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-11-09' } });
+    fireEvent.change(within(dialog).getByLabelText('Date, MM/DD/YYYY'), { target: { value: '11/09/2026' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(bridge.vault.createReminder).toHaveBeenCalledWith(
@@ -988,10 +988,10 @@ describe('contextual shell document workflows', () => {
     fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Example.url' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create reminder' }));
     const dialog = await screen.findByRole('dialog', { name: 'Create reminder' });
-    expect(within(dialog).getByLabelText('Link to')).toHaveValue('file');
-    expect(within(dialog).getByLabelText('File')).toHaveValue('Research/Example.url');
+    expect(within(dialog).getByLabelText('Link to')).toHaveValue('link');
+    expect(within(dialog).getByLabelText('Link')).toHaveValue('Research/Example.url');
     fireEvent.change(within(dialog).getByLabelText('Reminder title'), { target: { value: 'Check example' } });
-    fireEvent.change(within(dialog).getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-11-09' } });
+    fireEvent.change(within(dialog).getByLabelText('Date, MM/DD/YYYY'), { target: { value: '11/09/2026' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(bridge.vault.createReminder).toHaveBeenCalledWith(

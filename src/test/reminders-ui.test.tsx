@@ -52,7 +52,7 @@ describe('accessible reminders UI', () => {
     expect(screen.getByLabelText('Time, HH:MM')).toHaveValue('02:30');
     expect(screen.getByLabelText('AM or PM')).toHaveValue('PM');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Private meeting' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
@@ -92,7 +92,7 @@ describe('accessible reminders UI', () => {
     expect(screen.getByLabelText('Link to')).toHaveValue('file');
     expect(screen.getByLabelText('File')).toHaveValue('Report.pdf');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Review report' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith({
@@ -122,13 +122,54 @@ describe('accessible reminders UI', () => {
     fireEvent.change(screen.getByLabelText('Link to'), { target: { value: 'note' } });
     expect(screen.getByLabelText('Note')).toHaveValue('Study.md');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Read guide' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     await waitFor(() =>
       expect(onCreate).toHaveBeenCalledWith(
         expect.objectContaining({ title: 'Read guide', path: 'Study.md' }),
       ),
     );
+  });
+
+  it('offers a Link kind in Link to and saves the link as the reminder target', async () => {
+    const onCreate = vi.fn();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        filePaths={['Report.pdf']}
+        linkPaths={['Links/Example.url']}
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    // Links are their own kind, not lumped under File.
+    expect(screen.getByLabelText('Link to')).toHaveValue('note');
+    fireEvent.change(screen.getByLabelText('Link to'), { target: { value: 'link' } });
+    expect(screen.getByLabelText('Link')).toHaveValue('Links/Example.url');
+    fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Check example link' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
+    await waitFor(() =>
+      expect(onCreate).toHaveBeenCalledWith(
+        expect.objectContaining({ title: 'Check example link', path: 'Links/Example.url' }),
+      ),
+    );
+  });
+
+  it('pre-selects the Link kind when the dialog opens on a link', async () => {
+    const onCreate = vi.fn();
+    render(
+      <CreateReminderDialog
+        notePaths={['Study.md']}
+        filePaths={['Report.pdf']}
+        linkPaths={['Links/Example.url']}
+        initialPath="Links/Example.url"
+        onCreate={onCreate}
+        onClose={vi.fn()}
+      />,
+    );
+    expect(screen.getByLabelText('Link to')).toHaveValue('link');
+    expect(screen.getByLabelText('Link')).toHaveValue('Links/Example.url');
   });
 
   it('applies the AM/PM combobox to a bare 12-hour time', async () => {
@@ -141,7 +182,7 @@ describe('accessible reminders UI', () => {
       />,
     );
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Evening review' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '9:30' } });
     fireEvent.change(screen.getByLabelText('AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
@@ -313,7 +354,7 @@ describe('accessible reminders UI', () => {
     const dialog = screen.getByRole('dialog', { name: 'Create reminder' });
     expect(screen.getByRole('textbox', { name: 'Reminder title' })).toHaveFocus();
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '12:30' } });
     fireEvent.change(screen.getByLabelText('AM or PM'), { target: { value: 'PM' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create reminder' }));
@@ -341,7 +382,7 @@ describe('accessible reminders UI', () => {
     fireEvent.submit(screen.getByRole('textbox', { name: 'Reminder title' }).closest('form')!);
     expect(screen.getByRole('alert')).toHaveTextContent('valid date and time');
     fireEvent.change(screen.getByLabelText('Reminder title'), { target: { value: 'Meeting' } });
-    fireEvent.change(screen.getByLabelText('Date, YYYY-MM-DD'), { target: { value: '2026-10-05' } });
+    fireEvent.change(screen.getByLabelText('Date, MM/DD/YYYY'), { target: { value: '10/05/2026' } });
     fireEvent.change(screen.getByLabelText('Time, HH:MM'), { target: { value: '12:30' } });
     fireEvent.click(screen.getByRole('button', { name: 'Create reminder' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('Cannot save');

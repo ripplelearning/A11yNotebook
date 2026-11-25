@@ -74,7 +74,7 @@ describe('xlsx writer round-trip', () => {
     expect(rereadSheet.rows[0][1]).toMatchObject({ text: '1300', value: 1300 });
     expect(rereadSheet.rows[0][2]).toMatchObject({ text: 'TRUE', value: true });
     expect(rereadSheet.rows[0][3]).toMatchObject({ text: '2400', formula: 'B1*2' });
-    expect(rereadSheet.rows[0][4].text).toBe('2026-01-01');
+    expect(rereadSheet.rows[0][4].text).toBe('01/01/2026');
     expect(rereadSheet.rows[2][0].text).toBe('Added row');
     expect(rereadSheet.mergedCells).toEqual(['A1:B1']);
     expect(rereadSheet.columnWidths).toEqual([{ index: 0, width: 18 }]);
@@ -118,7 +118,7 @@ describe('ods writer round-trip', () => {
     const reread = parseOdsWorkbook(written);
     expect(reread.sheets[0].rows[0][1]).toMatchObject({ text: '1300', value: 1300 });
     expect(reread.sheets[0].rows[0][2]).toMatchObject({ text: '2400', formula: 'B1*2' });
-    expect(reread.sheets[0].rows[0][3].text).toBe('2026-01-01');
+    expect(reread.sheets[0].rows[0][3].text).toBe('01/01/2026');
     expect(reread.sheets[0].rows[1][0].text).toBe('Added row');
     expect(reread.sheets[0].columnWidths).toEqual([{ index: 0, width: 3.5 }]);
   });
@@ -148,9 +148,17 @@ describe('applyCellEdit', () => {
       value: 9,
     });
     expect(applyCellEdit({ text: 'x', formula: 'B1*2', value: 2400 }, '9').formula).toBeUndefined();
-    const dateCell = applyCellEdit({ text: '2026-01-01', value: 46023, styleIndex: 1 }, '2026-02-01');
-    expect(dateCell).toMatchObject({ text: '2026-02-01', styleIndex: 1 });
+    const dateCell = applyCellEdit({ text: '01/01/2026', value: 46023, styleIndex: 1 }, '02/01/2026');
+    expect(dateCell).toMatchObject({ text: '02/01/2026', styleIndex: 1 });
     expect(typeof dateCell.value).toBe('number');
+    // A stored ISO date still parses, but it is shown as MM/DD/YYYY.
+    const isoCell = applyCellEdit({ text: '01/01/2026', value: 46023, styleIndex: 1 }, '2026-03-01');
+    expect(isoCell).toMatchObject({ text: '03/01/2026', styleIndex: 1 });
+    expect(typeof isoCell.value).toBe('number');
+    // An impossible date does not become a date cell.
+    expect(applyCellEdit({ text: '01/01/2026', value: 46023 }, '02/30/2026')).toEqual({
+      text: '02/30/2026',
+    });
     expect(applyCellEdit({ text: 'x' }, '')).toEqual({ text: '' });
   });
 });

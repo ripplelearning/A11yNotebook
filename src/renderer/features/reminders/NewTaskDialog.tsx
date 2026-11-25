@@ -2,6 +2,7 @@ import { useEffect, useId, useState } from 'react';
 import Modal from '../../components/Modal';
 import DatePickerField from '../../components/DatePickerField';
 import { isValidDateText, isValidTimeText, normalizeTimeText } from '../../../shared/reminders';
+import { normalizeDateText } from '../../../shared/calendar';
 
 export interface NewTaskFields {
   text: string;
@@ -44,11 +45,11 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
             return;
           }
           if (due && !isValidDateText(due)) {
-            setError('Enter a due date as YYYY-MM-DD.');
+            setError('Enter a due date as MM/DD/YYYY.');
             return;
           }
           if (reminderDate && !isValidDateText(reminderDate)) {
-            setError('Enter a reminder date as YYYY-MM-DD.');
+            setError('Enter a reminder date as MM/DD/YYYY.');
             return;
           }
           if (reminderTime && !isValidTimeText(reminderTime)) {
@@ -59,8 +60,8 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
           setError('');
           void onCreate({
             text: text.trim(),
-            due,
-            reminder: reminderDate && reminderTime ? `${reminderDate}T${normalizeTimeText(reminderTime) ?? ''}` : '',
+            due: normalizeDateText(due) ?? '',
+            reminder: reminderDate && reminderTime ? `${normalizeDateText(reminderDate) ?? ''}T${normalizeTimeText(reminderTime) ?? ''}` : '',
             priority,
           })
             .then(onClose)
@@ -74,14 +75,14 @@ export default function NewTaskDialog({ onCreate, onClose }: Props) {
         </label>
         <DatePickerField
           id={`${id}-due-date`}
-          label="Due date, YYYY-MM-DD"
+          label="Due date, MM/DD/YYYY"
           value={due}
           onChange={setDue}
           disabled={busy}
         />
         <DatePickerField
           id={`${id}-reminder-date`}
-          label="Reminder date, YYYY-MM-DD"
+          label="Reminder date, MM/DD/YYYY"
           value={reminderDate}
           onChange={setReminderDate}
           disabled={busy}
@@ -166,11 +167,11 @@ export function AssociatedTaskDialog({
             return;
           }
           if (due && !isValidDateText(due)) {
-            setLocalError('Enter a due date as YYYY-MM-DD.');
+            setLocalError('Enter a due date as MM/DD/YYYY.');
             return;
           }
           if (reminderDate && !isValidDateText(reminderDate)) {
-            setLocalError('Enter a reminder date as YYYY-MM-DD.');
+            setLocalError('Enter a reminder date as MM/DD/YYYY.');
             return;
           }
           if (reminderTime && !isValidTimeText(reminderTime)) {
@@ -181,9 +182,9 @@ export function AssociatedTaskDialog({
             void onCreate(
               path,
               text.trim(),
-              due,
+              normalizeDateText(due) ?? '',
               priority,
-              reminderDate && reminderTime ? `${reminderDate}T${normalizeTimeText(reminderTime) ?? ''}` : '',
+              reminderDate && reminderTime ? `${normalizeDateText(reminderDate) ?? ''}T${normalizeTimeText(reminderTime) ?? ''}` : '',
             );
         }}
       >
@@ -214,14 +215,14 @@ export function AssociatedTaskDialog({
         </label>
         <DatePickerField
           id={`${id}-due-date`}
-          label="Due date, YYYY-MM-DD"
+          label="Due date, MM/DD/YYYY"
           value={due}
           onChange={setDue}
           disabled={busy}
         />
         <DatePickerField
           id={`${id}-reminder-date`}
-          label="Reminder date, YYYY-MM-DD"
+          label="Reminder date, MM/DD/YYYY"
           value={reminderDate}
           onChange={setReminderDate}
           disabled={busy}
