@@ -74,12 +74,20 @@ library is open, Quick Task asks for a library first. On macOS, Quick
 Task has no default shortcut; give it one under Settings → Keyboard
 Shortcuts.
 
+From the Notes and Files grid, open the context menu on a selected
+note, link, or file and choose **Create task**: the New Task dialog
+opens with that item already linked to the task — a note becomes the
+task's associated note, and a file or saved web link is attached to
+the created task.
+
 Open the context menu on a task row (Shift+F10, the Applications key, or
 right-click) for **Set due date**, which opens a dialog with a due date,
 a due time, and an optional reminder, and **Set priority**, which opens a
 dialog with the library's priority options and lets you add, rename, or
 delete options. At least one priority option is always kept, and option
-names are single words so they survive in task lines.
+names are single words so they survive in task lines. Date fields in
+that dialog, in the New Task dialog, and in the Create Reminder dialog
+are entered as MM/DD/YYYY.
 
 The same context menu offers **Link to note**, **Link to file**, and
 **Link to Notebook**. Each opens a dialog listing the library's notes,
@@ -222,8 +230,12 @@ is; quotes that cannot be found are kept as orphans, and changed files
 need a manual check rather than silently moving highlights. The reader
 shows one page at a time; dragging a selection across pages is not
 available. The PDF sidebar, clipboard export, and wider annotation
-workflows are later follow-up work (phases 5–7). ePub annotation is not
-available yet.
+workflows are later follow-up work (phases 5–7). In an ePub, select text
+and choose Annotate selection, then give it a label, a color, and an
+optional comment, the same way as in a note. ePub annotations appear
+under the right-pane heading with Jump, Edit, and Delete controls;
+Jump moves your focus to the exact spot in the book where the
+annotation was inserted, even when it is in another section.
 
 ### Reminders and project progress
 
@@ -234,7 +246,7 @@ Reminders** (Ctrl+Shift+R) also lets you make standalone reminders,
 linked to a note or a file. You can also open the context menu on a note
 or file in Notes and Files and choose **Create reminder**: the dialog
 opens with that note or file already picked, and the **Link to** list
-switches between notes and files.
+switches between notes, files, and links.
 
 Switch between the labelled table and the Overdue, Today, and This week
 lists. Snooze for 5, 15, 30, or 60 minutes, for 1 day, or until the same
@@ -573,8 +585,10 @@ zoom and rotation, separate semantic page text, page navigation,
 in-document search, and saved PDF notes. An ePub uses local epub.js
 page-by-page rendering, a nested table of contents, and section
 navigation and search. Chapter markup is cleaned; wider checks for
-hostile archives and resources, saving your reading position, and ePub
-annotations are still open. Text taken from an ePub stays available for
+hostile archives and resources are still open. Your reading position is
+saved, so reopening a book resumes where you stopped, and ePub
+annotations work as described under Annotations. Text taken from an
+ePub stays available for
 search and assistive technology; scripts, embedded frames, forms, and
 unsafe attributes are removed before display. Both are limited to 40 MB.
 
@@ -587,7 +601,9 @@ external app** is still there. Text previews are limited to 5 MB and
 images to 20 MB. In the PDF Page Navigation section, **PDF view** offers
 Paginated view (one page at a time) or Continuous view (the whole PDF as
 one continuous page); the Previous and Next Page buttons only show in
-Paginated view.
+Paginated view. In Continuous view, every page starts with a "Page N"
+heading under the "Page text" heading, so heading navigation steps
+through each page in order.
 
 ### OCR scanned PDFs and ePubs
 
@@ -790,9 +806,9 @@ while saved recovery is turned off. DOCX local reading works; DOCX
 annotations and old `.doc` local reading are still unavailable. Format
 conversion makes a warned copy next to the original and keeps the
 original; a full list of what is lost and converting in place are still
-open. PDF sidebar, export, and lifecycle workflows, ePub annotations,
-and wider document lifecycle features are open work, not blocked by
-anything outside the app. See the [reader and annotation follow-up
+open. PDF sidebar, export, and lifecycle workflows, and wider document
+lifecycle features are open work, not blocked by anything outside the
+app. See the [reader and annotation follow-up
 plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
 Picking from recent libraries and organizing the calendar are still
 open. Manual Windows screen-reader and UI Automation smoke tests have
@@ -818,6 +834,11 @@ between controls. Notes open in tabs, and Ctrl+Tab moves between them.
 Shift+F10, the Applications key, or a right-click opens a context menu
 whose actions depend on what you are focused on. The sections after this
 one walk through each view in turn.
+
+The title bar names what you have open: with a file or note open it
+reads "[FileName] | [NotebookName] | [LibraryName] | A11y Notebook" — a
+file at the library root has no notebook, so that part is left out. With
+no file open it names the current view and notebook instead.
 
 ### Open a library
 
@@ -853,14 +874,14 @@ contains the library.
 **New** (Ctrl+N by default) makes the kind of item that fits the view
 you are in:
 
-| Active view | What New makes |
-| --- | --- |
-| Libraries | A **new local library**, choosing a parent folder and a new name in the system dialog; an existing folder is never overwritten |
-| Notebooks | A notebook in the open library, in the Library root or inside the notebook you have selected |
-| Notes and Files | A note in the selected notebook |
-| Tasks | A saved checkbox task with an associated note, with an optional due date and priority |
-| Cognitive Tools | An Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, which you name and create at the library root |
-| Note tabs, Contents, Reminders, previews, and Libraries | A note using the current notebook, or the library root when no notebook is selected |
+| Active view                                             | What New makes                                                                                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Libraries                                               | A **new local library**, choosing a parent folder and a new name in the system dialog; an existing folder is never overwritten |
+| Notebooks                                               | A notebook in the open library, in the Library root or inside the notebook you have selected                                   |
+| Notes and Files                                         | A note in the selected notebook                                                                                                |
+| Tasks                                                   | A saved checkbox task with an associated note, with an optional due date and priority                                          |
+| Cognitive Tools                                         | An Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, which you name and create at the library root                    |
+| Note tabs, Contents, Reminders, previews, and Libraries | A note using the current notebook, or the library root when no notebook is selected                                            |
 
 The **New notebook** command on its own still makes a notebook; it has
 not been changed to mean the contextual New. Settings can change or turn
@@ -1209,7 +1230,8 @@ fields at the top of a note are indexed; this is not a general YAML
 editor. Text, CSV, and HTML attachment and note contents, plus a bounded
 amount of PDF and ePub text, are searchable. Attachments that are not
 supported or not valid are searchable by filename. Results are capped at
-100 on screen.
+100 on screen. Pressing Escape in the search box clears the search text
+and removes the results from the display.
 
 Global search also finds tasks, reminders, and appointments: a task
 result shows its text and due date or priority, a reminder its title and
