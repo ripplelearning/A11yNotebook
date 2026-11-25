@@ -234,6 +234,18 @@ test('title bar names the open notebook in the notebook views', async () => {
       timeout: 30000,
     });
     await expect(page).toHaveTitle('Notes & Files | Seeded | A11y Notebook');
+    // An open file takes over the title: file, notebook, library.
+    const noteCell = page.getByRole('gridcell', { name: 'Seeded note.md' });
+    await expect(noteCell).toBeVisible({ timeout: 30000 });
+    await noteCell.dblclick();
+    await expect(page.getByRole('heading', { name: 'Seeded note', level: 1 })).toBeVisible();
+    await expect(page).toHaveTitle('Seeded note | Seeded | library | A11y Notebook');
+    // Closing the note's tab reverts to the view title.
+    await page.getByRole('button', { name: 'Close Seeded note' }).click();
+    await expect(page.getByRole('gridcell', { name: 'Seeded note.md' })).toBeVisible({
+      timeout: 30000,
+    });
+    await expect(page).toHaveTitle('Notes & Files | Seeded | A11y Notebook');
     await switchToTitle('Control+4', 'Tasks | Seeded | A11y Notebook');
     await switchToTitle('Control+5', 'Cognitive Tools | Seeded | A11y Notebook');
     await switchToTitle('Control+6', 'Calendar | Seeded | A11y Notebook');

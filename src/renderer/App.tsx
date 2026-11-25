@@ -32,6 +32,7 @@ import {
   type NavigationLocation,
 } from '../shared/navigation-history';
 import { isMenuCommand, type NativeMenuState } from '../shared/ipc';
+import { computeWindowTitle, notebookNameForFilePath } from '../shared/window-title';
 import type {
   AppMode,
   FocusRegion,
@@ -7654,14 +7655,33 @@ export default function App() {
   // The titlebar names the current view and the current library, and
   // always ends with the app name, in the form "View | Library | A11y
   // Notebook", so keyboard view switches update it immediately and a
-  // screen reader's title-bar shortcut always identifies the app. An open
-  // note keeps its title only while it is the selected tab, in the same
-  // "Note | Library | A11y Notebook" form. With no library open, the view
-  // and the app name are all there is to show. In the Notes & Files,
-  // Tasks, Cognitive Tools, Calendar, and Reminders views the middle
-  // segment names the currently open notebook instead of the library, so
-  // the title reads "View | Notebook | A11y Notebook"; with no notebook
-  // open there the segment is omitted rather than left empty.
+  // screen reader's title-bar shortcut always identifies the app. When a
+  // file or note is open, the file takes over in the form
+  // "File | Notebook | Library | A11y Notebook" — the notebook is the
+  // one containing the open file, derived from its path, so opening a
+  // file from search or a bookmark names the right notebook even when
+  // another notebook is selected. A file at the library root has no
+  // notebook, so its title omits that segment. With no library open,
+  // the view and the app name are all there is to show. In the Notes &
+  // Files, Tasks, Cognitive Tools, Calendar, and Reminders views the
+  // middle segment names the currently open notebook instead of the
+  // library, so the title reads "View | Notebook | A11y Notebook"; with
+  // no notebook open there the segment is omitted rather than left empty.
+  // An open file keeps its title only while it is the selected tab:
+  // switching to a view tab falls back to the view title, and closing
+  // the file's tab does the same.
+  // The open file is the selected tab's note, or the selected tab's
+  // attachment (a PDF, ePub, text file, image, or other previewed file);
+  // a note's display name is its title, an attachment's is its file name.
+  const openFile =
+    currentNote && selectedTab === currentNote.id
+      ? { name: currentNote.title, path: currentNote.path }
+      : selectedTab === 'attachment' && attachment
+        ? { name: attachment.path.split('/').at(-1) ?? attachment.path, path: attachment.path }
+        : null;
+  const openFileNotebookName = openFile
+    ? notebookNameForFilePath(vault?.entries ?? [], openFile.path)
+    : null;
   const titleView =
     activeDialog === 'settings'
       ? 'Settings'
@@ -7690,17 +7710,24 @@ export default function App() {
   // this effect reruns (activeDialog changed) and restores the view title.
   useEffect(() => {
     if (activeDialog) return;
-    document.title =
-      currentNote && vault && selectedTab === currentNote.id
-        ? `${currentNote.title} | ${vault.name} | A11y Notebook`
-        : vault && NOTEBOOK_TITLE_TABS.has(selectedTab) && selectedNotebookName
-          ? `${titleView} | ${selectedNotebookName} | A11y Notebook`
-          : vault && NOTEBOOK_TITLE_TABS.has(selectedTab)
-            ? `${titleView} | A11y Notebook`
-            : vault
-              ? `${titleView} | ${vault.name} | A11y Notebook`
-              : `${titleView} | A11y Notebook`;
-  }, [titleView, currentNote, vault, selectedTab, activeDialog, selectedNotebookName]);
+    document.title = computeWindowTitle({
+      openFileName: openFile?.name ?? null,
+      openFileNotebookName,
+      libraryName: vault?.name ?? null,
+      viewTitle: titleView,
+      selectedNotebookName: selectedNotebookName ?? null,
+      isNotebookTitleView: NOTEBOOK_TITLE_TABS.has(selectedTab),
+    });
+  }, [
+    titleView,
+    openFile?.name,
+    openFile?.path,
+    openFileNotebookName,
+    vault,
+    selectedTab,
+    activeDialog,
+    selectedNotebookName,
+  ]);
 
   const showCommandButtons = !window.a11yNotebook || settings.showCommandButtons === true;
 
