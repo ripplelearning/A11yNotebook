@@ -550,6 +550,12 @@ export default function App() {
   // Null when the reading position lives in a textarea caret instead
   // (plain-source edit mode), which survives focus changes on its own.
   const bookmarkSelectionRef = useRef<CapturedSelection | null>(null);
+  // A bookmark saved, removed, or toggled after a library bookmarks
+  // fetch started is newer than the fetched list: applying that fetch
+  // would drop it from the list (and from Ctrl+Alt+J) even though the
+  // change succeeded. The fetch only applies when nothing changed
+  // meanwhile — see the [vault] effect and refreshLinkIndex.
+  const bookmarksGenerationRef = useRef(0);
   // Fallback undo: one recorded edit history per open note, so undo works
   // even when the textarea's native undo stack is unavailable.
   const editHistoriesRef = useRef(new Map<string, EditHistory>());
@@ -1910,10 +1916,17 @@ export default function App() {
       setBookmarks([]);
       return;
     }
+    const generationAtFetch = bookmarksGenerationRef.current;
     void Promise.all([window.a11yNotebook.vault.getLinkIndex(), window.a11yNotebook.vault.getBookmarks()])
       .then(([index, savedBookmarks]) => {
         if (cancelled) return;
         setLinks(index.links);
+        // A bookmark changed after this fetch started is newer than
+        // the fetched list: applying it would drop the change from
+        // the list and from Ctrl+Alt+J even though it succeeded.
+        // The local state already holds the change, so skip the
+        // stale fetch instead of overwriting it.
+        if (bookmarksGenerationRef.current !== generationAtFetch) return;
         setBookmarks(savedBookmarks);
       })
       .catch(() => setStatusMessage('Could not refresh library links and bookmarks.'));
@@ -3599,11 +3612,15 @@ export default function App() {
   const refreshLinkIndex = async () => {
     const root = vaultPathRef.current;
     const generation = vaultGenerationRef.current;
+    const bookmarksGenerationAtFetch = bookmarksGenerationRef.current;
     const index = await window.a11yNotebook?.vault.getLinkIndex();
     const savedBookmarks = await window.a11yNotebook?.vault.getBookmarks();
     if (switchingRef.current || vaultPathRef.current !== root || generation !== vaultGenerationRef.current) return;
     if (index) setLinks(index.links);
-    if (savedBookmarks) setBookmarks(savedBookmarks);
+    // Same stale-fetch guard as the [vault] effect: a bookmark changed
+    // while this refresh was in flight is newer than the fetched list.
+    if (savedBookmarks && bookmarksGenerationRef.current === bookmarksGenerationAtFetch)
+      setBookmarks(savedBookmarks);
   };
 
   /**
@@ -3788,6 +3805,7 @@ export default function App() {
     try {
       const nextBookmarks = await window.a11yNotebook.vault.toggleBookmark(note.path);
       setBookmarks(nextBookmarks);
+      bookmarksGenerationRef.current += 1;
       const isBookmarked = nextBookmarks.some((bookmark) => bookmark.path === note.path);
       setStatusMessage(isBookmarked ? 'Note bookmarked.' : 'Bookmark removed.');
     } catch {
@@ -3998,6 +4016,7 @@ export default function App() {
         request.context,
       );
       setBookmarks(nextBookmarks);
+      bookmarksGenerationRef.current += 1;
       setStatusMessage(
         request.anchor.kind === 'heading'
           ? `Bookmarked heading "${name}".`
@@ -4014,6 +4033,7 @@ export default function App() {
     if (!window.a11yNotebook) return;
     try {
       setBookmarks(await window.a11yNotebook.vault.removeBookmark(id));
+      bookmarksGenerationRef.current += 1;
       setStatusMessage('Bookmark removed.');
     } catch {
       setStatusMessage('Could not remove the bookmark.');
