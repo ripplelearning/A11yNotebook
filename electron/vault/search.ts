@@ -5,6 +5,7 @@ import path from 'node:path';
 import type { VaultSearchQuery, VaultSearchResult } from '../../src/shared/search';
 import { type DocxStructure } from '../../src/shared/docx';
 import { formatReminderDateTime } from '../../src/shared/reminders';
+import { normalizeTaskDateTime, TASK_DATE_PATTERN, TASK_DATE_TIME_PATTERN } from '../../src/shared/task-line';
 import { extractDocText } from './doc';
 import { extractEpubPages, extractPdfPages } from './document-preview';
 import { docxSearchText, parseDocxStructure } from './docx-parser';
@@ -49,13 +50,16 @@ export function isVisibleVaultPath(relativePath: string) {
  */
 function formatSnippet(snippet: string): string {
   return snippet
-    .replace(
-      /(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/gi,
-      (_, value: string) => formatReminderDateTime(value),
+    .replace(new RegExp(`(?:\\bremind:|⏰\\s*)(${TASK_DATE_TIME_PATTERN})`, 'gi'), (_, value: string) =>
+      formatReminderDateTime(normalizeTaskDateTime(value) ?? value),
     )
     .replace(
       /(?:📅\s*|due:)(\d{4})-(\d{2})-(\d{2})/gi,
       (_, year: string, month: string, day: string) => `${month}/${day}/${year}`,
+    )
+    .replace(
+      /(?:📅\s*|due:)(\d{1,2})\/(\d{1,2})\/(\d{4})/gi,
+      (_, month: string, day: string, year: string) => `${month}/${day}/${year}`,
     )
     .replace(/due-time:\d{2}:\d{2}/gi, '')
     .replace(/priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}/gi, '')
@@ -72,8 +76,14 @@ function formatSnippet(snippet: string): string {
  * The patterns mirror formatSnippet and the ones parseMarkdownTasks
  * strips (electron/vault/tasks.ts).
  */
-const MARKER_SPAN =
-  /(?:\bremind:|⏰\s*)\d{4}-\d{2}-\d{2} \d{2}:\d{2}|(?:📅\s*|due:)\d{4}-\d{2}-\d{2}|due-time:\d{2}:\d{2}|priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}|\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->/gi;
+const MARKER_SPAN = new RegExp(
+  String.raw`(?:\bremind:|⏰\s*)` +
+    TASK_DATE_TIME_PATTERN +
+    String.raw`|(?:📅\s*|due:)` +
+    TASK_DATE_PATTERN +
+    String.raw`|due-time:\d{2}:\d{2}|priority:[A-Za-z0-9][A-Za-z0-9_-]{0,29}|\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->`,
+  'gi',
+);
 
 function snippetWindow(text: string, start: number, end: number): [number, number] {
   let adjustedStart = start;

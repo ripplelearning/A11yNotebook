@@ -4,6 +4,12 @@ import footnote from 'markdown-it-footnote';
 import { asciiToMathML } from '../../../shared/ascii-math';
 import { attachmentPathFromUrl } from '../../../shared/attachments';
 import { relativeLibraryPath } from '../../../shared/paste-content';
+import {
+  normalizeTaskDate,
+  normalizeTaskDateTime,
+  TASK_DATE_PATTERN,
+  TASK_DATE_TIME_PATTERN,
+} from '../../../shared/task-line';
 import { sanitizeNoteHtml } from './sanitize-html';
 
 /** The reading view's URI rule: library image URLs stay, everything else follows DOMPurify's defaults. */
@@ -233,9 +239,13 @@ export function convertNoteContent(
       const originalText = item.textContent ?? '';
       const checkbox = /^\s*\[([ xX])\]\s*/.exec(originalText);
       if (!checkbox) return;
-      const due = originalText.match(/(?:📅\s*|due:)(\d{4}-\d{2}-\d{2})/i)?.[1];
+      // Dates accept the stored YYYY-MM-DD form and the MM/DD/YYYY form
+      // the guide documents; attributes always store YYYY-MM-DD.
+      const dueMatch = new RegExp(`(?:📅\\s*|due:)(${TASK_DATE_PATTERN})`, 'i').exec(originalText);
+      const due = dueMatch ? normalizeTaskDate(dueMatch[1]) : undefined;
       const priority = originalText.match(/priority:(low|normal|high|urgent)\b/i)?.[1]?.toLowerCase();
-      const reminder = originalText.match(/remind:(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/i)?.[1];
+      const reminderMatch = new RegExp(`remind:(${TASK_DATE_TIME_PATTERN})`, 'i').exec(originalText);
+      const reminder = reminderMatch ? normalizeTaskDateTime(reminderMatch[1]) : undefined;
       const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->/.exec(originalText)?.[1];
       item.setAttribute('data-a11y-task-id', stableId ?? crypto.randomUUID());
       item.setAttribute('data-a11y-task-complete', String(checkbox[1].toLowerCase() === 'x'));
@@ -250,9 +260,9 @@ export function convertNoteContent(
         if (prefix) current = current.replace(/^\s*\[[ xX]\]\s*/, '');
         textNode.textContent = current
           .replace(/<!--\s*a11y-task-id:[\w-]{8,80}\s*-->/g, '')
-          .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+          .replace(new RegExp(`(?:📅\\s*|due:)${TASK_DATE_PATTERN}`, 'gi'), '')
           .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
-          .replace(/remind:\d{4}-\d{2}-\d{2} \d{2}:\d{2}/gi, '');
+          .replace(new RegExp(`remind:${TASK_DATE_TIME_PATTERN}`, 'gi'), '');
         prefix = false;
         textNode = walker.nextNode();
       }

@@ -46,6 +46,28 @@ describe('UserGuideDialog', () => {
     expect(shortcutsSection).not.toHaveTextContent('Show keyboard shortcuts');
   });
 
+  it('never shows the shortcuts generation marker as visible text', () => {
+    const { dialog } = setup();
+    expect(dialog).not.toHaveTextContent('guide-shortcuts');
+    expect(dialog).not.toHaveTextContent('do not hand-edit');
+  });
+
+  it('opens with the three introductory sections first in the Table of Contents', () => {
+    const { dialog } = setup();
+    // The three parts are the first three level-2 headings; the feature
+    // sections sit under them as level-3 headings.
+    const topLevel = within(dialog)
+      .getAllByRole('heading', { level: 2 })
+      .filter((heading) => heading.textContent !== 'User Guide')
+      .slice(0, 3)
+      .map((heading) => heading.textContent);
+    expect(topLevel).toEqual([
+      'Introduction to A11y Notebook',
+      'The user interface and how to navigate it using a keyboard',
+      'Accessibility features and accessibility settings',
+    ]);
+  });
+
   it('shows a remapped shortcut in the shortcuts section without editing the guide', () => {
     const { dialog } = setup({ shortcuts: { 'toggle-bookmark': 'Ctrl+Alt+T' } });
     const shortcutsSection = dialog.querySelector('section[aria-labelledby="keyboard-shortcuts"]');

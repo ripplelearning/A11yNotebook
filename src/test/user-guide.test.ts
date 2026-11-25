@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { getKeyboardShortcuts } from '../shared/command-registry';
 import {
@@ -7,6 +8,7 @@ import {
   filterGuideSections,
   GUIDE_SHORTCUTS_HEADING,
   GUIDE_SHORTCUTS_MARKER,
+  stripGuideHtmlComments,
 } from '../shared/user-guide';
 
 const SAMPLE = `# User guide
@@ -59,7 +61,10 @@ describe('buildShortcutsSectionMarkdown', () => {
       { label: 'User Guide', shortcut: 'F1' },
       { label: 'Focus search', shortcut: 'Alt+Q' },
     ]);
-    expect(body).toContain(GUIDE_SHORTCUTS_MARKER);
+    // The generation marker lives in the guide file as an editor hint; it
+    // must never reach the rendered guide, where it showed as visible text.
+    expect(body).not.toContain(GUIDE_SHORTCUTS_MARKER);
+    expect(body).not.toContain('<!--');
     expect(body).toContain('| User Guide | F1 |');
     expect(body).toContain('| Focus search | Alt+Q |');
     expect(body).toContain('generated from the command registry');
@@ -67,6 +72,42 @@ describe('buildShortcutsSectionMarkdown', () => {
 });
 
 describe('buildGuideMarkdown', () => {
+  it('strips HTML comments from the rendered guide while keeping the shortcuts generated', () => {
+    const source = [
+      '# User guide',
+      '',
+      '## Search',
+      '',
+      'Find things.',
+      '',
+      '## Keyboard shortcuts',
+      '',
+      GUIDE_SHORTCUTS_MARKER,
+      '',
+      'Old table.',
+      '',
+      '## Accessibility notes',
+      '',
+      'Notes.',
+      '',
+    ].join('\n');
+    const built = buildGuideMarkdown(source, [
+      { label: 'User Guide', shortcut: 'F1' },
+      { label: 'Focus search', shortcut: 'Alt+Q' },
+    ]);
+    // The marker comment showed as visible text in the guide (markdown-it
+    // renders raw HTML as escaped text); the rendered guide must carry no
+    // trace of it, while the shortcuts still come from the registry.
+    expect(built).not.toContain('<!--');
+    expect(built).not.toContain('guide-shortcuts:');
+    expect(built).toContain(`## ${GUIDE_SHORTCUTS_HEADING}`);
+    expect(built).toContain('| User Guide | F1 |');
+    expect(built).toContain('| Focus search | Alt+Q |');
+    expect(built).not.toContain('Old table.');
+    expect(built).toContain('## Search\n\nFind things.');
+    expect(built).toContain('## Accessibility notes\n\nNotes.');
+  });
+
   it('replaces the hand-maintained shortcuts section and keeps the rest', () => {
     const source = [
       '# User guide',
@@ -150,5 +191,69 @@ describe('filterGuideSections', () => {
   it('requires every query word to match', () => {
     expect(filterGuideSections(sections, 'search remembered')).toEqual([sections[1]]);
     expect(filterGuideSections(sections, 'search missing')).toEqual([]);
+  });
+});
+
+describe('stripGuideHtmlComments', () => {
+  it('removes comments outside fenced code but keeps them inside examples', () => {
+    const markdown = [
+      '## Tasks',
+      '',
+      '<!-- a note to editors -->',
+      '',
+      '```html',
+      '<!-- a11y-task-id:task-1234 -->',
+      '```',
+      '',
+      'Text <!-- inline note --> more text.',
+      '',
+    ].join('\n');
+    const stripped = stripGuideHtmlComments(markdown);
+    expect(stripped).not.toContain('a note to editors');
+    expect(stripped).not.toContain('inline note');
+    expect(stripped).toContain('<!-- a11y-task-id:task-1234 -->');
+    expect(stripped).toContain('Text  more text.');
+  });
+});
+
+describe('the shipped guide file', () => {
+  const guideSource = readFileSync('docs/user-guide.md', 'utf8');
+  const sections = extractGuideSections(buildGuideMarkdown(guideSource, getKeyboardShortcuts()));
+
+  it('opens with the three introductory sections in order', () => {
+    // The three parts are the first three top-level (level-2) sections;
+    // the feature sections sit under them as level-3 sections.
+    const topLevel = sections.filter((section) => section.level === 2);
+    expect(topLevel.slice(0, 3).map((section) => section.title)).toEqual([
+      'Introduction to A11y Notebook',
+      'The user interface and how to navigate it using a keyboard',
+      'Accessibility features and accessibility settings',
+    ]);
+    expect(sections[0].title).toBe('Introduction to A11y Notebook');
+  });
+
+  it('keeps the shortcuts section generated from the registry at render time', () => {
+    const shortcuts = sections.find((section) => section.title === 'Keyboard shortcuts');
+    expect(shortcuts).toBeDefined();
+    expect(shortcuts?.markdown).toContain('| User Guide | F1 |');
+    // The generation marker stays in the file as an editor hint, but the
+    // rendered guide never shows it.
+    expect(guideSource).toContain('guide-shortcuts: generated');
+    expect(shortcuts?.markdown).not.toContain('<!--');
+    expect(shortcuts?.markdown).not.toContain('guide-shortcuts:');
+  });
+
+  it('shows task and reminder dates as MM/DD/YYYY, never YYYY-MM-DD', () => {
+    expect(guideSource).not.toMatch(/due:\d{4}-\d{2}-\d{2}/);
+    expect(guideSource).not.toMatch(/📅\s*\d{4}-\d{2}-\d{2}/);
+    expect(guideSource).not.toMatch(/remind:\d{4}-\d{2}-\d{2}/);
+    expect(guideSource).not.toMatch(/⏰\s*\d{4}-\d{2}-\d{2}/);
+    expect(guideSource).not.toMatch(/data-a11y-task-due="\d{4}-\d{2}-\d{2}"/);
+    expect(guideSource).not.toMatch(/data-a11y-task-remind="\d{4}-\d{2}-\d{2}/);
+    expect(guideSource).toContain('due:10/05/2026');
+    expect(guideSource).toContain('📅 10/05/2026');
+    expect(guideSource).toContain('remind:10/04/2026 09:30');
+    expect(guideSource).toContain('⏰ 10/04/2026 09:30');
+    expect(guideSource).toContain('data-a11y-task-due="10/05/2026"');
   });
 });

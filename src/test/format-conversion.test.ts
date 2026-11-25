@@ -48,6 +48,18 @@ describe('note format conversion', () => {
     expect(formatConversionWarning(html, 'html', 'markdown')).toContain('task identities');
   });
 
+  it('normalizes MM/DD/YYYY task dates to YYYY-MM-DD storage on conversion', () => {
+    const html = convertNoteContent(
+      '- [x] Read chapter due:10/05/2026 remind:10/05/2026 09:30 priority:high',
+      'markdown',
+      'html',
+      'Read.html',
+    );
+    expect(html).toMatch(/data-a11y-task-due="2026-10-05"/);
+    expect(html).toMatch(/data-a11y-task-remind="2026-10-05 09:30"/);
+    expect(html).not.toContain('10/05/2026');
+  });
+
   it('escapes backslashes in plain HTML text when converting to Markdown', () => {
     const markdown = convertNoteContent('<p>Folder \\path\\file</p>', 'html', 'markdown', 'Notes/Entry.md');
     expect(markdown).toBe('Folder \\\\path\\\\file');

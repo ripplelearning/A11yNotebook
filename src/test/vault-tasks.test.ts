@@ -54,6 +54,33 @@ describe('Markdown task indexing', () => {
     ]);
   });
 
+  it('accepts MM/DD/YYYY dates as the guide documents them, storing YYYY-MM-DD', () => {
+    expect(
+      parseMarkdownTasks(
+        '- [ ] Read chapter due:10/05/2026 priority:high\n- [x] Submit 📅 10/06/2026\n- [ ] Call back remind:10/04/2026 09:30',
+        'Class.md',
+      ),
+    ).toEqual([
+      {
+        id: 'Class.md:1',
+        path: 'Class.md',
+        line: 1,
+        text: 'Read chapter',
+        complete: false,
+        dueDate: '2026-10-05',
+        priority: 'high',
+      },
+      { id: 'Class.md:2', path: 'Class.md', line: 2, text: 'Submit', complete: true, dueDate: '2026-10-06' },
+      { id: 'Class.md:3', path: 'Class.md', line: 3, text: 'Call back', complete: false, remindAt: '2026-10-04 09:30' },
+    ]);
+    // One-digit month and day are the same date; impossible dates are not.
+    expect(parseMarkdownTasks('- [ ] Read due:2/29/2028', 'Class.md')).toMatchObject([{ dueDate: '2028-02-29' }]);
+    expect(parseMarkdownTasks('- [ ] Read due:2/29/2026', 'Class.md')).toMatchObject([{ text: 'Read due:2/29/2026' }]);
+    expect(parseMarkdownTasks('- [ ] Read due:13/01/2026', 'Class.md')).toMatchObject([
+      { text: 'Read due:13/01/2026' },
+    ]);
+  });
+
   describe('HTML checklist tasks', () => {
     const task =
       '<li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="2026-10-05" data-a11y-task-priority="high"><strong>Read</strong> chapter</li>';
@@ -85,6 +112,22 @@ describe('Markdown task indexing', () => {
           remindAt: '2026-10-05 09:30',
         },
       ]);
+    });
+
+    it('accepts MM/DD/YYYY dates in data attributes, storing YYYY-MM-DD', () => {
+      const marked =
+        '<li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="10/05/2026" data-a11y-task-remind="10/05/2026 09:30">Call the dentist</li>';
+      expect(parseHtmlTasks(`<ul>${marked}</ul>`, 'Reading.html')).toMatchObject([
+        {
+          text: 'Call the dentist',
+          dueDate: '2026-10-05',
+          remindAt: '2026-10-05 09:30',
+        },
+      ]);
+      const invalid =
+        '<li data-a11y-task-id="task-1234" data-a11y-task-complete="false" data-a11y-task-due="02/29/2026">Call the dentist</li>';
+      expect(parseHtmlTasks(`<ul>${invalid}</ul>`, 'Reading.html')).toMatchObject([{ text: 'Call the dentist' }]);
+      expect(parseHtmlTasks(`<ul>${invalid}</ul>`, 'Reading.html')[0]).not.toHaveProperty('dueDate');
     });
 
     it('toggles only the completion attribute and ignores duplicate task identities', () => {

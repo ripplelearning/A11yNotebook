@@ -13,6 +13,7 @@ import {
   type SnoozeDuration,
 } from '../../src/shared/reminders';
 import { parseHtmlTasks } from './tasks';
+import { TASK_DATE_PATTERN, TASK_DATE_TIME_PATTERN } from '../../src/shared/task-line';
 
 export interface ReminderNote {
   path: string;
@@ -59,7 +60,9 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
     const task = /^\s*[-*+]\s+\[([ xX])\]\s+(.*)$/.exec(line);
     if (!task) return [];
     const stableId = /<!--\s*a11y-task-id:([\w-]{8,80})\s*-->$/.exec(task[2])?.[1];
-    const marker = /(?:\bremind:|⏰\s*)(\d{4}-\d{2}-\d{2} \d{2}:\d{2})(?![\d:])/i.exec(task[2]);
+    // Reminder dates accept the stored YYYY-MM-DD form and the MM/DD/YYYY
+    // form the guide documents; parseReminderDate handles both.
+    const marker = new RegExp(`(?:\\bremind:|⏰\\s*)(${TASK_DATE_TIME_PATTERN})(?![\\d:])`, 'i').exec(task[2]);
     const date = marker && parseReminderDate(marker[1]);
     if (!marker || !date) return [];
     const scheduledAt = date.toISOString();
@@ -70,7 +73,7 @@ export function parseTaskReminders(content: string, path: string): ParsedReminde
         title:
           task[2]
             .replace(marker[0], '')
-            .replace(/(?:📅\s*|due:)\d{4}-\d{2}-\d{2}/gi, '')
+            .replace(new RegExp(`(?:📅\\s*|due:)${TASK_DATE_PATTERN}`, 'gi'), '')
             .replace(/priority:(?:low|normal|high|urgent)\b/gi, '')
             .replace(/\s*<!--\s*a11y-task-id:[\w-]{8,80}\s*-->$/, '')
             .replace(/\s+/g, ' ')

@@ -65,6 +65,13 @@ test('F1 opens the full User Guide with search, Table of Contents, and shortcuts
     await expect(guide.getByRole('heading', { name: 'Search' })).toBeVisible();
     await expect(guide.getByRole('heading', { name: 'Tasks' })).toBeVisible();
     await expect(guide.getByRole('heading', { name: 'Reminders and project progress' })).toBeVisible();
+    // The guide opens with its three introductory parts, in order. The
+    // dialog title itself is the first level-2 heading, so the parts
+    // follow it.
+    const partHeadings = guide.getByRole('heading', { level: 2 });
+    await expect(partHeadings.nth(1)).toHaveText('Introduction to A11y Notebook');
+    await expect(partHeadings.nth(2)).toHaveText('The user interface and how to navigate it using a keyboard');
+    await expect(partHeadings.nth(3)).toHaveText('Accessibility features and accessibility settings');
     // The shortcuts section lists the registry's live bindings.
     const shortcutsSection = guide.locator('section[aria-labelledby="keyboard-shortcuts"]');
     await expect(shortcutsSection).toContainText('User Guide');
@@ -102,7 +109,9 @@ test('Table of Contents activation moves focus to the section heading', async ()
       const element = document.activeElement;
       return element ? { tag: element.tagName, id: element.id, text: element.textContent?.trim() } : null;
     });
-    expect(focused).toEqual({ tag: 'H2', id: 'tasks', text: 'Tasks' });
+    // Tasks is a level-3 section under the Introduction part, so it
+    // renders as an H3; the Table of Contents still moves focus to it.
+    expect(focused).toEqual({ tag: 'H3', id: 'tasks', text: 'Tasks' });
   } finally {
     await closeApp(app, userDataDir);
   }
