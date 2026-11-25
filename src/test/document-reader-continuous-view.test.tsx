@@ -174,4 +174,38 @@ describe('PDF continuous view radio group', () => {
     expect(screen.queryByText('Page 1 searchable text')).not.toBeInTheDocument();
     expect(screen.queryByText('Page 3 searchable text')).not.toBeInTheDocument();
   });
+
+  it('exposes one real heading per page in continuous view, in document order', async () => {
+    await openPdf();
+    // Paginated view shows one page at a time, so there is no per-page
+    // heading to navigate to.
+    expect(screen.queryByRole('heading', { name: /^Page 2$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Page 3$/ })).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Continuous view' }));
+    await waitFor(() => expect(pageText().getByText('Page 3 searchable text')).toBeInTheDocument());
+    // Each page starts with a real heading, so heading navigation (H in
+    // JAWS) moves through every page of the document in order.
+    const headings = within(screen.getByLabelText(/Accessible text for PDF/)).getAllByRole('heading');
+    expect(headings.map((heading) => heading.textContent)).toEqual(['Page text', 'Page 1', 'Page 2', 'Page 3']);
+    const pageHeadings = headings.slice(1);
+    expect(pageHeadings.map((heading) => heading.tagName)).toEqual(['H5', 'H5', 'H5']);
+    // The page headings are markers, not tab stops: tabbing stays on the
+    // text blocks.
+    expect(pageHeadings.every((heading) => !heading.hasAttribute('tabindex'))).toBe(true);
+    // Each page heading sits at the top of its own page wrapper, before
+    // that page's text.
+    for (const [index, heading] of pageHeadings.entries()) {
+      const wrapper = heading.closest<HTMLElement>('[data-pdf-page]');
+      expect(wrapper?.dataset.pdfPage).toBe(String(index + 1));
+      expect(wrapper?.textContent).toContain(`Page ${index + 1} searchable text`);
+      expect(heading.compareDocumentPosition(wrapper?.querySelector('p') ?? heading)).toBeTruthy();
+    }
+
+    // Switching back removes the per-page headings with the other pages.
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(1));
+    expect(screen.queryByRole('heading', { name: /^Page 2$/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /^Page 3$/ })).not.toBeInTheDocument();
+  });
 });

@@ -1046,7 +1046,18 @@ function PdfReader({
           const semanticWrapper = window.document.createElement('div');
           semanticWrapper.dataset.pdfPage = String(pageIndex);
           semantic.append(semanticWrapper);
+          // Every page starts with a real heading, so heading navigation
+          // (H in JAWS) moves through each page of the document in order.
+          // The semantic text itself carries no headings unless the PDF
+          // is tagged, so without this the whole document has only the
+          // reader's "Page text" heading and there is nothing per page
+          // to navigate to. The heading is a marker, not a tab stop.
+          // Level 5 sits under the "Page text" (h4) section heading, so
+          // the page markers do not outrank the reader's own headings.
+          const pageHeading = window.document.createElement('h5');
+          pageHeading.textContent = `Page ${pageIndex}`;
           semanticWrapper.replaceChildren(
+            pageHeading,
             page.getSemanticDOM(zoom, rotation, undefined, {
               values: valuesRef.current,
               errors: errorsRef.current,
