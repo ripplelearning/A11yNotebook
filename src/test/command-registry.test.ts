@@ -223,6 +223,14 @@ describe('command registry', () => {
       expect(getContextMenuCommands(context).map(({ id }) => id)).toContain('create-reminder');
   });
 
+  it('offers New task from the context menu on a note, file, and link', () => {
+    // The Notes and Files grid used to offer no task creation at all:
+    // the command was general-only, so a selected note, file, or link
+    // could not start a task linked to it.
+    for (const context of ['general', 'tree-note', 'attachment', 'link'] as const)
+      expect(getContextMenuCommands(context).map(({ id }) => id)).toContain('new-task');
+  });
+
   it('dispatches check-for-updates to the updater', () => {
     const context = createContext();
     expect(dispatchCommand('check-for-updates', context)).toBeUndefined();

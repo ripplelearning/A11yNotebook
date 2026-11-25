@@ -235,7 +235,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'new-task',
     label: 'New task',
     description: 'Add a persisted task to an associated note.',
-    contexts: ['general'],
+    contexts: ['general', 'tree-note', 'attachment', 'link'],
   },
   {
     id: 'quick-task',

@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Profiler } from 'react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
+import type { TaskLink } from '../shared/task-links';
 import type { SpreadsheetWorkbook } from '../shared/spreadsheet';
 import type { VaultEntry, VaultInfo } from '../shared/types';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
@@ -999,4 +1000,140 @@ describe('contextual shell document workflows', () => {
       ),
     );
   });
+
+  it('offers Create task from the context menu on a note and pre-selects it as the associated note', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Report.pdf', path: 'Research/Report.pdf', kind: 'attachment', provenance: 'imported' },
+            { name: 'Example.url', path: 'Research/Example.url', kind: 'link', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    wireTaskMocks(bridge);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Plan.md' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New task' });
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+    );
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Review the plan' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
+    const saved = vi.mocked(bridge.vault.saveNote).mock.calls.at(-1)?.[1] ?? '';
+    expect(saved).toContain('- [ ] Review the plan');
+    expect(saved).toMatch(/<!-- a11y-task-id:[\w-]+ -->/);
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
+    const table = await screen.findByRole('table', { name: 'Tasks in Study' });
+    expect(within(table).getByRole('checkbox', { name: 'Review the plan' })).toBeInTheDocument();
+  });
+
+  it('offers Create task from the context menu on a file and links the created task to it', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Report.pdf', path: 'Research/Report.pdf', kind: 'attachment', provenance: 'imported' },
+            { name: 'Example.url', path: 'Research/Example.url', kind: 'link', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    const saveTaskLinks = wireTaskMocks(bridge);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Report.pdf' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New task' });
+    // The task still lives in a note; the file becomes its link, not its home.
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+    );
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Check the report' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    await waitFor(() =>
+      expect(saveTaskLinks).toHaveBeenCalledWith([
+        expect.objectContaining({ kind: 'file', target: 'Research/Report.pdf', taskPath: 'Research/Plan.md' }),
+      ]),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
+    const table = await screen.findByRole('table', { name: 'Tasks in Study' });
+    expect(within(table).getByRole('checkbox', { name: 'Check the report' })).toBeInTheDocument();
+    expect(
+      within(table).getByRole('button', { name: 'Open file: Research/Report.pdf' }),
+    ).toBeInTheDocument();
+  });
+
+  it('offers Create task from the context menu on a link and links the created task to it', async () => {
+    const { bridge } = setup({
+      entries: [
+        {
+          name: 'Research',
+          path: 'Research',
+          kind: 'notebook',
+          children: [
+            { name: 'Plan.md', path: 'Research/Plan.md', kind: 'note', provenance: 'created' },
+            { name: 'Report.pdf', path: 'Research/Report.pdf', kind: 'attachment', provenance: 'imported' },
+            { name: 'Example.url', path: 'Research/Example.url', kind: 'link', provenance: 'imported' },
+          ],
+        },
+      ],
+    });
+    const saveTaskLinks = wireTaskMocks(bridge);
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(await screen.findByRole('gridcell', { name: 'Research' }));
+    shortcut('3');
+    fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Example.url' }));
+    fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
+    const dialog = await screen.findByRole('dialog', { name: 'New task' });
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+    );
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Visit the example' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    await waitFor(() =>
+      expect(saveTaskLinks).toHaveBeenCalledWith([
+        expect.objectContaining({ kind: 'file', target: 'Research/Example.url', taskPath: 'Research/Plan.md' }),
+      ]),
+    );
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
+    const table = await screen.findByRole('table', { name: 'Tasks in Study' });
+    expect(within(table).getByRole('checkbox', { name: 'Visit the example' })).toBeInTheDocument();
+    expect(
+      within(table).getByRole('button', { name: 'Open file: Research/Example.url' }),
+    ).toBeInTheDocument();
+  });
 });
+
+/**
+ * The task-link bridge methods are not part of the shared setup: the
+ * file and link cases need a getTasks that re-reads the note the dialog
+ * just saved, so the created task (with its stable id) is what the app
+ * links, and a saveTaskLinks that records what was persisted.
+ */
+function wireTaskMocks(bridge: ReturnType<typeof setup>['bridge']) {
+  const mocks = bridge.vault as unknown as Record<string, ReturnType<typeof vi.fn>>;
+  mocks.getTasks = vi.fn(async () => {
+    const calls = vi.mocked(bridge.vault.saveNote).mock.calls;
+    const last = calls[calls.length - 1];
+    return last ? parseMarkdownTasks(last[1], last[0]) : [];
+  });
+  mocks.getTaskLinks = vi.fn(async () => []);
+  const saveTaskLinks = vi.fn(async (next: TaskLink[]) => next);
+  mocks.saveTaskLinks = saveTaskLinks;
+  return saveTaskLinks;
+}
