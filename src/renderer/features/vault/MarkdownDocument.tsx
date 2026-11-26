@@ -7,7 +7,13 @@ import type { VaultLink } from '../../../shared/types';
 import type { VaultTask } from '../../../shared/types';
 import { attachmentPathFromUrl, imageUrl } from '../../../shared/attachments';
 import { extractPastedImageDescription } from '../../../shared/paste-content';
-import { KNOWN_TEMPLATE_PLACEHOLDERS, parseTemplateFields, type TemplateField } from '../../../shared/template-fields';
+import {
+  isTemplateNotePath,
+  KNOWN_TEMPLATE_PLACEHOLDERS,
+  parseTemplateFields,
+  type TemplateField,
+} from '../../../shared/template-fields';
+import { knownPlaceholderValues, type TemplateContext } from '../../../shared/templates';
 import PlainTextDocument from './PlainTextDocument';
 import RichTextEditor from './RichTextEditor';
 import { expandMathSpans, htmlToMarkdown, markdownImageReference, markdownToHtml } from './format-conversion';
@@ -56,8 +62,13 @@ const KNOWN_PLACEHOLDERS = new Set<string>(KNOWN_TEMPLATE_PLACEHOLDERS);
 
 /**
  * Reading view renders a template's {{Name}} markers as fillable
- * textboxes. The six known placeholders are left as literal text; every
- * other marker becomes an <input> whose accessible name is the field
+ * textboxes. The six known placeholders are left as literal text,
+ * except in a template note itself, where `preview` shows them filled
+ * in as a display-only preview using the template's own context (its
+ * title, its notebook, and the current date/time) — the stored note
+ * still holds the raw markers, so a filled copy expands them with the
+ * copy's own context. {{cursor}} previews as nothing: it is a position
+ * marker, not text. Every other marker becomes an <input> whose accessible name is the field
  * name (numbered when the name repeats: "Client Name 1", "Client Name
  * 2"). The walk only visits visible text: markers inside <code> or
  * <pre> stay literal, matching parseTemplateFields, which skips fenced
@@ -75,8 +86,10 @@ function renderTemplateFields(
   fields: TemplateField[],
   values: readonly string[],
   editable: boolean,
+  preview?: TemplateContext,
 ): string {
-  if (!fields.length) return html;
+  if (!fields.length && !preview) return html;
+  const previewValues = preview ? knownPlaceholderValues(preview) : undefined;
   const template = document.createElement('template');
   template.innerHTML = html;
   const walker = document.createTreeWalker(template.content, NodeFilter.SHOW_TEXT);
@@ -106,7 +119,17 @@ function renderTemplateFields(
     let replaced = false;
     for (const match of text.matchAll(/\{\{([^{}]*)\}\}/g)) {
       const name = match[1].trim();
-      if (!name || KNOWN_PLACEHOLDERS.has(name)) continue;
+      if (!name) continue;
+      if (KNOWN_PLACEHOLDERS.has(name)) {
+        // Known placeholder: literal text, unless this is a template
+        // note previewing its own filled-in values.
+        if (!previewValues) continue;
+        fragment.append(document.createTextNode(text.slice(previous, match.index)));
+        if (name !== 'cursor') fragment.append(document.createTextNode(previewValues[name] ?? ''));
+        previous = match.index + match[0].length;
+        replaced = true;
+        continue;
+      }
       const occurrence = (seen.get(name) ?? 0) + 1;
       seen.set(name, occurrence);
       const field = byName.get(name)?.shift();
@@ -130,6 +153,22 @@ function renderTemplateFields(
   return template.innerHTML;
 }
 
+/**
+ * The preview context for a template note's reading view: the
+ * template's own title (file name without extension) and notebook
+ * (parent folder name). Undefined for non-template notes, which keep
+ * known placeholders literal.
+ */
+function templatePreviewContext(notePath: string | undefined): TemplateContext | undefined {
+  if (!notePath || !isTemplateNotePath(notePath)) return undefined;
+  const segments = notePath.split('/');
+  const fileName = segments.at(-1) ?? '';
+  return {
+    title: fileName.replace(/\.(?:md|html?|txt)$/i, ''),
+    notebook: segments.slice(0, -1).at(-1) ?? '',
+  };
+}
+
 function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable: boolean): string {
   const template = document.createElement('template');
   template.innerHTML = html;
@@ -147,8 +186,7 @@ function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable:
         markerNode = child as Text;
       } else if (child instanceof HTMLParagraphElement) {
         markerNode =
-          (Array.from(child.childNodes).find((node) => node.nodeType === Node.TEXT_NODE) as Text | undefined) ??
-          null;
+          (Array.from(child.childNodes).find((node) => node.nodeType === Node.TEXT_NODE) as Text | undefined) ?? null;
       }
       break;
     }
@@ -164,7 +202,10 @@ function renderMarkdownTaskCheckboxes(html: string, lines: number[], toggleable:
     if (toggleable && line !== undefined) {
       checkbox.dataset.markdownTaskLine = String(line);
       const label = item.textContent?.trim();
-      checkbox.setAttribute('aria-label', label ? `Mark ${checked ? 'incomplete' : 'complete'}: ${label}` : 'Checklist item');
+      checkbox.setAttribute(
+        'aria-label',
+        label ? `Mark ${checked ? 'incomplete' : 'complete'}: ${label}` : 'Checklist item',
+      );
     } else {
       checkbox.disabled = true;
       checkbox.setAttribute('aria-label', 'Checklist item');
@@ -370,9 +411,7 @@ export default function MarkdownDocument({
                 : undefined
             }
             onChange={(value) =>
-              onChange(
-                format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value, notePath),
-              )
+              onChange(format === 'html' ? sanitizeNoteHtml(value, notePath) : htmlToMarkdown(value, notePath))
             }
           />
         ) : (
@@ -405,9 +444,7 @@ export default function MarkdownDocument({
                 );
                 if (!file) return;
                 event.preventDefault();
-                const description = extractPastedImageDescription(
-                  event.clipboardData?.getData('text/html') ?? '',
-                );
+                const description = extractPastedImageDescription(event.clipboardData?.getData('text/html') ?? '');
                 const area = event.currentTarget;
                 const start = area.selectionStart ?? area.value.length;
                 const end = area.selectionEnd ?? start;
@@ -442,7 +479,14 @@ export default function MarkdownDocument({
                 }, 0);
               }}
               onKeyDown={(event) => {
-                if (format !== 'markdown' || event.key !== 'Enter' || event.shiftKey || event.ctrlKey || event.metaKey || event.altKey)
+                if (
+                  format !== 'markdown' ||
+                  event.key !== 'Enter' ||
+                  event.shiftKey ||
+                  event.ctrlKey ||
+                  event.metaKey ||
+                  event.altKey
+                )
                   return;
                 const area = event.currentTarget;
                 const continued = continueMarkdownList(area.value, area.selectionStart, area.selectionEnd);
@@ -515,7 +559,9 @@ export default function MarkdownDocument({
   // Template fields render in the reading view only (editing mode shows
   // the raw {{Name}} markers). Markdown and HTML notes share this path:
   // both render to sanitized HTML first, and the field walk replaces
-  // markers in visible text for either format.
+  // markers in visible text for either format. In a template note the
+  // walk also previews the known placeholders with the template's own
+  // context; other notes keep them literal.
   const withTemplateFields =
     mode === 'read-only' && (format === 'markdown' || format === 'html')
       ? renderTemplateFields(
@@ -523,6 +569,7 @@ export default function MarkdownDocument({
           parseTemplateFields(content, format),
           templateFieldValues,
           onTemplateFieldChange !== undefined,
+          templatePreviewContext(notePath),
         )
       : renderedHtml;
   return (
