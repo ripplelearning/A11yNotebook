@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { sanitizeHtmlFragment } from '../../electron/vault/html-sanitize';
 import {
   convertNoteContent,
   expandMathSpans,
@@ -46,6 +47,36 @@ describe('note format conversion', () => {
       '- [x] Read chapter due:2026-10-05 priority:high',
     );
     expect(formatConversionWarning(html, 'html', 'markdown')).toContain('task identities');
+  });
+
+  it('renders exported Markdown task lines as enabled checkboxes with matching checked states', () => {
+    // Full export chain: the renderer converts Markdown task lines to
+    // task list items, and the main-process export sanitizer renders
+    // the controls into the standalone HTML.
+    const converted = convertNoteContent(
+      '- [ ] Buy milk\n- [x] Pay bill',
+      'markdown',
+      'html',
+      'Notes/Tasks.html',
+    );
+    const exported = sanitizeHtmlFragment(converted, { renderTaskControls: true });
+    const template = document.createElement('template');
+    template.innerHTML = exported;
+    const checkboxes = Array.from(template.content.querySelectorAll<HTMLInputElement>('input[type="checkbox"]'));
+    expect(checkboxes).toHaveLength(2);
+    expect(checkboxes[0].disabled).toBe(false);
+    expect(checkboxes[0].checked).toBe(false);
+    expect(checkboxes[1].disabled).toBe(false);
+    expect(checkboxes[1].checked).toBe(true);
+    expect(template.content.textContent).toContain('Buy milk');
+    expect(template.content.textContent).toContain('Pay bill');
+    // The exported checkbox toggles in the browser when clicked; the
+    // exported copy cannot write back to the library, but the control
+    // itself must operate in the page.
+    checkboxes[0].click();
+    expect(checkboxes[0].checked).toBe(true);
+    checkboxes[1].click();
+    expect(checkboxes[1].checked).toBe(false);
   });
 
   it('normalizes MM/DD/YYYY task dates to YYYY-MM-DD storage on conversion', () => {
