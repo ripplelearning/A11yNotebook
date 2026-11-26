@@ -108,6 +108,33 @@ test('PDF opens in Continuous view by default, radio group switches views, hides
   }
 });
 
+/**
+ * Reopen the PDF after a relaunch. The app restores into the Docs
+ * notebook (with the attachment tab closed), so the library root's
+ * Docs cell is gone: when already inside Docs, open the file from its
+ * grid instead of navigating from the library root. If the Guide.pdf
+ * tab was restored, switch to it instead.
+ */
+async function reopenThreePagePdf(page: Page): Promise<void> {
+  await waitForApp(page);
+  await dismissTutorial(page);
+  const tab = page.getByRole('tab', { name: 'Guide.pdf' });
+  if (await tab.isVisible().catch(() => false)) {
+    await tab.click();
+  } else if (
+    await page
+      .getByRole('region', { name: 'Notes and Files in Docs' })
+      .isVisible()
+      .catch(() => false)
+  ) {
+    await openGridEntry(page, 'Guide.pdf');
+  } else {
+    await openNotebook(page, 'Docs');
+    await openGridEntry(page, 'Guide.pdf');
+  }
+  await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
+}
+
 test('PDF view choice is remembered for the next PDF and across a relaunch', async () => {
   test.setTimeout(180000);
   const paths = seedLibrary([{ name: 'Docs', files: [{ name: 'Guide.pdf', content: await threePagePdf() }] }]);
@@ -129,7 +156,7 @@ test('PDF view choice is remembered for the next PDF and across a relaunch', asy
     launched = await launchApp(paths.userDataDir);
     app = launched.app;
     page = launched.page;
-    await openThreePagePdf(page);
+    await reopenThreePagePdf(page);
     await expect(navigation().getByRole('radio', { name: 'Paginated view' })).toBeChecked();
     await expect(navigation().getByRole('radio', { name: 'Continuous view' })).not.toBeChecked();
     await expect(navigation().getByRole('button', { name: 'Next page' })).toBeVisible();
@@ -141,7 +168,7 @@ test('PDF view choice is remembered for the next PDF and across a relaunch', asy
     launched = await launchApp(paths.userDataDir);
     app = launched.app;
     page = launched.page;
-    await openThreePagePdf(page);
+    await reopenThreePagePdf(page);
     await expect(navigation().getByRole('radio', { name: 'Continuous view' })).toBeChecked();
     await expect(navigation().getByRole('radio', { name: 'Paginated view' })).not.toBeChecked();
     await expect(navigation().getByRole('button', { name: 'Next page' })).toHaveCount(0);
