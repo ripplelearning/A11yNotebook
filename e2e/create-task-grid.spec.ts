@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
-import { mkdirSync, statSync, writeFileSync } from 'node:fs';
+import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import {
   closeApp,
   dismissTutorial,
@@ -19,8 +19,8 @@ import {
  * grid, with a note, link, or file selected, the context menu had no
  * Create Task option at all — the new-task command was general-only.
  * The menu item now opens the New task dialog with the selected item
- * linked to the task: a note becomes the associated note, and a file or
- * link is attached to the created task as its link.
+ * linked to the task: the task lives in the Tasks notebook and only
+ * links to the selected item, which is never changed.
  *
  * A `.url` file on disk is picked up by the library scan as a link entry
  * (kind 'link'), and a `.csv` as an attachment, so seeding them is
@@ -104,7 +104,7 @@ test('the context menu on a note offers Create task with the note as the associa
     await dialog.getByRole('button', { name: 'Create task' }).click();
 
     // Creating the task lands on the Tasks view, where the new task
-    // carries its auto-link to the note it lives in.
+    // links to the note it is associated with.
     await expect(page.getByRole('checkbox', { name: 'Review the guide' })).toBeVisible({ timeout: 10000 });
     await expect(page.getByRole('button', { name: 'Open note: Archive/Guide.md' })).toBeVisible({
       timeout: 10000,
@@ -114,15 +114,44 @@ test('the context menu on a note offers Create task with the note as the associa
   }
 });
 
+test('creating a task associated with a note never changes the note: the task lives in Tasks and links to it', async () => {
+  const { app, page, paths } = await launchGridApp();
+  try {
+    const notePath = path.join(paths.libraryDir, 'Archive', 'Guide.md');
+    const before = readFileSync(notePath);
+    const dialog = await openCreateTask(page, 'Guide.md');
+    await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Guide.md', { timeout: 10000 });
+    await dialog.getByLabel('Task description').fill('Review the guide without touching it');
+    await dialog.getByRole('button', { name: 'Create task' }).click();
+
+    await expect(page.getByRole('checkbox', { name: 'Review the guide without touching it' })).toBeVisible({
+      timeout: 10000,
+    });
+    // The associated note is never written to: its bytes are identical
+    // before and after the task was created.
+    expect(readFileSync(notePath)).toEqual(before);
+    // The task itself lives in the Tasks notebook, as its own note.
+    const taskNote = path.join(paths.libraryDir, 'Tasks', 'Review the guide without touching it.md');
+    expect(readFileSync(taskNote, 'utf8')).toContain('- [ ] Review the guide without touching it');
+    // The Tasks view shows the task with a link to the associated note,
+    // and activating that link opens the note.
+    const link = page.getByRole('button', { name: 'Open note: Archive/Guide.md' });
+    await expect(link).toBeVisible({ timeout: 10000 });
+    await link.click();
+    await expect(page.getByRole('heading', { name: 'Guide', level: 1 })).toBeVisible({ timeout: 10000 });
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
 test('the context menu on a file offers Create task and links the created task to the file', async () => {
   const { app, page, paths } = await launchGridApp();
   try {
     const dialog = await openCreateTask(page, 'Report.csv');
-    // The task still lives in a note; the file becomes its link, so the
-    // dropdown shows the file and names the note holding the task.
+    // The task lives in the Tasks notebook; the file becomes its link.
     await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Report.csv', { timeout: 10000 });
     await expect(
-      dialog.getByText('Task will be saved in Archive/Guide.md and linked to Archive/Report.csv.'),
+      dialog.getByText('Task will be saved in the Tasks notebook and linked to Archive/Report.csv.'),
     ).toBeVisible({ timeout: 10000 });
     await dialog.getByLabel('Task description').fill('Check the report');
     await dialog.getByRole('button', { name: 'Create task' }).click();
@@ -142,7 +171,7 @@ test('the context menu on a link offers Create task and links the created task t
     const dialog = await openCreateTask(page, 'Example.url');
     await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Example.url', { timeout: 10000 });
     await expect(
-      dialog.getByText('Task will be saved in Archive/Guide.md and linked to Archive/Example.url.'),
+      dialog.getByText('Task will be saved in the Tasks notebook and linked to Archive/Example.url.'),
     ).toBeVisible({ timeout: 10000 });
     await dialog.getByLabel('Task description').fill('Visit the example');
     await dialog.getByRole('button', { name: 'Create task' }).click();
@@ -165,8 +194,8 @@ test('the dropdown lists a note whose origin record was lost to sync, and never 
     await switchView(page, 'Control+2', async () => page.getByRole('gridcell', { name: 'Archive' }).count());
     await openNotebook(page, 'Archive');
     const dialog = await openCreateTask(page, 'Guide.md');
-    // The note holds the task even though sync replaced its file and
-    // its origin record no longer matches. Options in a closed native
+    // The note is still offered as an association even though sync
+    // replaced its file and its origin record no longer matches. Options in a closed native
     // select have no visible box, so count the option instead of
     // asking whether it is visible; the value check below confirms
     // the note is the selected association.
@@ -193,7 +222,7 @@ test('choosing a file in the Associate with dropdown links the task to it', asyn
     await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Guide.md', { timeout: 10000 });
     await dialog.getByLabel('Associate with').selectOption('Archive/Report.csv');
     await expect(
-      dialog.getByText('Task will be saved in Archive/Guide.md and linked to Archive/Report.csv.'),
+      dialog.getByText('Task will be saved in the Tasks notebook and linked to Archive/Report.csv.'),
     ).toBeVisible({ timeout: 5000 });
     await dialog.getByLabel('Task description').fill('Check the report from the dropdown');
     await dialog.getByRole('button', { name: 'Create task' }).click();
@@ -216,7 +245,7 @@ test('choosing a notebook in the Associate with dropdown links the task to it', 
     await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Guide.md', { timeout: 10000 });
     await dialog.getByLabel('Associate with').selectOption('Archive');
     await expect(
-      dialog.getByText('Task will be saved in Archive/Guide.md and linked to Archive.'),
+      dialog.getByText('Task will be saved in the Tasks notebook and linked to Archive.'),
     ).toBeVisible({ timeout: 5000 });
     await dialog.getByLabel('Task description').fill('Review the whole notebook');
     await dialog.getByRole('button', { name: 'Create task' }).click();

@@ -206,11 +206,13 @@ describe('contextual navigation and creation', () => {
     // disabled instead of submitting an empty task.
     expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
     // Ctrl+N opens the same unified dialog as the grid menu: the task
-    // is saved as a checkbox in the associated note, never as a new
-    // task file, and templates are never offered as the note.
+    // is saved as its own note in the Tasks notebook and only linked to
+    // the associated note, never written into it, and templates are
+    // never offered as an association.
     const options = await waitFor(() => {
       const found = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
       expect(found.map((option) => option.textContent)).toEqual([
+        'No association',
         'Research/Idea.md',
         'Research/Other.md',
         'Root.md',
@@ -219,24 +221,33 @@ describe('contextual navigation and creation', () => {
       ]);
       return found;
     });
-    expect(options).toHaveLength(5);
+    expect(options).toHaveLength(6);
+    fireEvent.change(within(dialog).getByLabelText('Associate with'), {
+      target: { value: 'Research/Idea.md' },
+    });
     fireEvent.change(input, { target: { value: 'Plan review' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
-    const [path, content] = vi.mocked(bridge.vault.saveNote).mock.calls[0];
-    expect(path).toBe('Research/Idea.md');
-    expect(content).toContain('- [ ] Plan review');
+    await waitFor(() =>
+      expect(bridge.vault.createTask).toHaveBeenCalledWith({
+        notebookPath: 'Tasks',
+        text: 'Plan review',
+        due: '',
+        reminder: '',
+        priority: 'medium',
+      }),
+    );
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
   });
 
   it('keeps a failed task dialog open with its text and allows Escape cancellation', async () => {
     const { bridge } = setup();
-    bridge.vault.saveNote.mockRejectedValueOnce(new Error('Task could not be saved.'));
+    bridge.vault.createTask.mockRejectedValueOnce(new Error('Task could not be saved.'));
     await screen.findByRole('heading', { name: 'Study library' });
     shortcut('4');
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    // Wait for the note list: creating while it loads is disabled.
+    // Wait for the dialog options to render.
     await within(dialog).findByRole('option', { name: 'Research/Idea.md' });
     const input = within(dialog).getByRole('textbox', { name: 'Task description' });
     fireEvent.change(input, { target: { value: 'Keep this text' } });
@@ -262,15 +273,23 @@ describe('contextual navigation and creation', () => {
     await waitFor(() =>
       expect(
         within(within(dialog).getByLabelText('Associate with')).getAllByRole('option'),
-      ).toHaveLength(5),
+      ).toHaveLength(6),
     );
     fireEvent.change(within(dialog).getByLabelText('Associate with'), { target: { value: 'Root.md' } });
     fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task description' }), {
       target: { value: 'Review plan' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
-    expect(vi.mocked(bridge.vault.saveNote).mock.calls[0][0]).toBe('Root.md');
+    await waitFor(() =>
+      expect(bridge.vault.createTask).toHaveBeenCalledWith({
+        notebookPath: 'Tasks',
+        text: 'Review plan',
+        due: '',
+        reminder: '',
+        priority: 'medium',
+      }),
+    );
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
   });
 
   it('cancels pending navigation speech when the visible New note control opens a dialog', async () => {

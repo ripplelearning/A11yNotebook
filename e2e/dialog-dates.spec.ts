@@ -61,8 +61,10 @@ test('the New task dialog accepts MM/DD/YYYY dates and shows them back that way'
     await expect(dialog.getByLabel('Reminder date, MM/DD/YYYY')).toBeVisible();
     expect(await dialog.getByLabel('Due date, MM/DD/YYYY').getAttribute('placeholder')).toBe('MM/DD/YYYY');
 
-    // The unified dialog associates the task with a note: the seeded
-    // note is the default, not a new task file.
+    // The unified dialog links the task to the note picked in
+    // Associate with; with no note open, it starts unassociated, so
+    // pick the seeded note here to exercise the link as well.
+    await dialog.getByLabel('Associate with').selectOption('Archive/Guide.md');
     await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Guide.md', { timeout: 10000 });
 
     const due = displayDate(5);
@@ -73,7 +75,8 @@ test('the New task dialog accepts MM/DD/YYYY dates and shows them back that way'
     await dialog.getByRole('button', { name: 'Create task' }).click();
 
     // The dialog closes and the task lists in the Tasks table with its
-    // due date shown as MM/DD/YYYY, linked to the note it lives in.
+    // due date shown as MM/DD/YYYY, linked to the note it is
+    // associated with.
     await expect(dialog).toBeHidden({ timeout: 5000 });
     const row = page.locator('tr[data-context="task-row"]', { hasText: 'File the quarterly report' });
     await expect(row).toBeVisible({ timeout: 5000 });

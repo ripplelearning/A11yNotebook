@@ -12,12 +12,12 @@ import type { TaskLinkKind } from '../../../shared/task-links';
  * grid context menu's Create task — opens this component through the
  * same opener, with the same fields and the same behavior.
  *
- * A task always lives as a checkbox in a note. The Associate with
- * dropdown lists everything a task can be associated with: notes that
- * can hold it, files, saved web links, and notebooks. Picking a note
- * saves the task there; picking a file, link, or notebook saves the
- * task in the holding note named underneath and links the task to the
- * picked item. Templates are not notes, so they never appear here.
+ * A task always lives in the Tasks notebook, as its own note, and only
+ * links to the item it is associated with. Associating a task never
+ * changes the associated note, file, or link. The Associate with
+ * dropdown lists everything a task can be linked to: notes, files,
+ * saved web links, and notebooks — or no association at all. Templates
+ * are not notes, so they never appear here.
  */
 export type TaskAssociationKind = 'note' | 'file' | 'link' | 'notebook';
 
@@ -34,14 +34,11 @@ export interface TaskAssociationLink {
 interface Props {
   options: TaskAssociationOption[];
   initialOption?: TaskAssociationOption;
-  defaultHoldingNote?: string;
   busy: boolean;
-  loadingNotes?: boolean;
   error: string;
   priorityOptions?: string[];
   onClose: () => void;
   onCreate: (
-    holdingNote: string,
     text: string,
     due: string,
     priority: string,
@@ -63,37 +60,36 @@ function resolveSelection(
   options: TaskAssociationOption[],
   initialOption?: TaskAssociationOption,
 ): TaskAssociationOption | undefined {
+  // No initial option means no association: the task just lives in the
+  // Tasks notebook. A note is never picked for the user.
   if (
     initialOption &&
     options.some((option) => option.kind === initialOption.kind && option.path === initialOption.path)
   )
     return initialOption;
-  return options.find((option) => option.kind === 'note') ?? options[0];
+  return undefined;
 }
 
 export default function NewTaskDialog({
   options,
   initialOption,
-  defaultHoldingNote,
   busy,
-  loadingNotes = false,
   error,
   priorityOptions,
   onClose,
   onCreate,
 }: Props) {
   const priorityValues = priorityOptions?.length ? priorityOptions : ['critical', 'high', 'medium', 'low', 'optional'];
-  // A template passed in by mistake is still not a note: it can neither
-  // hold the task nor be offered as an association.
+  // A template passed in by mistake is still not a note: it can never
+  // be offered as an association.
   const visibleOptions = options.filter((option) => !(option.kind === 'note' && isTemplateNotePath(option.path)));
-  const noteOptions = visibleOptions.filter((option) => option.kind === 'note');
   const [selection, setSelection] = useState<TaskAssociationOption | undefined>(() =>
     resolveSelection(visibleOptions, initialOption),
   );
   // Until the user picks something, the selection follows the opener:
-  // the initial option wins as soon as it arrives (notes load after
-  // the dialog opens), then the first note. After the user chooses,
-  // their choice sticks and is only replaced if it disappears.
+  // the initial option wins as soon as it arrives, then no association.
+  // After the user chooses, their choice sticks and is only replaced
+  // if it disappears — choosing no association never disappears.
   const userChoseRef = useRef(false);
   const [text, setText] = useState('');
   const [due, setDue] = useState('');
@@ -106,24 +102,24 @@ export default function NewTaskDialog({
     setSelection((current) => {
       if (!userChoseRef.current) {
         const resolved = resolveSelection(visibleOptions, initialOption);
+        if (resolved === undefined && current === undefined) return current;
         if (resolved && current && resolved.kind === current.kind && resolved.path === current.path) return current;
         return resolved;
       }
-      if (current && visibleOptions.some((option) => option.kind === current.kind && option.path === current.path))
-        return current;
+      if (current === undefined) return current;
+      if (visibleOptions.some((option) => option.kind === current.kind && option.path === current.path)) return current;
       return resolveSelection(visibleOptions, initialOption);
     });
   }, [visibleOptions, initialOption]);
-  const holdingNote =
-    selection?.kind === 'note'
-      ? selection.path
-      : defaultHoldingNote && noteOptions.some((option) => option.path === defaultHoldingNote)
-        ? defaultHoldingNote
-        : (noteOptions[0]?.path ?? '');
-  const link: TaskAssociationLink | undefined =
-    selection && selection.kind !== 'note'
-      ? { kind: selection.kind === 'notebook' ? 'notebook' : 'file', target: selection.path }
-      : undefined;
+  // Every association is a link to the picked item — including a note.
+  // The task itself always lives in the Tasks notebook, so no
+  // association ever writes into the picked item.
+  const link: TaskAssociationLink | undefined = selection
+    ? {
+        kind: selection.kind === 'note' ? 'note' : selection.kind === 'notebook' ? 'notebook' : 'file',
+        target: selection.path,
+      }
+    : undefined;
   const grouped = GROUP_ORDER.map(
     (kind) => [kind, visibleOptions.filter((option) => option.kind === kind)] as const,
   ).filter(([, items]) => items.length > 0);
@@ -155,9 +151,8 @@ export default function NewTaskDialog({
             setLocalError('Enter a reminder time as HH:MM or H:MM AM/PM.');
             return;
           }
-          if (holdingNote && text.trim() && !busy && !loadingNotes)
+          if (text.trim() && !busy)
             void onCreate(
-              holdingNote,
               text.trim(),
               normalizeDateText(due) ?? '',
               priority,
@@ -168,43 +163,37 @@ export default function NewTaskDialog({
             );
         }}
       >
-        <p>Tasks are saved as checkboxes in their associated note.</p>
-        <p>Only unencrypted notes can hold a task. Templates and cognitive tool files are excluded.</p>
-        {!noteOptions.length ? (
-          <p>{loadingNotes ? 'Checking eligible notes…' : 'Create an unencrypted note before adding a task.'}</p>
-        ) : null}
-        {noteOptions.length || loadingNotes ? (
-          <label>
-            Associate with
-            <select
-              required
-              value={selection ? selection.path : ''}
-              disabled={busy || loadingNotes}
-              onChange={(event) => {
-                const next = visibleOptions.find((option) => option.path === event.target.value);
-                if (next) {
-                  userChoseRef.current = true;
-                  setSelection(next);
-                }
-              }}
-            >
-              {grouped.map(([kind, items]) => (
-                <optgroup key={kind} label={GROUP_LABELS[kind]}>
-                  {items.map((option) => (
-                    <option key={`${option.kind}:${option.path}`} value={option.path}>
-                      {option.path}
-                    </option>
-                  ))}
-                </optgroup>
-              ))}
-            </select>
-          </label>
-        ) : null}
-        {selection && selection.kind !== 'note' && holdingNote ? (
-          <p>
-            Task will be saved in {holdingNote} and linked to {selection.path}.
-          </p>
-        ) : null}
+        <p>
+          Tasks live in the Tasks notebook and link to the item you associate them with. The associated note, file, or
+          link is never changed.
+        </p>
+        <label>
+          Associate with
+          <select
+            value={selection ? selection.path : ''}
+            disabled={busy}
+            onChange={(event) => {
+              userChoseRef.current = true;
+              setSelection(visibleOptions.find((option) => option.path === event.target.value));
+            }}
+          >
+            <option value="">No association</option>
+            {grouped.map(([kind, items]) => (
+              <optgroup key={kind} label={GROUP_LABELS[kind]}>
+                {items.map((option) => (
+                  <option key={`${option.kind}:${option.path}`} value={option.path}>
+                    {option.path}
+                  </option>
+                ))}
+              </optgroup>
+            ))}
+          </select>
+        </label>
+        <p>
+          {selection
+            ? `Task will be saved in the Tasks notebook and linked to ${selection.path}.`
+            : 'Task will be saved in the Tasks notebook with no link.'}
+        </p>
         <label>
           Task description
           <input
@@ -251,7 +240,7 @@ export default function NewTaskDialog({
           </select>
         </label>
         {localError || error ? <p role="alert">{localError || error}</p> : null}
-        <button type="submit" disabled={busy || loadingNotes || !holdingNote || !text.trim()}>
+        <button type="submit" disabled={busy || !text.trim()}>
           Create task
         </button>
         <button type="button" disabled={busy} onClick={onClose}>

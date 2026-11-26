@@ -24,6 +24,7 @@ describe('unified new task dialog', () => {
     const select = within(dialog).getByLabelText('Associate with');
     const options = within(select).getAllByRole('option');
     expect(options.map((option) => option.textContent)).toEqual([
+      'No association',
       'Research/Plan.md',
       'Research/Ideas.md',
       'Research/Report.csv',
@@ -34,7 +35,8 @@ describe('unified new task dialog', () => {
     expect(within(select).getByRole('group', { name: 'Files' })).toBeInTheDocument();
     expect(within(select).getByRole('group', { name: 'Links' })).toBeInTheDocument();
     expect(within(select).getByRole('group', { name: 'Notebooks' })).toBeInTheDocument();
-    expect(select).toHaveValue('Research/Plan.md');
+    // With no initial option, the task starts unassociated.
+    expect(select).toHaveValue('');
   });
 
   it('never lists templates as association options', async () => {
@@ -45,31 +47,47 @@ describe('unified new task dialog', () => {
       ],
     });
     const options = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['Research/Plan.md']);
+    expect(options.map((option) => option.textContent)).toEqual(['No association', 'Research/Plan.md']);
   });
 
-  it('saves the task in the selected note with no extra link', async () => {
-    const { onCreate, dialog } = renderDialog();
+  it('says tasks live in the Tasks notebook and never change the associated item', async () => {
+    const { dialog } = renderDialog();
+    expect(
+      within(dialog).getByText(
+        'Tasks live in the Tasks notebook and link to the item you associate them with. The associated note, file, or link is never changed.',
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/saved as checkboxes/)).not.toBeInTheDocument();
+  });
+
+  it('links the task to the selected note instead of saving it there', async () => {
+    const { onCreate, dialog } = renderDialog({ initialOption: { kind: 'note', path: 'Research/Plan.md' } });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Plan review' } });
     fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
     fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith('Research/Plan.md', 'Plan review', '2026-11-01', 'high', '', undefined);
+    expect(onCreate).toHaveBeenCalledWith('Plan review', '2026-11-01', 'high', '', {
+      kind: 'note',
+      target: 'Research/Plan.md',
+    });
+    expect(
+      within(dialog).getByText('Task will be saved in the Tasks notebook and linked to Research/Plan.md.'),
+    ).toBeInTheDocument();
   });
 
-  it('saves the task in the default note and links it to a selected file', async () => {
-    const { onCreate, dialog } = renderDialog({ defaultHoldingNote: 'Research/Ideas.md' });
+  it('links the task to a selected file', async () => {
+    const { onCreate, dialog } = renderDialog();
     fireEvent.change(within(dialog).getByLabelText('Associate with'), {
       target: { value: 'Research/Report.csv' },
     });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Check the report' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith('Research/Ideas.md', 'Check the report', '', 'medium', '', {
+    expect(onCreate).toHaveBeenCalledWith('Check the report', '', 'medium', '', {
       kind: 'file',
       target: 'Research/Report.csv',
     });
     expect(
-      within(dialog).getByText('Task will be saved in Research/Ideas.md and linked to Research/Report.csv.'),
+      within(dialog).getByText('Task will be saved in the Tasks notebook and linked to Research/Report.csv.'),
     ).toBeInTheDocument();
   });
 
@@ -80,7 +98,7 @@ describe('unified new task dialog', () => {
     });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Visit the example' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith('Research/Plan.md', 'Visit the example', '', 'medium', '', {
+    expect(onCreate).toHaveBeenCalledWith('Visit the example', '', 'medium', '', {
       kind: 'file',
       target: 'Research/Example.url',
     });
@@ -88,10 +106,30 @@ describe('unified new task dialog', () => {
     fireEvent.change(within(dialog).getByLabelText('Associate with'), { target: { value: 'Research' } });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Review the notebook' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith('Research/Plan.md', 'Review the notebook', '', 'medium', '', {
+    expect(onCreate).toHaveBeenCalledWith('Review the notebook', '', 'medium', '', {
       kind: 'notebook',
       target: 'Research',
     });
+  });
+
+  it('creates a task with no association when none is chosen', async () => {
+    const { onCreate, dialog } = renderDialog();
+    expect(within(dialog).getByText('Task will be saved in the Tasks notebook with no link.')).toBeInTheDocument();
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Just this' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    expect(onCreate).toHaveBeenCalledWith('Just this', '', 'medium', '', undefined);
+  });
+
+  it('allows creating a task when there is nothing to associate with', async () => {
+    const { onCreate, dialog } = renderDialog({ options: [] });
+    const options = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['No association']);
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task description' }), {
+      target: { value: 'On its own' },
+    });
+    expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeEnabled();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    expect(onCreate).toHaveBeenCalledWith('On its own', '', 'medium', '', undefined);
   });
 
   it('preselects the given initial option', async () => {
@@ -99,30 +137,11 @@ describe('unified new task dialog', () => {
     expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Report.csv');
   });
 
-  it('falls back to the first note when the initial option is missing', async () => {
+  it('falls back to no association when the initial option is missing', async () => {
     const { dialog } = renderDialog({
       initialOption: { kind: 'note', path: 'Missing/Note.md' },
     });
-    expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Plan.md');
-  });
-
-  it('keeps the task fields usable while the note list loads, with only the list and Create waiting', async () => {
-    const { dialog } = renderDialog({
-      loadingNotes: true,
-      options: [{ kind: 'notebook', path: 'Research' }],
-    });
-    expect(within(dialog).getByText('Checking eligible notes…')).toBeInTheDocument();
-    expect(within(dialog).getByRole('textbox', { name: 'Task description' })).toBeEnabled();
-    expect(within(dialog).getByLabelText('Associate with')).toBeDisabled();
-    expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
-  });
-
-  it('asks for a note before adding a task when no note can hold one', async () => {
-    const { dialog } = renderDialog({
-      options: [{ kind: 'file', path: 'Research/Report.csv' }],
-    });
-    expect(within(dialog).getByText('Create an unencrypted note before adding a task.')).toBeInTheDocument();
-    expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
+    expect(within(dialog).getByLabelText('Associate with')).toHaveValue('');
   });
 
   it('offers due date, reminder time, and priority after the task name, all optional', async () => {
@@ -143,14 +162,7 @@ describe('unified new task dialog', () => {
     fireEvent.change(reminderTime, { target: { value: '09:00' } });
     fireEvent.change(priority, { target: { value: 'high' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith(
-      'Research/Plan.md',
-      'Plan review',
-      '2026-11-01',
-      'high',
-      '2026-11-01T09:00',
-      undefined,
-    );
+    expect(onCreate).toHaveBeenCalledWith('Plan review', '2026-11-01', 'high', '2026-11-01T09:00', undefined);
   });
 
   it('refuses a reminder date without a reminder time instead of silently dropping it', async () => {
@@ -182,7 +194,7 @@ describe('unified new task dialog', () => {
       target: { value: 'Just this' },
     });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(onCreate).toHaveBeenCalledWith('Research/Plan.md', 'Just this', '', 'medium', '', undefined);
+    expect(onCreate).toHaveBeenCalledWith('Just this', '', 'medium', '', undefined);
   });
 
   it('offers a Show Date Picker button for both dates', async () => {
