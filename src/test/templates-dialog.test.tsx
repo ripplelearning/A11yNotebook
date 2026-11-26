@@ -19,7 +19,7 @@ describe('new note from template dialog', () => {
       />,
     );
     expect(screen.getByRole('dialog', { name: 'New note from template' })).toBeInTheDocument();
-    expect(screen.getByRole('textbox', { name: 'Note title' })).toHaveFocus();
+    expect(screen.getByRole('combobox', { name: 'Template' })).toHaveFocus();
     fireEvent.change(screen.getByRole('combobox', { name: 'Template' }), { target: { value: 'meeting' } });
     fireEvent.change(screen.getByRole('textbox', { name: 'Note title' }), { target: { value: 'Planning' } });
     const preview = screen.getByRole('textbox', { name: 'Markdown preview' }) as HTMLTextAreaElement;
