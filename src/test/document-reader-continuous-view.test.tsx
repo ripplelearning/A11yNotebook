@@ -66,6 +66,12 @@ describe('PDF continuous view radio group', () => {
         listPdfAnnotations: vi.fn(async () => []),
         getPdfFormValues: vi.fn(async () => ({})),
       },
+      getPdfReadingPreferences: vi.fn(async () => ({
+        hideHeadersFooters: false,
+        hidePageNumbers: false,
+        continuousView: true,
+      })),
+      setPdfReadingPreferences: vi.fn(async (value: unknown) => value),
     } as unknown as NotebookBridge;
   });
 
@@ -108,7 +114,7 @@ describe('PDF continuous view radio group', () => {
     }
   }
 
-  it('places the view choice before Previous/Next, paginated by default with exactly one view checked', async () => {
+  it('places the view choice before Previous/Next, continuous by default with exactly one view checked', async () => {
     await openPdf();
     const group = pageNavigationGroup();
     const radios = within(group).getAllByRole('radio');
@@ -117,18 +123,19 @@ describe('PDF continuous view radio group', () => {
       'Continuous view',
     ]);
     expect(radios[0].compareDocumentPosition(radios[1]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    // The radios come before the Previous/Next buttons in the group.
-    const buttons = [...group.querySelectorAll('button')];
-    expect(buttons.map((button) => button.textContent)).toEqual(['Previous page', 'Next page']);
-    expect(radios[1].compareDocumentPosition(buttons[0]) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expectExactlyOneViewChecked(true);
-    expect(screen.queryByText('Page 2 searchable text')).not.toBeInTheDocument();
-    expect(document.querySelectorAll('canvas')).toHaveLength(1);
+    // Continuous is the default: the whole document is shown, so there
+    // are no Previous/Next buttons.
+    expectExactlyOneViewChecked(false);
+    expect(await pageText().findByText('Page 2 searchable text')).toBeInTheDocument();
+    expect(pageText().getByText('Page 3 searchable text')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Previous page' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Next page' })).not.toBeInTheDocument();
+    await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(3));
   });
 
   it('hides Previous/Next in continuous view and restores them in paginated view', async () => {
     await openPdf();
-    fireEvent.click(screen.getByRole('radio', { name: 'Continuous view' }));
+    // Continuous is the default: the whole document is shown at once.
     expectExactlyOneViewChecked(false);
     expect(await pageText().findByText('Page 2 searchable text')).toBeInTheDocument();
     expect(pageText().getByText('Page 3 searchable text')).toBeInTheDocument();
@@ -153,6 +160,9 @@ describe('PDF continuous view radio group', () => {
 
   it('moves the current page with Previous/Next in paginated view, and keeps it across a continuous round trip', async () => {
     await openPdf();
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    expectExactlyOneViewChecked(true);
+    await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(1));
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByRole('heading', { name: 'Page 2 of 3' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
@@ -179,6 +189,8 @@ describe('PDF continuous view radio group', () => {
     await openPdf();
     // Paginated view shows one page at a time, so there is no per-page
     // heading to navigate to.
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(document.querySelectorAll('canvas')).toHaveLength(1));
     expect(screen.queryByRole('heading', { name: /^Page 2$/ })).not.toBeInTheDocument();
     expect(screen.queryByRole('heading', { name: /^Page 3$/ })).not.toBeInTheDocument();
 

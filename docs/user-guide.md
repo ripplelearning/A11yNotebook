@@ -1220,10 +1220,12 @@ search. Encrypted Office files, macros, embedded OLE packages, and
 unsafe external resources are turned down. DOCX annotations are not
 available, and old binary `.doc` files are not supported. **Open in
 external app** is still there. Text previews are limited to 5 MB and
-images to 20 MB. In the PDF Page Navigation section, **PDF view** offers
-Paginated view (one page at a time) or Continuous view (the whole PDF as
-one continuous page); the Previous and Next Page buttons only show in
-Paginated view. In Continuous view, every page starts with a "Page N"
+images to 20 MB. In the PDF Page Navigation section, **PDF view** opens
+every PDF in Continuous view (the whole PDF as one continuous page) to
+start with. Pick Paginated view (one page at a time) instead and that
+choice is remembered, so the next PDF you open starts in Paginated view
+too; pick Continuous view again to go back. The Previous and Next Page
+buttons only show in Paginated view. In Continuous view, every page starts with a "Page N"
 heading under the "Page text" heading, so heading navigation steps
 through each page in order.
 

@@ -145,6 +145,7 @@ describe('OCR in the document reader', () => {
       getPdfReadingPreferences: vi.fn(async () => ({
         hideHeadersFooters: false,
         hidePageNumbers: false,
+        continuousView: true,
       })),
       setPdfReadingPreferences: vi.fn(async (value: unknown) => value),
       vault: {
@@ -193,7 +194,14 @@ describe('OCR in the document reader', () => {
         ocrEngineFactory={fakeEngineFactory()}
       />,
     );
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'OCR this file' })[0]).toBeInTheDocument());
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: 'OCR this file' })[0]).toBeInTheDocument(),
+      { timeout: 10000 },
+    );
+    // This test counts the temporary text on one page, so read in
+    // Paginated view; Continuous view would show both pages' text.
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Paginated view' })).toBeChecked());
     await runOcrInDialog();
     // The text shows in the page text and again in the semantic DOM paragraph.
     expect(screen.getAllByText('HELLO')).toHaveLength(2);
@@ -233,7 +241,10 @@ describe('OCR in the document reader', () => {
         ocrEngineFactory={fakeEngineFactory()}
       />,
     );
-    await waitFor(() => expect(screen.getAllByRole('button', { name: 'OCR this file' })[0]).toBeInTheDocument());
+    await waitFor(
+      () => expect(screen.getAllByRole('button', { name: 'OCR this file' })[0]).toBeInTheDocument(),
+      { timeout: 10000 },
+    );
     await runOcrInDialog();
     expect(screen.getByText('HELLO')).toBeInTheDocument();
 

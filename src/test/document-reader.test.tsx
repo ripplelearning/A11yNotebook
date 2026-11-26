@@ -197,7 +197,9 @@ describe('local accessible document reader', () => {
         <DocumentReader path="Docs/Two.pdf" kind=".pdf" />
       </>,
     );
-    await waitFor(() => expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(2));
+    // Both readers open in Continuous view by default, so each of the
+    // three pages has a text layer.
+    await waitFor(() => expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(6));
     const layers = [...document.querySelectorAll<HTMLElement>('.pdf-text-layer')];
     const canvases = [...document.querySelectorAll('canvas')];
     const headers = [...document.querySelectorAll('[data-pdf-artifact-type="header"]')];
@@ -245,6 +247,8 @@ describe('local accessible document reader', () => {
     expect(getDocument).toHaveBeenCalledWith(
       expect.objectContaining({ disableAutoFetch: true, disableRange: true, disableStream: true, enableXfa: true }),
     );
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Paginated view' })).toBeChecked());
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     expect(await screen.findByText('Page 2 searchable text')).toBeInTheDocument();
 

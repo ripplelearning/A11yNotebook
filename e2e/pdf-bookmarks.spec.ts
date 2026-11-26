@@ -253,6 +253,9 @@ test('PDF bookmarks set with Ctrl+Alt+B and jumped to with Ctrl+Alt+J in paginat
   try {
     await openPdf(page, 'Guide.pdf');
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
+    // This test walks pages with Previous/Next, so read in Paginated view.
+    await page.getByRole('radio', { name: 'Paginated view' }).click();
+    await expect(page.getByRole('radio', { name: 'Paginated view' })).toBeChecked();
     await goToPage(page, 2);
     await placePdfSelection(page, 'Beta line one.');
     await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 2', 'Beta start');
@@ -306,6 +309,10 @@ test('PDF bookmarks jump with Ctrl+Alt+J in continuous view', async () => {
   try {
     await openPdf(page, 'Guide.pdf');
     await expect(page.getByRole('heading', { name: 'Page 1 of 3' })).toBeVisible({ timeout: 30000 });
+    // The bookmarks are set while walking pages with Previous/Next, so
+    // read in Paginated view before switching to Continuous to jump.
+    await page.getByRole('radio', { name: 'Paginated view' }).click();
+    await expect(page.getByRole('radio', { name: 'Paginated view' })).toBeChecked();
     await goToPage(page, 2);
     await placePdfSelection(page, 'Beta line two.');
     await bookmarkWithShortcut(page, 'Control+Alt+B', 'Page 2', 'Beta second');
