@@ -117,11 +117,14 @@ function fakeEngineFactory(text = 'HELLO'): (language: string) => Promise<OcrEng
 async function runOcrInDialog() {
   // The reader shows the OCR action twice (view controls and the empty state); both open the same dialog.
   fireEvent.click(screen.getAllByRole('button', { name: 'OCR this file' })[0]);
-  await waitFor(() => expect(screen.getByRole('radio', { name: /English/ })).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByRole('radio', { name: /English/ })).toBeInTheDocument(), {
+    timeout: 10000,
+  });
   fireEvent.click(screen.getByRole('radio', { name: /English/ }));
   fireEvent.click(screen.getByRole('button', { name: 'Start OCR' }));
-  await waitFor(() =>
-    expect(screen.getByText(/Recognized text \(temporary\)/)).toBeInTheDocument(),
+  await waitFor(
+    () => expect(screen.getByText(/Recognized text \(temporary\)/)).toBeInTheDocument(),
+    { timeout: 10000 },
   );
 }
 

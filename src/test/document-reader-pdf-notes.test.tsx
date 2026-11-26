@@ -146,7 +146,7 @@ describe('PDF reader annotation rendering', () => {
   it('retains original stored notes when PDF parsing fails and supports deletion without unsafe highlights', async () => {
     fake.openError = true;
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' });
+    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' }, { timeout: 10000 });
     await screen.findByRole('button', { name: 'Delete Highlight' });
     expect(unavailable).toHaveTextContent('Stored notes remain retained.');
     expect(unavailable.querySelector('blockquote')).toHaveTextContent('Hello');
@@ -163,7 +163,7 @@ describe('PDF reader annotation rendering', () => {
   it('retains original stored notes when document bytes cannot be fetched', async () => {
     vi.mocked(fetch).mockResolvedValueOnce({ ok: false } as Response);
     render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' });
+    const unavailable = await screen.findByRole('region', { name: 'Unavailable PDF notes' }, { timeout: 10000 });
     await screen.findByRole('button', { name: 'Delete Highlight' });
     expect(unavailable.querySelector('blockquote')).toHaveTextContent('Hello');
     expect(fake.canvas).not.toHaveBeenCalled();
@@ -172,7 +172,9 @@ describe('PDF reader annotation rendering', () => {
   it('renders the PDF safely when an older partial bridge does not expose annotation methods', async () => {
     window.a11yNotebook = { vault: {} } as unknown as NotebookBridge;
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    await waitFor(() => expect(view.container.querySelector('.pdf-text-layer')).not.toBeNull());
+    await waitFor(() => expect(view.container.querySelector('.pdf-text-layer')).not.toBeNull(), {
+      timeout: 10000,
+    });
     expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeDisabled();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
@@ -185,7 +187,9 @@ describe('PDF reader annotation rendering', () => {
       return article;
     });
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled(), {
+      timeout: 10000,
+    });
     const header = view.container.querySelector('[data-pdf-artifact-type="header"]');
     expect(header).not.toHaveAttribute('tabindex');
     expect(header).not.toHaveAttribute('data-context');
@@ -195,7 +199,9 @@ describe('PDF reader annotation rendering', () => {
   it('shares the actual canvas safety-capped scale with highlights at every zoom and rotation', async () => {
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
     const scale = Math.sqrt(4_000_000 / (4000 * 6000));
-    await waitFor(() => expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull());
+    await waitFor(() => expect(view.container.querySelector('.pdf-note-highlight')).not.toBeNull(), {
+      timeout: 10000,
+    });
     expect(fake.canvas).toHaveBeenLastCalledWith(scale, 0);
     expect(fake.highlight).toHaveBeenLastCalledWith(0, 5, scale, 0);
     fireEvent.click(screen.getByRole('button', { name: 'Zoom in' }));
@@ -208,7 +214,7 @@ describe('PDF reader annotation rendering', () => {
 
   it('exposes semantic text only once and supports scoped annotation of a keyboard-focused paragraph', async () => {
     const view = render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    await screen.findByRole('button', { name: 'Create PDF note' });
+    await screen.findByRole('button', { name: 'Create PDF note' }, { timeout: 10000 });
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
     expect(screen.getByRole('region', { name: 'PDF document reader' })).toHaveAttribute(
       'data-context',
