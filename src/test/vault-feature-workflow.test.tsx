@@ -457,7 +457,12 @@ describe('feature wiring in the application shell', () => {
   it('queries the index after debounce and does not scan note contents in the renderer', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'text' } });
+    const button = screen.getByRole('button', { name: 'Search' });
+    button.focus();
+    fireEvent.click(button);
+    const dialog = await screen.findByRole('dialog', { name: 'Search' });
+    const input = within(dialog).getByRole('combobox', { name: 'Global search' });
+    fireEvent.change(input, { target: { value: 'text' } });
     expect(bridge.vault.search).not.toHaveBeenCalled();
     await waitFor(() => expect(bridge.vault.search).toHaveBeenCalledWith({ text: 'text', limit: 100 }));
     expect(bridge.vault.readNote).not.toHaveBeenCalled();

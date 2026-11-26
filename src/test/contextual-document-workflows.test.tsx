@@ -134,7 +134,7 @@ describe('contextual shell document workflows', () => {
     async (key, heading) => {
       setup();
       await screen.findByRole('heading', { name: 'Study' });
-      const search = screen.getByRole('searchbox', { name: 'Global search' });
+      const search = screen.getByRole('button', { name: 'Search' });
       search.focus();
       shortcut(key);
       await within(screen.getByRole('tabpanel')).findByRole('heading', { name: heading });
@@ -335,7 +335,7 @@ describe('contextual shell document workflows', () => {
       if (ordering === 'library-first') await act(async () => initialSettings.resolve(DEFAULT_SETTINGS));
       expect(notebook.closest('[role="row"]')).toHaveAttribute('aria-selected', 'true');
       expect(screen.getByRole('tabpanel', { name: 'Notes and Files in Research' })).toBeInTheDocument();
-      const search = screen.getByRole('searchbox', { name: 'Global search' });
+      const search = screen.getByRole('button', { name: 'Search' });
       search.focus();
       shortcut('n');
       expect(screen.getByRole('dialog', { name: 'New notebook' })).toBeInTheDocument();

@@ -38,7 +38,7 @@ describe('UserGuideDialog', () => {
     expect(shortcutsSection).toHaveTextContent('F1');
     // The shortcuts table uses row headers, like the shortcuts dialog.
     expect(within(shortcutsSection as HTMLElement).getByRole('rowheader', { name: 'User Guide' })).toBeInTheDocument();
-    expect(shortcutsSection).toHaveTextContent('Focus search');
+    expect(shortcutsSection).toHaveTextContent('Open search');
     expect(shortcutsSection).toHaveTextContent('Alt+Q');
     // The section says how it stays current; the stale hand table is gone.
     expect(shortcutsSection).toHaveTextContent('generated from the command registry');

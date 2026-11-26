@@ -211,7 +211,7 @@ describe('command surface visibility', () => {
       await screen.findByRole('heading', { name: 'Study library' });
       expect(screen.queryByRole('navigation', { name: 'Main menu' })).not.toBeInTheDocument();
       expect(container.querySelector('.vault-actions')).toBeNull();
-      expect(screen.getByRole('searchbox', { name: 'Global search' })).toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Search' })).toBeInTheDocument();
       expect(screen.getByRole('tablist', { name: 'Open tabs' })).toBeInTheDocument();
       expect(screen.getByRole('gridcell', { name: 'Research' })).toBeInTheDocument();
 

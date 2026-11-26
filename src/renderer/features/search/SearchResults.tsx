@@ -1,3 +1,4 @@
+import { normalizeDateText } from '../../../shared/calendar';
 import type { VaultSearchQuery, VaultSearchResult } from '../../../shared/search';
 
 export type SearchScope = 'current' | 'library';
@@ -9,14 +10,13 @@ interface Props {
   results: VaultSearchResult[];
   active: boolean;
   onOpen: (result: VaultSearchResult) => void;
-  onClearSearch: () => void;
   scope: SearchScope;
   selectedNotebookPath?: string;
   selectedNotebookName?: string;
   scopeBlocked: boolean;
 }
 
-const KIND_LABELS: Record<VaultSearchResult['kind'], string> = {
+export const KIND_LABELS: Record<VaultSearchResult['kind'], string> = {
   note: 'Note',
   attachment: 'Text attachment',
   docx: 'DOCX document',
@@ -32,7 +32,6 @@ export default function SearchResults({
   results,
   active,
   onOpen,
-  onClearSearch,
   scope,
   selectedNotebookPath,
   selectedNotebookName,
@@ -42,21 +41,27 @@ export default function SearchResults({
     scope === 'current'
       ? `Current notebook${selectedNotebookName ? `: ${selectedNotebookName}` : ''}`
       : 'Whole library';
+  // A typed date filter that cannot convert to the query's YYYY-MM-DD
+  // form is dropped from the search instead of failing it (see
+  // normalizeSearchDateFilters): say so, so the user is not misled
+  // into thinking the filter applied. Only a complete-looking date
+  // earns the note — a half-typed one is still being typed.
+  const COMPLETE_DATE_TEXT = /^(?:\d{1,2}\/\d{1,2}\/\d{4}|\d{4}-\d{2}-\d{2})$/;
+  const invalidDate = (value: string | undefined): string | null => {
+    if (!value || !COMPLETE_DATE_TEXT.test(value.trim())) return null;
+    return normalizeDateText(value) ? null : value.trim();
+  };
+  const invalidAfter = invalidDate(filters.modifiedAfter);
+  const invalidBefore = invalidDate(filters.modifiedBefore);
+  const afterIso = filters.modifiedAfter ? normalizeDateText(filters.modifiedAfter) : null;
+  const beforeIso = filters.modifiedBefore ? normalizeDateText(filters.modifiedBefore) : null;
+  const reversedRange = Boolean(afterIso && beforeIso && Date.parse(afterIso) > Date.parse(beforeIso));
+  // Escape lives with the search dialog now: the dialog closes and
+  // clears the search, so this section needs no Escape handling of its
+  // own. The heading is gone too — the dialog is already titled
+  // "Search", so the section is labelled instead of headed.
   return (
-    <section
-      aria-labelledby="search-results-heading"
-      onKeyDown={(event) => {
-        // Escape anywhere in the results section — a result row or a
-        // filter field — clears the whole search. The guard lives in
-        // onClearSearch: with no search active this is a no-op, so it
-        // never swallows Escape meant for a dialog or the palette.
-        if (event.key === 'Escape') {
-          event.preventDefault();
-          onClearSearch();
-        }
-      }}
-    >
-      <h3 id="search-results-heading">Search</h3>
+    <section aria-label="Search filters and results">
       <details>
         <summary>Search filters</summary>
         <label>
@@ -125,6 +130,18 @@ export default function SearchResults({
             onChange={(event) => onFilters({ ...filters, modifiedBefore: event.target.value || undefined })}
           />
         </label>
+        {reversedRange ? (
+          <p>The changed-date range is reversed, so the date filters are ignored.</p>
+        ) : (
+          <>
+            {invalidAfter ? (
+              <p>{invalidAfter} is not a real date, so the “on or after” filter is ignored.</p>
+            ) : null}
+            {invalidBefore ? (
+              <p>{invalidBefore} is not a real date, so the “on or before” filter is ignored.</p>
+            ) : null}
+          </>
+        )}
       </details>
       {active ? (
         scopeBlocked ? (

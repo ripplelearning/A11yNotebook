@@ -137,11 +137,16 @@ describe('contextual navigation names and repeated announcements', () => {
   it('does not hijack navigation or contextual New in editable controls', async () => {
     setup();
     await screen.findByRole('heading', { name: 'Study' });
-    const input = screen.getByRole('searchbox', { name: 'Global search' });
-    input.focus();
+    const button = screen.getByRole('button', { name: 'Search' });
+    button.focus();
+    fireEvent.click(button);
+    const dialog = await screen.findByRole('dialog', { name: 'Search' });
+    const input = within(dialog).getByRole('combobox', { name: 'Global search' });
+    expect(input).toHaveFocus();
     for (const key of ['1', '2', '3', 'n']) fireEvent.keyDown(input, { key, ctrlKey: true });
     expect(input).toHaveFocus();
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeInTheDocument();
+    expect(screen.queryByRole('dialog', { name: 'New notebook' })).not.toBeInTheDocument();
     expect(screen.getByRole('tabpanel', { name: 'Notebooks in Study' })).toBeInTheDocument();
   });
 

@@ -80,7 +80,7 @@ describe('light theme stylesheet', () => {
     expect(normal).toMatch(/:root\[data-theme='light'\][^{]*:focus-visible[^{]*\{\s*outline-color: #0369a1;/);
     expect(normal).toMatch(/:root\[data-theme='light'\] ::placeholder \{\s*color: #475569;/);
     expect(normal).toMatch(
-      /:root\[data-theme='light'\] \.global-search input,\s*:root\[data-theme='light'\] \.command-palette input \{\s*border-color: #64748b;/,
+      /:root\[data-theme='light'\] \.search-dialog input,\s*:root\[data-theme='light'\] \.command-palette input \{\s*border-color: #64748b;/,
     );
     expect(normal).toMatch(
       /:root\[data-theme='light'\] \.global-context-menu \{\s*border-color: #64748b;\s*background: #fff;/,

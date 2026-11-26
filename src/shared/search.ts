@@ -1,4 +1,5 @@
 import type { CalendarAppointment } from './calendar';
+import { normalizeDateText } from './calendar';
 import type { Reminder } from './reminders';
 import { formatReminderDateTime, formatTaskDueDate } from './reminders';
 import type { VaultTask } from './types';
@@ -46,6 +47,29 @@ export interface VaultChangedEvent {
 export function notebookForSearchPath(path: string): string {
   const slash = path.lastIndexOf('/');
   return slash === -1 ? '' : path.slice(0, slash);
+}
+
+/**
+ * Convert the typed search date filters to the query's YYYY-MM-DD form.
+ * The filters are typed as MM/DD/YYYY (the one date format the app
+ * shows), while the search query validator only accepts YYYY-MM-DD —
+ * passing the typed text straight through made the whole search fail
+ * validation, so no results displayed at all (1.9.23 retest, item 6).
+ * A half-typed or impossible date drops out of the query instead of
+ * failing it, so typing a date filter can never blank every result;
+ * a reversed range drops both dates for the same reason. The raw typed
+ * text stays in the filter fields — only the query is converted.
+ */
+export function normalizeSearchDateFilters(
+  filters: Omit<VaultSearchQuery, 'text'>,
+): Omit<VaultSearchQuery, 'text'> {
+  const { modifiedAfter, modifiedBefore, ...rest } = filters;
+  const after = modifiedAfter ? (normalizeDateText(modifiedAfter) ?? undefined) : undefined;
+  const before = modifiedBefore ? (normalizeDateText(modifiedBefore) ?? undefined) : undefined;
+  if (after && before && Date.parse(after) > Date.parse(before)) {
+    return { ...rest };
+  }
+  return { ...rest, modifiedAfter: after, modifiedBefore: before };
 }
 
 function searchTerms(text: string): string[] {

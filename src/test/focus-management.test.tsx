@@ -1,15 +1,55 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { MenuCommand } from '../shared/ipc';
 import type { VaultInfo } from '../shared/types';
+import { DEFAULT_SETTINGS } from '../shared/settings';
 import { vaultExtensions } from './vault-extensions';
 import { openTreeLeaf } from './library-navigation';
 
 afterEach(() => {
   delete window.a11yNotebook;
 });
+
+/**
+ * The search dialog needs a library (its Search button is disabled
+ * without one), so the tests that open it install a minimal library
+ * bridge first. The other tests in this file render the bare app.
+ */
+function installLibraryBridge() {
+  const vault: VaultInfo = {
+    name: 'Study',
+    path: '/study',
+    entries: [],
+  };
+  let menuListener: ((command: MenuCommand) => void) | undefined;
+  const bridge = {
+    vault: {
+      ...vaultExtensions(),
+      open: vi.fn(async () => vault),
+      get: vi.fn(async () => vault),
+      getTasks: vi.fn(async () => []),
+      getLinkIndex: vi.fn(async () => ({ links: [] })),
+      getBookmarks: vi.fn(async () => []),
+      getSettings: vi.fn(async () => ({ ...DEFAULT_SETTINGS, showCommandButtons: true, autosaveDelay: 0 })),
+    },
+    updater: {
+      check: vi.fn(async () => undefined),
+      download: vi.fn(async () => undefined),
+      installNow: vi.fn(async () => undefined),
+      onStatus: () => () => undefined,
+    },
+    onMenuCommand: (callback: (command: MenuCommand) => void) => {
+      menuListener = callback;
+      return () => {
+        menuListener = undefined;
+      };
+    },
+  } as unknown as NotebookBridge;
+  window.a11yNotebook = bridge;
+  return { bridge, menu: (command: MenuCommand) => act(() => menuListener?.(command)) };
+}
 
 const pressF6 = (shiftKey = false) =>
   fireEvent.keyDown(document.activeElement ?? document.body, { key: 'F6', shiftKey });
@@ -73,10 +113,12 @@ describe('F6 pane navigation', () => {
 });
 
 describe('focus commands', () => {
-  it('moves focus with the Focus search menu command', () => {
+  it('opens the search dialog with the Open search menu command', async () => {
+    installLibraryBridge();
     render(<App />);
-    fireEvent.click(screen.getByRole('button', { name: 'Focus search' }));
-    expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
+    await screen.findByRole('heading', { name: 'Study' });
+    fireEvent.click(screen.getByRole('button', { name: 'Open search' }));
+    expect(screen.getByRole('combobox', { name: 'Global search' })).toHaveFocus();
   });
 
   it('reopens the right pane with its toggle and reaches it with F6', () => {
@@ -90,10 +132,17 @@ describe('focus commands', () => {
     expect(screen.getByRole('complementary', { name: 'Right information pane' })).toHaveFocus();
   });
 
-  it('runs keyboard shortcuts from the command registry', () => {
+  it('runs keyboard shortcuts from the command registry', async () => {
+    installLibraryBridge();
     render(<App />);
+    await screen.findByRole('heading', { name: 'Study' });
     fireEvent.keyDown(document.body, { key: 'q', altKey: true });
-    expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
+    expect(screen.getByRole('combobox', { name: 'Global search' })).toHaveFocus();
+
+    // Shortcuts are ignored while a dialog is open, so close the search
+    // dialog first; Escape clears the search and closes it.
+    fireEvent.keyDown(screen.getByRole('combobox', { name: 'Global search' }), { key: 'Escape' });
+    expect(screen.queryByRole('dialog', { name: 'Search' })).not.toBeInTheDocument();
 
     fireEvent.keyDown(document.body, { key: 'e', ctrlKey: true });
     expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(
@@ -141,16 +190,19 @@ describe('command palette', () => {
     expect(opener).toHaveFocus();
   });
 
-  it('filters commands and runs the chosen command', () => {
+  it('filters commands and runs the chosen command', async () => {
+    installLibraryBridge();
     render(<App />);
+    await screen.findByRole('heading', { name: 'Study' });
     fireEvent.click(screen.getByRole('button', { name: /^(?:Open command search|Command Palette)$/i }));
     const dialog = screen.getByRole('dialog', { name: 'Command palette' });
     fireEvent.change(within(dialog).getByRole('searchbox'), { target: { value: 'focus search' } });
     expect(within(dialog).getByText('1 command')).toBeInTheDocument();
 
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Focus search' }));
-    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(screen.getByRole('searchbox', { name: 'Global search' })).toHaveFocus();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Open search' }));
+    expect(screen.queryByRole('dialog', { name: 'Command palette' })).not.toBeInTheDocument();
+    expect(screen.getByRole('dialog', { name: 'Search' })).toBeInTheDocument();
+    expect(screen.getByRole('combobox', { name: 'Global search' })).toHaveFocus();
   });
 });
 

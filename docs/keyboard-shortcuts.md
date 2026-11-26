@@ -74,7 +74,7 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | F3             | Find next match                         |
 | Shift+F3       | Find previous match                     |
 | F9             | Toggle right pane                       |
-| Alt+Q          | Focus search                            |
+| Alt+Q          | Open search                             |
 | Ctrl+Shift+P   | Command Palette                         |
 | F5             | Refresh links                           |
 | F1             | User Guide                              |
