@@ -1226,8 +1226,13 @@ function PdfReader({
 
   // In continuous view the current page follows the scroll position, so
   // notes, form fields, and the page heading track the page in view.
-  // Programmatic moves set scrollToPageRef instead and never flow through
-  // here, so this never fights a jump the user or the app asked for.
+  // The tracker reads both page stacks — the visual pages and the
+  // accessible text below them. The visual stack alone is not enough:
+  // a jump scrolls the landed text into view, which puts every visual
+  // page above the viewport, so the visual stack alone reports the
+  // last page and the heading stays on the old page. Reading both
+  // stacks tracks the page the reader is actually on, after a jump
+  // and while scrolling by hand.
   useEffect(() => {
     if (!continuous || !document) return;
     const visual = visualRef.current;
@@ -1236,13 +1241,45 @@ function PdfReader({
     let ticking = false;
     const updateCurrentPage = () => {
       ticking = false;
-      const wrappers = [...visual.querySelectorAll<HTMLElement>('[data-pdf-page]')];
-      if (!wrappers.length) return;
-      if (wrappers[0].getBoundingClientRect().height === 0) return;
-      let current = 1;
-      for (const wrapper of wrappers) {
-        if (wrapper.getBoundingClientRect().top <= 140) current = Number(wrapper.dataset.pdfPage);
-        else break;
+      const visualWrappers = [...visual.querySelectorAll<HTMLElement>('[data-pdf-page]')];
+      if (!visualWrappers.length) return;
+      if (visualWrappers[0].getBoundingClientRect().height === 0) return;
+      const semanticWrappers = [
+        ...(semanticRef.current?.querySelectorAll<HTMLElement>('[data-pdf-page]') ?? []),
+      ];
+      // The current page is the page being read. The focused block
+      // decides first: a jump lands focus on the landed text, and a
+      // reader who clicked into a page's text is reading that page —
+      // even when the page cannot scroll any further and its text sits
+      // mid-viewport. When focus is not in the reader's text, the
+      // text at the top of the reading area decides; and when the text
+      // has not reached the top, the page at the middle of the
+      // viewport does — a jump can leave the landed text short of the
+      // top (the page cannot scroll any further, so the landed text
+      // sits mid-viewport with the 140 line falling in the gap
+      // between the last visual page and the first text page), and in
+      // that state the middle of the viewport is on the landed page
+      // while the visual stack alone still reports the last page.
+      let current: number | null = null;
+      const active = window.document.activeElement as HTMLElement | null;
+      const focusedWrapper = active?.closest<HTMLElement>('[data-pdf-page]') ?? null;
+      if (focusedWrapper && active) {
+        const rect = active.getBoundingClientRect();
+        if (rect.bottom > 0 && rect.top < window.innerHeight) current = Number(focusedWrapper.dataset.pdfPage);
+      }
+      if (current === null) {
+        for (const wrapper of semanticWrappers) {
+          if (wrapper.getBoundingClientRect().top <= 140) current = Number(wrapper.dataset.pdfPage);
+          else break;
+        }
+      }
+      if (current === null) {
+        const middle = window.innerHeight / 2;
+        current = 1;
+        for (const wrapper of [...visualWrappers, ...semanticWrappers]) {
+          if (wrapper.getBoundingClientRect().top <= middle) current = Number(wrapper.dataset.pdfPage);
+          else break;
+        }
       }
       if (current !== pageNumberRef.current) {
         const entry = continuousPagesRef.current.get(current);
