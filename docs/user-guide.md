@@ -38,10 +38,632 @@ A few everyday uses: keeping research and reading notes for a course or
 a project, planning a project with tasks and deadlines, studying with
 flashcards, and keeping appointments and reminders in one place.
 
-This guide has three parts. This first part walks through what the app
-can do, feature by feature. The second part explains the screens and how
-to move around them with the keyboard. The third part covers the
-accessibility features and the settings that control them.
+This guide starts with a short introduction, then explains the screens
+and how to move around them with the keyboard, then covers the
+accessibility features and the settings that control them. After that,
+it walks through what the app can do, feature by feature.
+
+## The user interface and how to navigate it using a keyboard
+
+The app is built around a few main views: **Libraries**, **Notebooks**,
+**Notes and Files**, **Tasks**, **Cognitive Tools**, the **Calendar**,
+**Reminders**, and the **Contents view**. Jump between them with Ctrl+1
+for Libraries, Ctrl+2 for Notebooks, Ctrl+3 for Notes and Files, Ctrl+4
+for Tasks, Ctrl+5 for Cognitive Tools, Ctrl+6 for the Calendar, Ctrl+7
+for Reminders, and Ctrl+0 for the Contents view. Each shortcut also
+announces where you are; pressing it again announces the view again.
+
+Across the top is a menu bar — **File**, **Edit**, **View**, **Insert**,
+**Format**, **Tools**, and **Help** — with the usual Alt shortcuts for
+each menu, then arrow keys, Enter, and Escape. The command palette holds
+the same commands, and every shortcut can be changed in Settings. Most
+things in the app live in grids: move with the arrow keys, jump to the
+first or last row with Home and End, type a letter to jump to the next
+item starting with it, and press Enter to open what you are on. F6 and
+Shift+F6 move between the main areas of the window, and Tab moves
+between controls. Notes open in tabs, and Ctrl+Tab moves between them.
+Shift+F10, the Applications key, or a right-click opens a context menu
+whose actions depend on what you are focused on. The sections after this
+one walk through each view in turn.
+
+The title bar names what you have open: with a file or note open it
+reads "[FileName] | [NotebookName] | [LibraryName] | A11y Notebook" — a
+file at the library root has no notebook, so that part is left out. With
+no file open it names the current view and notebook instead.
+
+### Open a library
+
+Choose **File → Open library** and pick a folder. The folder stays on
+your disk as an ordinary folder. Its subfolders show up as notebooks,
+its managed `.md` and `.html` files as notes, and its other files as
+attachments. The last library you opened comes back next time, on the
+notebook you last had open. Closing a library makes the app forget it,
+so a closed library stays closed on the next launch. Reopening a library
+shows that notebook's Notes and Files view; if no notebook was recorded,
+or that notebook is gone, you land on the Notebooks view instead.
+**Ctrl+W** closes whatever is current: a tab, a selected notebook, or
+the open library; closing a library closes everything inside it and
+takes you back to the Libraries view. To delete a library, focus it in
+the Libraries grid and press **Delete**, or choose **Delete library**
+from its context menu; the confirmation warns that everything inside the
+library goes too, and confirming moves the whole folder to the Recycle
+Bin.
+
+Choose **File → Back up library** to copy the whole open library to a
+new folder with the date and time in its name, inside a folder you
+choose. The copy includes the library's private details, so the backup
+folder opens as a library in its own right. Encrypted files stay
+encrypted in the copy: nothing is unlocked for the backup. The app
+counts the copied files and checks the copy matches the library before
+reporting success; a failed copy is removed rather than left behind as a
+partial backup. The backup never overwrites a folder that already
+exists, and it refuses a destination inside the library or one that
+contains the library.
+
+### Create in the current view
+
+**New** (Ctrl+N by default) makes the kind of item that fits the view
+you are in:
+
+| Active view                                             | What New makes                                                                                                                 |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| Libraries                                               | A **new local library**, choosing a parent folder and a new name in the system dialog; an existing folder is never overwritten |
+| Notebooks                                               | A notebook in the open library, in the Library root or inside the notebook you have selected                                   |
+| Notes and Files                                         | A note in the selected notebook                                                                                                |
+| Tasks                                                   | A saved checkbox task with an associated note, with an optional due date and priority                                          |
+| Cognitive Tools                                         | An Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, which you name and create at the library root                    |
+| Note tabs, Contents, Reminders, previews, and Libraries | A note using the current notebook, or the library root when no notebook is selected                                            |
+
+The **New notebook** command on its own still makes a notebook; it has
+not been changed to mean the contextual New. Settings can change or turn
+off New's shortcut, and conflicting shortcuts are rejected. The File
+menu and the command palette offer the same commands. Cancelling leaves
+existing files and unsaved edits alone; save or sort out pending edits
+when asked. New notes use Markdown by default; the creation dialog also
+offers HTML. A view that needs an open library says so instead of
+quietly making a different kind of item.
+
+### Navigate files
+
+In the main view, move through the Libraries, Notebooks, and Notes and
+Files grids with the arrow keys; Home and End go to the first and last
+row. Typing a letter jumps to the next item whose name starts with it,
+wrapping around, so pressing the same letter again steps through every
+match. Enter opens the selected item: a managed note, a supported
+managed preview, or a notebook, which opens its Notes and Files view. A
+notebook's Notes and Files view shows its own notes and files plus the
+notebooks inside it; a sub-notebook's notes only show when you open that
+sub-notebook, so a note never shows under two notebooks at once. The
+Type column shows the file's real type — PDF, ePub, Word document, Excel
+spreadsheet, CSV, PowerPoint presentation — instead of the generic
+"Attachment". Documents from outside the app, or of unknown origin, use
+Open With rather than being quietly treated as app-made notes. F2 opens
+a rename dialog. Delete asks before moving an item to the Recycle Bin;
+Shift+Delete deletes permanently. Deleting a note or notebook that holds
+tasks first warns you how many tasks will go with it, since tasks live
+inside notes and have no copy of their own. Space selects a row. To
+arrange notebooks, notes, and files in the library tree, use the
+Organize Library dialog below.
+
+Use **File → New note**, **File → New notebook**, or **Tools → Import
+file**. Imported files are copied into the notebook you have selected.
+Making a notebook asks where it goes: the Library root by default, or
+inside the notebook you have selected. The new notebook becomes the
+selected notebook, and the app announces where it was made. Select an
+item before using **Tools → Reveal selected item in Explorer** or **Open
+selected item in external app**. These commands use the current selection,
+not one you picked earlier.
+
+### Organize library
+
+Choose **View → Organize library** (Ctrl+Shift+V). The dialog holds the
+library tree as its main content; there is no tree pane in the main view
+anymore. Items at the library root are reached through this dialog tree
+and through global search. In the dialog tree, Up and Down move between
+visible items; Right opens a notebook or moves into its first child;
+Left closes it or moves to its parent. Home and End go to the first and
+last visible item. Type a letter to find the next item starting with
+that letter; `*` opens all the notebooks at the same level.
+
+Changes inside the dialog are staged: **OK** applies them all, **Cancel**
+throws them away, and **Escape** closes the dialog and puts focus back
+where it was. F2 renames, or use the context menu. Enter opens the
+selected item and closes the dialog without applying staged changes.
+Delete moves an item to the Recycle Bin, or use the context menu;
+Shift+Delete deletes permanently. Cut, copy, and paste with Ctrl+X,
+Ctrl+C, and Ctrl+V, or from the context menu: cutting and pasting moves
+an item, with links fixed up as a move fixes them; copying and pasting
+duplicates an item, a whole notebook included, under a name that does
+not clash.
+
+Move an item with Alt+Up or Alt+Down to put it into the previous or next
+notebook in tree order, or with Alt+Shift+Up or Alt+Shift+Down to move
+it out one level, into its grandparent notebook or to the library root.
+Repeat the out-one-level move to walk an item up to the root. For any
+other destination, use **Move** from the context menu and pick the
+destination notebook. A notebook can never move into itself or one of
+its own sub-notebooks, and notebooks are never reordered among their
+siblings.
+
+**Protect** is in the context menu. A protected item cannot be edited,
+moved, deleted, or renamed. Trying any of those opens a dialog saying
+the item is protected, with **Unprotect** and **Cancel**. Unprotect
+removes the protection and carries out the action right away; Cancel
+leaves the item protected and does nothing. Protection lasts until you
+remove it, and it also blocks working on a notebook that has a protected
+item inside it.
+
+**Send to email** is in the context menu. It makes a mail file with the
+selected note or file attached and opens it in your default mail app,
+where you press Send; a mailto link cannot carry an attachment, so the
+app uses this file instead. Only files can be sent by email, so a
+notebook folder cannot be emailed this way.
+
+**Properties** is in the context menu. It shows the item's name and
+kind, where it is saved, the date it was created, the date and time it
+was last changed, its size on disk, and whether it is protected, plus
+counts of its tasks, reminders, bookmarks, annotations, and cognitive
+tools where they apply, the notes and files it holds, and the items
+linked to it.
+
+The Windows app has a native menu bar with **File**, **Edit**, **View**,
+**Insert**, **Format**, **Tools**, and **Help**. Use Alt and the
+underlined letter, then the arrow keys, Enter, or Escape. Menu commands
+have no built-in shortcuts; the app's changeable shortcuts (including
+Ctrl+K and F6/Shift+F6) are the only shortcut path. The app menu takes
+the place of the duplicate command groups that used to sit in the page.
+In a browser without the app's native features, a compact, accessible
+HTML set of commands is still available. Controls that belong to one
+thing, such as the formatting toolbar, reader page and zoom controls,
+tab close buttons, and dialog buttons, stay next to the content they
+work on.
+
+The installed and portable builds work the same way for navigation and
+creation. Ctrl+1 announces **Libraries** or the open library's name;
+Ctrl+2 announces **Notebooks** or **Notebooks in [library name]**;
+Ctrl+3 announces **Notes and Files in [notebook name]** when a notebook
+is selected. Pressing a shortcut again announces the view again. The
+notebook you have selected stays selected when you pick a file row.
+
+Notes & Files also has **New note from template**. Open and unlock a
+library before making anything in it.
+
+Shift+F10, the Applications key, or right-click opens the global context
+menu. Its commands come from the command list and depend on what you are
+focused on: library files, tabs, selected editor text, links, tasks,
+search results, annotations, reminders, and attachment previews each get
+different actions. Use Up and Down, Home and End, type-ahead,
+Enter/Space, or Escape. Actions that cannot be used are announced as
+unavailable, and Escape puts focus back on the thing that opened the
+menu. The menu does not change how modal dialogs handle the keyboard.
+
+### Paste files and folders
+
+Copy files or folders in File Explorer, then paste them while focus is
+in the main panel (not inside an editor). Where they land depends on the
+view. In **Libraries**, a pasted folder asks whether to make an
+app-specific copy of the library (you then choose where to save it) or
+use the original folder as the library; files sitting directly in the
+pasted folder ask how to organize them — one notebook for all files, or
+one notebook per file — because a library cannot hold files outside a
+notebook. In **Notebooks**, a pasted folder becomes a notebook in the
+current library, and pasted files go into the selected notebook. In
+**Notes and Files**, only files paste, into the selected notebook. Pasted
+copies are checked file by file; a failed copy is removed and reported.
+The clipboard path step has not yet been confirmed with a real Windows
+copy-and-paste run.
+
+### Managed documents and older libraries
+
+When the app makes a file, or you explicitly import one, it records
+where the file came from in `.a11ynotebook/provenance.json`; the
+original document gets no marker embedded in it. A file's extension and
+which notebook it sits in do not prove where it came from on their own.
+Libraries made before these records existed can still be read on disk
+and are not automatically relabelled as app-made: older or unknown files
+need an explicit import before they open inside the app. One exception
+keeps older encrypted libraries reachable: a recognized encrypted-note
+file offers you the choice to use the existing unlock steps. Content
+shows only after unlocking works; this does not quietly treat other old
+files as app-made. Cancelling leaves the encrypted file unchanged.
+
+For a compatible file from outside the app, use **Import into A11y
+Notebook** from its context menu to make a managed copy. The original is
+kept, but once its managed copy exists the original is hidden from the
+Notes and Files grid and search results. It still shows in the Organize
+Library dialog tree, which shows everything. Turn on **Show original
+files** in Settings to see it again; deleting the managed copy brings it
+back on its own. Markdown and HTML notes support reading and editing;
+supported text, image, PDF, ePub, and DOCX previews are read-only
+unless a dedicated editing tool is provided (for example, a CSV grid).
+Formats that are not supported or not valid are not offered as editable
+imports; files that are too big, unsafe, or broken are turned down.
+Cancelling an import does not change the original. Keep the metadata
+folder when copying a whole library; missing records are handled
+carefully, not rebuilt from dates or filenames.
+
+On Windows, **Open With** asks Windows to pick an application for a
+document; **Open externally** uses the application already set as the
+default. Picking an application once does not quietly change defaults.
+To change the default, use the **Choose default application…** context
+action and confirm the Windows Default Apps settings option. In Windows
+11, search Settings → Apps → Default apps for the extension (for example
+`.txt`) and pick the default there; Windows 10 offers **Choose default
+apps by file type**. Windows owns and confirms that choice: A11y
+Notebook does not edit registry settings or claim a default changed just
+because Settings opened. The chooser is Windows-only; on other platforms
+use the existing default application or your system's own file-type
+settings. Microsoft documents that [SHOpenWithDialog cannot change
+defaults on Windows 10 and later](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shopenwithdialog).
+Programs, scripts, and shortcuts are not document imports or supported
+external document actions.
+
+**Move** asks for a destination notebook. Save all open edits before a
+rename or move; the confirmation lists notes whose links will change.
+Cancelling leaves the files untouched. Bookmarks, annotations, image
+descriptions, flashcard schedules, and reminders follow moves the app
+makes. Links that use only a title and could point at more than one note
+are not fixed; use full paths such as `[[Notebook/Title]]`.
+Reference-style Markdown links are fixed through their definitions.
+
+### Read and edit notes
+
+Notes open in tabs. Make either Markdown (`.md`) or HTML (`.html`)
+notes using the **Note format** selector. Opening the same note again
+reuses its tab; opening another note keeps the notes you already have
+open, unsaved edits included. Moving between views does not close note
+tabs. Ctrl+Tab moves between open tabs, and the arrow keys move along
+the tab strip. Closing the tab you are on takes you back to Notes &
+Files and puts focus on the tab strip; if you cancel a warning about
+unsaved changes, the note stays open. Reopening a closed note loads its
+saved content and uses your default mode again. When a note reopens in
+Read mode, it picks up at the heading you had reached; a bookmark jump
+still wins over that saved spot.
+
+In **Settings → Default note open mode**, choose **Read mode** (the
+default, including for older settings) or **Edit mode**. This applies to
+managed notes when they are opened or switched to; it does not make
+read-only document previews editable, and it does not get around a
+locked encrypted note or an editing lock. Ctrl+E is still the way to
+switch editing on and off by hand.
+
+The read view shows the note as a structured page; Markdown is shown
+with unsafe raw HTML taken out, and HTML notes are cleaned when loaded,
+edited, pasted, saved, and shown. Scripts, forms, active embedded
+content, event handlers, remote images, and unsafe link types are not
+allowed. Images in HTML notes need alternative text and must use local
+image files. Toggle **Read-only/edit mode** with Ctrl+E. Switching to
+edit mode puts focus straight into the editor — the Markdown or HTML
+source, plain text, or the rich-text editor when that form is active —
+with the cursor where you left it. Ctrl+R goes straight to reading mode
+without toggling. Ctrl+F opens a Find dialog that searches inside the
+current note, in reading and in editing mode, with Find next, Find
+previous, and an optional Match case. The search also lists every match
+with the text around it: move through the list with the arrow keys, and
+press Enter on a match to close the dialog and go to that match in the
+note. After the dialog closes, F3 finds the next match and Shift+F3 the
+previous match of the last search. Ctrl+F also searches documents: in a
+PDF, ePub, or DOCX preview it moves focus to that reader's own search
+box, and in a text, CSV, or HTML attachment it searches the preview
+(HTML previews report matches without moving to them, because their
+preview frame cannot be selected from inside). Images have no text to
+search. **Plain source** edits Markdown or HTML source in a plain text
+box; **Rich text** gives you an accessible formatting toolbar and a
+multiline text box. Ctrl+S saves right away; edits also save after a
+short pause. A tab shows when it has unsaved content and asks before
+throwing it away when closed.
+
+**Focus Mode** (F11, or **Toggle Focus Mode** in the command palette and
+the View menu) hides every side panel except the title header (which
+holds search), the menu bar, and the document itself, in both reading
+and editing modes, so the open note or file fills the window. Hidden
+panels also leave the Tab order, so only the title, menu, search, and
+document can take focus. Press F11 again to bring the full layout back;
+Focus Mode also ends on its own when the open note or file is closed,
+when you switch to another view, and when the app is closed and reopened
+(it is never saved). Dialogs and context menus still open above it.
+
+The Format menu and the formatting toolbar offer bold, italic, heading
+levels 1–6, lists, quote, and fenced code. In Markdown source, **Enter**
+on a list item carries the list on (numbered lists count up, checked
+task items carry on unchecked); **Enter** on an empty list item ends the
+list, so pressing Enter twice in a row stops the list. Ctrl+B and Ctrl+I
+format the selection; Ctrl+K (or Ctrl+Shift+L) opens a link dialog with
+a note picker. The table dialog picks rows and columns. Insert image or
+attachment picks a file already imported into the library and needs a
+text description. Pasting into rich text keeps safe semantic formatting.
+The rich editor supports bold, italic, underline, strikethrough,
+headings, lists, block quotes, code, links, tables, and local images
+with required descriptions. Changing format makes a warned copy next to
+the original and keeps the original. In an HTML note, **Insert checklist
+task** adds a proper task item. Edit its title in rich text; edit its
+stable ID, completion, due date, priority, or reminder details in HTML
+source. Plain-source formatting commands keep working on the Markdown
+editor. The editor tries to keep native undo; a fallback insert done by
+the app may not keep an undo step.
+
+Renames, moves, and saves the app makes keep track of where a file came
+from. Ordinary edits made outside the app keep it too; files replaced
+outside the app, or renamed outside the app, may become unknown and
+need an explicit import again.
+
+Edits made outside the app load silently into clean notes. If you have
+unsaved text, autosave pauses and a dialog offers **Keep mine** (save
+your version), **Load disk version**, or **Save copy** (a new note with
+the date and time in its name). Notes that were removed offer Save copy.
+Escape leaves the conflict unsorted and tells you to pick an option; it
+does not throw your edits away. Switching libraries is blocked until
+unsaved work is saved or sorted out.
+
+### Mathematics
+
+Write maths as plain shorthand and the app turns it into MathML, which
+browsers show and screen readers can read. The shorthand covers sqrt(x),
+frac(a,b), pow(a,b), abs(x), log(x), x^2, x_1, pi, Greek letters, div for
+the division sign, rad for radians, and scientific notation such as 1.5e3
+or 3x10^8. The shorthand you typed is kept in the MathML `alttext`.
+
+Open **Insert → Insert math** or press Alt+= to show the Mathematics
+toolbar in the rich-text editor. Type shorthand there, use the template
+buttons for fractions, roots, powers, and more, check the live preview,
+and choose Insert math. While typing in a note, a finished function call,
+power, or scientific-notation value at the cursor turns into MathML on
+its own; ordinary words never change.
+
+Markdown notes store maths as a `` `math:` `` code span (for example
+`` `math:sqrt(16)` ``), which shows as MathML when reading and turns
+back when editing, so maths survives the Markdown round trip. HTML notes
+store the MathML element itself. Plain-text notes keep the shorthand as
+typed.
+
+### Spelling, grammar, and thesaurus
+
+**Tools → Spelling and Grammar Check** (F7) opens a dialog like the one
+in Word. It steps through each issue in the current note, in order,
+showing the word, the sentence around it, and an explanation for grammar
+issues. For each issue you can Ignore Once, Ignore All (or Ignore Rule
+for grammar), Add to Dictionary, Change, or Change All. A Replace with
+box lets you type your own replacement, and Undo steps back one change.
+Changes are gathered and applied to the note only when you close the
+dialog. Code blocks and inline code are not checked, and all-caps
+acronyms are skipped. The grammar check covers repeated words, a/an
+choice, could/should/would/must of (for have), a lowercase pronoun i,
+its/it's confusion, alot, and common missing apostrophes. It works from
+patterns, not a full grammar engine, so it will not catch every error.
+
+**Tools → Thesaurus** (Shift+F7) looks up synonyms for the selected
+word, grouped by part of speech. Each synonym offers Look up (to look
+that word up instead) and, in edit mode with a selection, Replace with
+this word. If nothing is found, it suggests words spelled similarly. The
+built-in word list has synonyms only, no antonyms. Words added from the
+spelling check live in the custom dictionary, which you can edit in
+**Settings → Custom dictionary, one word per line**. All spelling,
+grammar, and thesaurus work runs on your device; nothing is sent
+anywhere.
+
+### Search
+
+Type in **Global search**; the search waits 250 ms after you stop
+typing. The app keeps an index in `.a11ynotebook/search-index.json` and
+updates it bit by bit when files change. Results show the matching text
+and announce how many there are in the status bar. **Search scope** sits
+right after the search box, even with no library open (where the scope
+controls show as disabled): **Current notebook** searches only the
+notebook you have selected (including its sub-notebooks) and, with no
+notebook selected, shows guidance instead of searching the whole
+library; **Whole library** searches every notebook. The scope is
+remembered on this computer. In Whole library scope, the notebook filter
+in Search filters can still narrow results to one notebook. Search
+filters also pick the kind — notes, text attachments, DOCX documents,
+tasks, reminders, and appointments — a tag, and a changed-date range.
+`#tag` terms also filter by tag. Hashtags in text and supported tag
+fields at the top of a note are indexed; this is not a general YAML
+editor. Text, CSV, and HTML attachment and note contents, plus a bounded
+amount of PDF and ePub text, are searchable. Attachments that are not
+supported or not valid are searchable by filename. Results are capped at
+100 on screen. Pressing Escape in the search box clears the search text
+and removes the results from the display.
+
+Global search also finds tasks, reminders, and appointments: a task
+result shows its text and due date or priority, a reminder its title and
+scheduled time, shown as MM/DD/YYYY, HH:MM AM/PM, and an appointment its
+title, time, and location. Opening a task result shows the task in the
+Tasks view and puts focus on its row; a reminder result opens the
+Reminders tab and puts focus on the reminder; an appointment result opens
+the appointment itself. Tasks, reminders, and appointments have no tags
+and no changed date, so the tag and changed-date filters leave them out;
+appointments belong to no notebook, so the notebook filter (and Current
+notebook scope) leaves them out too.
+
+### Links and bookmarks
+
+Use `[[Note title]]` to link to a note by title, or a relative Markdown
+link such as `[Related](./Related.md)`. In read mode, activating a link
+that works opens its note in a tab. Links to notes that do not exist are
+marked and announced as missing. The right pane lists the links going
+out of the current note and the links coming into it. Choose **Bookmark
+note** to bookmark or unbookmark it; the Bookmarks section of the right
+pane lists the open file's bookmarks — the file open in a tab, even after
+you switch to another view — and with no file open, it lists every
+bookmark in the library — and activating one opens its note at the
+bookmark. From edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H)
+bookmarks the heading at or before the cursor, **Bookmark position at
+cursor** (Ctrl+Alt+B) bookmarks the cursor position, and **Jump to next
+bookmark** (Ctrl+Alt+J) jumps to the next bookmark after the cursor,
+wrapping to the first bookmark when past the last; all three are also in
+the Tools menu and the command palette. In reading mode the same
+shortcuts work from the line you are reading — the line at the screen
+reader's position in the document — so H bookmarks the heading at or
+before it, B bookmarks that exact line, and J jumps to the next bookmark
+after it. Open a PDF instead and B bookmarks the page and the spot you
+are on, with the name already filled in as "Page N", and J jumps to the
+next bookmarked page and spot; H has no heading to bookmark in a PDF, so
+it says heading bookmarks are for notes. Activating a PDF bookmark opens
+its PDF if it is closed and lands on that page and spot, in Paginated
+and Continuous view alike. With only one bookmark, J jumps to it; with
+none, it says there are no bookmarks. To go back to a saved bookmark,
+activate it in the Bookmarks section of the right pane or press
+Ctrl+Alt+J. Opening a bookmarked heading lands on its heading in the
+reading view, or on its exact line for a position bookmark — in plain
+source and in the rich-text editor alike — moves the reading cursor
+there, as a Find match does, so a screen reader follows the jump, and
+announces the bookmark it landed on. When you make a bookmark you are
+asked to name it: the name is already filled in with the heading or the
+surrounding text, and you can keep it or type your own. The name is what
+the bookmark is listed under in the right pane. Bookmarks and the
+refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
+
+When a link points at a note that does not exist, the right pane marks
+it as a missing note with a Repair button. **Repair broken links**, in
+the Tools menu and the command palette, lists every broken link in the
+library: make the missing note, or point the link at a note that exists.
+Making a note fixes every link that pointed at it; pointing a link
+elsewhere rewrites the link in its source note, leaving fenced code
+blocks and other links untouched. A link that was already changed says
+so instead of writing a note that is identical.
+
+### Keyboard shortcuts
+
+<!-- guide-shortcuts: generated from the command registry when the guide opens; do not hand-edit this section. -->
+
+The shortcuts in this section are always current: they are built from the
+command registry when the guide is shown in the app (press F1), so a
+shortcut you changed or added shows up there without anyone editing this
+file. See `src/shared/user-guide.ts`. The full list also shows in the
+Keyboard Shortcuts dialog on the Help menu, and in
+`docs/keyboard-shortcuts.md`, which is made by `npm run docs:shortcuts`.
+
+## Accessibility features and accessibility settings
+
+A11y Notebook is built from the start to be used with a keyboard and a
+screen reader — not adapted afterward. Notes read as structured pages
+with headings you can jump between, controls are labelled, and the app
+announces what it does. This part gathers the features that make that
+work and the settings that control them: themes and contrast, zoom,
+focus outlines, motion, keyboard shortcuts, reminder alerts, and library
+security. Most of these live in Settings (Ctrl+Alt+S), under the headings
+in the next section.
+
+### Settings
+
+Settings has clear headings you can jump between with a screen reader:
+**General editing and autosave**, **Appearance and interface**,
+**Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and
+**Library security**. Scoped metadata encryption gets its own heading
+when it is available, with security subsections under Library security.
+
+In **Appearance and interface**, **Theme** offers Dark (the default),
+Light, or High contrast. Light is a full light palette built to the same
+WCAG 2.2 AA bars as the dark theme: body text at 4.5:1 or better, and
+focus outlines and control borders at 3:1 or better. High contrast is a
+full black-and-white palette with yellow links, focus outlines, and
+selected elements, built to the same bars. In Windows forced-colors mode
+the system colors take over instead, whatever theme you picked. **Zoom
+in percent** scales the whole interface from 50 to 200 percent; unlike
+font size, which grows text only, Zoom grows buttons, spacing, and
+everything else with it. **Focus indicator** offers a high-visibility
+option with thicker, more offset outlines, and **Reduce motion** turns
+off interface animations and transitions. **Show command/action buttons
+in the UI** brings back the button-rich layout. It is off by default,
+including for older settings files, to favor the menu-first design.
+
+**Interaction**, in the same section, offers two options, both off by
+default. **Immersive Focus mode** hides the search box and search scope
+as well while Focus mode is on, so only the title bar, menu bar, and
+document remain. **Auto-focus on grids when switching views** puts
+keyboard focus in the grid on its own when you switch to the Libraries,
+Notebooks, or Notes and Files view, without needing to enter forms mode
+first. It only fires on a real view switch, never while a dialog is
+open.
+
+**Automatic backups**, in the same section, copies the whole library
+folder on a schedule you choose: every 1 to 30 days, keeping the newest
+1 to 50 copies and deleting older ones. A backup runs when the library
+is opened and at most once per interval while the app runs, and only the
+saved content is copied, so save first if it matters. Backups live
+outside the library, in the folder you name or, if you leave it blank, a
+Backups folder next to the library. Encrypted files stay encrypted in
+the copy, and a backup opens as a library in its own right. Automatic
+backups are off until you turn them on.
+
+The native menu stays available either way. The controls you need for
+navigation, content, dialogs, forms, and Settings stay available; in a
+browser without the native features, command buttons stay. These
+preferences and shortcut changes only take effect after **Save
+settings**; **Cancel** throws them away, and reset changes the draft.
+The saved settings survive restarts, in the library settings and the app
+defaults.
+
+Every command in **Keyboard Shortcuts** has both a textbox for typing a
+shortcut in by hand and a **Capture Shortcut** button with its own
+label. Turn the button on, then press Ctrl or Alt with a letter or
+number, or an F1–F12 combination (Ctrl, Alt, and Shift all work). The
+command you are changing and the result are announced. A shortcut that
+is valid and does not clash is written into that command's draft textbox
+and focus goes back there; it is not saved on its own. Pressing only a
+modifier waits, repeats are ignored, and input that is not supported,
+IME typing, and AltGraph leave the old value alone. Shortcuts that
+clash, fixed aliases, and reserved navigation and editing keys are
+turned down with a message; try again or cancel. **Escape**, **Tab**, or
+**Cancel capture** stops without changing the shortcut; Escape during
+capture does not close Settings. Tab keeps its normal dialog navigation.
+Starting another capture replaces the old one. Reset, save, close, and
+leaving Settings stop capture. App shortcuts and native menu shortcuts
+are paused while listening, but combinations the operating system keeps
+for itself cannot always be caught.
+
+**Settings** (Ctrl+Alt+S) changes the autosave delay (0 turns it off),
+theme (Dark or Light, plus a High contrast option for Windows
+forced-colors mode), font size, and command shortcuts. Shortcuts that
+clash with command defaults or reserved navigation and editing keys are
+turned down. A blank shortcut turns that command's shortcut off; reset
+brings back the defaults. Settings are saved in the library's
+`.a11ynotebook/settings.json` and the app's userData defaults. Keyboard Shortcuts
+and the palette show the shortcuts in use; the generated documentation
+lists the defaults. Library idle locking is in Security settings.
+Reminder defaults are saved from the reminder creation dialog; in-app
+alert and sound settings are in Settings.
+
+### Accessibility notes
+
+Use Tab for normal controls, and F6 or Shift+F6 to move between the
+application panes. Plain-source mode uses a native text box; rich-text
+mode uses a labelled multiline editor and a toolbar you pass through
+with a single Tab stop. Manual JAWS, NVDA, and Narrator testing is still
+needed; see the [testing strategy](accessibility/testing-strategy.md).
+
+### Windows accessibility and application-chooser checks
+
+Automated tests do not check spoken output or the real Windows
+application chooser. With a backed-up test library, check both the
+installed and portable builds:
+
+- With NVDA, JAWS, or Narrator, repeat Ctrl+1 through Ctrl+5, with and
+  without an open library or notebook. Check you hear one announcement
+  of where you landed, with no competing focus or status speech.
+- Use Ctrl+N in each view; cancel and complete making something. Check
+  that unsaved work and locked libraries stay protected. Make, save, and
+  reopen all five cognitive tool types and check that a new task survives
+  reopening the library.
+- Pick a different file row and repeat Ctrl+3 and Ctrl+N; check that the
+  selected notebook stays the place things are made in. Check both the
+  note and template buttons you can see.
+- Save each default note-open mode and open, switch, close, and reopen
+  notes. Check that Ctrl+E still works and an editing lock cannot be
+  worked around.
+- On an unknown file, test Open With with filenames that have spaces and
+  non-English characters. Cancel the Windows chooser and check that the
+  existing association has not changed. If Windows offers a default-app
+  choice, test it only on a throwaway file type, check that the system
+  opens it afterward, and put the original association back afterward.
+- Import compatible files from outside the app, including HTML with
+  active content. Check that the copy opens inside the app, unsafe HTML
+  is removed, the original is unchanged, and rename, move, and reopen
+  keep the copy's record of where it came from.
+
+## Features in detail
+
+This part walks through what the app can do, feature by feature.
 
 ### Tasks
 
@@ -813,619 +1435,3 @@ plan](roadmap.md#document-reader-and-annotation-follow-up-plan).
 Picking from recent libraries and organizing the calendar are still
 open. Manual Windows screen-reader and UI Automation smoke tests have
 not been run.
-
-## The user interface and how to navigate it using a keyboard
-
-The app is built around a few main views: **Libraries**, **Notebooks**,
-**Notes and Files**, **Tasks**, and the **Calendar**. Jump between them
-with Ctrl+1 for Libraries, Ctrl+2 for Notebooks, Ctrl+3 for Notes and
-Files, and Ctrl+6 for the Calendar. Each shortcut also announces where
-you are; pressing it again announces the view again.
-
-Across the top is a menu bar — **File**, **Edit**, **View**, **Insert**,
-**Format**, **Tools**, and **Help** — with the usual Alt shortcuts for
-each menu, then arrow keys, Enter, and Escape. The command palette holds
-the same commands, and every shortcut can be changed in Settings. Most
-things in the app live in grids: move with the arrow keys, jump to the
-first or last row with Home and End, type a letter to jump to the next
-item starting with it, and press Enter to open what you are on. F6 and
-Shift+F6 move between the main areas of the window, and Tab moves
-between controls. Notes open in tabs, and Ctrl+Tab moves between them.
-Shift+F10, the Applications key, or a right-click opens a context menu
-whose actions depend on what you are focused on. The sections after this
-one walk through each view in turn.
-
-The title bar names what you have open: with a file or note open it
-reads "[FileName] | [NotebookName] | [LibraryName] | A11y Notebook" — a
-file at the library root has no notebook, so that part is left out. With
-no file open it names the current view and notebook instead.
-
-### Open a library
-
-Choose **File → Open library** and pick a folder. The folder stays on
-your disk as an ordinary folder. Its subfolders show up as notebooks,
-its managed `.md` and `.html` files as notes, and its other files as
-attachments. The last library you opened comes back next time, on the
-notebook you last had open. Closing a library makes the app forget it,
-so a closed library stays closed on the next launch. Reopening a library
-shows that notebook's Notes and Files view; if no notebook was recorded,
-or that notebook is gone, you land on the Notebooks view instead.
-**Ctrl+W** closes whatever is current: a tab, a selected notebook, or
-the open library; closing a library closes everything inside it and
-takes you back to the Libraries view. To delete a library, focus it in
-the Libraries grid and press **Delete**, or choose **Delete library**
-from its context menu; the confirmation warns that everything inside the
-library goes too, and confirming moves the whole folder to the Recycle
-Bin.
-
-Choose **File → Back up library** to copy the whole open library to a
-new folder with the date and time in its name, inside a folder you
-choose. The copy includes the library's private details, so the backup
-folder opens as a library in its own right. Encrypted files stay
-encrypted in the copy: nothing is unlocked for the backup. The app
-counts the copied files and checks the copy matches the library before
-reporting success; a failed copy is removed rather than left behind as a
-partial backup. The backup never overwrites a folder that already
-exists, and it refuses a destination inside the library or one that
-contains the library.
-
-### Create in the current view
-
-**New** (Ctrl+N by default) makes the kind of item that fits the view
-you are in:
-
-| Active view                                             | What New makes                                                                                                                 |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| Libraries                                               | A **new local library**, choosing a parent folder and a new name in the system dialog; an existing folder is never overwritten |
-| Notebooks                                               | A notebook in the open library, in the Library root or inside the notebook you have selected                                   |
-| Notes and Files                                         | A note in the selected notebook                                                                                                |
-| Tasks                                                   | A saved checkbox task with an associated note, with an optional due date and priority                                          |
-| Cognitive Tools                                         | An Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, which you name and create at the library root                    |
-| Note tabs, Contents, Reminders, previews, and Libraries | A note using the current notebook, or the library root when no notebook is selected                                            |
-
-The **New notebook** command on its own still makes a notebook; it has
-not been changed to mean the contextual New. Settings can change or turn
-off New's shortcut, and conflicting shortcuts are rejected. The File
-menu and the command palette offer the same commands. Cancelling leaves
-existing files and unsaved edits alone; save or sort out pending edits
-when asked. New notes use Markdown by default; the creation dialog also
-offers HTML. A view that needs an open library says so instead of
-quietly making a different kind of item.
-
-### Navigate files
-
-In the main view, move through the Libraries, Notebooks, and Notes and
-Files grids with the arrow keys; Home and End go to the first and last
-row. Typing a letter jumps to the next item whose name starts with it,
-wrapping around, so pressing the same letter again steps through every
-match. Enter opens the selected item: a managed note, a supported
-managed preview, or a notebook, which opens its Notes and Files view. A
-notebook's Notes and Files view shows its own notes and files plus the
-notebooks inside it; a sub-notebook's notes only show when you open that
-sub-notebook, so a note never shows under two notebooks at once. The
-Type column shows the file's real type — PDF, ePub, Word document, Excel
-spreadsheet, CSV, PowerPoint presentation — instead of the generic
-"Attachment". Documents from outside the app, or of unknown origin, use
-Open With rather than being quietly treated as app-made notes. F2 opens
-a rename dialog. Delete asks before moving an item to the Recycle Bin;
-Shift+Delete deletes permanently. Deleting a note or notebook that holds
-tasks first warns you how many tasks will go with it, since tasks live
-inside notes and have no copy of their own. Space selects a row. To
-arrange notebooks, notes, and files in the library tree, use the
-Organize Library dialog below.
-
-Use **File → New note**, **File → New notebook**, or **Tools → Import
-file**. Imported files are copied into the notebook you have selected.
-Making a notebook asks where it goes: the Library root by default, or
-inside the notebook you have selected. The new notebook becomes the
-selected notebook, and the app announces where it was made. Select an
-item before using **Tools → Reveal selected item in Explorer** or **Open
-selected item in external app**. These commands use the current selection,
-not one you picked earlier.
-
-### Organize library
-
-Choose **View → Organize library** (Ctrl+Shift+V). The dialog holds the
-library tree as its main content; there is no tree pane in the main view
-anymore. Items at the library root are reached through this dialog tree
-and through global search. In the dialog tree, Up and Down move between
-visible items; Right opens a notebook or moves into its first child;
-Left closes it or moves to its parent. Home and End go to the first and
-last visible item. Type a letter to find the next item starting with
-that letter; `*` opens all the notebooks at the same level.
-
-Changes inside the dialog are staged: **OK** applies them all, **Cancel**
-throws them away, and **Escape** closes the dialog and puts focus back
-where it was. F2 renames, or use the context menu. Enter opens the
-selected item and closes the dialog without applying staged changes.
-Delete moves an item to the Recycle Bin, or use the context menu;
-Shift+Delete deletes permanently. Cut, copy, and paste with Ctrl+X,
-Ctrl+C, and Ctrl+V, or from the context menu: cutting and pasting moves
-an item, with links fixed up as a move fixes them; copying and pasting
-duplicates an item, a whole notebook included, under a name that does
-not clash.
-
-Move an item with Alt+Up or Alt+Down to put it into the previous or next
-notebook in tree order, or with Alt+Shift+Up or Alt+Shift+Down to move
-it out one level, into its grandparent notebook or to the library root.
-Repeat the out-one-level move to walk an item up to the root. For any
-other destination, use **Move** from the context menu and pick the
-destination notebook. A notebook can never move into itself or one of
-its own sub-notebooks, and notebooks are never reordered among their
-siblings.
-
-**Protect** is in the context menu. A protected item cannot be edited,
-moved, deleted, or renamed. Trying any of those opens a dialog saying
-the item is protected, with **Unprotect** and **Cancel**. Unprotect
-removes the protection and carries out the action right away; Cancel
-leaves the item protected and does nothing. Protection lasts until you
-remove it, and it also blocks working on a notebook that has a protected
-item inside it.
-
-**Send to email** is in the context menu. It makes a mail file with the
-selected note or file attached and opens it in your default mail app,
-where you press Send; a mailto link cannot carry an attachment, so the
-app uses this file instead. Only files can be sent by email, so a
-notebook folder cannot be emailed this way.
-
-**Properties** is in the context menu. It shows the item's name and
-kind, where it is saved, the date it was created, the date and time it
-was last changed, its size on disk, and whether it is protected, plus
-counts of its tasks, reminders, bookmarks, annotations, and cognitive
-tools where they apply, the notes and files it holds, and the items
-linked to it.
-
-The Windows app has a native menu bar with **File**, **Edit**, **View**,
-**Insert**, **Format**, **Tools**, and **Help**. Use Alt and the
-underlined letter, then the arrow keys, Enter, or Escape. Menu commands
-have no built-in shortcuts; the app's changeable shortcuts (including
-Ctrl+K and F6/Shift+F6) are the only shortcut path. The app menu takes
-the place of the duplicate command groups that used to sit in the page.
-In a browser without the app's native features, a compact, accessible
-HTML set of commands is still available. Controls that belong to one
-thing, such as the formatting toolbar, reader page and zoom controls,
-tab close buttons, and dialog buttons, stay next to the content they
-work on.
-
-The installed and portable builds work the same way for navigation and
-creation. Ctrl+1 announces **Libraries** or the open library's name;
-Ctrl+2 announces **Notebooks** or **Notebooks in [library name]**;
-Ctrl+3 announces **Notes and Files in [notebook name]** when a notebook
-is selected. Pressing a shortcut again announces the view again. The
-notebook you have selected stays selected when you pick a file row.
-
-Notes & Files also has **New note from template**. Open and unlock a
-library before making anything in it.
-
-Shift+F10, the Applications key, or right-click opens the global context
-menu. Its commands come from the command list and depend on what you are
-focused on: library files, tabs, selected editor text, links, tasks,
-search results, annotations, reminders, and attachment previews each get
-different actions. Use Up and Down, Home and End, type-ahead,
-Enter/Space, or Escape. Actions that cannot be used are announced as
-unavailable, and Escape puts focus back on the thing that opened the
-menu. The menu does not change how modal dialogs handle the keyboard.
-
-### Paste files and folders
-
-Copy files or folders in File Explorer, then paste them while focus is
-in the main panel (not inside an editor). Where they land depends on the
-view. In **Libraries**, a pasted folder asks whether to make an
-app-specific copy of the library (you then choose where to save it) or
-use the original folder as the library; files sitting directly in the
-pasted folder ask how to organize them — one notebook for all files, or
-one notebook per file — because a library cannot hold files outside a
-notebook. In **Notebooks**, a pasted folder becomes a notebook in the
-current library, and pasted files go into the selected notebook. In
-**Notes and Files**, only files paste, into the selected notebook. Pasted
-copies are checked file by file; a failed copy is removed and reported.
-The clipboard path step has not yet been confirmed with a real Windows
-copy-and-paste run.
-
-### Managed documents and older libraries
-
-When the app makes a file, or you explicitly import one, it records
-where the file came from in `.a11ynotebook/provenance.json`; the
-original document gets no marker embedded in it. A file's extension and
-which notebook it sits in do not prove where it came from on their own.
-Libraries made before these records existed can still be read on disk
-and are not automatically relabelled as app-made: older or unknown files
-need an explicit import before they open inside the app. One exception
-keeps older encrypted libraries reachable: a recognized encrypted-note
-file offers you the choice to use the existing unlock steps. Content
-shows only after unlocking works; this does not quietly treat other old
-files as app-made. Cancelling leaves the encrypted file unchanged.
-
-For a compatible file from outside the app, use **Import into A11y
-Notebook** from its context menu to make a managed copy. The original is
-kept, but once its managed copy exists the original is hidden from the
-Notes and Files grid and search results. It still shows in the Organize
-Library dialog tree, which shows everything. Turn on **Show original
-files** in Settings to see it again; deleting the managed copy brings it
-back on its own. Markdown and HTML notes support reading and editing;
-supported text, image, PDF, ePub, and DOCX previews are read-only
-unless a dedicated editing tool is provided (for example, a CSV grid).
-Formats that are not supported or not valid are not offered as editable
-imports; files that are too big, unsafe, or broken are turned down.
-Cancelling an import does not change the original. Keep the metadata
-folder when copying a whole library; missing records are handled
-carefully, not rebuilt from dates or filenames.
-
-On Windows, **Open With** asks Windows to pick an application for a
-document; **Open externally** uses the application already set as the
-default. Picking an application once does not quietly change defaults.
-To change the default, use the **Choose default application…** context
-action and confirm the Windows Default Apps settings option. In Windows
-11, search Settings → Apps → Default apps for the extension (for example
-`.txt`) and pick the default there; Windows 10 offers **Choose default
-apps by file type**. Windows owns and confirms that choice: A11y
-Notebook does not edit registry settings or claim a default changed just
-because Settings opened. The chooser is Windows-only; on other platforms
-use the existing default application or your system's own file-type
-settings. Microsoft documents that [SHOpenWithDialog cannot change
-defaults on Windows 10 and later](https://learn.microsoft.com/en-us/windows/win32/api/shlobj_core/nf-shlobj_core-shopenwithdialog).
-Programs, scripts, and shortcuts are not document imports or supported
-external document actions.
-
-**Move** asks for a destination notebook. Save all open edits before a
-rename or move; the confirmation lists notes whose links will change.
-Cancelling leaves the files untouched. Bookmarks, annotations, image
-descriptions, flashcard schedules, and reminders follow moves the app
-makes. Links that use only a title and could point at more than one note
-are not fixed; use full paths such as `[[Notebook/Title]]`.
-Reference-style Markdown links are fixed through their definitions.
-
-### Read and edit notes
-
-Notes open in tabs. Make either Markdown (`.md`) or HTML (`.html`)
-notes using the **Note format** selector. Opening the same note again
-reuses its tab; opening another note keeps the notes you already have
-open, unsaved edits included. Moving between views does not close note
-tabs. Ctrl+Tab moves between open tabs, and the arrow keys move along
-the tab strip. Closing the tab you are on takes you back to Notes &
-Files and puts focus on the tab strip; if you cancel a warning about
-unsaved changes, the note stays open. Reopening a closed note loads its
-saved content and uses your default mode again. When a note reopens in
-Read mode, it picks up at the heading you had reached; a bookmark jump
-still wins over that saved spot.
-
-In **Settings → Default note open mode**, choose **Read mode** (the
-default, including for older settings) or **Edit mode**. This applies to
-managed notes when they are opened or switched to; it does not make
-read-only document previews editable, and it does not get around a
-locked encrypted note or an editing lock. Ctrl+E is still the way to
-switch editing on and off by hand.
-
-The read view shows the note as a structured page; Markdown is shown
-with unsafe raw HTML taken out, and HTML notes are cleaned when loaded,
-edited, pasted, saved, and shown. Scripts, forms, active embedded
-content, event handlers, remote images, and unsafe link types are not
-allowed. Images in HTML notes need alternative text and must use local
-image files. Toggle **Read-only/edit mode** with Ctrl+E. Switching to
-edit mode puts focus straight into the editor — the Markdown or HTML
-source, plain text, or the rich-text editor when that form is active —
-with the cursor where you left it. Ctrl+R goes straight to reading mode
-without toggling. Ctrl+F opens a Find dialog that searches inside the
-current note, in reading and in editing mode, with Find next, Find
-previous, and an optional Match case. The search also lists every match
-with the text around it: move through the list with the arrow keys, and
-press Enter on a match to close the dialog and go to that match in the
-note. After the dialog closes, F3 finds the next match and Shift+F3 the
-previous match of the last search. Ctrl+F also searches documents: in a
-PDF, ePub, or DOCX preview it moves focus to that reader's own search
-box, and in a text, CSV, or HTML attachment it searches the preview
-(HTML previews report matches without moving to them, because their
-preview frame cannot be selected from inside). Images have no text to
-search. **Plain source** edits Markdown or HTML source in a plain text
-box; **Rich text** gives you an accessible formatting toolbar and a
-multiline text box. Ctrl+S saves right away; edits also save after a
-short pause. A tab shows when it has unsaved content and asks before
-throwing it away when closed.
-
-**Focus Mode** (F11, or **Toggle Focus Mode** in the command palette and
-the View menu) hides every side panel except the title header (which
-holds search), the menu bar, and the document itself, in both reading
-and editing modes, so the open note or file fills the window. Hidden
-panels also leave the Tab order, so only the title, menu, search, and
-document can take focus. Press F11 again to bring the full layout back;
-Focus Mode also ends on its own when the open note or file is closed,
-when you switch to another view, and when the app is closed and reopened
-(it is never saved). Dialogs and context menus still open above it.
-
-The Format menu and the formatting toolbar offer bold, italic, heading
-levels 1–6, lists, quote, and fenced code. In Markdown source, **Enter**
-on a list item carries the list on (numbered lists count up, checked
-task items carry on unchecked); **Enter** on an empty list item ends the
-list, so pressing Enter twice in a row stops the list. Ctrl+B and Ctrl+I
-format the selection; Ctrl+K (or Ctrl+Shift+L) opens a link dialog with
-a note picker. The table dialog picks rows and columns. Insert image or
-attachment picks a file already imported into the library and needs a
-text description. Pasting into rich text keeps safe semantic formatting.
-The rich editor supports bold, italic, underline, strikethrough,
-headings, lists, block quotes, code, links, tables, and local images
-with required descriptions. Changing format makes a warned copy next to
-the original and keeps the original. In an HTML note, **Insert checklist
-task** adds a proper task item. Edit its title in rich text; edit its
-stable ID, completion, due date, priority, or reminder details in HTML
-source. Plain-source formatting commands keep working on the Markdown
-editor. The editor tries to keep native undo; a fallback insert done by
-the app may not keep an undo step.
-
-Renames, moves, and saves the app makes keep track of where a file came
-from. Ordinary edits made outside the app keep it too; files replaced
-outside the app, or renamed outside the app, may become unknown and
-need an explicit import again.
-
-Edits made outside the app load silently into clean notes. If you have
-unsaved text, autosave pauses and a dialog offers **Keep mine** (save
-your version), **Load disk version**, or **Save copy** (a new note with
-the date and time in its name). Notes that were removed offer Save copy.
-Escape leaves the conflict unsorted and tells you to pick an option; it
-does not throw your edits away. Switching libraries is blocked until
-unsaved work is saved or sorted out.
-
-### Mathematics
-
-Write maths as plain shorthand and the app turns it into MathML, which
-browsers show and screen readers can read. The shorthand covers sqrt(x),
-frac(a,b), pow(a,b), abs(x), log(x), x^2, x_1, pi, Greek letters, div for
-the division sign, rad for radians, and scientific notation such as 1.5e3
-or 3x10^8. The shorthand you typed is kept in the MathML `alttext`.
-
-Open **Insert → Insert math** or press Alt+= to show the Mathematics
-toolbar in the rich-text editor. Type shorthand there, use the template
-buttons for fractions, roots, powers, and more, check the live preview,
-and choose Insert math. While typing in a note, a finished function call,
-power, or scientific-notation value at the cursor turns into MathML on
-its own; ordinary words never change.
-
-Markdown notes store maths as a `` `math:` `` code span (for example
-`` `math:sqrt(16)` ``), which shows as MathML when reading and turns
-back when editing, so maths survives the Markdown round trip. HTML notes
-store the MathML element itself. Plain-text notes keep the shorthand as
-typed.
-
-### Spelling, grammar, and thesaurus
-
-**Tools → Spelling and Grammar Check** (F7) opens a dialog like the one
-in Word. It steps through each issue in the current note, in order,
-showing the word, the sentence around it, and an explanation for grammar
-issues. For each issue you can Ignore Once, Ignore All (or Ignore Rule
-for grammar), Add to Dictionary, Change, or Change All. A Replace with
-box lets you type your own replacement, and Undo steps back one change.
-Changes are gathered and applied to the note only when you close the
-dialog. Code blocks and inline code are not checked, and all-caps
-acronyms are skipped. The grammar check covers repeated words, a/an
-choice, could/should/would/must of (for have), a lowercase pronoun i,
-its/it's confusion, alot, and common missing apostrophes. It works from
-patterns, not a full grammar engine, so it will not catch every error.
-
-**Tools → Thesaurus** (Shift+F7) looks up synonyms for the selected
-word, grouped by part of speech. Each synonym offers Look up (to look
-that word up instead) and, in edit mode with a selection, Replace with
-this word. If nothing is found, it suggests words spelled similarly. The
-built-in word list has synonyms only, no antonyms. Words added from the
-spelling check live in the custom dictionary, which you can edit in
-**Settings → Custom dictionary, one word per line**. All spelling,
-grammar, and thesaurus work runs on your device; nothing is sent
-anywhere.
-
-### Search
-
-Type in **Global search**; the search waits 250 ms after you stop
-typing. The app keeps an index in `.a11ynotebook/search-index.json` and
-updates it bit by bit when files change. Results show the matching text
-and announce how many there are in the status bar. **Search scope** sits
-right after the search box, even with no library open (where the scope
-controls show as disabled): **Current notebook** searches only the
-notebook you have selected (including its sub-notebooks) and, with no
-notebook selected, shows guidance instead of searching the whole
-library; **Whole library** searches every notebook. The scope is
-remembered on this computer. In Whole library scope, the notebook filter
-in Search filters can still narrow results to one notebook. Search
-filters also pick the kind — notes, text attachments, DOCX documents,
-tasks, reminders, and appointments — a tag, and a changed-date range.
-`#tag` terms also filter by tag. Hashtags in text and supported tag
-fields at the top of a note are indexed; this is not a general YAML
-editor. Text, CSV, and HTML attachment and note contents, plus a bounded
-amount of PDF and ePub text, are searchable. Attachments that are not
-supported or not valid are searchable by filename. Results are capped at
-100 on screen. Pressing Escape in the search box clears the search text
-and removes the results from the display.
-
-Global search also finds tasks, reminders, and appointments: a task
-result shows its text and due date or priority, a reminder its title and
-scheduled time, shown as MM/DD/YYYY, HH:MM AM/PM, and an appointment its
-title, time, and location. Opening a task result shows the task in the
-Tasks view and puts focus on its row; a reminder result opens the
-Reminders tab and puts focus on the reminder; an appointment result opens
-the appointment itself. Tasks, reminders, and appointments have no tags
-and no changed date, so the tag and changed-date filters leave them out;
-appointments belong to no notebook, so the notebook filter (and Current
-notebook scope) leaves them out too.
-
-### Links and bookmarks
-
-Use `[[Note title]]` to link to a note by title, or a relative Markdown
-link such as `[Related](./Related.md)`. In read mode, activating a link
-that works opens its note in a tab. Links to notes that do not exist are
-marked and announced as missing. The right pane lists the links going
-out of the current note and the links coming into it. Choose **Bookmark
-note** to bookmark or unbookmark it; the Bookmarks section of the right
-pane lists the open file's bookmarks — the file open in a tab, even after
-you switch to another view — and with no file open, it lists every
-bookmark in the library — and activating one opens its note at the
-bookmark. From edit mode, **Bookmark heading at cursor** (Ctrl+Alt+H)
-bookmarks the heading at or before the cursor, **Bookmark position at
-cursor** (Ctrl+Alt+B) bookmarks the cursor position, and **Jump to next
-bookmark** (Ctrl+Alt+J) jumps to the next bookmark after the cursor,
-wrapping to the first bookmark when past the last; all three are also in
-the Tools menu and the command palette. In reading mode the same
-shortcuts work from the line you are reading — the line at the screen
-reader's position in the document — so H bookmarks the heading at or
-before it, B bookmarks that exact line, and J jumps to the next bookmark
-after it. Open a PDF instead and B bookmarks the page and the spot you
-are on, with the name already filled in as "Page N", and J jumps to the
-next bookmarked page and spot; H has no heading to bookmark in a PDF, so
-it says heading bookmarks are for notes. Activating a PDF bookmark opens
-its PDF if it is closed and lands on that page and spot, in Paginated
-and Continuous view alike. With only one bookmark, J jumps to it; with
-none, it says there are no bookmarks. To go back to a saved bookmark,
-activate it in the Bookmarks section of the right pane or press
-Ctrl+Alt+J. Opening a bookmarked heading lands on its heading in the
-reading view, or on its exact line for a position bookmark — in plain
-source and in the rich-text editor alike — moves the reading cursor
-there, as a Find match does, so a screen reader follows the jump, and
-announces the bookmark it landed on. When you make a bookmark you are
-asked to name it: the name is already filled in with the heading or the
-surrounding text, and you can keep it or type your own. The name is what
-the bookmark is listed under in the right pane. Bookmarks and the
-refreshed link graph are stored as readable JSON in `.a11ynotebook/`.
-
-When a link points at a note that does not exist, the right pane marks
-it as a missing note with a Repair button. **Repair broken links**, in
-the Tools menu and the command palette, lists every broken link in the
-library: make the missing note, or point the link at a note that exists.
-Making a note fixes every link that pointed at it; pointing a link
-elsewhere rewrites the link in its source note, leaving fenced code
-blocks and other links untouched. A link that was already changed says
-so instead of writing a note that is identical.
-
-### Keyboard shortcuts
-
-<!-- guide-shortcuts: generated from the command registry when the guide opens; do not hand-edit this section. -->
-
-The shortcuts in this section are always current: they are built from the
-command registry when the guide is shown in the app (press F1), so a
-shortcut you changed or added shows up there without anyone editing this
-file. See `src/shared/user-guide.ts`. The full list also shows in the
-Keyboard Shortcuts dialog on the Help menu, and in
-`docs/keyboard-shortcuts.md`, which is made by `npm run docs:shortcuts`.
-
-## Accessibility features and accessibility settings
-
-A11y Notebook is built from the start to be used with a keyboard and a
-screen reader — not adapted afterward. Notes read as structured pages
-with headings you can jump between, controls are labelled, and the app
-announces what it does. This part gathers the features that make that
-work and the settings that control them: themes and contrast, zoom,
-focus outlines, motion, keyboard shortcuts, reminder alerts, and library
-security. Most of these live in Settings (Ctrl+Alt+S), under the headings
-in the next section.
-
-### Settings
-
-Settings has clear headings you can jump between with a screen reader:
-**General editing and autosave**, **Appearance and interface**,
-**Reminder alerts**, **PDF Reading**, **Keyboard Shortcuts**, and
-**Library security**. Scoped metadata encryption gets its own heading
-when it is available, with security subsections under Library security.
-
-In **Appearance and interface**, **Theme** offers Dark (the default),
-Light, or High contrast. Light is a full light palette built to the same
-WCAG 2.2 AA bars as the dark theme: body text at 4.5:1 or better, and
-focus outlines and control borders at 3:1 or better. High contrast is a
-full black-and-white palette with yellow links, focus outlines, and
-selected elements, built to the same bars. In Windows forced-colors mode
-the system colors take over instead, whatever theme you picked. **Zoom
-in percent** scales the whole interface from 50 to 200 percent; unlike
-font size, which grows text only, Zoom grows buttons, spacing, and
-everything else with it. **Focus indicator** offers a high-visibility
-option with thicker, more offset outlines, and **Reduce motion** turns
-off interface animations and transitions. **Show command/action buttons
-in the UI** brings back the button-rich layout. It is off by default,
-including for older settings files, to favor the menu-first design.
-
-**Interaction**, in the same section, offers two options, both off by
-default. **Immersive Focus mode** hides the search box and search scope
-as well while Focus mode is on, so only the title bar, menu bar, and
-document remain. **Auto-focus on grids when switching views** puts
-keyboard focus in the grid on its own when you switch to the Libraries,
-Notebooks, or Notes and Files view, without needing to enter forms mode
-first. It only fires on a real view switch, never while a dialog is
-open.
-
-**Automatic backups**, in the same section, copies the whole library
-folder on a schedule you choose: every 1 to 30 days, keeping the newest
-1 to 50 copies and deleting older ones. A backup runs when the library
-is opened and at most once per interval while the app runs, and only the
-saved content is copied, so save first if it matters. Backups live
-outside the library, in the folder you name or, if you leave it blank, a
-Backups folder next to the library. Encrypted files stay encrypted in
-the copy, and a backup opens as a library in its own right. Automatic
-backups are off until you turn them on.
-
-The native menu stays available either way. The controls you need for
-navigation, content, dialogs, forms, and Settings stay available; in a
-browser without the native features, command buttons stay. These
-preferences and shortcut changes only take effect after **Save
-settings**; **Cancel** throws them away, and reset changes the draft.
-The saved settings survive restarts, in the library settings and the app
-defaults.
-
-Every command in **Keyboard Shortcuts** has both a textbox for typing a
-shortcut in by hand and a **Capture Shortcut** button with its own
-label. Turn the button on, then press Ctrl or Alt with a letter or
-number, or an F1–F12 combination (Ctrl, Alt, and Shift all work). The
-command you are changing and the result are announced. A shortcut that
-is valid and does not clash is written into that command's draft textbox
-and focus goes back there; it is not saved on its own. Pressing only a
-modifier waits, repeats are ignored, and input that is not supported,
-IME typing, and AltGraph leave the old value alone. Shortcuts that
-clash, fixed aliases, and reserved navigation and editing keys are
-turned down with a message; try again or cancel. **Escape**, **Tab**, or
-**Cancel capture** stops without changing the shortcut; Escape during
-capture does not close Settings. Tab keeps its normal dialog navigation.
-Starting another capture replaces the old one. Reset, save, close, and
-leaving Settings stop capture. App shortcuts and native menu shortcuts
-are paused while listening, but combinations the operating system keeps
-for itself cannot always be caught.
-
-**Settings** (Ctrl+Alt+S) changes the autosave delay (0 turns it off),
-theme (Dark or Light, plus a High contrast option for Windows
-forced-colors mode), font size, and command shortcuts. Shortcuts that
-clash with command defaults or reserved navigation and editing keys are
-turned down. A blank shortcut turns that command's shortcut off; reset
-brings back the defaults. Settings are saved in the library's
-`.a11ynotebook/settings.json` and the app's userData defaults. Keyboard Shortcuts
-and the palette show the shortcuts in use; the generated documentation
-lists the defaults. Library idle locking is in Security settings.
-Reminder defaults are saved from the reminder creation dialog; in-app
-alert and sound settings are in Settings.
-
-### Accessibility notes
-
-Use Tab for normal controls, and F6 or Shift+F6 to move between the
-application panes. Plain-source mode uses a native text box; rich-text
-mode uses a labelled multiline editor and a toolbar you pass through
-with a single Tab stop. Manual JAWS, NVDA, and Narrator testing is still
-needed; see the [testing strategy](accessibility/testing-strategy.md).
-
-### Windows accessibility and application-chooser checks
-
-Automated tests do not check spoken output or the real Windows
-application chooser. With a backed-up test library, check both the
-installed and portable builds:
-
-- With NVDA, JAWS, or Narrator, repeat Ctrl+1 through Ctrl+5, with and
-  without an open library or notebook. Check you hear one announcement
-  of where you landed, with no competing focus or status speech.
-- Use Ctrl+N in each view; cancel and complete making something. Check
-  that unsaved work and locked libraries stay protected. Make, save, and
-  reopen all five cognitive tool types and check that a new task survives
-  reopening the library.
-- Pick a different file row and repeat Ctrl+3 and Ctrl+N; check that the
-  selected notebook stays the place things are made in. Check both the
-  note and template buttons you can see.
-- Save each default note-open mode and open, switch, close, and reopen
-  notes. Check that Ctrl+E still works and an editing lock cannot be
-  worked around.
-- On an unknown file, test Open With with filenames that have spaces and
-  non-English characters. Cancel the Windows chooser and check that the
-  existing association has not changed. If Windows offers a default-app
-  choice, test it only on a throwaway file type, check that the system
-  opens it afterward, and put the original association back afterward.
-- Import compatible files from outside the app, including HTML with
-  active content. Check that the copy opens inside the app, unsafe HTML
-  is removed, the original is unchanged, and rename, move, and reopen
-  keep the copy's record of where it came from.

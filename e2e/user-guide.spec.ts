@@ -109,7 +109,7 @@ test('Table of Contents activation moves focus to the section heading', async ()
       const element = document.activeElement;
       return element ? { tag: element.tagName, id: element.id, text: element.textContent?.trim() } : null;
     });
-    // Tasks is a level-3 section under the Introduction part, so it
+    // Tasks is a level-3 section under "Features in detail", so it
     // renders as an H3; the Table of Contents still moves focus to it.
     expect(focused).toEqual({ tag: 'H3', id: 'tasks', text: 'Tasks' });
   } finally {
