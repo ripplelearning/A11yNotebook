@@ -26,6 +26,9 @@ describe('trusted creation and import workflows', () => {
     const first = await service.createTask({ notebookPath: 'Work', text: '  Plan accessibility review  ' });
     expect(first).toEqual([expect.objectContaining({ text: 'Plan accessibility review', complete: false })]);
     expect(first[0].path).toBe('Work/Plan accessibility review.md');
+    // A created task carries a stable id, so links to it survive edits
+    // to its task note.
+    expect(first[0].taskId).toMatch(/^[\w-]{8,}$/);
     const all = await service.createTask({ text: 'Second task' });
     expect(all).toHaveLength(2);
     expect(await service.search({ text: 'accessibility' })).toHaveLength(1);
@@ -66,8 +69,13 @@ describe('trusted creation and import workflows', () => {
     expect(created.dueDate).toBe('2026-11-01');
     expect(created.priority).toBe('high');
     expect(created.remindAt).toBe('2026-11-01 09:00');
+    // Priorities accept any single word, like the task lines the dialog
+    // and the parser already accept — 'critical' is valid now.
+    const [critical] = await service.createTask({ text: 'Critical task', priority: 'critical' });
+    expect(critical.priority).toBe('critical');
     await expect(service.createTask({ text: 'Bad due', due: 'Nov 1' })).rejects.toThrow();
-    await expect(service.createTask({ text: 'Bad priority', priority: 'critical' })).rejects.toThrow();
+    await expect(service.createTask({ text: 'Bad priority', priority: 'has space' })).rejects.toThrow();
+    await expect(service.createTask({ text: 'Long priority', priority: 'a'.repeat(31) })).rejects.toThrow();
   });
 
   it('rejects malformed tasks and queued revoked access without creating files', async () => {

@@ -5,9 +5,8 @@ import App from '../renderer/App';
 import type { NotebookBridge } from '../shared/bridge';
 import type { TaskLink } from '../shared/task-links';
 import type { SpreadsheetWorkbook } from '../shared/spreadsheet';
-import type { VaultEntry, VaultInfo } from '../shared/types';
+import type { VaultEntry, VaultInfo, VaultTask } from '../shared/types';
 import { DEFAULT_SETTINGS, type NotebookSettings } from '../shared/settings';
-import { parseHtmlTasks, parseMarkdownTasks } from '../../electron/vault/tasks';
 import { vaultExtensions } from './vault-extensions';
 import { openTreeLeaf } from './library-navigation';
 
@@ -417,63 +416,82 @@ describe('contextual shell document workflows', () => {
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Research/Next.md'));
   });
 
-  it.each(['md', 'html'])(
-    'persists a real %s task with stable identity, due date, priority and associated note',
-    async (format) => {
-      const { bridge } = setup();
-      await screen.findByRole('heading', { name: 'Study' });
-      const dialog = newAssociatedTask();
-      await within(dialog).findByRole('option', { name: `Research/Plan.${format}` });
-      fireEvent.change(within(dialog).getByLabelText('Associate with'), {
-        target: { value: `Research/Plan.${format}` },
-      });
-      fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
-      fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
-      fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-      await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalledOnce());
-      const [path, content] = bridge.vault.saveNote.mock.calls[0];
-      const parsed = format === 'html' ? parseHtmlTasks(content, path) : parseMarkdownTasks(content, path);
-      expect(parsed).toEqual([
+  it('creates the task in the Tasks notebook and links it to the associated note', async () => {
+    const { bridge } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    const saveTaskLinks = wireTaskMocks(bridge);
+    const dialog = newAssociatedTask();
+    await within(dialog).findByRole('option', { name: 'Research/Plan.md' });
+    fireEvent.change(within(dialog).getByLabelText('Associate with'), {
+      target: { value: 'Research/Plan.md' },
+    });
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
+    fireEvent.change(within(dialog).getByLabelText('Due date, MM/DD/YYYY'), { target: { value: '11/01/2026' } });
+    fireEvent.change(within(dialog).getByLabelText('Priority'), { target: { value: 'high' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    // The task is a new note in the Tasks notebook, never a line written
+    // into the associated note — so the note's content is untouched.
+    await waitFor(() =>
+      expect(bridge.vault.createTask).toHaveBeenCalledWith({
+        notebookPath: 'Tasks',
+        text: 'Prepare <review>',
+        due: '2026-11-01',
+        reminder: '',
+        priority: 'high',
+      }),
+    );
+    await waitFor(() =>
+      expect(saveTaskLinks).toHaveBeenCalledWith([
         expect.objectContaining({
-          path: `Research/Plan.${format}`,
-          text: 'Prepare <review>',
-          dueDate: '2026-11-01',
-          priority: 'high',
-          complete: false,
-          taskId: expect.any(String),
+          kind: 'note',
+          target: 'Research/Plan.md',
+          taskPath: 'Tasks/Prepare <review>.md',
         }),
-      ]);
-      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-      expect(screen.getByRole('tabpanel')).toHaveFocus();
-    },
-  );
+      ]),
+    );
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    expect(screen.getByRole('tabpanel')).toHaveFocus();
+    const table = await screen.findByRole('table', { name: 'Tasks in Study' });
+    expect(within(table).getByRole('checkbox', { name: 'Prepare <review>' })).toBeInTheDocument();
+    expect(
+      within(table).getByRole('button', { name: 'Open note: Research/Plan.md' }),
+    ).toBeInTheDocument();
+  });
 
-  it('never overwrites an unsaved associated note when creating a task', async () => {
+  it('creates a task without touching an unsaved associated note', async () => {
     const { bridge } = setup({ mode: 'edit' });
     await screen.findByRole('heading', { name: 'Study' });
     await openNotebookNote('Research', 'Plan.md');
     fireEvent.change(await screen.findByRole('textbox', { name: 'Markdown source' }), {
       target: { value: '# Unsaved' },
     });
+    wireTaskMocks(bridge);
     const dialog = newAssociatedTask();
     await within(dialog).findByRole('option', { name: 'Research/Plan.md' });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Do not overwrite' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(await within(dialog).findByRole('alert')).toHaveTextContent('Save or resolve note changes');
+    // The associated note is never written to, so unsaved edits in it
+    // are no obstacle: the task is created and the note stays as it was.
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
     expect(bridge.vault.saveNote).not.toHaveBeenCalled();
+    const table = await screen.findByRole('table', { name: 'Tasks in Study' });
+    expect(within(table).getByRole('checkbox', { name: 'Do not overwrite' })).toBeInTheDocument();
   });
 
-  it('keeps protected notes out of persisted task creation without exposing their content', async () => {
+  it('offers an encrypted note as an association, since creating a task never writes to it', async () => {
     const { bridge } = setup();
     bridge.vault.isNoteEncrypted.mockResolvedValue(true);
     await screen.findByRole('heading', { name: 'Study' });
+    wireTaskMocks(bridge);
     const dialog = newAssociatedTask();
-    await within(dialog).findByText('Create an unencrypted note before adding a task.');
-    expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
-    expect(within(dialog).queryByLabelText('Associate with')).toBeNull();
+    await within(dialog).findByRole('option', { name: 'Research/Plan.md' });
+    fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Plan review' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    await waitFor(() => expect(bridge.vault.createTask).toHaveBeenCalled());
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(bridge.vault.saveNote).not.toHaveBeenCalled();
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
   });
 
   it('offers ordinary notes as task associations, including notes whose origin record was lost, and excludes templates and cognitive assets', async () => {
@@ -483,35 +501,45 @@ describe('contextual shell document workflows', () => {
         { name: 'Secret.html', path: 'Secret.html', kind: 'note', provenance: 'imported' },
         // A note whose origin record was lost — for example, a cloud
         // sync replacing the file — is still an ordinary note in this
-        // library and can still hold a task.
+        // library and can still be associated with a task.
         { name: 'External.md', path: 'External.md', kind: 'note', provenance: 'unknown' },
         { name: 'Synced.md', path: 'Synced.md', kind: 'note' },
         { name: 'Map.outline.md', path: 'Map.outline.md', kind: 'note', provenance: 'created' },
         { name: 'Deck.cards.md', path: 'Deck.cards.md', kind: 'note', provenance: 'imported' },
-        // Templates are not notes: a task can never live in one.
+        // Templates are not notes: a task can never link to one.
         { name: 'Daily.md', path: 'Templates/Daily.md', kind: 'note', provenance: 'created' },
       ],
     });
-    bridge.vault.isNoteEncrypted.mockImplementation(async (path) => path === 'Secret.html');
     await screen.findByRole('heading', { name: 'Study' });
     const dialog = newAssociatedTask();
     await within(dialog).findByRole('option', { name: 'Allowed.md' });
     const options = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['Allowed.md', 'External.md', 'Synced.md']);
+    // An encrypted note can be associated with now: creating a task
+    // never writes into it, so encryption no longer excludes it.
+    expect(options.map((option) => option.textContent)).toEqual([
+      'No association',
+      'Allowed.md',
+      'Secret.html',
+      'External.md',
+      'Synced.md',
+    ]);
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
   });
 
-  it('does not offer to retry a task that was saved when refreshing the task list fails', async () => {
+  it('reports the created task and its link in the status line', async () => {
     const { bridge } = setup();
     await screen.findByRole('heading', { name: 'Study' });
-    bridge.vault.getTasks.mockRejectedValueOnce(new Error('Refresh unavailable'));
+    wireTaskMocks(bridge);
     const dialog = newAssociatedTask();
     await within(dialog).findByRole('option', { name: 'Research/Plan.md' });
+    fireEvent.change(within(dialog).getByLabelText('Associate with'), { target: { value: 'Research/Plan.md' } });
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Persist once' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
-    expect(bridge.vault.saveNote).toHaveBeenCalledOnce();
-    expect(screen.getByLabelText('Status bar')).toHaveTextContent('Task created. Refresh Tasks');
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
+    expect(screen.getByLabelText('Status bar')).toHaveTextContent(
+      'Task created in Tasks and linked to Research/Plan.md.',
+    );
   });
 
   it('discards an in-flight note read when the library locks', async () => {
@@ -1034,13 +1062,23 @@ describe('contextual shell document workflows', () => {
     );
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Review the plan' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
-    const saved = vi.mocked(bridge.vault.saveNote).mock.calls.at(-1)?.[1] ?? '';
-    expect(saved).toContain('- [ ] Review the plan');
-    expect(saved).toMatch(/<!-- a11y-task-id:[\w-]+ -->/);
+    await waitFor(() =>
+      expect(bridge.vault.createTask).toHaveBeenCalledWith({
+        notebookPath: 'Tasks',
+        text: 'Review the plan',
+        due: '',
+        reminder: '',
+        priority: 'medium',
+      }),
+    );
+    // The note itself is never written to: no checkbox line is appended.
+    expect(bridge.vault.saveNote).not.toHaveBeenCalled();
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
     const table = await screen.findByRole('table', { name: 'Tasks in Study' });
     expect(within(table).getByRole('checkbox', { name: 'Review the plan' })).toBeInTheDocument();
+    expect(
+      within(table).getByRole('button', { name: 'Open note: Research/Plan.md' }),
+    ).toBeInTheDocument();
   });
 
   it('offers Create task from the context menu on a file and links the created task to it', async () => {
@@ -1065,19 +1103,18 @@ describe('contextual shell document workflows', () => {
     fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Report.pdf' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
     const dialog = await screen.findByRole('dialog', { name: 'New task' });
-    // The task still lives in a note; the file becomes its link, so the
-    // dropdown shows the file and names the note holding the task.
+    // The task lives in the Tasks notebook; the file becomes its link.
     await waitFor(() =>
       expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Report.pdf'),
     );
     expect(
-      within(dialog).getByText('Task will be saved in Research/Plan.md and linked to Research/Report.pdf.'),
+      within(dialog).getByText('Task will be saved in the Tasks notebook and linked to Research/Report.pdf.'),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Check the report' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() =>
       expect(saveTaskLinks).toHaveBeenCalledWith([
-        expect.objectContaining({ kind: 'file', target: 'Research/Report.pdf', taskPath: 'Research/Plan.md' }),
+        expect.objectContaining({ kind: 'file', target: 'Research/Report.pdf', taskPath: 'Tasks/Check the report.md' }),
       ]),
     );
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
@@ -1114,13 +1151,17 @@ describe('contextual shell document workflows', () => {
       expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Example.url'),
     );
     expect(
-      within(dialog).getByText('Task will be saved in Research/Plan.md and linked to Research/Example.url.'),
+      within(dialog).getByText('Task will be saved in the Tasks notebook and linked to Research/Example.url.'),
     ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Visit the example' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() =>
       expect(saveTaskLinks).toHaveBeenCalledWith([
-        expect.objectContaining({ kind: 'file', target: 'Research/Example.url', taskPath: 'Research/Plan.md' }),
+        expect.objectContaining({
+          kind: 'file',
+          target: 'Research/Example.url',
+          taskPath: 'Tasks/Visit the example.md',
+        }),
       ]),
     );
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
@@ -1140,11 +1181,33 @@ describe('contextual shell document workflows', () => {
  */
 function wireTaskMocks(bridge: ReturnType<typeof setup>['bridge']) {
   const mocks = bridge.vault as unknown as Record<string, ReturnType<typeof vi.fn>>;
-  mocks.getTasks = vi.fn(async () => {
-    const calls = vi.mocked(bridge.vault.saveNote).mock.calls;
-    const last = calls[calls.length - 1];
-    return last ? parseMarkdownTasks(last[1], last[0]) : [];
-  });
+  // Created task notes live under the Tasks notebook, one note per task,
+  // with a stable id — the same shape the service creates on disk.
+  const created: VaultTask[] = [];
+  mocks.createTask = vi.fn(
+    async (input: {
+      notebookPath?: string;
+      text: string;
+      due?: string;
+      reminder?: string;
+      priority?: string;
+    }): Promise<VaultTask[]> => {
+      const task: VaultTask = {
+        id: `Tasks/${input.text}.md#test-task-id`,
+        taskId: 'test-task-id',
+        path: `Tasks/${input.text}.md`,
+        line: 1,
+        text: input.text,
+        complete: false,
+        ...(input.due ? { dueDate: input.due } : {}),
+        ...(input.priority ? { priority: input.priority } : {}),
+        ...(input.reminder ? { remindAt: input.reminder } : {}),
+      };
+      created.push(task);
+      return [...created];
+    },
+  );
+  mocks.getTasks = vi.fn(async () => [...created]);
   mocks.getTaskLinks = vi.fn(async () => []);
   const saveTaskLinks = vi.fn(async (next: TaskLink[]) => next);
   mocks.saveTaskLinks = saveTaskLinks;

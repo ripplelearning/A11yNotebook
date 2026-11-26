@@ -1118,13 +1118,19 @@ export function createVaultService(
       (due && !/^\d{4}-\d{2}-\d{2}$/.test(due)) ||
       typeof reminder !== 'string' ||
       (reminder && !/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(reminder)) ||
-      !['low', 'normal', 'high', 'urgent'].includes(priority as string)
+      // Priorities accept any single word, like the task lines the
+      // dialog, the parser, and the priority editor already accept.
+      typeof priority !== 'string' ||
+      !/^[A-Za-z0-9][A-Za-z0-9_-]{0,29}$/.test(priority)
     )
       throw new Error('Enter a single-line task of 1 to 1000 characters.');
     assertCurrent();
     const notebook = notebookPath ? await resolveEntry(notebookPath) : root;
     if (!(await lstat(notebook)).isDirectory()) throw new Error('Choose a notebook folder.');
-    const content = `- [ ] ${text.trim()}${due ? ` due:${due}` : ''} priority:${priority}${reminder ? ` remind:${reminder}` : ''}\n`;
+    // One stable id for the new task, so its links survive later edits
+    // to the task note — the same marker dialog-created tasks carry.
+    const stableId = randomUUID();
+    const content = `- [ ] ${text.trim()}${due ? ` due:${due}` : ''} priority:${priority}${reminder ? ` remind:${reminder}` : ''} <!-- a11y-task-id:${stableId} -->\n`;
     const baseName = taskNoteBaseName(text.trim()) || `Tasks-${randomUUID()}`;
     let relative = path.posix.join(notebookPath, `${baseName}.md`);
     try {

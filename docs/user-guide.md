@@ -110,7 +110,7 @@ you are in:
 | Libraries                                               | A **new local library**, choosing a parent folder and a new name in the system dialog; an existing folder is never overwritten |
 | Notebooks                                               | A notebook in the open library, in the Library root or inside the notebook you have selected                                   |
 | Notes and Files                                         | A note in the selected notebook                                                                                                |
-| Tasks                                                   | A saved checkbox task with an associated note, with an optional due date and priority                                          |
+| Tasks                                                   | A task saved in the Tasks notebook, with an optional link to an associated note, file, or web link, and an optional due date and priority |
 | Cognitive Tools                                         | An Outline, Mind map, Flashcards, CSV Grid, or Markdown grid, which you name and create at the library root                    |
 | Note tabs, Contents, Reminders, previews, and Libraries | A note using the current notebook, or the library root when no notebook is selected                                            |
 
@@ -704,12 +704,12 @@ To make a task, open the New Task dialog: press Ctrl+N on the Tasks
 view, use the New task button there, pick New task from the command
 palette, or open the context menu on a selected note, link, or file in
 the Notes and Files grid and choose **Create task**. Every way opens
-the same dialog. In **Associate with**, pick what the task is
-associated with: a note holds the task as a checkbox, while a file, a
-saved web link, or a notebook is linked to the created task and the
-dialog names the note holding it. The list holds the library's notes,
-files, links, and notebooks; templates are never listed, since a task
-cannot live in a template.
+the same dialog. In **Associate with**, pick what the task is linked to: a
+note, a file, a saved web link, or a notebook — or leave it at No
+association. The task itself is always saved in the Tasks notebook, as
+its own note, and the item you associate it with is never changed. The
+list holds the library's notes, files, links, and notebooks; templates
+are never listed, since a task cannot link to a template.
 
 Open the context menu on a task row (Shift+F10, the Applications key, or
 right-click) for **Set due date**, which opens a dialog with a due date,
