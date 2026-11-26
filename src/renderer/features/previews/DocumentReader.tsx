@@ -191,8 +191,13 @@ function pdfSpotFromFocus(layers: PdfSpotLayer[]): PdfBookmarkSpot | null {
  * the containing block. Returns true only when focus and a live
  * selection are both in place. A page with no extractable text has no
  * span to land on: focus the page text container itself instead.
+ *
+ * With an exact length (a PDF annotation), the selection covers the
+ * annotated text itself; when that exact range cannot be selected —
+ * the file changed since the annotation was saved — it falls back to
+ * the span-end selection so the landing still reaches the spot.
  */
-function landOnPdfSpot(host: HTMLElement, page: PdfPage, spot: PdfBookmarkSpot): boolean {
+function landOnPdfSpot(host: HTMLElement, page: PdfPage, spot: PdfBookmarkSpot, length?: number): boolean {
   const spans = [...host.querySelectorAll<HTMLElement>('[data-start-offset]')];
   if (!spans.length) {
     if (!host.hasAttribute('tabindex')) host.setAttribute('tabindex', '-1');
@@ -223,7 +228,7 @@ function landOnPdfSpot(host: HTMLElement, page: PdfPage, spot: PdfBookmarkSpot):
       offset = Number(last.dataset.startOffset);
     }
   }
-  const length = Math.max(1, Number(span.dataset.endOffset) - offset);
+  const spanLength = Math.max(1, Number(span.dataset.endOffset) - offset);
   const block = span.closest<HTMLElement>('[tabindex]');
   if (!block) return false;
   // Focus first, then select: focusing after selecting can drop the
@@ -234,7 +239,10 @@ function landOnPdfSpot(host: HTMLElement, page: PdfPage, spot: PdfBookmarkSpot):
   } catch {
     // Scrolling is best-effort; the focus landing is what matters.
   }
-  const selected = page.selectTextRange(offset, length, host);
+  const selected =
+    length !== undefined && length > 0
+      ? page.selectTextRange(offset, length, host) || page.selectTextRange(offset, spanLength, host)
+      : page.selectTextRange(offset, spanLength, host);
   const selection = window.getSelection();
   return (
     document.activeElement === block &&
@@ -729,6 +737,61 @@ function PdfReader({
     };
   }, [pdfBookmarkRef, getCurrentPdfSpot, jumpToPdfSpot]);
 
+  /**
+   * Jump to a PDF annotation's page and spot: the annotated text
+   * itself, not just its page. The page turn renders asynchronously,
+   * so the jump waits for the page's accessible text the same way a
+   * bookmark jump does — the render effects land a pending jump the
+   * moment they render its page, and this poll lands it when the page
+   * is already rendered (a jump on the current page renders nothing
+   * new). The old annotation path selected first and focused after,
+   * which can drop the selection, and in continuous view a jump to
+   * another page never landed at all: the page scrolled but the
+   * pending note was only consumed by the initial full render.
+   * Returns true only when focus and a live selection both landed on
+   * the annotated text.
+   */
+  const jumpToPdfAnnotation = useCallback(
+    (page: number, offset: number, length: number): Promise<boolean> => {
+      if (page < 1) return Promise.resolve(false);
+      if (document && page > pageCountRef.current) return Promise.resolve(false);
+      pendingNote.current = { page, offset, length };
+      goToPage(page);
+      return new Promise<boolean>((resolve) => {
+        const started = Date.now();
+        const tick = () => {
+          if (!pendingNote.current) {
+            resolve(true);
+            return;
+          }
+          if (pageCountRef.current > 0 && page > pageCountRef.current) {
+            pendingNote.current = null;
+            resolve(false);
+            return;
+          }
+          if (isPdfSpotRendered(page)) {
+            const host = pdfSpotHost(page);
+            const pdfPage = pdfSpotPage(page);
+            const landed = !!host && !!pdfPage && landOnPdfSpot(host, pdfPage, { page, offset }, length);
+            pendingNote.current = null;
+            resolve(landed);
+            return;
+          }
+          if (Date.now() - started > 8000) {
+            pendingNote.current = null;
+            resolve(false);
+            return;
+          }
+          setTimeout(tick, 100);
+        };
+        // The first tick waits a beat so a programmatic page scroll in
+        // continuous view settles before the landing scrolls the spot.
+        setTimeout(tick, 50);
+      });
+    },
+    [document, goToPage, isPdfSpotRendered, pdfSpotHost, pdfSpotPage],
+  );
+
   const missingRequired = useMemo(
     () => missingRequiredPdfFormFields(formFields, formValues),
     [formFields, formValues],
@@ -959,14 +1022,10 @@ function PdfReader({
           applyPdfReadingPreferences(semantic, preferencesRef.current);
           setRendered({ page, scale: renderScale, rotation });
           const note = pendingNote.current;
-          if (note?.page === page.pageNum) {
-            page.selectTextRange(note.offset, note.length, semantic);
-            const span = Array.from(semantic.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
-              (candidate) =>
-                Number(candidate.dataset.startOffset) <= note.offset &&
-                Number(candidate.dataset.endOffset) > note.offset,
-            );
-            span?.closest<HTMLElement>('[tabindex]')?.focus();
+          if (
+            note?.page === page.pageNum &&
+            landOnPdfSpot(semantic, page, { page: note.page, offset: note.offset }, note.length)
+          ) {
             pendingNote.current = null;
           }
           const bookmarkJump = pendingBookmarkJump.current;
@@ -1108,23 +1167,23 @@ function PdfReader({
           }
         }
         const note = pendingNote.current;
+        let noteLanded = false;
         if (note) {
           const entry = continuousPagesRef.current.get(note.page);
           const host = semantic.querySelector<HTMLElement>(`[data-pdf-page="${note.page}"]`);
-          if (entry && host) {
-            entry.page.selectTextRange(note.offset, note.length, host);
-            const span = Array.from(host.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
-              (candidate) =>
-                Number(candidate.dataset.startOffset) <= note.offset &&
-                Number(candidate.dataset.endOffset) > note.offset,
-            );
-            span?.closest<HTMLElement>('[tabindex]')?.focus();
+          if (
+            entry &&
+            host &&
+            landOnPdfSpot(host, entry.page, { page: note.page, offset: note.offset }, note.length)
+          ) {
             pendingNote.current = null;
             scrollToPageRef.current = note.page;
+            noteLanded = true;
           }
         }
-        // A bookmark jump lands on its own spot, so the page-top scroll
-        // below stays out of its way once the landing is made.
+        // A bookmark or annotation jump lands on its own spot, so the
+        // page-top scroll below stays out of its way once the landing
+        // is made.
         const bookmarkJump = pendingBookmarkJump.current;
         let bookmarkLanded = false;
         if (bookmarkJump) {
@@ -1137,7 +1196,7 @@ function PdfReader({
         }
         const target = scrollToPageRef.current ?? pageNumberRef.current;
         scrollToPageRef.current = null;
-        if (!bookmarkLanded) scrollPageIntoView(target);
+        if (!bookmarkLanded && !noteLanded) scrollPageIntoView(target);
       } catch {
         if (!cancelled) setRenderError('This PDF could not be rendered. The extracted text remains available.');
       }
@@ -1463,24 +1522,7 @@ function PdfReader({
           visualRef={visualRef}
           semanticRef={semanticRef}
           rendered={rendered}
-          onNavigate={(page, offset, length) => {
-            pendingNote.current = { page, offset, length };
-            if (page === pageNumber && activePage && semanticRef.current) {
-              // In continuous view the container holds every page, and
-              // offsets restart at zero on each page, so the selection
-              // must be scoped to the note's own page.
-              const layer = continuous
-                ? semanticRef.current.querySelector<HTMLElement>(`[data-pdf-page="${page}"]`) ?? semanticRef.current
-                : semanticRef.current;
-              activePage.selectTextRange(offset, length, layer);
-              const span = Array.from(layer.querySelectorAll<HTMLElement>('[data-start-offset]')).find(
-                (candidate) =>
-                  Number(candidate.dataset.startOffset) <= offset && Number(candidate.dataset.endOffset) > offset,
-              );
-              span?.closest<HTMLElement>('[tabindex]')?.focus();
-              pendingNote.current = null;
-            } else goToPage(page);
-          }}
+          onNavigate={async (page, offset, length) => jumpToPdfAnnotation(page, offset, length)}
         />
       ) : renderError ? (
         <PdfUnavailableNotes path={path} reason={renderError} />
