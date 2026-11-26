@@ -229,13 +229,12 @@ if (!app.requestSingleInstanceLock()) {
 
   app.whenReady().then(async () => {
     if (process.platform === 'win32') app.setAppUserModelId('com.ripplelearning.a11ynotebook');
-    // Renderer permissions stay blocked except the microphone, which
-    // dictation and audio notes need. getUserMedia({ audio: true }) can
-    // never succeed while the handler denies every request: the call
-    // rejects with "Permission denied" and the user has no prompt and
-    // no way to grant it. Only audio capture from the app's own pages
-    // is granted; video, screen capture, and every other permission
-    // stay denied.
+    // Renderer permissions stay blocked except audio-only microphone
+    // capture, which dictation and audio notes need. Only audio capture
+    // from the app's own pages is granted; video, screen capture, and
+    // every other permission stay denied. A microphone blocked by the
+    // operating system is not changed by this handler — the app shows
+    // a dialog telling the user how to allow it instead.
     session.defaultSession.setPermissionRequestHandler((webContents, permission, callback, details) => {
       const requestingUrl = details.requestingUrl || webContents.getURL();
       const audioOnly =

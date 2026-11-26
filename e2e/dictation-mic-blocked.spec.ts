@@ -15,12 +15,28 @@ import {
 /**
  * Dictation microphone (1.9.25 retest): pressing Alt+Ctrl+D, choosing a
  * model, and getting "Dictation stopped: Permission denied" with no way
- * to retry or grant permission. The app itself was denying every
- * microphone request in the main process, so the failure was not the
- * user's settings at all — and the only feedback was a status line.
- * The blocked-microphone dialog now explains how to allow the mic and
- * offers Retry (microphone only, no model choice again) and Cancel.
- * F9 mutes and unmutes the microphone while a session is active.
+ * to retry or grant permission. In this Electron version getUserMedia
+ * does not consult the main-process permission handlers, so the denial
+ * Tristen saw came from the operating system's microphone privacy
+ * setting — not from the app. The fix is the experience, not the
+ * handler: a denied microphone now opens an announced dialog that
+ * explains how to allow it (Windows Settings → Privacy & security →
+ * Microphone) and offers Retry (microphone only, no model choice
+ * again) and Cancel, instead of a dead-end status line. F9 mutes and
+ * unmutes the microphone while a session is active.
+ *
+ * The denied-microphone test stubs getUserMedia in the live renderer
+ * page to reject with NotAllowedError, because no Electron permission
+ * mechanism denies the microphone in E2E (the session handlers are
+ * not consulted for getUserMedia here, and the flags do not deny it).
+ * The stub drives the app's real denial path: startDictation →
+ * recorder → dialog → Retry re-runs the microphone request.
+ *
+ * The F9 test runs first: it pays the cold Vite compile, so the second
+ * test starts against a warm dev server. Dictation state is asserted
+ * through the status line, not the Dictate button — the button hides
+ * unless command buttons are turned on in Settings, while the
+ * Alt+Ctrl+D shortcut works either way.
  */
 
 const NOTE_CONTENT = '# Field Notes\n\nIntro paragraph at the top of the note.\n';
@@ -43,46 +59,6 @@ async function chooseModel(page: import('@playwright/test').Page): Promise<void>
   await modelDialog.getByRole('button', { name: 'Download model' }).click();
 }
 
-test('denied microphone shows the blocked dialog with Retry, and Alt+Ctrl+D retries', async () => {
-  const paths = seed();
-  const { app, page } = await launchApp(paths.userDataDir);
-  try {
-    // Deny every permission request in the main process: the same
-    // denial the app used to ship with, so getUserMedia rejects with
-    // "Permission denied" exactly as Tristen saw it.
-    await app.evaluate(async ({ session }) => {
-      session.defaultSession.setPermissionRequestHandler((_webContents, _permission, callback) =>
-        callback(false),
-      );
-    });
-    await waitForApp(page);
-    await dismissTutorial(page);
-    await openNoteInEditMode(page);
-
-    await pressShortcut(page, 'Control+Alt+D');
-    await chooseModel(page);
-    const blocked = page.getByRole('alertdialog', { name: 'Microphone is blocked' });
-    await expect(blocked).toBeVisible({ timeout: 15000 });
-    await expect(blocked.getByText(/cannot use the microphone/)).toBeVisible();
-
-    // Retry tries the microphone again (still denied) — the dialog stays.
-    await blocked.getByRole('button', { name: 'Retry' }).click();
-    await expect(page.getByRole('alertdialog', { name: 'Microphone is blocked' })).toBeVisible();
-
-    // Cancel closes it; Alt+Ctrl+D again goes straight back to the
-    // blocked dialog — the model is already chosen, so no model
-    // dialog appears a second time.
-    await blocked.getByRole('button', { name: 'Cancel' }).click();
-    await expect(blocked).toHaveCount(0);
-    await pressShortcut(page, 'Control+Alt+D');
-    await expect(page.getByRole('alertdialog', { name: 'Microphone is blocked' })).toBeVisible({
-      timeout: 15000,
-    });
-  } finally {
-    await closeApp(app, paths);
-  }
-});
-
 test('F9 mutes and unmutes the microphone during dictation', async () => {
   const paths = seed();
   const { app, page } = await launchApp(paths.userDataDir, [
@@ -96,7 +72,6 @@ test('F9 mutes and unmutes the microphone during dictation', async () => {
 
     await pressShortcut(page, 'Control+Alt+D');
     await chooseModel(page);
-    await expect(page.getByRole('button', { name: 'Stop dictation' })).toBeVisible({ timeout: 15000 });
     await expect(statusLine(page)).toContainText('Dictating.');
 
     await pressShortcut(page, 'F9');
@@ -110,6 +85,53 @@ test('F9 mutes and unmutes the microphone during dictation', async () => {
     await expect(statusLine(page)).toContainText(
       'Dictation stopped. The note was closed, so the recording was not saved.',
     );
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('denied microphone shows the blocked dialog with Retry, and Alt+Ctrl+D retries', async () => {
+  const paths = seed();
+  const { app, page } = await launchApp(paths.userDataDir);
+  try {
+    await waitForApp(page);
+    await dismissTutorial(page);
+    // Stub the microphone in the live page so getUserMedia rejects
+    // exactly as a blocked microphone does (NotAllowedError), and
+    // count the calls so Retry can be shown to re-run the request.
+    await page.evaluate(() => {
+      (window as unknown as { __gumCalls: number }).__gumCalls = 0;
+      navigator.mediaDevices.getUserMedia = async () => {
+        (window as unknown as { __gumCalls: number }).__gumCalls += 1;
+        throw new DOMException('Permission denied', 'NotAllowedError');
+      };
+    });
+    const gumCalls = (): Promise<number> =>
+      page.evaluate(() => (window as unknown as { __gumCalls: number }).__gumCalls);
+    await openNoteInEditMode(page);
+
+    await pressShortcut(page, 'Control+Alt+D');
+    await chooseModel(page);
+    const blocked = page.getByRole('alertdialog', { name: 'Microphone is blocked' });
+    await expect(blocked).toBeVisible({ timeout: 15000 });
+    await expect(blocked.getByText(/cannot use the microphone/)).toBeVisible();
+    expect(await gumCalls()).toBe(1);
+
+    // Retry tries the microphone again (still denied) — the dialog stays.
+    await blocked.getByRole('button', { name: 'Retry' }).click();
+    await expect(page.getByRole('alertdialog', { name: 'Microphone is blocked' })).toBeVisible();
+    expect(await gumCalls()).toBe(2);
+
+    // Cancel closes it; Alt+Ctrl+D again goes straight back to the
+    // blocked dialog — the model is already chosen, so no model
+    // dialog appears a second time.
+    await blocked.getByRole('button', { name: 'Cancel' }).click();
+    await expect(blocked).toHaveCount(0);
+    await pressShortcut(page, 'Control+Alt+D');
+    await expect(page.getByRole('alertdialog', { name: 'Microphone is blocked' })).toBeVisible({
+      timeout: 15000,
+    });
+    expect(await gumCalls()).toBe(3);
   } finally {
     await closeApp(app, paths);
   }
