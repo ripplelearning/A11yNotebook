@@ -14,6 +14,7 @@ import {
   launchApp,
   openGridEntry,
   openNotebook,
+  pressShortcut,
   seedLibrary,
   waitForApp,
   type SeedPaths,
@@ -103,7 +104,7 @@ async function createAnnotation(page: Page, phrase: string, label: string): Prom
   // The accessible text renders asynchronously after the page opens;
   // keep trying the selection until the spans are there.
   await expect.poll(() => selectPhrase(page, phrase), { timeout: 60000 }).toBe(true);
-  await page.keyboard.press('Control+Alt+a');
+  await pressShortcut(page, 'Control+Alt+a');
   const dialog = page.getByRole('dialog', { name: 'Create PDF note' });
   await expect(dialog).toBeVisible({ timeout: 10000 });
   await dialog.getByRole('textbox', { name: 'Label (optional)' }).fill(label);
