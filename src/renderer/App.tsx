@@ -153,6 +153,7 @@ import type { AttachmentPreview } from '../shared/attachments';
 import { AudioRecorder, type FinishedRecording } from './features/audio/recorder';
 import { LocalTranscriber } from './features/audio/transcription';
 import { TranscriptionModelDialog } from './features/audio/TranscriptionModelDialog';
+import { DictationMicBlockedDialog } from './features/audio/DictationMicBlockedDialog';
 import { saveRecording } from './features/audio/save-recording';
 import {
   audioMimeType,
@@ -632,12 +633,23 @@ export default function App() {
     | { mode: 'edit'; path: string; title: string; url: string };
   const [linkDialog, setLinkDialog] = useState<LinkDialogState | null>(null);
   const [dictationActive, setDictationActive] = useState(false);
+  const [dictationMuted, setDictationMuted] = useState(false);
   const [transcriptionModelChoiceOpen, setTranscriptionModelChoiceOpen] = useState(false);
+  // The model the blocked-microphone dialog retries with: the model was
+  // already chosen (and saved in settings), so Retry never asks again.
+  const [dictationMicBlockedModel, setDictationMicBlockedModel] = useState<
+    TranscriptionModelOption['id'] | null
+  >(null);
   const [audioNoteRecording, setAudioNoteRecording] = useState(false);
   const [transcribingAudio, setTranscribingAudio] = useState(false);
   const dictationRecorderRef = useRef<AudioRecorder | null>(null);
   const dictationTranscriberRef = useRef<LocalTranscriber | null>(null);
   const dictationStartPendingRef = useRef(false);
+  // The note the active dictation session belongs to: leaving it (note
+  // closed, another note or view, reading mode, focus out of the text
+  // field) ends the session, so the session can only ever write into
+  // the note it started in.
+  const dictationNoteIdRef = useRef<string | null>(null);
   const audioNoteRecorderRef = useRef<AudioRecorder | null>(null);
   const transcribePendingRef = useRef<string | null>(null);
   const [taskDialogOpen, setTaskDialogOpen] = useState(false);
@@ -6437,7 +6449,7 @@ export default function App() {
   /** An AudioRecorder wired to the real microphone and MediaRecorder. */
   const createRealRecorder = (
     onFinished: (recording: FinishedRecording) => void,
-    onError: (message: string) => void,
+    onError: (message: string, name?: string) => void,
   ) =>
     new AudioRecorder(
       {
@@ -6454,6 +6466,8 @@ export default function App() {
             onerror: ((event: { error?: { message?: string } }) => void) | null;
             start: () => void;
             stop: () => void;
+            pause: () => void;
+            resume: () => void;
           } = {
             mimeType: mediaRecorder.mimeType,
             ondataavailable: null,
@@ -6461,6 +6475,8 @@ export default function App() {
             onerror: null,
             start: () => mediaRecorder.start(),
             stop: () => mediaRecorder.stop(),
+            pause: () => mediaRecorder.pause(),
+            resume: () => mediaRecorder.resume(),
           };
           mediaRecorder.ondataavailable = (event) => wrapped.ondataavailable?.({ data: event.data });
           mediaRecorder.onstop = () => wrapped.onstop?.();
@@ -6475,12 +6491,22 @@ export default function App() {
     );
 
   const startDictation = async (modelId: TranscriptionModelOption['id']) => {
+    dictationNoteIdRef.current = currentNote?.id ?? null;
     const recorder = createRealRecorder(
       (recording) => {
         void transcribeRecording(recording, modelId);
       },
-      (message) => {
+      (message, errorName) => {
         setDictationActive(false);
+        setDictationMuted(false);
+        // A blocked microphone used to strand the user with only this
+        // status line: no way to retry and no way to find out how to
+        // allow it. Open the announced dialog instead, which offers
+        // Retry (microphone only, no model choice again) and Cancel.
+        if (errorName === 'NotAllowedError' || message === 'Permission denied') {
+          setDictationMicBlockedModel(modelId);
+          return;
+        }
         setStatusMessage(`Dictation stopped: ${message}`);
       },
     );
@@ -6488,7 +6514,100 @@ export default function App() {
     await recorder.start();
     if (recorder.status === 'recording') {
       setDictationActive(true);
-      setStatusMessage('Dictating. Press Ctrl+Alt+D again to stop.');
+      setDictationMuted(false);
+      setStatusMessage('Dictating. Press Ctrl+Alt+D again to stop, or F9 to turn the microphone off.');
+    }
+  };
+
+  /**
+   * End a dictation session because the user left the editing context
+   * (note closed, another note or view, reading mode, focus out of the
+   * text field). The recorder stops and the microphone is released, and
+   * the partial recording is dropped, not transcribed: inserting it
+   * would write into a note the user is no longer editing, or into
+   * another note entirely. Only the explicit Alt+Ctrl+D stop
+   * transcribes and inserts.
+   */
+  const endDictationOnTransition = useCallback(
+    (reason: 'closed' | 'left') => {
+      if (!dictationActive) return;
+      dictationRecorderRef.current?.stop({ discardFinishedRecording: true });
+      dictationRecorderRef.current = null;
+      setDictationActive(false);
+      setDictationMuted(false);
+      setStatusMessage(
+        reason === 'closed'
+          ? 'Dictation stopped. The note was closed, so the recording was not saved.'
+          : 'Dictation stopped. You left the note, so the recording was not saved.',
+      );
+    },
+    [dictationActive],
+  );
+
+  // Dictation runs only while the user is actively editing the dictated
+  // note's text field. The effect covers the note closing, switching to
+  // another note or view (the current note changes), and switching to
+  // reading mode; the focusin listener below covers focus leaving the
+  // text field while the note stays open. F9 never ends the session.
+  useEffect(() => {
+    if (!dictationActive) return;
+    const noteId = dictationNoteIdRef.current;
+    if (!noteId) return;
+    if (!openNotes.some((note) => note.id === noteId)) {
+      endDictationOnTransition('closed');
+      return;
+    }
+    if (currentNote?.id !== noteId || mode !== 'edit') {
+      endDictationOnTransition('left');
+    }
+  }, [dictationActive, currentNote?.id, mode, openNotes, endDictationOnTransition]);
+
+  // Focus leaving the note's text field ends the session (see the
+  // effect above): this listener watches for it. The Dictate/Stop
+  // button is exempt — moving focus there is how the user stops with
+  // the mouse, and its click transcribes instead of dropping the
+  // recording. With no editor mounted the effect above owns the
+  // decision, so the listener stays out of it.
+  const dictationFocusCheckerRef = useRef<() => void>(() => {});
+  dictationFocusCheckerRef.current = () => {
+    if (!dictationActive) return;
+    const editor = editorRef.current;
+    if (!editor) return;
+    const target = document.activeElement;
+    if (target === editor) return;
+    if (target instanceof HTMLElement && target.closest('[data-dictation-toggle]')) return;
+    endDictationOnTransition('left');
+  };
+  useEffect(() => {
+    const listener = () => dictationFocusCheckerRef.current();
+    window.addEventListener('focusin', listener);
+    return () => window.removeEventListener('focusin', listener);
+  }, []);
+
+  const toggleDictationMicrophone = () => {
+    if (!dictationActive) {
+      setStatusMessage('Dictation is not active.');
+      return;
+    }
+    const recorder = dictationRecorderRef.current;
+    if (!recorder) {
+      setStatusMessage('Dictation is not active.');
+      return;
+    }
+    if (dictationMuted) {
+      if (recorder.resume()) {
+        setDictationMuted(false);
+        setStatusMessage('Microphone on.');
+      } else {
+        setStatusMessage('The microphone could not be turned back on.');
+      }
+      return;
+    }
+    if (recorder.pause()) {
+      setDictationMuted(true);
+      setStatusMessage('Microphone off.');
+    } else {
+      setStatusMessage('The microphone could not be turned off.');
     }
   };
 
@@ -6496,6 +6615,7 @@ export default function App() {
     if (dictationActive) {
       dictationRecorderRef.current?.stop();
       setDictationActive(false);
+      setDictationMuted(false);
       setStatusMessage('Stopping dictation.');
       return;
     }
@@ -7215,6 +7335,7 @@ export default function App() {
         setTaskTabOpen(true);
         navigateScreen('tasks');
       },
+      toggleDictationMicrophone,
       toggleBookmark: () => void toggleActiveBookmark(),
       bookmarkHeadingAtCursor: () => void addAnchoredBookmark('heading'),
       bookmarkPositionAtCursor: () => void addAnchoredBookmark('position'),
@@ -7326,6 +7447,17 @@ export default function App() {
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
+    // F9 mutes or unmutes the microphone while dictation is active.
+    // F9 is also the Toggle right pane shortcut, and the command
+    // registry forbids two commands sharing a shortcut, so the mic
+    // toggle is wired here instead of in the registry: while dictating
+    // F9 owns the microphone, and otherwise it keeps toggling the
+    // right pane as before.
+    if (dictationActive && matchesShortcut(event, 'F9', isMac)) {
+      event.preventDefault();
+      toggleDictationMicrophone();
+      return;
+    }
     const command = COMMANDS.find((item) =>
       effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases, isMac).some((shortcut) =>
         matchesShortcut(event, shortcut, isMac),
@@ -8593,7 +8725,12 @@ export default function App() {
                         <button type="button" onClick={() => void addAnchoredBookmark('position')}>
                           Bookmark position at cursor
                         </button>
-                        <button type="button" aria-pressed={dictationActive} onClick={() => toggleDictation()}>
+                        <button
+                          type="button"
+                          data-dictation-toggle
+                          aria-pressed={dictationActive}
+                          onClick={() => toggleDictation()}
+                        >
                           {dictationActive ? 'Stop dictation' : 'Dictate'}
                         </button>
                       </>
@@ -9324,6 +9461,19 @@ export default function App() {
           onCancel={() => {
             dictationStartPendingRef.current = false;
             setTranscriptionModelChoiceOpen(false);
+          }}
+        />
+      ) : null}
+      {dictationMicBlockedModel ? (
+        <DictationMicBlockedDialog
+          onRetry={() => {
+            const modelId = dictationMicBlockedModel;
+            setDictationMicBlockedModel(null);
+            void startDictation(modelId);
+          }}
+          onCancel={() => {
+            setDictationMicBlockedModel(null);
+            setStatusMessage('Dictation is off. The microphone is blocked.');
           }}
         />
       ) : null}

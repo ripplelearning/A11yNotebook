@@ -124,10 +124,14 @@ export function seedLibrary(notebooks: SeedNotebook[], baseDir?: string): SeedPa
  * it on demand if the postinstall step skipped it. A hardcoded
  * node_modules/electron/dist/electron path is missing on Windows (no .exe)
  * and breaks whenever the binary was never downloaded.
+ *
+ * `extraArgs` adds Chromium/Electron flags for one test: the dictation
+ * tests pass the fake-media flags so getUserMedia succeeds without a
+ * real microphone.
  */
-export async function launchApp(userDataDir: string): Promise<{ app: ElectronApplication; page: Page }> {
+export async function launchApp(userDataDir: string, extraArgs: string[] = []): Promise<{ app: ElectronApplication; page: Page }> {
   const app = await electron.launch({
-    args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`],
+    args: ['.', '--no-sandbox', '--disable-gpu', `--user-data-dir=${userDataDir}`, ...extraArgs],
   });
   const page = await app.firstWindow();
   return { app, page };
