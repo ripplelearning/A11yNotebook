@@ -18,7 +18,12 @@ export function missingBuiltInTemplates(templatePaths: string[]): NoteTemplate[]
   const present = new Set(
     templatePaths
       .filter((path) => path.startsWith(`${TEMPLATES_FOLDER}/`))
-      .map((path) => path.slice(TEMPLATES_FOLDER.length + 1).replace(/\.(?:md|html|htm|txt)$/i, '').toLowerCase()),
+      .map((path) =>
+        path
+          .slice(TEMPLATES_FOLDER.length + 1)
+          .replace(/\.(?:md|html|htm|txt)$/i, '')
+          .toLowerCase(),
+      ),
   );
   return BUILT_IN_TEMPLATES.filter((template) => !present.has(template.name.toLowerCase()));
 }
@@ -29,8 +34,10 @@ export function templateNameExists(templatePaths: string[], name: string): boole
   return templatePaths.some(
     (path) =>
       path.startsWith(`${TEMPLATES_FOLDER}/`) &&
-      path.slice(TEMPLATES_FOLDER.length + 1).replace(/\.(?:md|html|htm|txt)$/i, '').toLowerCase() ===
-        wanted,
+      path
+        .slice(TEMPLATES_FOLDER.length + 1)
+        .replace(/\.(?:md|html|htm|txt)$/i, '')
+        .toLowerCase() === wanted,
   );
 }
 
@@ -76,17 +83,27 @@ export const BUILT_IN_TEMPLATES: NoteTemplate[] = [
   },
 ];
 
-/** Expand known placeholders in a single pass; unknown placeholders remain literal. */
-export function expandTemplate(template: string, context: TemplateContext): ExpandedTemplate {
+/**
+ * The filled-in text for each known placeholder (everything except
+ * {{cursor}}, which is a position marker, not text). Shared by
+ * expandTemplate() and by the template reading-view preview, so a
+ * preview shows exactly what a filled copy would fill in.
+ */
+export function knownPlaceholderValues(context: TemplateContext): Record<string, string> {
   const now = context.now ?? new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
-  const values: Record<string, string> = {
+  return {
     title: context.title,
     notebook: context.notebook,
     date: `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`,
     time: `${pad(now.getHours())}:${pad(now.getMinutes())}`,
     weekday: ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][now.getDay()],
   };
+}
+
+/** Expand known placeholders in a single pass; unknown placeholders remain literal. */
+export function expandTemplate(template: string, context: TemplateContext): ExpandedTemplate {
+  const values = knownPlaceholderValues(context);
   let content = '';
   let cursor: number | undefined;
   let previous = 0;
