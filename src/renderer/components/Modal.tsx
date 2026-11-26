@@ -41,10 +41,32 @@ type ModalProps = {
   restoreFocusTo?: HTMLElement | null;
 };
 
+// Modals can stack — the command palette opens over the search dialog,
+// for example, since App keeps their open state independent. Only the
+// topmost modal owns focus: every Modal used to enforce its own trap
+// with a document-level focusin listener, so the moment the top modal
+// took focus the modal beneath yanked it back, and the two ping-ponged
+// (via focusInitialElement) until the stack overflowed. The stack below
+// is in mount order; a modal's trap and key handling suspend while
+// another modal is open above it, and closing the top modal hands focus
+// back to the modal beneath.
+type StackedModal = {
+  id: number;
+  dialog: HTMLDivElement | null;
+};
+
+const modalStack: StackedModal[] = [];
+let nextModalId = 1;
+
+function isTopModal(id: number): boolean {
+  return modalStack.length > 0 && modalStack[modalStack.length - 1].id === id;
+}
+
 /**
  * Accessible modal dialog: labelled by its heading, moves focus inside on open,
  * keeps Tab and Shift+Tab within the dialog, closes on Escape, and restores focus
- * to the element that was focused before it opened.
+ * to the element that was focused before it opened. When another modal opens
+ * above it, this modal's trap suspends until it is the top modal again.
  */
 export default function Modal({
   titleId,
@@ -59,6 +81,13 @@ export default function Modal({
   const dialogRef = useRef<HTMLDivElement>(null);
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
+
+  // Stable identity for this modal's place in the stack.
+  const modalIdRef = useRef<number | null>(null);
+  if (modalIdRef.current === null) {
+    modalIdRef.current = nextModalId++;
+  }
+  const modalId = modalIdRef.current;
 
   // While any dialog is open, the window title names the dialog, so a
   // screen reader's title-bar shortcut (JAWS Insert+T) reads the dialog
@@ -76,13 +105,19 @@ export default function Modal({
     const previouslyFocused =
       restoreFocusTo ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
     const dialog = dialogRef.current;
+    const entry: StackedModal = { id: modalId, dialog };
+    modalStack.push(entry);
     if (dialog) {
       focusInitialElement(dialog);
     }
 
     // If focus escapes the dialog (for example, via a mouse click on the backdrop),
-    // bring it back inside.
+    // bring it back inside. Suspended while another modal is open above this
+    // one: only the top modal owns focus, or the two traps fight.
     const handleFocusIn = (event: FocusEvent) => {
+      if (!isTopModal(modalId)) {
+        return;
+      }
       if (dialog && event.target instanceof Node && !dialog.contains(event.target)) {
         focusInitialElement(dialog);
       }
@@ -91,13 +126,39 @@ export default function Modal({
 
     return () => {
       document.removeEventListener('focusin', handleFocusIn);
-      if ((role !== 'alertdialog' || document.hasFocus()) && previouslyFocused && previouslyFocused.isConnected) {
+      const index = modalStack.indexOf(entry);
+      const wasTop = index === modalStack.length - 1;
+      if (index >= 0) {
+        modalStack.splice(index, 1);
+      }
+      // A modal closing from beneath the top one leaves focus where the
+      // top modal already has it; restoring its opener would land focus
+      // outside the top modal, which would only yank it straight back.
+      if (
+        wasTop &&
+        (role !== 'alertdialog' || document.hasFocus()) &&
+        previouslyFocused &&
+        previouslyFocused.isConnected
+      ) {
         previouslyFocused.focus();
       }
+      // If focus did not land inside the modal now on top — its opener
+      // was removed while this modal was open, for example — move it
+      // there: a modal must never leave focus stranded outside itself.
+      const next = modalStack[modalStack.length - 1];
+      if (next?.dialog && !next.dialog.contains(document.activeElement)) {
+        focusInitialElement(next.dialog);
+      }
     };
-  }, [role, restoreFocusTo]);
+  }, [role, restoreFocusTo, modalId]);
 
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    // Only the top modal answers keys: Escape pressed while focus is
+    // somehow in a modal beneath must close the top modal, not this one,
+    // and a lower modal must not trap Tab while the top modal owns focus.
+    if (!isTopModal(modalId)) {
+      return;
+    }
     if (event.key === 'Escape') {
       event.preventDefault();
       event.stopPropagation();
