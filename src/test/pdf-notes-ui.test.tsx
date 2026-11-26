@@ -90,12 +90,14 @@ function Harness({
   path = 'book.pdf',
   scale = 0.75,
   rotation = 0,
+  onNavigate = vi.fn(async () => true),
 }: {
   pdf: PdfDocument;
   page: PdfPage;
   path?: string;
   scale?: number;
   rotation?: number;
+  onNavigate?: (page: number, offset: number, length: number) => Promise<boolean>;
 }) {
   const readerRef = useRef<HTMLElement>(null);
   const visualRef = useRef<HTMLDivElement>(null);
@@ -122,7 +124,7 @@ function Harness({
         visualRef={visualRef}
         semanticRef={semanticRef}
         rendered={{ page, scale, rotation }}
-        onNavigate={vi.fn()}
+        onNavigate={onNavigate}
       />
     </section>
   );
@@ -885,15 +887,51 @@ describe('PDF notes heading and in-text note buttons', () => {
     },
   };
 
-  it('renders the saved-notes list under a real heading', async () => {
+  it('renders the annotations list under a real Annotations heading', async () => {
     const { pdf, page } = setup([note]);
     render(<Harness pdf={pdf} page={page} />);
-    const heading = await screen.findByRole('heading', { name: 'Saved PDF notes' });
+    const heading = await screen.findByRole('heading', { name: 'Annotations' });
     expect(heading.tagName).toBe('H4');
     expect(heading.id).toBeTruthy();
-    const list = screen.getByRole('list', { name: 'Saved PDF notes' });
+    const list = screen.getByRole('list', { name: 'Annotations' });
     expect(list).toBeInTheDocument();
     expect(list).toHaveAttribute('aria-labelledby', heading.id);
+  });
+
+  it('activating a note jumps to its page and offsets and announces the jump', async () => {
+    const { pdf, page } = setup([note, secondNote]);
+    const onNavigate = vi.fn(async () => true);
+    render(<Harness pdf={pdf} page={page} onNavigate={onNavigate} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Second — yellow, page 1' }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(1, 12, 5));
+    expect(await screen.findByText('Jumped to annotation: Second.')).toBeInTheDocument();
+  });
+
+  it('says the annotation could not be located when the jump does not land', async () => {
+    const { pdf, page } = setup([note]);
+    const onNavigate = vi.fn(async () => false);
+    render(<Harness pdf={pdf} page={page} onNavigate={onNavigate} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Important — yellow, page 1' }));
+    await waitFor(() => expect(onNavigate).toHaveBeenCalledWith(1, 0, 5));
+    expect(await screen.findByText('That annotation could not be located in the PDF text.')).toBeInTheDocument();
+  });
+
+  it('does not navigate an orphaned note, and says it has no unique location', async () => {
+    const { pdf, page } = setup([note]);
+    vi.mocked(pdf.resolveAnnotationAnchor).mockResolvedValue({
+      orphaned: true,
+      classification: 'orphan',
+      confidence: 'uncertain',
+      verification: 'unverified',
+      reason: 'The original text was removed.',
+    });
+    const onNavigate = vi.fn(async () => true);
+    render(<Harness pdf={pdf} page={page} onNavigate={onNavigate} />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Important — yellow, page 1' }));
+    await waitFor(() =>
+      expect(screen.getByText('This note has no unique location. Review its original quotation below.')).toBeInTheDocument(),
+    );
+    expect(onNavigate).not.toHaveBeenCalled();
   });
 
   it('inserts a Note button at each annotation on the current page that jumps to the note', async () => {
@@ -914,7 +952,7 @@ describe('PDF notes heading and in-text note buttons', () => {
     const { pdf, page } = setup([]);
     render(<Harness pdf={pdf} page={page} />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
-    expect(screen.queryByRole('heading', { name: 'Saved PDF notes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Annotations' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /^Note\d+$/ })).not.toBeInTheDocument();
   });
 
@@ -944,7 +982,7 @@ describe('PDF notes heading and in-text note buttons', () => {
     render(<Harness pdf={pdf} page={page} />);
     await screen.findByRole('button', { name: 'Important — yellow, page 1' });
     expect(screen.queryByRole('button', { name: 'Note1' })).not.toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: 'Saved PDF notes' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Annotations' })).toBeInTheDocument();
   });
 
   it('shows no notes from another PDF in the open PDF', async () => {
@@ -953,7 +991,7 @@ describe('PDF notes heading and in-text note buttons', () => {
     render(<Harness pdf={pdf} page={page} path="other.pdf" />);
     await waitFor(() => expect(screen.getByRole('button', { name: 'Create PDF note' })).toBeEnabled());
     expect(api.listPdfAnnotations).toHaveBeenCalledWith('other.pdf');
-    expect(screen.queryByRole('heading', { name: 'Saved PDF notes' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Annotations' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Note1' })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Important —/ })).not.toBeInTheDocument();
   });

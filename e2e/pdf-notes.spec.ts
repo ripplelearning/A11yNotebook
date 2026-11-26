@@ -14,7 +14,7 @@ import {
 
 /**
  * PDF notes end-to-end pass: a note created on a quotation shows the
- * notes list under a real "Saved PDF notes" heading, an in-text
+ * notes list under a real "Annotations" heading, an in-text
  * "Note1"/"Note2" button appears at each annotation in the accessible
  * page text, activating one moves focus to that note in the list, and
  * notes from one PDF never appear in another PDF.
@@ -99,7 +99,7 @@ test('PDF notes have a heading and in-text Note buttons that jump to the note', 
     await annotateQuote(page, 'liquor jugs', 'Jugs note');
 
     // The notes list sits under a real heading, not styled text.
-    await expect(page.getByRole('heading', { name: 'Saved PDF notes' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Annotations' })).toBeVisible();
 
     // One in-text button per annotation, in the accessible page text.
     const pageText = page.getByRole('region', { name: 'Accessible text for PDF page 1' });
@@ -117,7 +117,7 @@ test('PDF notes have a heading and in-text Note buttons that jump to the note', 
     await openNotebook(page, 'Notes');
     await openGridEntry(page, 'Other.pdf');
     await expect(page.getByRole('heading', { name: 'Page text' })).toBeVisible({ timeout: 30000 });
-    await expect(page.getByRole('heading', { name: 'Saved PDF notes' })).toHaveCount(0);
+    await expect(page.getByRole('heading', { name: 'Annotations' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Note1' })).toHaveCount(0);
     await expect(page.getByRole('button', { name: /Fox note —/ })).toHaveCount(0);
 
