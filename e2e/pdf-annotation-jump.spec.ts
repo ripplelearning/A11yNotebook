@@ -179,13 +179,10 @@ test('continuous: activating an annotation on another page lands focus and selec
     });
     expect(moved).toBe(true);
     await page.getByRole('button', { name: 'Fox note — yellow, page 1' }).click();
-    // No page-heading check here: in continuous view the heading
-    // follows the scroll tracker, which reads the visual page stack —
-    // and the accessible text sits below that whole stack, so scrolling
-    // the page-1 text into view leaves the heading on page 2. That
-    // pre-existing tracker quirk also affects bookmark jumps; the
-    // landing itself (focus + selection) is what this test proves.
-    await expectLandedOnPhrase(page, 'quick brown fox', 'Fox note', false);
+    // The heading follows the landed page: the scroll tracker reads
+    // the visual and the accessible-text page stacks, so the landing
+    // scroll into the page-1 text does not leave it on page 2.
+    await expectLandedOnPhrase(page, 'quick brown fox', 'Fox note');
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);
@@ -201,9 +198,8 @@ test('same page: activating an annotation after moving focus away lands on the s
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   try {
-    // Paginated is the view under test here: in Continuous view the
-    // page heading follows the visual page stack, so 'Page 1 of 2'
-    // is not guaranteed after the jump (see the continuous test).
+    // Paginated is the view under test here: the continuous-view
+    // heading check lives in the continuous test above.
     await page
       .getByRole('region', { name: 'PDF document reader' })
       .getByRole('radio', { name: 'Paginated view' })
