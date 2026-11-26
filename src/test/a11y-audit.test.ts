@@ -124,6 +124,14 @@ describe('accessibility audit (axe, WCAG 2.2 AA)', () => {
   it('new task dialog has no WCAG AA violations', async () => {
     render(
       React.createElement(NewTaskDialog, {
+        options: [
+          { kind: 'note', path: 'Research/Plan.md' },
+          { kind: 'file', path: 'Research/Report.csv' },
+          { kind: 'link', path: 'Research/Example.url' },
+          { kind: 'notebook', path: 'Research' },
+        ],
+        busy: false,
+        error: '',
         onCreate: vi.fn(async () => undefined),
         onClose: vi.fn(),
       }),

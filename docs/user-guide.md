@@ -696,11 +696,16 @@ library is open, Quick Task asks for a library first. On macOS, Quick
 Task has no default shortcut; give it one under Settings → Keyboard
 Shortcuts.
 
-From the Notes and Files grid, open the context menu on a selected
-note, link, or file and choose **Create task**: the New Task dialog
-opens with that item already linked to the task — a note becomes the
-task's associated note, and a file or saved web link is attached to
-the created task.
+To make a task, open the New Task dialog: press Ctrl+N on the Tasks
+view, use the New task button there, pick New task from the command
+palette, or open the context menu on a selected note, link, or file in
+the Notes and Files grid and choose **Create task**. Every way opens
+the same dialog. In **Associate with**, pick what the task is
+associated with: a note holds the task as a checkbox, while a file, a
+saved web link, or a notebook is linked to the created task and the
+dialog names the note holding it. The list holds the library's notes,
+files, links, and notebooks; templates are never listed, since a task
+cannot live in a template.
 
 Open the context menu on a task row (Shift+F10, the Applications key, or
 right-click) for **Set due date**, which opens a dialog with a due date,

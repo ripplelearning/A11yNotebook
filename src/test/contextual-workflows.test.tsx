@@ -55,6 +55,10 @@ function setup(defaultNoteOpenMode: 'read' | 'edit' = 'read') {
       createNote: vi.fn(async () => vault),
       createNotebook: vi.fn(async () => vault),
       readNote: vi.fn(async () => '# Body'),
+      saveNote: vi.fn(async (path: string, content: string) => {
+        void path;
+        void content;
+      }),
       getTasks: vi.fn(async (): Promise<VaultTask[]> => []),
       getLinkIndex: vi.fn(async () => ({ links: [] })),
       getBookmarks: vi.fn(async () => []),
@@ -196,26 +200,45 @@ describe('contextual navigation and creation', () => {
     shortcut('4');
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    const input = within(dialog).getByRole('textbox', { name: 'Task text' });
+    const input = within(dialog).getByRole('textbox', { name: 'Task description' });
     expect(input).toHaveFocus();
-    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    expect(within(dialog).getByRole('alert')).toHaveTextContent('Enter task text.');
+    // With no task text the dialog cannot create: the button stays
+    // disabled instead of submitting an empty task.
+    expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
+    // Ctrl+N opens the same unified dialog as the grid menu: the task
+    // is saved as a checkbox in the associated note, never as a new
+    // task file, and templates are never offered as the note.
+    const options = await waitFor(() => {
+      const found = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
+      expect(found.map((option) => option.textContent)).toEqual([
+        'Research/Idea.md',
+        'Research/Other.md',
+        'Root.md',
+        'Research',
+        'Templates',
+      ]);
+      return found;
+    });
+    expect(options).toHaveLength(5);
     fireEvent.change(input, { target: { value: 'Plan review' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-    await waitFor(() =>
-      expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath: 'Research', text: 'Plan review', due: undefined, reminder: undefined, priority: 'normal' }),
-    );
+    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
+    const [path, content] = vi.mocked(bridge.vault.saveNote).mock.calls[0];
+    expect(path).toBe('Research/Idea.md');
+    expect(content).toContain('- [ ] Plan review');
     await waitFor(() => expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument());
   });
 
   it('keeps a failed task dialog open with its text and allows Escape cancellation', async () => {
     const { bridge } = setup();
-    bridge.vault.createTask.mockRejectedValueOnce(new Error('Task could not be saved.'));
+    bridge.vault.saveNote.mockRejectedValueOnce(new Error('Task could not be saved.'));
     await screen.findByRole('heading', { name: 'Study library' });
     shortcut('4');
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New task' });
-    const input = within(dialog).getByRole('textbox', { name: 'Task text' });
+    // Wait for the note list: creating while it loads is disabled.
+    await within(dialog).findByRole('option', { name: 'Research/Idea.md' });
+    const input = within(dialog).getByRole('textbox', { name: 'Task description' });
     fireEvent.change(input, { target: { value: 'Keep this text' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await screen.findByRole('alert');
@@ -224,28 +247,31 @@ describe('contextual navigation and creation', () => {
     expect(screen.queryByRole('dialog', { name: 'New task' })).not.toBeInTheDocument();
   });
 
-  it.each([
-    { filter: 'Planning', taskPath: 'Planning/Tasks.md', notebookPath: 'Planning' },
-    { filter: 'Root', taskPath: 'Tasks.md', notebookPath: undefined },
-  ])(
-    'prefers task filter $filter over the independently selected notebook',
-    async ({ filter, taskPath, notebookPath }) => {
-      const { bridge } = setup();
-      bridge.vault.getTasks.mockResolvedValue([
-        { id: 'existing-task', path: taskPath, line: 1, text: 'Existing task', complete: false },
-      ]);
-      await selectResearch();
-      shortcut('4');
-      fireEvent.change(screen.getByRole('combobox', { name: 'Notebook' }), { target: { value: filter } });
-      shortcut('n');
-      const dialog = screen.getByRole('dialog', { name: 'New task' });
-      fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task text' }), {
-        target: { value: 'Review plan' },
-      });
-      fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
-      await waitFor(() => expect(bridge.vault.createTask).toHaveBeenCalledWith({ notebookPath, text: 'Review plan', due: undefined, reminder: undefined, priority: 'normal' }));
-    },
-  );
+  it('opens the same unified dialog from Ctrl+N whatever the Tasks notebook filter is', async () => {
+    const { bridge } = setup();
+    bridge.vault.getTasks.mockResolvedValue([
+      { id: 'existing-task', path: 'Planning/Tasks.md', line: 1, text: 'Existing task', complete: false },
+    ]);
+    await selectResearch();
+    shortcut('4');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Notebook' }), { target: { value: 'Planning' } });
+    shortcut('n');
+    const dialog = screen.getByRole('dialog', { name: 'New task' });
+    // The filter narrows the table, not the dialog: every note in the
+    // library is still offered as the associated note.
+    await waitFor(() =>
+      expect(
+        within(within(dialog).getByLabelText('Associate with')).getAllByRole('option'),
+      ).toHaveLength(5),
+    );
+    fireEvent.change(within(dialog).getByLabelText('Associate with'), { target: { value: 'Root.md' } });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'Task description' }), {
+      target: { value: 'Review plan' },
+    });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
+    await waitFor(() => expect(bridge.vault.saveNote).toHaveBeenCalled());
+    expect(vi.mocked(bridge.vault.saveNote).mock.calls[0][0]).toBe('Root.md');
+  });
 
   it('cancels pending navigation speech when the visible New note control opens a dialog', async () => {
     setup();
