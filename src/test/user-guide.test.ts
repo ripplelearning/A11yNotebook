@@ -222,7 +222,8 @@ describe('the shipped guide file', () => {
 
   it('opens with the three introductory sections in order', () => {
     // The three parts are the first three top-level (level-2) sections;
-    // the feature sections sit under them as level-3 sections.
+    // the feature sections are their own part after them, as level-3
+    // sections under "Features in detail".
     const topLevel = sections.filter((section) => section.level === 2);
     expect(topLevel.slice(0, 3).map((section) => section.title)).toEqual([
       'Introduction to A11y Notebook',
@@ -230,6 +231,37 @@ describe('the shipped guide file', () => {
       'Accessibility features and accessibility settings',
     ]);
     expect(sections[0].title).toBe('Introduction to A11y Notebook');
+  });
+
+  it('keeps the feature sections after the three introductory sections', () => {
+    // The Introduction is short: no feature subsection sits inside it,
+    // and every feature section comes after the accessibility section.
+    expect(sections[0].markdown).not.toMatch(/^### /m);
+    const topLevel = sections.filter((section) => section.level === 2);
+    expect(topLevel.map((section) => section.title)).toEqual([
+      'Introduction to A11y Notebook',
+      'The user interface and how to navigate it using a keyboard',
+      'Accessibility features and accessibility settings',
+      'Features in detail',
+    ]);
+    const accessibilityIndex = sections.findIndex(
+      (section) => section.title === 'Accessibility features and accessibility settings',
+    );
+    const tasksIndex = sections.findIndex((section) => section.title === 'Tasks');
+    expect(tasksIndex).toBeGreaterThan(accessibilityIndex);
+  });
+
+  it('names the four view shortcuts in the user interface section', () => {
+    const ui = sections.find(
+      (section) => section.title === 'The user interface and how to navigate it using a keyboard',
+    );
+    expect(ui).toBeDefined();
+    // The guide wraps lines, so compare against whitespace-normalized text.
+    const text = ui?.markdown.replace(/\s+/g, ' ') ?? '';
+    expect(text).toContain('Ctrl+4 for Tasks');
+    expect(text).toContain('Ctrl+5 for Cognitive Tools');
+    expect(text).toContain('Ctrl+7 for Reminders');
+    expect(text).toContain('Ctrl+0 for the Contents view');
   });
 
   it('keeps the shortcuts section generated from the registry at render time', () => {

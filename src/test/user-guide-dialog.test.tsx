@@ -55,7 +55,7 @@ describe('UserGuideDialog', () => {
   it('opens with the three introductory sections first in the Table of Contents', () => {
     const { dialog } = setup();
     // The three parts are the first three level-2 headings; the feature
-    // sections sit under them as level-3 headings.
+    // sections sit after them as level-3 headings under "Features in detail".
     const topLevel = within(dialog)
       .getAllByRole('heading', { level: 2 })
       .filter((heading) => heading.textContent !== 'User Guide')
