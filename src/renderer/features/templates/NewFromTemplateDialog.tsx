@@ -145,6 +145,7 @@ export default function NewFromTemplateDialog({
           <label htmlFor={`${id}-template`}>Template</label>
           <select
             id={`${id}-template`}
+            data-autofocus
             value={templateId}
             onChange={(event) => setTemplateId(event.target.value)}
             disabled={creating}
@@ -182,7 +183,6 @@ export default function NewFromTemplateDialog({
           <label htmlFor={`${id}-name`}>Note title</label>
           <input
             id={`${id}-name`}
-            data-autofocus
             value={title}
             aria-describedby={error ? `${id}-error` : undefined}
             aria-invalid={Boolean(error)}
