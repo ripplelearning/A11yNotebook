@@ -134,7 +134,13 @@ function setup() {
 
 async function searchFor(text: string) {
   await screen.findByRole('heading', { name: 'Study' });
-  fireEvent.change(screen.getByLabelText('Global search'), { target: { value: text } });
+  const button = screen.getByRole('button', { name: 'Search' });
+  button.focus();
+  fireEvent.click(button);
+  const dialog = await screen.findByRole('dialog', { name: 'Search' });
+  const input = within(dialog).getByRole('combobox', { name: 'Global search' });
+  fireEvent.change(input, { target: { value: text } });
+  return { dialog, input };
 }
 
 function statusBar() {

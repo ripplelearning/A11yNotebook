@@ -110,6 +110,17 @@ function navigate(shortcut: string) {
   fireEvent.keyDown(document, { key: shortcut, ctrlKey: true });
 }
 
+async function openSearchDialog() {
+  const button = screen.getByRole('button', { name: 'Search' });
+  // jsdom does not move focus on click; focus the invoker first so the
+  // dialog's focus restore has somewhere to return to, as a real
+  // keyboard or mouse activation would.
+  button.focus();
+  fireEvent.click(button);
+  const dialog = await screen.findByRole('dialog', { name: 'Search' });
+  return { dialog, input: within(dialog).getByRole('combobox', { name: 'Global search' }) };
+}
+
 function expectResearchContext() {
   expect(screen.getByText('Items in Research')).toBeInTheDocument();
   const grid = screen.getByRole('grid', { name: 'Notes and files' });
@@ -463,24 +474,23 @@ describe('accessible details view', () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const { input } = await openSearchDialog();
     expect(screen.getByRole('radio', { name: 'Whole library' })).toBeChecked();
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    fireEvent.change(input, { target: { value: 'Idea' } });
     await waitFor(() => expect(bridge.vault.search).toHaveBeenCalledWith({ text: 'Idea', limit: 100 }));
     expect(await screen.findByText(/0 results shown \(up to 100\) in Whole library\./)).toBeInTheDocument();
   });
 
-  it('puts the search box first in the header with scope controls right after it', async () => {
+  it('puts the search box first in the search dialog with scope controls right after it', async () => {
     window.localStorage.clear();
     renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
-    const searchbox = screen.getByRole('searchbox', { name: 'Global search' });
-    const header = searchbox.closest('header');
-    expect(header?.firstElementChild).toContainElement(searchbox);
-    const scope = screen.getByRole('group', { name: 'Search scope' });
-    expect(searchbox.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const { dialog, input } = await openSearchDialog();
+    const scope = within(dialog).getByRole('group', { name: 'Search scope' });
+    expect(input.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('keeps the scope controls right after the search box even with no library open', async () => {
+  it('disables the Search button with no library open', async () => {
     window.localStorage.clear();
     window.localStorage.setItem('a11y-notebook.tutorial', JSON.stringify({ suppressed: true, lastVersionSeen: '' }));
     const bridge = {
@@ -504,11 +514,9 @@ describe('accessible details view', () => {
     } as unknown as NotebookBridge;
     window.a11yNotebook = bridge;
     render(<App />);
-    const searchbox = await screen.findByRole('searchbox', { name: 'Global search' });
-    const scope = screen.getByRole('group', { name: 'Search scope' });
-    expect(searchbox.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByRole('radio', { name: 'Current notebook (none selected)' })).toBeDisabled();
-    expect(screen.getByRole('radio', { name: 'Whole library' })).toBeDisabled();
+    const button = await screen.findByRole('button', { name: 'Search' });
+    expect(button).toBeDisabled();
+    expect(screen.queryByRole('group', { name: 'Search scope' })).not.toBeInTheDocument();
   });
 
   it('keeps the open tabs outside the main landmark', async () => {
@@ -527,9 +535,10 @@ describe('accessible details view', () => {
     navigate('2');
     fireEvent.keyDown(screen.getByRole('gridcell', { name: 'Research' }), { key: 'Enter' });
     expectResearchContext();
+    const { input } = await openSearchDialog();
     fireEvent.click(screen.getByRole('radio', { name: 'Current notebook: Research' }));
     expect(window.localStorage.getItem('a11y-notebook.search-scope')).toBe('current');
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    fireEvent.change(input, { target: { value: 'Idea' } });
     await waitFor(() =>
       expect(bridge.vault.search).toHaveBeenCalledWith({ text: 'Idea', notebook: 'Research', limit: 100 }),
     );
@@ -557,8 +566,9 @@ describe('accessible details view', () => {
     window.localStorage.clear();
     const { bridge } = renderLibrary();
     await screen.findByRole('heading', { name: 'Study', level: 2 });
+    const { input } = await openSearchDialog();
     fireEvent.click(screen.getByRole('radio', { name: 'Current notebook (none selected)' }));
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Global search' }), { target: { value: 'Idea' } });
+    fireEvent.change(input, { target: { value: 'Idea' } });
     await waitFor(() =>
       expect(
         screen.getAllByText('Select a notebook to search it, or switch search scope to Whole library.').length,

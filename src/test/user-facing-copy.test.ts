@@ -48,14 +48,14 @@ describe('user-facing library terminology and shortcuts', () => {
     for (const { label, shortcut } of getKeyboardShortcuts()) {
       expect(rows).toContainEqual([shortcut, label]);
     }
-    expect(rows).toContainEqual(['Alt+Q', 'Focus search']);
+    expect(rows).toContainEqual(['Alt+Q', 'Open search']);
     // The guide file keeps no hand-maintained shortcuts table: its
     // shortcuts section is generated from the registry when the guide
     // opens (F1), and the generated table carries the live bindings.
     const guideSource = readFileSync('docs/user-guide.md', 'utf8');
     expect(guideSource).toContain('guide-shortcuts: generated');
     expect(guideSource).not.toMatch(/\| Alt\+Q\s+\| Focus global search/);
-    expect(buildGuideMarkdown(guideSource, getKeyboardShortcuts())).toMatch(/\| Focus search \| Alt\+Q \|/);
+    expect(buildGuideMarkdown(guideSource, getKeyboardShortcuts())).toMatch(/\| Open search \| Alt\+Q \|/);
     expect(reference + readFileSync('docs/user-guide.md', 'utf8')).not.toContain('Ctrl+L');
   });
 

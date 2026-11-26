@@ -59,14 +59,14 @@ describe('buildShortcutsSectionMarkdown', () => {
   it('renders one table row per shortcut row', () => {
     const body = buildShortcutsSectionMarkdown([
       { label: 'User Guide', shortcut: 'F1' },
-      { label: 'Focus search', shortcut: 'Alt+Q' },
+      { label: 'Open search', shortcut: 'Alt+Q' },
     ]);
     // The generation marker lives in the guide file as an editor hint; it
     // must never reach the rendered guide, where it showed as visible text.
     expect(body).not.toContain(GUIDE_SHORTCUTS_MARKER);
     expect(body).not.toContain('<!--');
     expect(body).toContain('| User Guide | F1 |');
-    expect(body).toContain('| Focus search | Alt+Q |');
+    expect(body).toContain('| Open search | Alt+Q |');
     expect(body).toContain('generated from the command registry');
   });
 });
@@ -93,7 +93,7 @@ describe('buildGuideMarkdown', () => {
     ].join('\n');
     const built = buildGuideMarkdown(source, [
       { label: 'User Guide', shortcut: 'F1' },
-      { label: 'Focus search', shortcut: 'Alt+Q' },
+      { label: 'Open search', shortcut: 'Alt+Q' },
     ]);
     // The marker comment showed as visible text in the guide (markdown-it
     // renders raw HTML as escaped text); the rendered guide must carry no
@@ -102,7 +102,7 @@ describe('buildGuideMarkdown', () => {
     expect(built).not.toContain('guide-shortcuts:');
     expect(built).toContain(`## ${GUIDE_SHORTCUTS_HEADING}`);
     expect(built).toContain('| User Guide | F1 |');
-    expect(built).toContain('| Focus search | Alt+Q |');
+    expect(built).toContain('| Open search | Alt+Q |');
     expect(built).not.toContain('Old table.');
     expect(built).toContain('## Search\n\nFind things.');
     expect(built).toContain('## Accessibility notes\n\nNotes.');
@@ -130,14 +130,14 @@ describe('buildGuideMarkdown', () => {
     ].join('\n');
     const built = buildGuideMarkdown(source, [
       { label: 'User Guide', shortcut: 'F1' },
-      { label: 'Focus search', shortcut: 'Alt+Q' },
+      { label: 'Open search', shortcut: 'Alt+Q' },
     ]);
     // The stale hand table is gone; the generated table is in its place.
     expect(built).not.toContain('Show keyboard shortcuts');
     expect(built).not.toContain('Focus global search');
     expect(built).toContain(`## ${GUIDE_SHORTCUTS_HEADING}`);
     expect(built).toContain('| User Guide | F1 |');
-    expect(built).toContain('| Focus search | Alt+Q |');
+    expect(built).toContain('| Open search | Alt+Q |');
     // Surrounding sections survive verbatim.
     expect(built).toContain('## Search\n\nFind things.');
     expect(built).toContain('## Accessibility notes\n\nNotes.');

@@ -144,10 +144,10 @@ describe('Focus Mode (F11)', () => {
     expect(shell().classList.contains('focus-mode')).toBe(false);
   });
 
-  it('keeps focus in the search box and moves focus out of hidden chrome', async () => {
+  it('keeps focus on the Search button and moves focus out of hidden chrome', async () => {
     setup();
     await openNote();
-    const search = document.querySelector('.global-search input') as HTMLElement;
+    const search = screen.getByRole('button', { name: 'Search' });
     search.focus();
     pressF11();
     expect(document.activeElement).toBe(search);

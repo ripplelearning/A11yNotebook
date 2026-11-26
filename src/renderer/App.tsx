@@ -126,9 +126,10 @@ import DeleteLibraryDialog from './features/screens/DeleteLibraryDialog';
 import DeleteGuardDialog from './features/vault/DeleteGuardDialog';
 import ItemDialog, { type ItemDialogRequest } from './features/vault/ItemDialog';
 import BookmarkNameDialog, { type BookmarkNameRequest } from './features/vault/BookmarkNameDialog';
-import SearchResults, { type SearchScope } from './features/search/SearchResults';
+import SearchDialog from './features/search/SearchDialog';
+import type { SearchScope } from './features/search/SearchResults';
 import type { VaultSearchQuery, VaultSearchResult } from '../shared/search';
-import { searchTasksRemindersAppointments } from '../shared/search';
+import { normalizeSearchDateFilters, searchTasksRemindersAppointments } from '../shared/search';
 import SettingsDialog from './features/settings/SettingsDialog';
 import SpellingDialog from './features/vault/SpellingDialog';
 import ThesaurusDialog from './features/vault/ThesaurusDialog';
@@ -485,6 +486,9 @@ export default function App() {
   const [whatsNewOpen, setWhatsNewOpen] = useState(false);
   const [exportRequest, setExportRequest] = useState<{ path: string; protectedNote: boolean } | null>(null);
   const [searchText, setSearchText] = useState('');
+  // The search box lives in the search dialog now: search state only
+  // exists while the dialog is open, and closing it clears the search.
+  const [searchDialogOpen, setSearchDialogOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState('Ready');
   // One shared announcer for navigation and editor status messages: the
   // clear-then-set delay makes identical messages announce every time,
@@ -1963,10 +1967,14 @@ export default function App() {
     }
     let cancelled = false;
     const timeout = window.setTimeout(() => {
+      // The date filters are typed as MM/DD/YYYY; convert them to the
+      // YYYY-MM-DD the query validator requires, and drop a half-typed
+      // or impossible date instead of letting it fail the whole search.
+      const queryFilters = normalizeSearchDateFilters(searchFilters);
       const query: VaultSearchQuery =
         searchScope === 'current'
-          ? { text: searchText, ...searchFilters, notebook: selectedNotebookPath, limit: 100 }
-          : { text: searchText, ...searchFilters, limit: 100 };
+          ? { text: searchText, ...queryFilters, notebook: selectedNotebookPath, limit: 100 }
+          : { text: searchText, ...queryFilters, limit: 100 };
       // The file index only knows file kinds: a task, reminder, or
       // appointment kind must never reach it (its validator rejects the
       // kind), so those searches skip the file query entirely.
@@ -2022,20 +2030,83 @@ export default function App() {
     reminderState.reminders,
   ]);
 
-  // Escape in the search UI clears the whole search — text and filters —
-  // so the results leave the display, and announces the change. The text
-  // alone is not enough: a filter on its own keeps the search active and
-  // the results on screen. Scoped to the search input and the results
-  // section (App.tsx header, SearchResults): dialogs and the command
-  // palette keep their own Escape handling, and with no search active
-  // this is a no-op. Focus lands back in the search input, ready for a
-  // new search.
+  // Clearing the search empties the text and the filters, so the
+  // results leave the display, and announces the change. The text
+  // alone is not enough: a filter on its own keeps the search active
+  // and the results on screen. Focus is the caller's job: the dialog
+  // restores it to the Search button on close, and opening a result
+  // moves it to the result instead.
   const clearSearch = () => {
     if (!searchText.trim() && !Object.values(searchFilters).some(Boolean)) return;
     setSearchText('');
     setSearchFilters({});
     setStatusMessage('Search cleared.');
-    searchRef.current?.focus();
+  };
+
+  // The search dialog needs a library: opening it with none just says so.
+  const openSearchDialog = () => {
+    if (!vault) {
+      setStatusMessage('Open a library before searching.');
+      return;
+    }
+    setSearchDialogOpen(true);
+  };
+
+  // Closing the dialog with its Close button or Escape clears the
+  // search box and the results and closes the dialog, as specified.
+  const closeSearchDialog = () => {
+    clearSearch();
+    setSearchDialogOpen(false);
+  };
+
+  // Opening a search result moves focus to where the result points:
+  // a task or reminder row in its view, the appointment itself, or
+  // the note or file. Unchanged from the inline search box — only
+  // the dialog around it is new.
+  const openSearchResult = (result: VaultSearchResult) => {
+    if (result.kind === 'task' && result.targetId) {
+      // The task filters could hide the row (a done task under
+      // the Open filter, for example): show everything first,
+      // then focus the row once the Tasks view renders.
+      setTaskStatusFilter('all');
+      setTaskDueFilter('any');
+      setTaskPriorityFilter('all');
+      setTaskNotebookFilter('all');
+      setTaskTabOpen(true);
+      navigateScreen('tasks');
+      setPendingSearchFocus({ tab: 'tasks', id: result.targetId, announce: `Task: ${result.title}.` });
+      return;
+    }
+    if (result.kind === 'reminder' && result.targetId) {
+      const reminder = reminderState.reminders.find((item) => item.id === result.targetId);
+      setReminderTabOpen(true);
+      navigateScreen('reminders');
+      setPendingSearchFocus({
+        tab: 'reminders',
+        id: result.targetId,
+        announce: reminder
+          ? `Reminder: ${reminder.title}, ${new Date(reminder.scheduledAt).toLocaleString()}.`
+          : `Reminder: ${result.title}.`,
+      });
+      return;
+    }
+    if (result.kind === 'appointment' && result.targetId) {
+      navigateScreen('calendar');
+      setOpenAppointmentRequest({ id: result.targetId, nonce: Date.now() });
+      return;
+    }
+    const entry = vault ? findEntry(vault.entries, result.path) : undefined;
+    if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
+  };
+
+  // Activating a search result clears the search box and results and
+  // closes the dialog, then opens the result: focus lands where the
+  // result points, not back in the search box.
+  const handleSearchResultOpen = (result: VaultSearchResult) => {
+    setSearchText('');
+    setSearchFilters({});
+    setSearchDialogOpen(false);
+    openSearchResult(result);
   };
 
   const availableRegions = FOCUS_REGION_ORDER.filter(
@@ -2069,6 +2140,17 @@ export default function App() {
       // region) stays visible; a request for a hidden region lands in the
       // document instead of on an element that cannot take focus.
       if (focusModeRef.current && target !== 'main' && target !== 'search') target = 'main';
+      if (target === 'search' && !searchDialogOpen) {
+        // The search box lives in the search dialog now, so there is no
+        // box to focus while it is closed: focusing search opens the
+        // dialog, and the dialog focuses its box on open.
+        if (!vault) {
+          setStatusMessage('Open a library before searching.');
+          return false;
+        }
+        setSearchDialogOpen(true);
+        return true;
+      }
       const element = getFocusElement(target);
       if (!element) {
         return false;
@@ -2080,7 +2162,7 @@ export default function App() {
       }
       return true;
     },
-    [getFocusElement],
+    [getFocusElement, searchDialogOpen, vault],
   );
 
   // Focus requests are applied after render so that targets which are about to
@@ -7873,59 +7955,20 @@ export default function App() {
       ) : null}
       <header className="app-header" aria-label="Application header">
         <div className="global-search">
-          <label htmlFor="global-search" className="sr-only">
-            Global search
-          </label>
-          <input
-            id="global-search"
-            ref={searchRef}
-            type="search"
-            value={searchText}
-            onChange={(event) => setSearchText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Escape') {
-                // Stop the browser's native search-input clear: it empties
-                // the text only, leaving any filters (and their results) in
-                // place. clearSearch empties both and announces it.
-                event.preventDefault();
-                clearSearch();
-              }
-            }}
-            placeholder="Search library, notes, tasks, files"
-          />
+          <button
+            type="button"
+            onClick={openSearchDialog}
+            disabled={!vault}
+            aria-keyshortcuts={
+              [settings.shortcuts['focus-search'] ?? defaultShortcut(getCommandById('focus-search')!, isMac)]
+                .filter((shortcut): shortcut is string => Boolean(shortcut))
+                .map((shortcut) => (isMac ? toMacAriaKeyShortcut(shortcut) : toAriaKeyShortcut(shortcut)))
+                .join(' ') || undefined
+            }
+          >
+            Search
+          </button>
         </div>
-        <fieldset className="global-search-scope">
-          <legend>Search scope</legend>
-          <label>
-            <input
-              type="radio"
-              name="search-scope"
-              value="current"
-              checked={searchScope === 'current'}
-              onChange={() => setSearchScope('current')}
-              disabled={!vault}
-            />
-            {selectedNotebookName ? (
-              <>
-                Current notebook:{' '}
-                <span className="search-scope-notebook">{selectedNotebookName}</span>
-              </>
-            ) : (
-              'Current notebook (none selected)'
-            )}
-          </label>
-          <label>
-            <input
-              type="radio"
-              name="search-scope"
-              value="library"
-              checked={searchScope === 'library'}
-              onChange={() => setSearchScope('library')}
-              disabled={!vault}
-            />
-            Whole library
-          </label>
-        </fieldset>
         <div className="title-block">
           <span className="current-item">
             {currentNote?.title ?? 'No note open'} / {vault?.name ?? 'No library open'}
@@ -8059,62 +8102,21 @@ export default function App() {
               onContextMenu={(_, invoker, pointer) => openContextMenu(invoker, pointer)}
             />
           ) : null}
-          {vault ? (
-            <SearchResults
-              filters={searchFilters}
-              onFilters={setSearchFilters}
-              notebooks={notebooks}
-              results={displaySearchResults}
-              active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
-              scope={searchScope}
-              selectedNotebookPath={selectedNotebookPath}
-              selectedNotebookName={selectedNotebookName}
-              scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
-              onClearSearch={clearSearch}
-              onOpen={(result) => {
-                if (result.kind === 'task' && result.targetId) {
-                  // The task filters could hide the row (a done task under
-                  // the Open filter, for example): show everything first,
-                  // then focus the row once the Tasks view renders.
-                  setTaskStatusFilter('all');
-                  setTaskDueFilter('any');
-                  setTaskPriorityFilter('all');
-                  setTaskNotebookFilter('all');
-                  setTaskTabOpen(true);
-                  navigateScreen('tasks');
-                  setPendingSearchFocus({ tab: 'tasks', id: result.targetId, announce: `Task: ${result.title}.` });
-                  return;
-                }
-                if (result.kind === 'reminder' && result.targetId) {
-                  const reminder = reminderState.reminders.find((item) => item.id === result.targetId);
-                  setReminderTabOpen(true);
-                  navigateScreen('reminders');
-                  setPendingSearchFocus({
-                    tab: 'reminders',
-                    id: result.targetId,
-                    announce: reminder
-                      ? `Reminder: ${reminder.title}, ${new Date(reminder.scheduledAt).toLocaleString()}.`
-                      : `Reminder: ${result.title}.`,
-                  });
-                  return;
-                }
-                if (result.kind === 'appointment' && result.targetId) {
-                  navigateScreen('calendar');
-                  setOpenAppointmentRequest({ id: result.targetId, nonce: Date.now() });
-                  return;
-                }
-                const entry = findEntry(vault.entries, result.path);
-                if (entry) void openEntry(entry).catch(() => setStatusMessage('Could not open the search result.'));
-              }}
-            />
-          ) : null}
           {tags.length ? (
             <section aria-label="Tags">
               <h3>Tags</h3>
               <ul>
                 {tags.map((tag) => (
                   <li key={tag}>
-                    <button type="button" onClick={() => setSearchFilters((filters) => ({ ...filters, tag }))}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // A tag is a search filter, and search lives in
+                        // the dialog now: open it with the tag applied.
+                        setSearchFilters((filters) => ({ ...filters, tag }));
+                        setSearchDialogOpen(true);
+                      }}
+                    >
                       #{tag}
                     </button>
                   </li>
@@ -8858,6 +8860,25 @@ export default function App() {
       {activeDialog === 'about' ? <AboutDialog onClose={closeDialog} /> : null}
       {activeDialog === 'feedback' ? (
         <FeedbackDialog onClose={closeDialog} announce={setStatusMessage} />
+      ) : null}
+      {searchDialogOpen ? (
+        <SearchDialog
+          searchText={searchText}
+          onSearchText={setSearchText}
+          searchInputRef={searchRef}
+          filters={searchFilters}
+          onFilters={setSearchFilters}
+          notebooks={notebooks}
+          results={displaySearchResults}
+          active={Boolean(searchText.trim() || Object.values(searchFilters).some(Boolean))}
+          scope={searchScope}
+          onScope={setSearchScope}
+          selectedNotebookPath={selectedNotebookPath}
+          selectedNotebookName={selectedNotebookName}
+          scopeBlocked={searchScope === 'current' && !selectedNotebookPath}
+          onOpen={handleSearchResultOpen}
+          onClose={closeSearchDialog}
+        />
       ) : null}
       {tutorialOpen ? <TutorialDialog onClose={() => setTutorialOpen(false)} /> : null}
       {whatsNewOpen ? <TutorialDialog whatsNewOnly onClose={() => setWhatsNewOpen(false)} /> : null}

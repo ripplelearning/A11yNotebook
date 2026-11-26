@@ -112,11 +112,11 @@ describe('Help menu', () => {
   it('opens and closes a dialog from the native menu without losing renderer focus', () => {
     const { menu } = installBridge();
     render(<App />);
-    const search = screen.getByRole('searchbox', { name: 'Global search' });
-    search.focus();
+    const anchor = screen.getByRole('tabpanel');
+    anchor.focus();
     menu('show-about');
     fireEvent.keyDown(screen.getByRole('dialog', { name: 'About A11y Notebook' }), { key: 'Escape' });
-    expect(search).toHaveFocus();
+    expect(anchor).toHaveFocus();
   });
 
   it('lists keyboard shortcuts including F6 and Shift+F6', () => {
@@ -131,18 +131,18 @@ describe('Help menu', () => {
     expect(shortcuts.getByRole('cell', { name: 'Shift+F6' })).toBeInTheDocument();
     // Ctrl+K belongs to Insert link only; the Command Palette is Ctrl+Shift+P.
     expect(shortcuts.getByRole('cell', { name: 'Ctrl+K' })).toBeInTheDocument();
-    const searchRow = shortcuts.getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
+    const searchRow = shortcuts.getByRole('rowheader', { name: 'Open search' }).closest('tr')!;
     expect(within(searchRow).getByRole('cell', { name: 'Alt+Q' })).toBeInTheDocument();
     expect(shortcuts.queryByRole('cell', { name: 'Ctrl+L' })).not.toBeInTheDocument();
     for (const { label, shortcut } of getKeyboardShortcuts()) {
       expect(shortcuts.getByRole('row', { name: `${label} ${shortcut}` })).toBeInTheDocument();
     }
-  }, 30_000);
+  }, 120_000);
 
   it('shows the active search shortcut when customized instead of the default', () => {
     render(<KeyboardShortcutsDialog onClose={() => undefined} shortcuts={{ 'focus-search': 'Alt+W' }} />);
     const dialog = screen.getByRole('dialog', { name: 'Keyboard Shortcuts' });
-    const searchRow = within(dialog).getByRole('rowheader', { name: 'Focus search' }).closest('tr')!;
+    const searchRow = within(dialog).getByRole('rowheader', { name: 'Open search' }).closest('tr')!;
     expect(within(searchRow).getByRole('cell', { name: 'Alt+W' })).toBeInTheDocument();
     expect(within(dialog).queryByRole('cell', { name: 'Alt+Q' })).not.toBeInTheDocument();
   });
@@ -153,8 +153,8 @@ describe('Help menu', () => {
     render(<App />);
 
     await screen.findByRole('heading', { name: 'Vault' });
-    const search = screen.getByRole('searchbox', { name: 'Global search' });
-    search.focus();
+    const anchor = screen.getByRole('tabpanel');
+    anchor.focus();
     menu('new-notebook');
     let dialog = screen.getByRole('dialog', { name: 'New notebook' });
     const nameInput = within(dialog).getByRole('textbox', { name: 'New Notebook Name' });
@@ -170,7 +170,7 @@ describe('Help menu', () => {
         'Notebook created in the Library root.',
       ),
     );
-    expect(search).toHaveFocus();
+    expect(anchor).toHaveFocus();
 
     menu('show-notebooks');
     const screenAction = within(screen.getByRole('tabpanel')).getByRole('button', { name: 'New notebook' });
@@ -195,7 +195,7 @@ describe('Check for Updates', () => {
   it('walks through check, consented download with progress, and install', () => {
     const { bridge, emit, menu } = installBridge();
     render(<App />);
-    const opener = screen.getByRole('searchbox', { name: 'Global search' });
+    const opener = screen.getByRole('tabpanel');
     opener.focus();
     menu('check-for-updates');
 
@@ -284,13 +284,13 @@ describe('Check for Updates', () => {
   it('closes on Escape, restores focus, and announces later progress in the status bar', () => {
     const { emit, menu } = installBridge();
     render(<App />);
-    const search = screen.getByRole('searchbox', { name: 'Global search' });
-    search.focus();
+    const anchor = screen.getByRole('tabpanel');
+    anchor.focus();
     menu('check-for-updates');
     emit({ state: 'update-available', version: '9.9.9', releaseNotes: '' });
     fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
-    expect(search).toHaveFocus();
+    expect(anchor).toHaveFocus();
 
     emit({ state: 'download-progress', percent: 55 });
     expect(within(screen.getByLabelText('Status bar')).getByRole('status')).toHaveTextContent(

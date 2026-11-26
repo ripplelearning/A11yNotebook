@@ -879,8 +879,9 @@ export const COMMANDS: CommandDefinition[] = [
   },
   {
     id: 'focus-search',
-    label: 'Focus search',
-    description: 'Move focus to the global search box.',
+    label: 'Open search',
+    aliases: ['Focus search'],
+    description: 'Open the search dialog.',
     shortcut: 'Alt+Q',
     contexts: ['general'],
   },

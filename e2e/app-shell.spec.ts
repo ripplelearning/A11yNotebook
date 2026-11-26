@@ -189,16 +189,23 @@ test('app shell is accessible in the light theme', async () => {
 
     // Computed styles prove the light stylesheet applied, not just the
     // attribute: white header, slate input border (dark values would be
-    // near-black backgrounds and a pale blue border).
+    // near-black backgrounds and a pale blue border). The search input
+    // lives in the search dialog (which needs a library), so the border
+    // is read from the command palette input instead: it shares the
+    // same rule as the search dialog input.
     const headerBg = await page.evaluate(
       () => getComputedStyle(document.querySelector('.app-header') as HTMLElement).backgroundColor,
     );
     expect(headerBg).toBe('rgb(255, 255, 255)');
+    await pressShortcut(page, 'Control+Shift+P');
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
     const searchBorder = await page.evaluate(() => {
-      const input = document.querySelector('.global-search input') as HTMLElement | null;
+      const input = document.querySelector('.command-palette input') as HTMLElement | null;
       return input ? getComputedStyle(input).borderColor : null;
     });
     expect(searchBorder).toBe('rgb(100, 116, 139)');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCount(0);
 
     // Keyboard focus must land on a real control and show the LIGHT focus
     // outline (dark sky blue #7dd3fc is 1.67:1 on white and must not appear).
@@ -341,15 +348,22 @@ test('app shell is accessible in the high contrast theme', async () => {
     // Computed styles prove the high contrast stylesheet applied, not just
     // the attribute: black header, white input border (the dark theme
     // would show a near-black header too, but a pale blue input border).
+    // The border is read from the command palette input: it shares the
+    // same rule as the search dialog input, and the search dialog
+    // needs a library.
     const headerBg = await page.evaluate(
       () => getComputedStyle(document.querySelector('.app-header') as HTMLElement).backgroundColor,
     );
     expect(headerBg).toBe('rgb(0, 0, 0)');
+    await pressShortcut(page, 'Control+Shift+P');
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toBeVisible();
     const searchBorder = await page.evaluate(() => {
-      const input = document.querySelector('.global-search input') as HTMLElement | null;
+      const input = document.querySelector('.command-palette input') as HTMLElement | null;
       return input ? getComputedStyle(input).borderColor : null;
     });
     expect(searchBorder).toBe('rgb(255, 255, 255)');
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog', { name: 'Command palette' })).toHaveCount(0);
 
     // Keyboard focus must show the HIGH CONTRAST focus outline (yellow),
     // not the dark sky blue.
@@ -461,7 +475,7 @@ test('focus mode hides chrome and leaves only header, search, and document tabba
     expect(await displayOf('.side-panel')).toBe('none');
     expect(await displayOf('.status-bar')).toBe('none');
     expect(await displayOf('.app-header')).not.toBe('none');
-    expect(await displayOf('.global-search input')).not.toBe('none');
+    expect(await displayOf('.global-search button')).not.toBe('none');
     expect(await displayOf('.document')).not.toBe('none');
     // Single-column workspace: the content panel spans the window.
     expect(await contentWidth()).toBeGreaterThan(windowWidth - 50);

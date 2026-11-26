@@ -1212,28 +1212,33 @@ anywhere.
 
 ### Search
 
-Type in **Global search**; the search waits 250 ms after you stop
-typing. The app keeps an index in `.a11ynotebook/search-index.json` and
+Choose **Search** in the header, or press Alt+Q, to open the search
+dialog. Type in the search box; the search waits 250 ms after you stop
+typing, and matching titles appear as suggestions under the box — use
+Down arrow to move through them and Enter to fill the box with one.
+The app keeps an index in `.a11ynotebook/search-index.json` and
 updates it bit by bit when files change. Results show the matching text
-and announce how many there are in the status bar. **Search scope** sits
-right after the search box, even with no library open (where the scope
-controls show as disabled): **Current notebook** searches only the
-notebook you have selected (including its sub-notebooks) and, with no
-notebook selected, shows guidance instead of searching the whole
+and announce how many there are in the status bar. **Search scope** is
+in the dialog, right under the search box: **Current notebook** searches
+only the notebook you have selected (including its sub-notebooks) and,
+with no notebook selected, shows guidance instead of searching the whole
 library; **Whole library** searches every notebook. The scope is
 remembered on this computer. In Whole library scope, the notebook filter
 in Search filters can still narrow results to one notebook. Search
 filters also pick the kind — notes, text attachments, DOCX documents,
 tasks, reminders, and appointments — a tag, and a changed-date range.
-`#tag` terms also filter by tag. Hashtags in text and supported tag
-fields at the top of a note are indexed; this is not a general YAML
-editor. Text, CSV, and HTML attachment and note contents, plus a bounded
-amount of PDF and ePub text, are searchable. Attachments that are not
-supported or not valid are searchable by filename. Results are capped at
-100 on screen. Pressing Escape in the search box clears the search text
-and removes the results from the display.
+Type changed dates as MM/DD/YYYY; a date that is not a real date is
+ignored, and the dialog says so. `#tag` terms also filter by tag.
+Hashtags in text and supported tag fields at the top of a note are
+indexed; this is not a general YAML editor. Text, CSV, and HTML
+attachment and note contents, plus a bounded amount of PDF and ePub
+text, are searchable. Attachments that are not supported or not valid
+are searchable by filename. Results are capped at 100 on screen.
+Closing the dialog with its **Close** button or Escape clears the
+search text and removes the results. Activating a result closes the
+dialog and opens the result.
 
-Global search also finds tasks, reminders, and appointments: a task
+Search also finds tasks, reminders, and appointments: a task
 result shows its text and due date or priority, a reminder its title and
 scheduled time, shown as MM/DD/YYYY, HH:MM AM/PM, and an appointment its
 title, time, and location. Opening a task result shows the task in the
@@ -1337,8 +1342,7 @@ in the UI** brings back the button-rich layout. It is off by default,
 including for older settings files, to favor the menu-first design.
 
 **Interaction**, in the same section, offers two options, both off by
-default. **Immersive Focus mode** hides the search box and search scope
-as well while Focus mode is on, so only the title bar, menu bar, and
+default. **Immersive Focus mode** hides the Search button as well while Focus mode is on, so only the title bar, menu bar, and
 document remain. **Auto-focus on grids when switching views** puts
 keyboard focus in the grid on its own when you switch to the Libraries,
 Notebooks, or Notes and Files view, without needing to enter forms mode

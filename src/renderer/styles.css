@@ -118,7 +118,38 @@ a:focus-visible,
 }
 
 .global-search {
-  min-width: min(360px, 100%);
+  flex: 0 0 auto;
+}
+
+/* The search dialog's box, suggestions, and results. The input takes
+ * the old global-search input look; the suggestions list is a plain
+ * listbox under it, with the active suggestion marked. */
+.search-dialog input[type='search'] {
+  width: 100%;
+}
+
+.search-dialog-box {
+  position: relative;
+}
+
+#search-suggestions {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  border: 1px solid #94a3b8;
+  border-radius: 0.5rem;
+  background: rgba(15, 23, 42, 0.9);
+  max-height: 12rem;
+  overflow: auto;
+}
+
+#search-suggestions [role='option'] {
+  padding: 0.5rem 0.8rem;
+  cursor: pointer;
+}
+
+#search-suggestions [role='option'][aria-selected='true'] {
+  background: rgba(148, 163, 184, 0.35);
 }
 
 .global-search-scope {
@@ -155,7 +186,7 @@ a:focus-visible,
   white-space: nowrap;
 }
 
-.global-search input,
+.search-dialog input,
 .command-palette input {
   width: 100%;
   border: 1px solid #94a3b8;
@@ -1056,6 +1087,15 @@ a:focus-visible,
     border-color: #fff;
   }
 
+  :root[data-theme='high-contrast'] #search-suggestions {
+    border-color: #fff;
+    background: #000;
+  }
+
+  :root[data-theme='high-contrast'] #search-suggestions [role='option'][aria-selected='true'] {
+    background: #333;
+  }
+
   @media (forced-colors: active) {
     mark[data-annotation-id] {
       border-bottom: 2px solid Highlight;
@@ -1125,7 +1165,7 @@ a:focus-visible,
     color: #475569;
   }
 
-  :root[data-theme='light'] .global-search input,
+  :root[data-theme='light'] .search-dialog input,
   :root[data-theme='light'] .command-palette input {
     border-color: #64748b;
     background: #fff;
@@ -1209,6 +1249,15 @@ a:focus-visible,
     background: #fff;
     border-color: #64748b;
     box-shadow: 0 25px 50px rgba(15, 23, 42, 0.25);
+  }
+
+  :root[data-theme='light'] #search-suggestions {
+    border-color: #64748b;
+    background: #fff;
+  }
+
+  :root[data-theme='light'] #search-suggestions [role='option'][aria-selected='true'] {
+    background: #dbeafe;
   }
 
   :root[data-theme='light'] .modal-actions button {
@@ -1382,7 +1431,7 @@ a:focus-visible,
     color: #ccc;
   }
 
-  :root[data-theme='high-contrast'] .global-search input,
+  :root[data-theme='high-contrast'] .search-dialog input,
   :root[data-theme='high-contrast'] .command-palette input {
     border-color: #fff;
     background: #000;
@@ -1607,10 +1656,11 @@ a:focus-visible,
   display: none;
 }
 
-/* Immersive Focus mode hides the search box and search scope as well,
-   leaving only the title bar, menu bar, and document. The header's
-   title block stays, since it names the current item. */
-.app-shell.immersive-focus-mode .global-search,
-.app-shell.immersive-focus-mode .global-search-scope {
+/* Immersive Focus mode hides the Search button as well, leaving only
+   the title bar, menu bar, and document. The header's title block
+   stays, since it names the current item. The search scope is not
+   hidden here: it lives inside the search dialog now, and hiding it
+   would strip the scope out of the open dialog. */
+.app-shell.immersive-focus-mode .global-search {
   display: none;
 }
