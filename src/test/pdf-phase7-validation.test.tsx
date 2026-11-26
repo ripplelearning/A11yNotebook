@@ -19,6 +19,7 @@ const fake = vi.hoisted(() => ({
 
 vi.mock('../renderer/hooks/usePdfReadingPreferences', () => ({
   usePdfReadingPreferences: () => fake.preferences,
+  savePdfReadingPreferences: vi.fn(async () => undefined),
 }));
 
 vi.mock('../renderer/pdf-semantic', () => ({

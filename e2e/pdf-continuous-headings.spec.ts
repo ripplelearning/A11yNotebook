@@ -52,6 +52,8 @@ test('PDF continuous view exposes one heading per page, in order, in the accessi
     const textSection = page.locator('section[aria-label^="Accessible text for PDF"]');
 
     // Paginated view shows one page at a time: no per-page headings.
+    await navigation.getByRole('radio', { name: 'Paginated view' }).click();
+    await expect(navigation.getByRole('radio', { name: 'Paginated view' })).toBeChecked();
     await expect(textSection.getByRole('heading', { name: 'Page 2', exact: true })).toHaveCount(0);
     await expect(textSection.getByRole('heading', { name: 'Page 3', exact: true })).toHaveCount(0);
 

@@ -16,7 +16,8 @@ const listeners = new Set<() => void>();
 function publish(value: PdfReadingPreferences) {
   if (
     preferences.hideHeadersFooters === value.hideHeadersFooters &&
-    preferences.hidePageNumbers === value.hidePageNumbers
+    preferences.hidePageNumbers === value.hidePageNumbers &&
+    preferences.continuousView === value.continuousView
   )
     return;
   preferences = value;

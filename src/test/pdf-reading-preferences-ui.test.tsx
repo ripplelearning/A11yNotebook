@@ -6,7 +6,7 @@ import { DEFAULT_SETTINGS } from '../shared/settings';
 import type { NotebookBridge } from '../shared/bridge';
 import type { PdfReadingPreferences } from '../shared/pdf-reading-preferences';
 
-const exposed = { hideHeadersFooters: false, hidePageNumbers: false };
+const exposed = { hideHeadersFooters: false, hidePageNumbers: false, continuousView: true };
 const headersLabel = 'Hide running headers/footers from assistive technology';
 const numbersLabel = 'Hide printed page numbers from assistive technology';
 
@@ -49,7 +49,7 @@ afterEach(() => {
 
 describe('PDF reading settings', () => {
   it('loads persisted values on open and saves toggles independently for all consumers', async () => {
-    const api = setup({ hideHeadersFooters: true, hidePageNumbers: false });
+    const api = setup({ hideHeadersFooters: true, hidePageNumbers: false, continuousView: true });
     render(<PreferenceConsumer />);
     const dialog = openSettings();
     const headers = screen.getByRole('checkbox', { name: headersLabel });
@@ -62,13 +62,21 @@ describe('PDF reading settings', () => {
     );
 
     fireEvent.click(numbers);
-    await waitFor(() => expect(api.set).toHaveBeenLastCalledWith({ hideHeadersFooters: true, hidePageNumbers: true }));
+    await waitFor(() =>
+      expect(api.set).toHaveBeenLastCalledWith({ hideHeadersFooters: true, hidePageNumbers: true, continuousView: true }),
+    );
     await waitFor(() => expect(numbers).toBeEnabled());
     expect(screen.getByLabelText('Cached preferences')).toHaveTextContent('"hidePageNumbers":true');
     expect(screen.getByText('PDF reading preferences saved.')).toHaveAttribute('role', 'status');
 
     fireEvent.click(headers);
-    await waitFor(() => expect(api.set).toHaveBeenLastCalledWith({ hideHeadersFooters: false, hidePageNumbers: true }));
+    await waitFor(() =>
+      expect(api.set).toHaveBeenLastCalledWith({
+        hideHeadersFooters: false,
+        hidePageNumbers: true,
+        continuousView: true,
+      }),
+    );
     await waitFor(() => expect(headers).toBeEnabled());
     dialog.unmount();
     openSettings();
@@ -98,12 +106,12 @@ describe('PDF reading settings', () => {
       </>,
     );
     await waitFor(() => expect(api.get).toHaveBeenCalledTimes(1));
-    api.get.mockResolvedValue({ hideHeadersFooters: true, hidePageNumbers: false });
+    api.get.mockResolvedValue({ hideHeadersFooters: true, hidePageNumbers: false, continuousView: true });
     fireEvent(window, new Event('focus'));
     await waitFor(() =>
       expect(screen.getAllByLabelText('Cached preferences')[0]).toHaveTextContent('"hideHeadersFooters":true'),
     );
-    act(() => api.notify({ hideHeadersFooters: false, hidePageNumbers: true }));
+    act(() => api.notify({ hideHeadersFooters: false, hidePageNumbers: true, continuousView: true }));
     expect(screen.getAllByLabelText('Cached preferences')[1]).toHaveTextContent('"hidePageNumbers":true');
     view.unmount();
     expect(api.unsubscribe).toHaveBeenCalledTimes(1);
@@ -116,7 +124,7 @@ describe('PDF reading settings', () => {
     let resolve: (value: PdfReadingPreferences) => void = () => undefined;
     api.get.mockImplementationOnce(() => new Promise((done) => (resolve = done)));
     render(<PreferenceConsumer />);
-    act(() => api.notify({ hideHeadersFooters: true, hidePageNumbers: true }));
+    act(() => api.notify({ hideHeadersFooters: true, hidePageNumbers: true, continuousView: true }));
     await act(async () => resolve(exposed));
     expect(screen.getByLabelText('Cached preferences')).toHaveTextContent('"hideHeadersFooters":true');
     await act(async () => {

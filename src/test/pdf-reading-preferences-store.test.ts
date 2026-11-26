@@ -71,7 +71,8 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-const enabled = { hideHeadersFooters: true, hidePageNumbers: true };
+const enabled = { hideHeadersFooters: true, hidePageNumbers: true, continuousView: false };
+const legacyEnabled = { hideHeadersFooters: true, hidePageNumbers: true };
 const invalidValues = [
   undefined,
   null,
@@ -83,24 +84,43 @@ const invalidValues = [
   { hidePageNumbers: false },
   { hideHeadersFooters: 'true', hidePageNumbers: false },
   { hideHeadersFooters: false, hidePageNumbers: 1 },
+  { ...enabled, continuousView: 'true' },
+  { ...enabled, continuousView: 1 },
   { ...enabled, extra: false },
   { ...enabled, [Symbol('extra')]: false },
   Object.create(enabled) as unknown,
 ];
 
 describe('PDF reading preferences validation', () => {
-  it('defaults both options to false and accepts only complete boolean records', () => {
-    expect(DEFAULT_PDF_READING_PREFERENCES).toEqual({ hideHeadersFooters: false, hidePageNumbers: false });
+  it('defaults to continuous view and accepts only complete boolean records', () => {
+    expect(DEFAULT_PDF_READING_PREFERENCES).toEqual({
+      hideHeadersFooters: false,
+      hidePageNumbers: false,
+      continuousView: true,
+    });
     for (const hideHeadersFooters of [false, true]) {
       for (const hidePageNumbers of [false, true]) {
-        const value = { hideHeadersFooters, hidePageNumbers };
-        expect(validatePdfReadingPreferences(value)).toEqual(value);
-        expect(validatePdfReadingPreferences(value)).not.toBe(value);
+        for (const continuousView of [false, true]) {
+          const value = { hideHeadersFooters, hidePageNumbers, continuousView };
+          expect(validatePdfReadingPreferences(value)).toEqual(value);
+          expect(validatePdfReadingPreferences(value)).not.toBe(value);
+        }
       }
     }
     for (const value of invalidValues) {
       expect(() => validatePdfReadingPreferences(value)).toThrow('Invalid PDF reading preferences.');
     }
+  });
+
+  it('upgrades stored preferences from before the view choice to continuous view', () => {
+    expect(validatePdfReadingPreferences(legacyEnabled)).toEqual({
+      hideHeadersFooters: true,
+      hidePageNumbers: true,
+      continuousView: true,
+    });
+    expect(validatePdfReadingPreferences({ hideHeadersFooters: false, hidePageNumbers: false })).toEqual(
+      DEFAULT_PDF_READING_PREFERENCES,
+    );
   });
 });
 
@@ -114,6 +134,18 @@ describe('PDF reading preferences local JSON persistence', () => {
         vaults: [],
         notebooks: [],
         pdfReadingPreferences: DEFAULT_PDF_READING_PREFERENCES,
+      });
+      expect(warn).not.toHaveBeenCalled();
+      // A store saved before the view choice existed keeps its hiding
+      // options and opens PDFs in Continuous view, the new default.
+      mock.files.set(
+        getStorePath(),
+        JSON.stringify({ vaults: [], notebooks: [], pdfReadingPreferences: legacyEnabled }),
+      );
+      expect(loadStore()).toEqual({
+        vaults: [],
+        notebooks: [],
+        pdfReadingPreferences: { ...legacyEnabled, continuousView: true },
       });
       expect(warn).not.toHaveBeenCalled();
     } finally {

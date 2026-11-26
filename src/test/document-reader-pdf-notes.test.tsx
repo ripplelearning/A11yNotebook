@@ -10,12 +10,13 @@ const fake = vi.hoisted(() => ({
   semantic: vi.fn(),
   highlight: vi.fn(),
   anchor: vi.fn(),
-  preferences: { hideHeadersFooters: false, hidePageNumbers: false },
+  preferences: { hideHeadersFooters: false, hidePageNumbers: false, continuousView: true },
   openError: false,
 }));
 
 vi.mock('../renderer/hooks/usePdfReadingPreferences', () => ({
   usePdfReadingPreferences: () => fake.preferences,
+  savePdfReadingPreferences: vi.fn(async () => undefined),
 }));
 
 vi.mock('../renderer/pdf-semantic', () => {
@@ -126,7 +127,9 @@ describe('PDF reader annotation rendering', () => {
     });
     Object.defineProperty(window.navigator, 'clipboard', { value: { writeText }, configurable: true });
     render(<DocumentReader path="book.pdf" kind=".pdf" />);
-    const copy = await screen.findByRole('button', { name: 'Copy notes to clipboard' });
+    // The notes panel renders once the document loads; the first open in
+    // a cold worker takes longer than the default one-second wait.
+    const copy = await screen.findByRole('button', { name: 'Copy notes to clipboard' }, { timeout: 10000 });
     await waitFor(() => expect(copy).toBeEnabled());
     expect(screen.getByText(/1 note on page 1\./)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Go to first note on this page' }));

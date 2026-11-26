@@ -14,11 +14,12 @@ Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
 const fake = vi.hoisted(() => ({
   canvas: vi.fn(),
   textLayer: vi.fn(),
-  preferences: { hideHeadersFooters: false, hidePageNumbers: false },
+  preferences: { hideHeadersFooters: false, hidePageNumbers: false, continuousView: true },
 }));
 
 vi.mock('../renderer/hooks/usePdfReadingPreferences', () => ({
   usePdfReadingPreferences: () => fake.preferences,
+  savePdfReadingPreferences: vi.fn(async () => undefined),
 }));
 
 /**
@@ -104,8 +105,10 @@ afterEach(() => {
 async function renderReader(): Promise<{ current: PdfBookmarkApi | null }> {
   const apiRef: { current: PdfBookmarkApi | null } = { current: null };
   render(<DocumentReader path="book.pdf" kind=".pdf" pdfBookmarkRef={apiRef} />);
-  await screen.findByRole('heading', { name: 'Page 1 of 3' });
-  await screen.findByText('gamma');
+  // Continuous view renders every page up front, so the first open takes
+  // longer than the old single-page render.
+  await screen.findByRole('heading', { name: 'Page 1 of 3' }, { timeout: 10000 });
+  await screen.findByText('gamma', {}, { timeout: 10000 });
   await waitFor(() => expect(apiRef.current).not.toBeNull());
   return apiRef;
 }
@@ -130,6 +133,8 @@ describe('PDF bookmarks in the reader', () => {
 
   it('reads the current page and spot from the focused block', async () => {
     const apiRef = await renderReader();
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Paginated view' })).toBeChecked());
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await screen.findByRole('heading', { name: 'Page 2 of 3' });
     (screen.getByText('Zeta').closest('p') as HTMLElement).focus();
@@ -138,6 +143,8 @@ describe('PDF bookmarks in the reader', () => {
 
   it('reads the top of the current page with no selection or focus', async () => {
     const apiRef = await renderReader();
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Paginated view' })).toBeChecked());
     fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
     await screen.findByRole('heading', { name: 'Page 2 of 3' });
     expect(apiRef.current?.getCurrentSpot()).toEqual({ page: 2, offset: 0 });
@@ -145,6 +152,8 @@ describe('PDF bookmarks in the reader', () => {
 
   it('jumps to a spot on another page in paginated view, with focus and a live selection', async () => {
     const apiRef = await renderReader();
+    fireEvent.click(screen.getByRole('radio', { name: 'Paginated view' }));
+    await waitFor(() => expect(screen.getByRole('radio', { name: 'Paginated view' })).toBeChecked());
     const landed = await apiRef.current!.jumpToSpot({ page: 2, offset: 15 });
     expect(landed).toBe(true);
     await screen.findByRole('heading', { name: 'Page 2 of 3' });
@@ -181,7 +190,9 @@ describe('PDF bookmarks in the reader', () => {
     expect(landed).toBe(true);
     await screen.findByRole('heading', { name: 'Page 3 of 3' });
     const section = screen.getByLabelText('Accessible text for PDF page 3');
-    expect(document.activeElement).toBe(section.querySelector('div'));
+    // In Continuous view the landing focuses the page's own wrapper, not
+    // the first div in the section.
+    expect(document.activeElement).toBe(section.querySelector('[data-pdf-page="3"]'));
   });
 
   it('fails fast for a page beyond the document', async () => {

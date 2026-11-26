@@ -18,11 +18,12 @@ Object.defineProperty(window.HTMLElement.prototype, 'scrollIntoView', {
 const fake = vi.hoisted(() => ({
   canvas: vi.fn(),
   textLayer: vi.fn(),
-  preferences: { hideHeadersFooters: false, hidePageNumbers: false },
+  preferences: { hideHeadersFooters: false, hidePageNumbers: false, continuousView: true },
 }));
 
 vi.mock('../renderer/hooks/usePdfReadingPreferences', () => ({
   usePdfReadingPreferences: () => fake.preferences,
+  savePdfReadingPreferences: vi.fn(async () => undefined),
 }));
 
 function semanticForPage(page: number): HTMLElement {

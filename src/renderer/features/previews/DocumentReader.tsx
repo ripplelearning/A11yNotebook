@@ -16,7 +16,7 @@ import {
 } from '../../../shared/pdf-form';
 import { applyPdfReadingPreferences, PdfDocument, type PdfPage } from '../../pdf-semantic';
 import { syncFormFieldValues } from '../../pdf-semantic/pdf-form-dom';
-import { usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
+import { savePdfReadingPreferences, usePdfReadingPreferences } from '../../hooks/usePdfReadingPreferences';
 import { createDocumentReaderModel } from './document-reader-model';
 import { epubInitialSectionIndex, epubSectionLabel, epubSectionText, epubTocLabels, openEpubBook } from './epub-book';
 import OcrDialog from './OcrDialog';
@@ -368,8 +368,28 @@ function PdfReader({
   const readerRef = useRef<HTMLElement>(null);
   const [rendered, setRendered] = useState<PdfRenderedPage | null>(null);
   const pendingNote = useRef<{ page: number; offset: number; length: number } | null>(null);
-  /** Continuous view: the whole document in one scrolling page instead of one page at a time. */
-  const [continuous, setContinuous] = useState(false);
+  const preferences = usePdfReadingPreferences();
+  const preferencesRef = useRef(preferences);
+  preferencesRef.current = preferences;
+  /**
+   * Continuous view: the whole document in one scrolling page instead of
+   * one page at a time. PDFs open in Continuous view unless the saved
+   * view choice says Paginated; switching the view saves the choice, so
+   * the next PDF opens in the view last picked.
+   */
+  const [continuous, setContinuous] = useState(() => preferences.continuousView);
+  /** The reader follows a saved view choice loaded after it opened, until the view is picked here. */
+  const userChoseViewRef = useRef(false);
+  useEffect(() => {
+    if (!userChoseViewRef.current) setContinuous(preferences.continuousView);
+  }, [preferences.continuousView]);
+  function choosePdfView(value: boolean) {
+    userChoseViewRef.current = true;
+    setContinuous(value);
+    void savePdfReadingPreferences({ ...preferencesRef.current, continuousView: value }).catch(() => {
+      console.warn('Could not save the PDF view choice.');
+    });
+  }
   const pageNumberRef = useRef(pageNumber);
   pageNumberRef.current = pageNumber;
   const continuousRef = useRef(continuous);
@@ -390,9 +410,6 @@ function PdfReader({
   pageCountRef.current = pageCount;
   const renderedRef = useRef<PdfRenderedPage | null>(null);
   renderedRef.current = rendered;
-  const preferences = usePdfReadingPreferences();
-  const preferencesRef = useRef(preferences);
-  preferencesRef.current = preferences;
   // Fillable forms: fields sit inline in the reading view, values are
   // stored in the app, and a filled file comes from an export.
   const isAlius = isAliusPath(path);
@@ -1273,11 +1290,11 @@ function PdfReader({
       <div role="group" aria-label="PDF page navigation">
         <div role="radiogroup" aria-label="PDF view">
           <label>
-            <input type="radio" name="pdf-view" checked={!continuous} onChange={() => setContinuous(false)} />
+            <input type="radio" name="pdf-view" checked={!continuous} onChange={() => choosePdfView(false)} />
             Paginated view
           </label>
           <label>
-            <input type="radio" name="pdf-view" checked={continuous} onChange={() => setContinuous(true)} />
+            <input type="radio" name="pdf-view" checked={continuous} onChange={() => choosePdfView(true)} />
             Continuous view
           </label>
         </div>

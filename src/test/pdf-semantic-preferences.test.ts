@@ -9,9 +9,9 @@ import { StructAdapter } from '../renderer/pdf-semantic/struct-adapter';
 import { getSelectionOffsets, selectTextRange } from '../renderer/pdf-semantic/text-layer';
 import { TextModel, type PdfTextPart } from '../renderer/pdf-semantic/text-model';
 
-const both = { hideHeadersFooters: true, hidePageNumbers: true };
-const headersOnly = { hideHeadersFooters: true, hidePageNumbers: false };
-const numbersOnly = { hideHeadersFooters: false, hidePageNumbers: true };
+const both = { hideHeadersFooters: true, hidePageNumbers: true, continuousView: true };
+const headersOnly = { hideHeadersFooters: true, hidePageNumbers: false, continuousView: true };
+const numbersOnly = { hideHeadersFooters: false, hidePageNumbers: true, continuousView: true };
 
 function item(str: string, y = 400, hasEOL = true): TextItem {
   return {
