@@ -72,6 +72,25 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).not.toContain('color: red');
   });
 
+  it('renders exported task lines as enabled, checkable checkboxes', () => {
+    const safe = sanitizeHtmlFragment(
+      '<ul><li data-a11y-task-id="task-1234abcd" data-a11y-task-complete="false">Buy milk</li>' +
+        '<li data-a11y-task-id="task-5678efgh" data-a11y-task-complete="true">Pay bill</li></ul>',
+      { renderTaskControls: true },
+    );
+    const checkboxes = safe.match(/<input[^>]*type="checkbox"[^>]*>/gi) ?? [];
+    expect(checkboxes).toHaveLength(2);
+    // Exported checkboxes must be enabled: a disabled checkbox cannot be
+    // checked or unchecked in the browser, so the exported task list is
+    // read-only. The checked state still reflects the note.
+    for (const checkbox of checkboxes) expect(checkbox).not.toContain('disabled');
+    expect(checkboxes[0]).not.toContain('checked');
+    expect(checkboxes[1]).toContain('checked');
+    expect(checkboxes[0]).toContain('aria-label="Checklist item"');
+    expect(safe).toContain('Buy milk');
+    expect(safe).toContain('Pay bill');
+  });
+
   it('keeps footnote markers, ids, and classes but drops other ids and classes', () => {
     const safe = sanitizeHtmlFragment(
       '<p>Text<sup class="footnote-ref"><a href="#fn1" id="fnref1">[1]</a></sup></p>' +

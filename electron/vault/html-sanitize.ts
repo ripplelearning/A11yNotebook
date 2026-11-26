@@ -268,7 +268,12 @@ export function sanitizeHtmlFragment(
       /^[\w-]{8,80}$/.test(safeAttributes.get('data-a11y-task-id') ?? '') &&
       ['true', 'false'].includes(safeAttributes.get('data-a11y-task-complete') ?? '')
     ) {
-      output += `<input type="checkbox" disabled aria-label="Checklist item" ${
+      // Enabled on purpose: the exported file cannot write back to the
+      // library, but the checkbox must still toggle in the browser, so
+      // the reader can check and uncheck tasks in the exported copy. A
+      // disabled checkbox is announced as unavailable by screen readers
+      // and cannot be operated at all.
+      output += `<input type="checkbox" aria-label="Checklist item" ${
         safeAttributes.get('data-a11y-task-complete') === 'true' ? 'checked ' : ''
       }>`;
     }
