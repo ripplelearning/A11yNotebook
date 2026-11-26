@@ -481,6 +481,19 @@ a:focus-visible,
   list-style: none;
 }
 
+/* The Bookmarks list keeps its <ul> semantics but hides the bullets
+   (1.9.23 retest item 5): a bullet marker at the start of a list
+   item's line can take a screen reader's activation instead of the
+   bookmark button, so activating a bookmark from the list did
+   nothing. */
+.bookmarks-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 0.25rem;
+}
+
 .side-panel h2 {
   margin-top: 0;
 }

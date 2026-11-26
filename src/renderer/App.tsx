@@ -8767,7 +8767,16 @@ export default function App() {
             ) : null}
             <section aria-labelledby="bookmarks-heading">
               <h3 id="bookmarks-heading">Bookmarks</h3>
-              <ul>
+              {/* The bullets are hidden, but the list stays an unordered
+                  list: a screen reader's virtual cursor rests at the
+                  start of a list item's line, and a bullet marker there
+                  can take the activation instead of the bookmark
+                  button — the list then does nothing (1.9.23 retest
+                  item 5). With no marker, the button starts the line.
+                  role="list" keeps the list announced as a list where
+                  hiding the markers would otherwise strip that
+                  semantics. */}
+              <ul className="bookmarks-list" role="list">
                 {/* Only the scoped file's bookmarks: bookmarks for other
                     files open those files when activated, so listing
                     them here reads as bookmarks of the file on screen.
