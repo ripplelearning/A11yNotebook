@@ -50,8 +50,8 @@ test('the New task dialog accepts MM/DD/YYYY dates and shows them back that way'
   const { app, page, paths } = await launchTasksApp();
   try {
     // Ctrl+N is "New in current view": on the Tasks view it opens the
-    // New task dialog. (The palette's New task command opens the
-    // associated-note dialog instead.)
+    // same unified New task dialog as the grid menu and the palette —
+    // one dialog, with an Associate with dropdown, for every entry point.
     await pressShortcut(page, 'Control+N');
     const dialog = page.getByRole('dialog', { name: 'New task' });
     await expect(dialog).toBeVisible({ timeout: 5000 });
@@ -61,20 +61,27 @@ test('the New task dialog accepts MM/DD/YYYY dates and shows them back that way'
     await expect(dialog.getByLabel('Reminder date, MM/DD/YYYY')).toBeVisible();
     expect(await dialog.getByLabel('Due date, MM/DD/YYYY').getAttribute('placeholder')).toBe('MM/DD/YYYY');
 
+    // The unified dialog associates the task with a note: the seeded
+    // note is the default, not a new task file.
+    await expect(dialog.getByLabel('Associate with')).toHaveValue('Archive/Guide.md', { timeout: 10000 });
+
     const due = displayDate(5);
-    await dialog.getByLabel('Task text').fill('File the quarterly report');
+    await dialog.getByLabel('Task description').fill('File the quarterly report');
     await dialog.getByLabel('Due date, MM/DD/YYYY').fill(due);
     await dialog.getByLabel('Reminder date, MM/DD/YYYY').fill(displayDate(4));
     await dialog.getByLabel('Reminder time, HH:MM').fill('09:00');
     await dialog.getByRole('button', { name: 'Create task' }).click();
 
     // The dialog closes and the task lists in the Tasks table with its
-    // due date shown as MM/DD/YYYY.
+    // due date shown as MM/DD/YYYY, linked to the note it lives in.
     await expect(dialog).toBeHidden({ timeout: 5000 });
     const row = page.locator('tr[data-context="task-row"]', { hasText: 'File the quarterly report' });
     await expect(row).toBeVisible({ timeout: 5000 });
     await expect(row).toContainText(due);
     await expect(row).not.toContainText('2026-');
+    await expect(page.getByRole('button', { name: 'Open note: Archive/Guide.md' })).toBeVisible({
+      timeout: 5000,
+    });
   } finally {
     await closeApp(app, paths);
   }
@@ -87,7 +94,7 @@ test('the New task dialog rejects an impossible MM/DD/YYYY date', async () => {
     const dialog = page.getByRole('dialog', { name: 'New task' });
     await expect(dialog).toBeVisible({ timeout: 5000 });
 
-    await dialog.getByLabel('Task text').fill('Impossible date task');
+    await dialog.getByLabel('Task description').fill('Impossible date task');
     await dialog.getByLabel('Due date, MM/DD/YYYY').fill('02/30/2026');
     await dialog.getByRole('button', { name: 'Create task' }).click();
 

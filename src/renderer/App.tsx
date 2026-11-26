@@ -184,7 +184,7 @@ import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
 import CalendarScreen from './features/calendar/CalendarScreen';
 import TaskProgressSummaries from './features/reminders/TaskProgressSummaries';
-import NewTaskDialog, { AssociatedTaskDialog } from './features/reminders/NewTaskDialog';
+import NewTaskDialog, { type TaskAssociationOption } from './features/reminders/NewTaskDialog';
 import { QuickTaskDialog, QuickTaskLibraryPicker } from './features/reminders/QuickTaskDialog';
 import { LinkDialog } from './features/links/LinkDialog';
 import TaskScheduleDialog, { type TaskSchedule } from './features/reminders/TaskScheduleDialog';
@@ -254,7 +254,6 @@ type DialogId =
   | 'attachment-insert'
   | 'web-capture'
   | 'note-metadata'
-  | 'new-task'
   | 'broken-links';
 type TreeAction = 'new-note' | 'new-template' | 'rename' | 'move' | 'delete' | 'reveal' | 'external' | 'bookmark';
 
@@ -623,7 +622,6 @@ export default function App() {
   const [assetBusy, setAssetBusy] = useState(false);
   const [assetSelectionVersion, setAssetSelectionVersion] = useState(0);
   const [assetCreationVersion, setAssetCreationVersion] = useState(0);
-  const [taskCreationNotebookPath, setTaskCreationNotebookPath] = useState<string>();
   const [quickTaskStep, setQuickTaskStep] = useState<'library' | 'task' | null>(null);
   type LinkDialogState =
     | { mode: 'add'; notebookPath: string; initialUrl: string; guidance?: string }
@@ -642,12 +640,17 @@ export default function App() {
   const [taskCreateError, setTaskCreateError] = useState('');
   const [taskCreating, setTaskCreating] = useState(false);
   const [taskNotePaths, setTaskNotePaths] = useState<string[]>([]);
+  // Notes are checked for encryption when the dialog opens; the dialog
+  // stays usable while that runs (only the note list and the Create
+  // button wait for it), so loading is tracked apart from creating.
+  const [taskNotesLoading, setTaskNotesLoading] = useState(false);
   // A task started from a grid context menu carries its selection with
-  // it: a note becomes the dialog's associated note, and a file or link
-  // becomes the link attached to the created task. Both are cleared when
+  // it: a note becomes the dialog's initial association, and a file or
+  // link becomes the item the created task links to, with the open note
+  // (or the first eligible note) holding the task. Both are cleared when
   // the dialog closes, so a later task never inherits a stale selection.
-  const [taskInitialPath, setTaskInitialPath] = useState<string | undefined>(undefined);
-  const [taskLinkTarget, setTaskLinkTarget] = useState<{ kind: TaskLinkKind; target: string } | null>(null);
+  const [taskInitialOption, setTaskInitialOption] = useState<TaskAssociationOption | undefined>(undefined);
+  const [taskDefaultHoldingNote, setTaskDefaultHoldingNote] = useState<string | undefined>(undefined);
   const [switchingVault, setSwitchingVault] = useState(false);
   const switchingRef = useRef(false);
   const vaultGenerationRef = useRef(0);
@@ -1301,8 +1304,18 @@ export default function App() {
   };
   const allEntries = flattenEntries(vault?.entries ?? []);
   const notebooks = allEntries.filter((entry) => entry.kind === 'notebook').map((entry) => entry.path);
+  // Notes that can hold a task or be linked to one. Origin records are
+  // deliberately NOT required here: a cloud sync that replaces a file
+  // gives it a new identity, so its origin record no longer matches and
+  // the note would wrongly disappear from the list — in a synced library
+  // only freshly created notes (like the seeded templates) would be
+  // left. The library scan itself proves the file is a note in this
+  // library; cognitive tool files are still excluded, and so are
+  // templates, which are not notes.
   const notePaths = allEntries
-    .filter((entry) => entry.kind === 'note' && isManagedEntry(entry) && !assetRegistry.resolve(entry.path))
+    .filter(
+      (entry) => entry.kind === 'note' && !assetRegistry.resolve(entry.path) && !isTemplateNotePath(entry.path),
+    )
     .map((entry) => entry.path);
   // Reminders only link to a note; they never write into it, so they do
   // not need the managed provenance that tasks require. A note whose
@@ -1319,6 +1332,17 @@ export default function App() {
   // task links keep the attachment-only list, so only the reminder
   // dialog sees links here.
   const reminderLinkPaths = allEntries.filter((entry) => entry.kind === 'link').map((entry) => entry.path);
+  // Everything one New Task dialog can associate with: the eligible
+  // notes that can hold the task (checked for encryption when the
+  // dialog opens), then files, saved web links, and notebooks, which
+  // the task links to instead. Notes come from taskNotePaths so an
+  // encrypted note never appears; the rest need no such check.
+  const taskAssociationOptions: TaskAssociationOption[] = [
+    ...taskNotePaths.map((path) => ({ kind: 'note' as const, path })),
+    ...filePaths.map((path) => ({ kind: 'file' as const, path })),
+    ...reminderLinkPaths.map((path) => ({ kind: 'link' as const, path })),
+    ...notebooks.map((path) => ({ kind: 'notebook' as const, path })),
+  ];
   const beginExport = async (relativePath: string) => {
     try {
       const protectedNote = (await window.a11yNotebook?.vault.isNoteEncrypted?.(relativePath)) ?? false;
@@ -2575,7 +2599,14 @@ export default function App() {
     setItemDialog({ action: 'new-note', path: selectedNotebookPath });
   };
 
-  const createTask = async (path: string, text: string, due: string, priority: string, reminder = '') => {
+  const createTask = async (
+    path: string,
+    text: string,
+    due: string,
+    priority: string,
+    reminder = '',
+    link?: { kind: TaskLinkKind; target: string },
+  ) => {
     if (!vault || switchingRef.current || securityLocked || taskCreating) return;
     const root = vault.path;
     const generation = vaultGenerationRef.current;
@@ -2588,7 +2619,8 @@ export default function App() {
     setTaskCreating(true);
     setTaskCreateError('');
     try {
-      if (!notePaths.includes(path)) throw new Error('Choose a managed note, not an external file or cognitive asset.');
+      if (!notePaths.includes(path))
+        throw new Error('Choose a note that can hold a task, not a template, external file, or cognitive asset.');
       if (openNotes.some((note) => note.path === path && note.content !== note.saved) || activeConflict)
         throw new Error('Save or resolve note changes before adding a task.');
       if (await bridge.isNoteEncrypted?.(path))
@@ -2632,25 +2664,25 @@ export default function App() {
       try {
         const refreshedTasks = await bridge.getTasks();
         if (!isCurrent()) return;
-        // A file or link the task was started from is attached here,
-        // before the task list refresh: the auto-link reconciliation
-        // that runs on the refresh then adds the link to the task's own
-        // note on top of it, instead of either save dropping the other.
-        if (taskLinkTarget) {
+        // A file, link, or notebook the task was associated with is
+        // attached here, before the task list refresh: the auto-link
+        // reconciliation that runs on the refresh then adds the link to
+        // the task's own note on top of it, instead of either save
+        // dropping the other.
+        if (link) {
           const created = refreshedTasks.find((task) => task.id === `${path}#${stableId}`);
           if (created) {
             try {
-              await saveTaskLink(created, taskLinkTarget.kind, taskLinkTarget.target);
-              setStatusMessage(`Task created in its associated note and linked to ${taskLinkTarget.target}.`);
+              await saveTaskLink(created, link.kind, link.target);
+              setStatusMessage(`Task created in its associated note and linked to ${link.target}.`);
             } catch {
               // The task itself is saved; only its link failed, so the
               // list still refreshes and the link can be added by hand.
               setStatusMessage(
-                `Task created in its associated note. The link to ${taskLinkTarget.target} could not be saved.`,
+                `Task created in its associated note. The link to ${link.target} could not be saved.`,
               );
             }
           }
-          setTaskLinkTarget(null);
         }
         setTasks(refreshedTasks);
       } catch {
@@ -2661,6 +2693,67 @@ export default function App() {
     } finally {
       setTaskCreating(false);
     }
+  };
+
+  /**
+   * The one way to open the New Task dialog, for every entry point:
+   * Ctrl+N on the Tasks view, the Tasks view's New task button, the
+   * command palette, and the grid context menu's Create task. The
+   * selected item, when there is one, becomes the dialog's initial
+   * association: a note is pre-selected as the note holding the task,
+   * while a file or saved web link is attached to the task once it is
+   * created (a task can only live in a note, so the dialog still names
+   * the note holding it). From anywhere else there is no selection, so
+   * the open note stays the default associated note.
+   */
+  const openNewTaskDialog = (selectionPath?: string) => {
+    if (!vault) {
+      setStatusMessage('Open a library before creating a task.');
+      return;
+    }
+    setActiveDialog(null);
+    setTaskCreateError('');
+    setTaskNotePaths([]);
+    const menuEntry = selectionPath ? findEntry(vault?.entries ?? [], selectionPath) : undefined;
+    if (menuEntry?.kind === 'note') {
+      setTaskInitialOption({ kind: 'note', path: selectionPath ?? '' });
+      setTaskDefaultHoldingNote(undefined);
+    } else if (menuEntry?.kind === 'attachment' || menuEntry?.kind === 'link') {
+      setTaskInitialOption({
+        kind: menuEntry.kind === 'link' ? 'link' : 'file',
+        path: selectionPath ?? '',
+      });
+      setTaskDefaultHoldingNote(currentNote?.path);
+    } else {
+      setTaskInitialOption(
+        currentNote ? { kind: 'note', path: currentNote.path } : undefined,
+      );
+      setTaskDefaultHoldingNote(currentNote?.path);
+    }
+    setTaskNotesLoading(true);
+    setTaskDialogOpen(true);
+    const root = vaultPathRef.current;
+    const generation = vaultGenerationRef.current;
+    const isCurrent = () =>
+      !securityLockedRef.current &&
+      !switchingRef.current &&
+      root === vaultPathRef.current &&
+      generation === vaultGenerationRef.current;
+    void Promise.all(
+      notePaths.map(async (path) => ({
+        path,
+        encrypted: (await window.a11yNotebook?.vault.isNoteEncrypted?.(path)) ?? false,
+      })),
+    )
+      .then((notes) => {
+        if (isCurrent()) setTaskNotePaths(notes.filter((note) => !note.encrypted).map((note) => note.path));
+      })
+      .catch(() => {
+        if (isCurrent()) setTaskCreateError('Could not inspect eligible notes. Close this dialog and try again.');
+      })
+      .finally(() => {
+        if (isCurrent()) setTaskNotesLoading(false);
+      });
   };
 
   const saveTaskSchedule = async (task: VaultTask, schedule: TaskSchedule) => {
@@ -6177,14 +6270,9 @@ export default function App() {
     if (selectedTab === 'notebooks') {
       setItemDialog({ action: 'new-notebook', currentNotebook: selectedNotebookPath });
     } else if (selectedTab === 'tasks') {
-      setTaskCreationNotebookPath(
-        taskNotebookFilter === 'all'
-          ? selectedNotebookPath
-          : taskNotebookFilter === 'Root'
-            ? undefined
-            : taskNotebookFilter,
-      );
-      setActiveDialog('new-task');
+      // Ctrl+N on the Tasks view opens the same unified New Task dialog
+      // as the grid menu and the palette — never a second dialog.
+      openNewTaskDialog();
     } else if (selectedTab === 'assets') {
       if (assetBusy || assetDirty) {
         setStatusMessage('Save cognitive asset changes and wait for pending operations before creating another asset.');
@@ -6587,54 +6675,7 @@ export default function App() {
       return;
     }
     if (commandId === 'new-task') {
-      if (!vault) {
-        setStatusMessage('Open a library before creating a task.');
-        return;
-      }
-      setActiveDialog(null);
-      setTaskCreateError('');
-      setTaskNotePaths([]);
-      // From a grid context menu the selected item is the link target:
-      // a note is pre-selected as the associated note, while a file or
-      // saved web link is attached to the task once it is created (a
-      // task can only live in a note, so the dialog still asks which
-      // note holds it). From anywhere else there is no selection, so
-      // the open note stays the default associated note.
-      const menuEntry = contextMenu?.path ? findEntry(vault?.entries ?? [], contextMenu.path) : undefined;
-      if (menuEntry?.kind === 'note') {
-        setTaskInitialPath(contextMenu?.path);
-        setTaskLinkTarget(null);
-      } else if (menuEntry?.kind === 'attachment' || menuEntry?.kind === 'link') {
-        setTaskInitialPath(currentNote?.path);
-        setTaskLinkTarget({ kind: 'file', target: contextMenu?.path ?? '' });
-      } else {
-        setTaskInitialPath(currentNote?.path);
-        setTaskLinkTarget(null);
-      }
-      setTaskCreating(true);
-      setTaskDialogOpen(true);
-      const root = vaultPathRef.current;
-      const generation = vaultGenerationRef.current;
-      const isCurrent = () =>
-        !securityLockedRef.current &&
-        !switchingRef.current &&
-        root === vaultPathRef.current &&
-        generation === vaultGenerationRef.current;
-      void Promise.all(
-        notePaths.map(async (path) => ({
-          path,
-          encrypted: (await window.a11yNotebook?.vault.isNoteEncrypted?.(path)) ?? false,
-        })),
-      )
-        .then((notes) => {
-          if (isCurrent()) setTaskNotePaths(notes.filter((note) => !note.encrypted).map((note) => note.path));
-        })
-        .catch(() => {
-          if (isCurrent()) setTaskCreateError('Could not inspect eligible notes. Close this dialog and try again.');
-        })
-        .finally(() => {
-          if (isCurrent()) setTaskCreating(false);
-        });
+      openNewTaskDialog(contextMenu?.path);
       return;
     }
     if (commandId === 'new-asset') {
@@ -7756,17 +7797,19 @@ export default function App() {
         />
       ) : null}
       {taskDialogOpen ? (
-        <AssociatedTaskDialog
-          paths={taskNotePaths}
-          initialPath={taskInitialPath}
+        <NewTaskDialog
+          options={taskAssociationOptions}
+          initialOption={taskInitialOption}
+          defaultHoldingNote={taskDefaultHoldingNote}
           busy={taskCreating}
+          loadingNotes={taskNotesLoading}
           error={taskCreateError}
           priorityOptions={priorityOptions}
           onCreate={createTask}
           onClose={() => {
             setTaskDialogOpen(false);
-            setTaskLinkTarget(null);
-            setTaskInitialPath(undefined);
+            setTaskInitialOption(undefined);
+            setTaskDefaultHoldingNote(undefined);
           }}
         />
       ) : null}
@@ -9230,26 +9273,6 @@ export default function App() {
             setFilledCopyRequest(null);
             await openEntry({ path, name: path.split('/').at(-1)!, kind: 'note', provenance: 'created' });
             setStatusMessage('Filled copy saved.');
-          }}
-        />
-      ) : null}
-      {activeDialog === 'new-task' && !securityLocked ? (
-        <NewTaskDialog
-          onClose={closeDialog}
-          onCreate={async ({ text, due, reminder, priority }) => {
-            const bridge = window.a11yNotebook?.vault;
-            if (!bridge?.createTask || switchingRef.current) throw new Error('Task creation is unavailable.');
-            setTasks(
-              await bridge.createTask({
-                notebookPath: taskCreationNotebookPath,
-                text,
-                due: due || undefined,
-                reminder: reminder ? reminder.replace('T', ' ') : undefined,
-                priority,
-              }),
-            );
-            await refreshVault();
-            setStatusMessage('Task created.');
           }}
         />
       ) : null}

@@ -424,7 +424,7 @@ describe('contextual shell document workflows', () => {
       await screen.findByRole('heading', { name: 'Study' });
       const dialog = newAssociatedTask();
       await within(dialog).findByRole('option', { name: `Research/Plan.${format}` });
-      fireEvent.change(within(dialog).getByLabelText('Associated note'), {
+      fireEvent.change(within(dialog).getByLabelText('Associate with'), {
         target: { value: `Research/Plan.${format}` },
       });
       fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Prepare <review>' } });
@@ -469,29 +469,35 @@ describe('contextual shell document workflows', () => {
     bridge.vault.isNoteEncrypted.mockResolvedValue(true);
     await screen.findByRole('heading', { name: 'Study' });
     const dialog = newAssociatedTask();
-    await within(dialog).findByText('Create an unencrypted managed note before adding a task.');
+    await within(dialog).findByText('Create an unencrypted note before adding a task.');
     expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
-    expect(within(within(dialog).getByLabelText('Associated note')).getAllByRole('option')).toHaveLength(1);
+    expect(within(dialog).queryByLabelText('Associate with')).toBeNull();
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
     expect(bridge.vault.saveNote).not.toHaveBeenCalled();
   });
 
-  it('offers only managed, unencrypted, ordinary notes as task associations', async () => {
+  it('offers ordinary notes as task associations, including notes whose origin record was lost, and excludes templates and cognitive assets', async () => {
     const { bridge } = setup({
       entries: [
         { name: 'Allowed.md', path: 'Allowed.md', kind: 'note', provenance: 'created' },
         { name: 'Secret.html', path: 'Secret.html', kind: 'note', provenance: 'imported' },
+        // A note whose origin record was lost — for example, a cloud
+        // sync replacing the file — is still an ordinary note in this
+        // library and can still hold a task.
         { name: 'External.md', path: 'External.md', kind: 'note', provenance: 'unknown' },
+        { name: 'Synced.md', path: 'Synced.md', kind: 'note' },
         { name: 'Map.outline.md', path: 'Map.outline.md', kind: 'note', provenance: 'created' },
         { name: 'Deck.cards.md', path: 'Deck.cards.md', kind: 'note', provenance: 'imported' },
+        // Templates are not notes: a task can never live in one.
+        { name: 'Daily.md', path: 'Templates/Daily.md', kind: 'note', provenance: 'created' },
       ],
     });
     bridge.vault.isNoteEncrypted.mockImplementation(async (path) => path === 'Secret.html');
     await screen.findByRole('heading', { name: 'Study' });
     const dialog = newAssociatedTask();
     await within(dialog).findByRole('option', { name: 'Allowed.md' });
-    const options = within(within(dialog).getByLabelText('Associated note')).getAllByRole('option');
-    expect(options.map((option) => option.textContent)).toEqual(['Allowed.md']);
+    const options = within(within(dialog).getByLabelText('Associate with')).getAllByRole('option');
+    expect(options.map((option) => option.textContent)).toEqual(['Allowed.md', 'External.md', 'Synced.md']);
     expect(bridge.vault.readNote).not.toHaveBeenCalled();
   });
 
@@ -1024,7 +1030,7 @@ describe('contextual shell document workflows', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
     const dialog = await screen.findByRole('dialog', { name: 'New task' });
     await waitFor(() =>
-      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+      expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Plan.md'),
     );
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Review the plan' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
@@ -1059,10 +1065,14 @@ describe('contextual shell document workflows', () => {
     fireEvent.contextMenu(screen.getByRole('gridcell', { name: 'Report.pdf' }));
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
     const dialog = await screen.findByRole('dialog', { name: 'New task' });
-    // The task still lives in a note; the file becomes its link, not its home.
+    // The task still lives in a note; the file becomes its link, so the
+    // dropdown shows the file and names the note holding the task.
     await waitFor(() =>
-      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+      expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Report.pdf'),
     );
+    expect(
+      within(dialog).getByText('Task will be saved in Research/Plan.md and linked to Research/Report.pdf.'),
+    ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Check the report' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() =>
@@ -1101,8 +1111,11 @@ describe('contextual shell document workflows', () => {
     fireEvent.click(screen.getByRole('menuitem', { name: 'Create task' }));
     const dialog = await screen.findByRole('dialog', { name: 'New task' });
     await waitFor(() =>
-      expect(within(dialog).getByLabelText('Associated note')).toHaveValue('Research/Plan.md'),
+      expect(within(dialog).getByLabelText('Associate with')).toHaveValue('Research/Example.url'),
     );
+    expect(
+      within(dialog).getByText('Task will be saved in Research/Plan.md and linked to Research/Example.url.'),
+    ).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText('Task description'), { target: { value: 'Visit the example' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'Create task' }));
     await waitFor(() =>
