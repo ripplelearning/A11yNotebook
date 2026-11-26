@@ -143,6 +143,9 @@ test('paginated: activating an annotation on another page lands focus and select
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   try {
     const reader = page.getByRole('region', { name: 'PDF document reader' });
+    // Paginated is the view under test here (not the default): the
+    // Next page button only exists in Paginated view.
+    await reader.getByRole('radio', { name: 'Paginated view' }).click();
     await createAnnotation(page, 'quick brown fox', 'Fox note');
     // Move away: turn to page 2, then activate the annotation from the list.
     await reader.getByRole('button', { name: 'Next page' }).click();
@@ -198,6 +201,13 @@ test('same page: activating an annotation after moving focus away lands on the s
   const pageErrors: string[] = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   try {
+    // Paginated is the view under test here: in Continuous view the
+    // page heading follows the visual page stack, so 'Page 1 of 2'
+    // is not guaranteed after the jump (see the continuous test).
+    await page
+      .getByRole('region', { name: 'PDF document reader' })
+      .getByRole('radio', { name: 'Paginated view' })
+      .click();
     await createAnnotation(page, 'quick brown fox', 'Fox note');
     // Move focus away from the text, then activate the annotation from the list.
     await page.getByRole('button', { name: 'Copy notes to clipboard' }).focus();
