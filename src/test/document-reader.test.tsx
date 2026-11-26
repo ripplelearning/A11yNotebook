@@ -145,6 +145,12 @@ function mockPdf() {
   };
 }
 
+// Load-gating waits use a 10-second timeout: the reader's first open
+// (hash, page extraction, canvas and text-layer renders) takes longer
+// than testing-library's 1-second default on slow or loaded machines.
+// The sibling DocumentReader suites use the same allowance.
+const LOAD_TIMEOUT = 10_000;
+
 describe('local accessible document reader', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -199,7 +205,9 @@ describe('local accessible document reader', () => {
     );
     // Both readers open in Continuous view by default, so each of the
     // three pages has a text layer.
-    await waitFor(() => expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(6));
+    await waitFor(() => expect(document.querySelectorAll('.pdf-text-layer')).toHaveLength(6), {
+      timeout: LOAD_TIMEOUT,
+    });
     const layers = [...document.querySelectorAll<HTMLElement>('.pdf-text-layer')];
     const canvases = [...document.querySelectorAll('canvas')];
     const headers = [...document.querySelectorAll('[data-pdf-artifact-type="header"]')];
@@ -242,7 +250,7 @@ describe('local accessible document reader', () => {
     getDocument.mockReturnValue({ promise: Promise.resolve(pdf), destroy: vi.fn().mockResolvedValue(undefined) });
     render(<DocumentReader path="Docs/Guide.pdf" kind=".pdf" />);
 
-    expect(await screen.findByText('Page 1 searchable text')).toBeInTheDocument();
+    expect(await screen.findByText('Page 1 searchable text', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     await waitFor(() => expect(document.querySelector('.pdf-text-layer')).toBeInTheDocument());
     expect(getDocument).toHaveBeenCalledWith(
       expect.objectContaining({ disableAutoFetch: true, disableRange: true, disableStream: true, enableXfa: true }),
@@ -267,7 +275,7 @@ describe('local accessible document reader', () => {
     getDocument.mockReturnValue({ promise: Promise.resolve(pdf), destroy: vi.fn().mockResolvedValue(undefined) });
     render(<DocumentReader path="Docs/Protected.pdf" kind=".pdf" />);
 
-    expect(await screen.findByText('Page 1 searchable text')).toBeInTheDocument();
+    expect(await screen.findByText('Page 1 searchable text', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     expect(await screen.findByText(/This PDF is protected, so it opens read-only: notes and a filled file are unavailable\./)).toBeInTheDocument();
   });
 
@@ -292,7 +300,7 @@ describe('local accessible document reader', () => {
     });
     const reader = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
 
-    expect(await screen.findByText('First chapter text')).toBeInTheDocument();
+    expect(await screen.findByText('First chapter text', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     expect(ePub).toHaveBeenCalledWith();
     expect(epub.open).toHaveBeenCalledWith(expect.any(ArrayBuffer));
     expect(Rendition).toHaveBeenCalledWith(
@@ -337,7 +345,7 @@ describe('local accessible document reader', () => {
 
     // The unloadable first section has no text, so the book opens on the
     // first readable section instead of presenting "No extractable text".
-    expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Section 2 of 2', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     expect(screen.getByText('Second chapter text')).toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Previous section' }));
@@ -372,7 +380,7 @@ describe('local accessible document reader', () => {
     // The cover has no text; the reader starts at the first
     // table-of-contents entry with text instead of reporting no
     // extractable text for a book full of it.
-    expect(await screen.findByText('Section 2 of 3')).toBeInTheDocument();
+    expect(await screen.findByText('Section 2 of 3', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     expect(screen.getByText('Chapter OneIt was a queer, sultry summer…')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Previous section' }));
     expect(await screen.findByText('Section 1 of 3')).toBeInTheDocument();
@@ -386,7 +394,7 @@ describe('local accessible document reader', () => {
     });
     const reader = render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
 
-    expect(await screen.findByText('First chapter text')).toBeInTheDocument();
+    expect(await screen.findByText('First chapter text', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     expect(screen.queryByRole('navigation', { name: 'ePub table of contents' })).not.toBeInTheDocument();
 
     epub.navigation = {
@@ -417,7 +425,9 @@ describe('local accessible document reader', () => {
     } as unknown as NotebookBridge;
 
     render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
-    await waitFor(() => expect(display).toHaveBeenCalledWith('epubcfi(/6/8!/4/2)'));
+    await waitFor(() => expect(display).toHaveBeenCalledWith('epubcfi(/6/8!/4/2)'), {
+      timeout: LOAD_TIMEOUT,
+    });
     expect(getReadingPosition).toHaveBeenCalledWith('Books/Guide.epub');
     expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
 
@@ -459,7 +469,7 @@ describe('local accessible document reader', () => {
     } as unknown as NotebookBridge;
 
     render(<DocumentReader path="Books/Guide.epub" kind=".epub" />);
-    expect(await screen.findByText('Section 1 of 2')).toBeInTheDocument();
+    expect(await screen.findByText('Section 1 of 2', {}, { timeout: LOAD_TIMEOUT })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Next section' }));
     expect(await screen.findByText('Section 2 of 2')).toBeInTheDocument();
     await waitFor(() => expect(display).toHaveBeenCalledWith('Text/two.xhtml'));
@@ -498,7 +508,7 @@ describe('local accessible document reader', () => {
       }),
     );
     render(<DocumentReader path="Docs/Huge.pdf" kind=".pdf" />);
-    expect(await screen.findByRole('alert')).toHaveTextContent('too large');
+    expect(await screen.findByRole('alert', {}, { timeout: LOAD_TIMEOUT })).toHaveTextContent('too large');
     expect(getDocument).not.toHaveBeenCalled();
   });
 });
