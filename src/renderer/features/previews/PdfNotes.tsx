@@ -58,7 +58,8 @@ export default function PdfNotes({
   visualRef: RefObject<HTMLDivElement>;
   semanticRef: RefObject<HTMLDivElement>;
   rendered: PdfRenderedPage | null;
-  onNavigate: (page: number, offset: number, length: number) => void;
+  /** Jump to a note's spot in the PDF text; true when focus and selection landed there. */
+  onNavigate: (page: number, offset: number, length: number) => Promise<boolean>;
 }) {
   const [notes, setNotes] = useState<ResolvedNote[]>([]);
   const [targets, setTargets] = useState<PdfAnnotationTarget[] | null>(null);
@@ -398,7 +399,7 @@ export default function PdfNotes({
   // accessible page text just before the span holding the annotation's
   // start. The button is a sibling of the text span, never inside it, so
   // it cannot change canonical selection offsets. Activating it moves
-  // focus to that note's control in the "Saved PDF notes" list below.
+  // focus to that note's control in the "Annotations" list below.
   // The reader replaces the semantic DOM on every page render, so the
   // buttons are re-inserted whenever the notes or the rendered page
   // change, and removed on cleanup. Numbering follows the note's position
@@ -641,8 +642,8 @@ export default function PdfNotes({
       {error ? <p role="alert">{error}</p> : null}
       {notes.length ? (
         <>
-          <h4 id="saved-pdf-notes-heading">Saved PDF notes</h4>
-          <ul aria-labelledby="saved-pdf-notes-heading">
+          <h4 id="pdf-annotations-heading">Annotations</h4>
+          <ul aria-labelledby="pdf-annotations-heading">
             {notes.map((item) => {
               const { note, resolutions } = item;
               const orphaned = resolutions.some((resolution) => !isLocated(resolution));
@@ -656,12 +657,17 @@ export default function PdfNotes({
                       if (element) controls.current.set(note.id, element);
                       else controls.current.delete(note.id);
                     }}
-                    onClick={() => {
+                    onClick={async () => {
                       const index = resolutions.findIndex(isLocated);
                       const resolution = resolutions[index];
-                      if (resolution && isLocated(resolution))
-                        onNavigate(resolution.page, resolution.offset, resolution.length);
-                      else setMessage('This note has no unique location. Review its original quotation below.');
+                      if (resolution && isLocated(resolution)) {
+                        const landed = await onNavigate(resolution.page, resolution.offset, resolution.length);
+                        setMessage(
+                          landed
+                            ? `Jumped to annotation: ${note.label || 'PDF note'}.`
+                            : 'That annotation could not be located in the PDF text.',
+                        );
+                      } else setMessage('This note has no unique location. Review its original quotation below.');
                     }}
                   >
                     {note.label || 'PDF note'} — {note.color === 'none' ? 'outline only' : note.color}, page{' '}
