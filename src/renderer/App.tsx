@@ -4674,6 +4674,133 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pendingBookmarkAnchor, currentNote, mode]);
 
+  // Land on a bookmark in the already-open note right now, the Find
+  // way: select and focus synchronously instead of going through the
+  // pending-anchor effect. The effect path stays for notes that still
+  // need opening or switching to. Returns true only when focus and a
+  // live selection are both on the bookmarked spot, mirroring the
+  // effect's verification; a failed landing returns false so the
+  // caller can fall back to the effect's retry loop.
+  const landOnBookmarkNow = (note: OpenNote, anchor: BookmarkAnchor): boolean => {
+    const isHtml = /\.html?$/i.test(note.path);
+    const content = note.content;
+    const offset = resolveBookmarkAnchor(content, isHtml, anchor);
+    if (offset === null) return false;
+    const textarea = editorRef.current;
+    if (textarea && mode === 'edit') {
+      textarea.focus();
+      const span = headingTextSpan(content, isHtml, anchor) ?? lineSpanAt(content, offset);
+      const start = span?.start ?? offset;
+      const end = span?.end ?? offset;
+      try {
+        textarea.setSelectionRange(start, end);
+      } catch {
+        return false;
+      }
+      if (
+        document.activeElement === textarea &&
+        textarea.selectionStart === start &&
+        textarea.selectionEnd === end
+      ) {
+        bookmarkJumpRef.current = { path: note.path, anchor };
+        return true;
+      }
+      return false;
+    }
+    if (mode === 'edit' && focusRichTextBookmark(content, isHtml, anchor)) {
+      bookmarkJumpRef.current = { path: note.path, anchor };
+      return true;
+    }
+    if (mode !== 'edit') {
+      const target = landReadingBookmark(content, isHtml, anchor);
+      if (target && document.activeElement === target) {
+        bookmarkJumpRef.current = { path: note.path, anchor };
+        return true;
+      }
+      return false;
+    }
+    return false;
+  };
+
+  // Activate a bookmark from the Bookmarks list. When its note is
+  // already the current tab, land on it directly (above) instead of
+  // routing through openEntry: openEntry re-requests focus in the main
+  // region, and for a note whose origin record is gone — a cloud sync
+  // replacing the file drops it, so the note reads as unmanaged — that
+  // request is issued only after an awaited encryption check, in a
+  // later commit than the jump. It lands after the bookmark landing
+  // and yanks focus back to the top of the note: the jump announces,
+  // the selection sits on the bookmarked text, but programmatic focus
+  // rests on the tab panel. Landing directly issues no such request,
+  // so there is nothing to race the jump. A direct landing that cannot
+  // be made yet (the view still settling) falls back to the
+  // pending-anchor effect, still without openEntry — the note is
+  // already current, so there is nothing for it to open. Other notes
+  // keep the pending-anchor path with openEntry, where the landing is
+  // scheduled in the same commit as the focus request and cannot be
+  // yanked by it. PDF bookmarks keep that path too: their landing
+  // waits on the reader's bookmark API.
+  const activateListBookmark = async (bookmark: VaultBookmark): Promise<void> => {
+    const entry = findEntry(vault?.entries ?? [], bookmark.path);
+    if (!entry) return;
+    let anchor = bookmark.anchor ?? null;
+    if (!anchor) {
+      // A file-level bookmark (the note toggle) has no spot of its
+      // own: jump to where reading stopped in that note, the saved
+      // reading position, and say so. With no saved position there is
+      // nowhere to jump to, so the note simply opens.
+      const bridge = window.a11yNotebook?.vault;
+      const saved = await bridge?.getReadingPosition?.(bookmark.path).catch(() => null);
+      if (saved?.heading) {
+        anchor = { kind: 'heading', text: saved.heading, occurrence: saved.occurrence ?? 0 };
+      } else {
+        void openEntry(entry);
+        const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
+        setStatusMessage(label ? `Opened ${label}.` : 'Opened the bookmarked note.');
+        return;
+      }
+    }
+    if (anchor.kind === 'page') {
+      setPendingBookmarkAnchor({
+        path: bookmark.path,
+        anchor,
+        nonce: Date.now(),
+        ...(bookmark.name ? { name: bookmark.name } : {}),
+      });
+      void openEntry(entry);
+      return;
+    }
+    if (currentNote && currentNote.path === bookmark.path) {
+      selectEntry(entry);
+      if (landOnBookmarkNow(currentNote, anchor)) {
+        // The jump announcement, the way the pending-anchor effect
+        // announces it: the heading the jump landed under, or the
+        // generic message when there is no heading — never the
+        // bookmark's stored title (a position bookmark before the
+        // first heading has no heading to name).
+        const isHtml = /\.html?$/i.test(currentNote.path);
+        const jumpHeading = readingJumpHeading(currentNote.content, isHtml, anchor);
+        const label = jumpHeading ? normalizeHeadingText(jumpHeading.text) : null;
+        setStatusMessage(label ? `Jumped to ${label}.` : 'Jumped to the bookmarked place.');
+        return;
+      }
+      setPendingBookmarkAnchor({
+        path: bookmark.path,
+        anchor,
+        nonce: Date.now(),
+        ...(bookmark.name ? { name: bookmark.name } : {}),
+      });
+      return;
+    }
+    setPendingBookmarkAnchor({
+      path: bookmark.path,
+      anchor,
+      nonce: Date.now(),
+      ...(bookmark.name ? { name: bookmark.name } : {}),
+    });
+    void openEntry(entry);
+  };
+
   // After a PDF bookmark is activated, land the reader on its page and
   // spot once the PDF is the open attachment. The reader mounts (and
   // registers its bookmark API) after the open, so a missing API is
@@ -8942,22 +9069,7 @@ export default function App() {
                     const label = bookmark.name ?? normalizeHeadingText(bookmark.title);
                     return (
                       <li key={bookmark.id}>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const entry = findEntry(vault?.entries ?? [], bookmark.path);
-                            if (entry) {
-                              if (bookmark.anchor)
-                                setPendingBookmarkAnchor({
-                                  path: bookmark.path,
-                                  anchor: bookmark.anchor,
-                                  nonce: Date.now(),
-                                  ...(bookmark.name ? { name: bookmark.name } : {}),
-                                });
-                              void openEntry(entry);
-                            }
-                          }}
-                        >
+                        <button type="button" onClick={() => void activateListBookmark(bookmark)}>
                           {bookmark.anchor?.kind === 'heading'
                             ? `${label} — ${bookmark.path.split('/').pop()}`
                             : bookmark.anchor?.kind === 'offset'
