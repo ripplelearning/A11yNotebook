@@ -8,6 +8,9 @@ class FakeRecorder implements RecorderLike {
   onerror: ((event: { error?: { message?: string } }) => void) | null = null;
   started = false;
   stopped = false;
+  paused = false;
+  pauseCalls = 0;
+  resumeCalls = 0;
 
   constructor(mimeType: string) {
     this.mimeType = mimeType;
@@ -21,6 +24,16 @@ class FakeRecorder implements RecorderLike {
     this.stopped = true;
     this.ondataavailable?.({ data: new Blob(['hello'], { type: 'audio/webm' }) });
     this.onstop?.();
+  }
+
+  pause(): void {
+    this.paused = true;
+    this.pauseCalls += 1;
+  }
+
+  resume(): void {
+    this.paused = false;
+    this.resumeCalls += 1;
   }
 }
 
@@ -84,7 +97,80 @@ describe('AudioRecorder', () => {
     );
     await recorder.start();
     expect(recorder.status).toBe('error');
-    expect(failed).toHaveBeenCalledWith('Permission denied');
+    expect(failed).toHaveBeenCalledWith('Permission denied', 'Error');
+  });
+
+  it('passes the error name through so a blocked microphone can be told apart', async () => {
+    const failed = vi.fn();
+    const recorder = new AudioRecorder(
+      {
+        getUserMedia: async () => {
+          throw new DOMException('Permission denied', 'NotAllowedError');
+        },
+        createRecorder: () => {
+          throw new Error('unreachable');
+        },
+        isTypeSupported: () => true,
+      },
+      vi.fn(),
+      failed,
+    );
+    await recorder.start();
+    expect(recorder.status).toBe('error');
+    expect(failed).toHaveBeenCalledWith('Permission denied', 'NotAllowedError');
+  });
+
+  it('pauses and resumes the microphone without ending the recording', async () => {
+    const { recorder, finished, getFake } = makeRecorder();
+    await recorder.start();
+    expect(recorder.pause()).toBe(true);
+    expect(recorder.paused).toBe(true);
+    expect(getFake()?.pauseCalls).toBe(1);
+    // A second pause while already muted is a no-op, not a second pause.
+    expect(recorder.pause()).toBe(false);
+    expect(getFake()?.pauseCalls).toBe(1);
+    expect(recorder.resume()).toBe(true);
+    expect(recorder.paused).toBe(false);
+    expect(getFake()?.resumeCalls).toBe(1);
+    expect(recorder.resume()).toBe(false);
+    expect(getFake()?.resumeCalls).toBe(1);
+    recorder.stop();
+    expect(finished).toHaveBeenCalledTimes(1);
+    expect(recorder.status).toBe('stopped');
+  });
+
+  it('does not pause or resume when nothing is recording', async () => {
+    const { recorder } = makeRecorder();
+    expect(recorder.pause()).toBe(false);
+    expect(recorder.resume()).toBe(false);
+    expect(recorder.paused).toBe(false);
+  });
+
+  it('stops while muted and still delivers the recording', async () => {
+    const { recorder, finished, getFake } = makeRecorder();
+    await recorder.start();
+    expect(recorder.pause()).toBe(true);
+    recorder.stop();
+    expect(getFake()?.stopped).toBe(true);
+    expect(finished).toHaveBeenCalledTimes(1);
+    expect(recorder.status).toBe('stopped');
+    expect(recorder.paused).toBe(false);
+  });
+
+  it('drops the recording when stopped with discard, and still releases the microphone', async () => {
+    const { recorder, finished, tracks } = makeRecorder();
+    await recorder.start();
+    recorder.stop({ discardFinishedRecording: true });
+    expect(finished).not.toHaveBeenCalled();
+    expect(recorder.status).toBe('stopped');
+    expect(tracks[0].stop).toHaveBeenCalled();
+  });
+
+  it('delivers the recording when stopped without discard', async () => {
+    const { recorder, finished } = makeRecorder();
+    await recorder.start();
+    recorder.stop();
+    expect(finished).toHaveBeenCalledTimes(1);
   });
 
   it('reports a recorder error and stops the tracks', async () => {

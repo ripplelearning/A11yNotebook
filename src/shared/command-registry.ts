@@ -22,6 +22,7 @@ export type CommandId =
   | 'edit-link'
   | 'alius-locate'
   | 'dictate'
+  | 'toggle-dictation-microphone'
   | 'record-audio-note'
   | 'new-asset'
   | 'context-open-with'
@@ -148,6 +149,8 @@ export type CommandActionContext = {
   setSelectedTab: (value: string) => void;
   saveNote: () => void;
   showTasks: () => void;
+  /** Mute or unmute the microphone during an active dictation session. */
+  toggleDictationMicrophone?: () => void;
   toggleBookmark: () => void;
   bookmarkHeadingAtCursor: () => void;
   bookmarkPositionAtCursor: () => void;
@@ -251,6 +254,13 @@ export const COMMANDS: CommandDefinition[] = [
     label: 'Dictate',
     description: 'Start or stop dictation; transcribed text is inserted at the cursor.',
     shortcut: 'Ctrl+Alt+D',
+    contexts: ['general'],
+  },
+  {
+    id: 'toggle-dictation-microphone',
+    label: 'Mute or unmute microphone while dictating',
+    description:
+      'Turn the microphone off or on while dictation is active. F9 does this while dictating; otherwise the microphone can only be toggled from here. Does nothing when dictation is not active.',
     contexts: ['general'],
   },
   {
@@ -1207,6 +1217,10 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
       const nextState = !context.rightPaneOpen;
       context.setRightPaneOpen(nextState);
       return nextState ? 'Right pane opened.' : 'Right pane closed.';
+    }
+    case 'toggle-dictation-microphone': {
+      context.toggleDictationMicrophone?.();
+      return undefined;
     }
     case 'focus-search':
       context.focusTarget('search');
