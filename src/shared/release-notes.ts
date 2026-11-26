@@ -19,6 +19,10 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
       'Save any open note as a template with Ctrl+Shift+S: a dialog asks for the template name, prefilled with the note’s title, and whether to copy the note into the Templates folder or create the template and discard the original. If a template with that name already exists, it asks whether to replace it.',
       'Every library now has a Templates folder holding all templates, including the five built-in templates — Daily, Meeting, Project, Reading, Lecture — copied in as editable notes. Existing libraries get them the first time they are opened after this update, and a deleted built-in stays deleted.',
       'Templates can have fillable textboxes: write {{Name}} in a template and it renders as a textbox with that name as its accessible name, filled in from read-only mode. Saving bakes the values into the note text, and the filled note keeps a link to its template with a button for a fresh fillable copy.',
+      'Ctrl+N in Tasks, the New task button, the command palette, and Create Task in the Notes and Files grid all open the same New Task dialog now. The “Associate with” box lists notes, files, links, and notebooks — never templates.',
+      'PDFs now open in Continuous view by default; pick Paginated view instead and that choice is remembered for the next PDF.',
+      'Activating a PDF annotation now moves your focus to the exact spot in the PDF where the annotation was inserted, and selects the annotated text. The annotations list sits under an “Annotations” heading.',
+      'Search is now a button that opens an accessible search dialog, with autocomplete suggestions, optional filters, and results. Escape closes it, and activating a result moves focus to the result’s location.',
     ],
   },
   {
@@ -53,6 +57,11 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
       'Jumping to a bookmark in a Markdown note now moves programmatic focus and the virtual cursor to the exact bookmarked location, in reading mode and in editing mode — not to the heading before it — whether you jump with Ctrl+Alt+J or activate the bookmark from the Bookmarks list. Ctrl+Alt+J jumps to the next bookmark; it no longer sets one.',
       'From the Notes and Files grid, the context menu on a selected note, link, or file now offers Create Task, opening the New Task dialog with the selected item linked to the task.',
       'Pressing Escape in search now clears the search text and removes the search results from the display.',
+      'The User Guide’s first three sections are now Introduction, then UI + keyboard navigation, then accessibility features and settings — and the UI section lists the view shortcuts Ctrl+4, Ctrl+5, Ctrl+7, and Ctrl+0.',
+      'The Bookmarks list keeps its list semantics with the bullet markers hidden, so activating a bookmark from the list lands on the bookmark.',
+      'Typing a date filter as MM/DD/YYYY no longer makes search fail with no results.',
+      'In Continuous view, the page heading now follows the landed page after an annotation or bookmark jump.',
+      'With two dialogs open at once, only the top dialog holds focus now, and closing it returns focus correctly.',
     ],
   },
 ];
