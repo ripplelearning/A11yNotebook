@@ -6975,7 +6975,13 @@ export default function App() {
           .filter(
             (entry) =>
               entry.kind === 'note' &&
-              isManagedEntry(entry) &&
+              // A template is a template because it is a file in the
+              // Templates folder. Do not require a provenance record
+              // here: a cloud-sync replacement gives the file a new
+              // identity and drops its origin record, which used to
+              // hide the template from this picker while it still
+              // showed in the Templates notebook (same bug class #259
+              // fixed for the Create Task list).
               !assetRegistry.resolve(entry.path) &&
               entry.path.startsWith('Templates/'),
           )
