@@ -26,6 +26,7 @@ import { parseFrontMatter } from '../../src/shared/front-matter';
 import type { DocxStructure } from '../../src/shared/docx';
 import { parseDocxStructure } from './docx-parser';
 import type { SpreadsheetWorkbook } from '../../src/shared/spreadsheet';
+import { blankSpreadsheetWorkbook } from '../../src/shared/spreadsheet';
 import { parseXlsxWorkbook } from './xlsx-parser';
 import { writeXlsxWorkbook, writeXlsxWorkbookFresh } from './xlsx-writer';
 import { parseOdsWorkbook } from './ods-parser';
@@ -1090,6 +1091,25 @@ export function createVaultService(
             : `# ${path.basename(target, '.md')}\n\n`);
       return createDocument(relativePath, initialContent, origin, assertCurrent, onCommitted);
     });
+  }
+
+  /**
+   * Create a blank spreadsheet (.xlsx) with one empty sheet. The bytes
+   * come from the fresh-package writer, and the file is stored through
+   * the same creation path as any other new file, so provenance,
+   * encryption, and the search index all apply. A name that already
+   * exists fails the same way a duplicate note name does.
+   */
+  async function createSpreadsheet(
+    relativePath: string,
+    assertCurrent?: () => void,
+  ): Promise<VaultInfo> {
+    assertCurrent?.();
+    if (!/\.xlsx$/i.test(relativePath)) throw new Error('New spreadsheets must use the .xlsx extension.');
+    const bytes = writeXlsxWorkbookFresh(blankSpreadsheetWorkbook());
+    const view = await createDocument(relativePath, bytes, 'created', assertCurrent);
+    if (!view) throw new Error('The spreadsheet could not be created.');
+    return view;
   }
 
   /** File-safe base name for a dialog-created task note, taken from the task text itself. */
@@ -2620,6 +2640,7 @@ export function createVaultService(
     saveNote,
     createFolder,
     createNote,
+    createSpreadsheet,
     createLink,
     saveLink,
     resolveAlius,

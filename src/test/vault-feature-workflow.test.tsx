@@ -52,6 +52,7 @@ function setup(
         content = value;
       }),
       createNote: vi.fn(async () => vault),
+      createSpreadsheet: vi.fn(async () => vault),
       createNotebook: vi.fn(async () => vault),
       rename: vi.fn(async () => vault),
       delete: vi.fn(async () => vault),
@@ -328,6 +329,18 @@ describe('feature wiring in the application shell', () => {
     fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'txt' } });
     fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
     await waitFor(() => expect(bridge.vault.createNote).toHaveBeenCalledWith('Briefing.txt'));
+  });
+  it('creates a spreadsheet from the format picker instead of a note', async () => {
+    const { bridge, menu } = setup();
+    await screen.findByRole('heading', { name: 'Study' });
+    menu('show-contents');
+    menu('new-note');
+    const dialog = await screen.findByRole('dialog', { name: 'New note' });
+    fireEvent.change(within(dialog).getByRole('textbox', { name: 'New Note Name' }), { target: { value: 'Budget' } });
+    fireEvent.change(within(dialog).getByRole('combobox', { name: 'Note format' }), { target: { value: 'spreadsheet' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'New note' }));
+    await waitFor(() => expect(bridge.vault.createSpreadsheet).toHaveBeenCalledWith('Budget.xlsx'));
+    expect(bridge.vault.createNote).not.toHaveBeenCalled();
   });
   it('renders HTML task semantics accessibly and toggles by stable task identity', async () => {
     const task: VaultTask = {

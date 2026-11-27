@@ -31,6 +31,7 @@ function installBridge() {
       saveNote: vi.fn(async () => undefined),
       createNotebook: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       createNote: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
+      createSpreadsheet: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       rename: vi.fn(async () => ({ name: 'Vault', path: '/vault', entries: [] })),
       reveal: vi.fn(async () => undefined),
       openExternal: vi.fn(async () => undefined),

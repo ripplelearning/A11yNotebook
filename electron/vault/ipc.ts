@@ -3355,6 +3355,17 @@ export function setupVaultIpc(
       return view;
     });
   });
+  ipcMain.handle(IPC_CHANNELS.vaultCreateSpreadsheet, async (event, relativePath: unknown) => {
+    assertTrusted(event, isTrustedSender);
+    if (typeof relativePath !== 'string') throw new Error('Invalid spreadsheet creation data.');
+    const access = captureVaultAccess(event, isTrustedSender);
+    return serializeVaultOperation(async () => {
+      access.assertCurrent();
+      const view = await access.vault.createSpreadsheet(relativePath, access.assertCurrent);
+      access.assertCurrent();
+      return view;
+    });
+  });
   ipcMain.handle(IPC_CHANNELS.vaultRename, async (event, relativePath: unknown, name: unknown) => {
     assertTrusted(event, isTrustedSender);
     if (typeof relativePath !== 'string' || typeof name !== 'string') throw new Error('Invalid rename request.');

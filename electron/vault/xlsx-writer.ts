@@ -116,9 +116,14 @@ export function writeXlsxWorkbook(originalBytes: Buffer, workbook: SpreadsheetWo
   return writeZipEntries(entries);
 }
 
-/** Minimal .xlsx package for an .xls workbook saved as .xlsx. */
+/**
+ * Minimal .xlsx package built from a workbook model: used for an .xls
+ * workbook saved as .xlsx, and for a brand-new spreadsheet, where the
+ * caller supplies the model directly instead of reading one from disk.
+ */
 export function writeXlsxWorkbookFresh(workbook: SpreadsheetWorkbook): Buffer {
-  if (workbook.sourceFormat !== 'xls') invalid('Fresh XLSX packages are only built from xls workbooks.');
+  if (workbook.sourceFormat !== 'xls' && workbook.sourceFormat !== 'xlsx')
+    invalid('Fresh XLSX packages are only built from xls or xlsx workbooks.');
   const contentTypes =
     `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>` +
     `<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">` +

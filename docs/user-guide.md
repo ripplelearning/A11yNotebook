@@ -120,7 +120,7 @@ off New's shortcut, and conflicting shortcuts are rejected. The File
 menu and the command palette offer the same commands. Cancelling leaves
 existing files and unsaved edits alone; save or sort out pending edits
 when asked. New notes use Markdown by default; the creation dialog also
-offers HTML. A view that needs an open library says so instead of
+offers HTML, plain text, and Spreadsheet. A view that needs an open library says so instead of
 quietly making a different kind of item.
 
 ### Navigate files
@@ -1311,6 +1311,12 @@ Spreadsheets (`.xlsx`, `.ods`, `.csv`, up to 40 MB) can be imported like
 any attachment and open in an editable grid. Slide decks (`.pptx`,
 `.odp`, up to 40 MB) open as read-only text: a list of slides with
 titles, body text, and speaker notes.
+
+**Create a spreadsheet.** In the **New note** dialog, pick **Spreadsheet (.xlsx)**,
+name it, and confirm: the app makes a blank spreadsheet with one empty
+sheet in the notebook you have selected and opens it in the spreadsheet
+view. Add rows and columns, type values, and save with **Ctrl+S** like any
+other spreadsheet.
 
 **Move around a spreadsheet.** Open the file to see its sheets as a
 grid with row numbers and column letters. Arrow keys move the active

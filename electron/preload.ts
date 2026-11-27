@@ -49,6 +49,7 @@ const CHANNELS: typeof SharedChannels = {
   vaultReadAudioData: 'vault:read-audio-data',
   vaultCreateNotebook: 'vault:create-notebook',
   vaultCreateNote: 'vault:create-note',
+  vaultCreateSpreadsheet: 'vault:create-spreadsheet',
   vaultCreateLink: 'vault:create-link',
   vaultSaveLink: 'vault:save-link',
   vaultRename: 'vault:rename',
@@ -265,6 +266,8 @@ const bridge: NotebookBridge = {
     readAudioData: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultReadAudioData, relativePath),
     createNotebook: (relativePath) => ipcRenderer.invoke(CHANNELS.vaultCreateNotebook, relativePath),
     createNote: (relativePath, content) => ipcRenderer.invoke(CHANNELS.vaultCreateNote, relativePath, content),
+    createSpreadsheet: (relativePath) =>
+      ipcRenderer.invoke(CHANNELS.vaultCreateSpreadsheet, relativePath),
     createLink: (input) => ipcRenderer.invoke(CHANNELS.vaultCreateLink, input),
     saveLink: (input) => ipcRenderer.invoke(CHANNELS.vaultSaveLink, input),
     rename: (relativePath, name) => ipcRenderer.invoke(CHANNELS.vaultRename, relativePath, name),

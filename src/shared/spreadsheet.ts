@@ -39,6 +39,20 @@ export function emptyCell(): SpreadsheetCell {
   return { text: '' };
 }
 
+/**
+ * A brand-new spreadsheet: one blank sheet, no rows, ready to open in
+ * the spreadsheet view. The fresh-package writer turns this into a
+ * minimal .xlsx file.
+ */
+export function blankSpreadsheetWorkbook(): SpreadsheetWorkbook {
+  return {
+    sourceFormat: 'xlsx',
+    sheets: [{ name: 'Sheet1', rows: [], mergedCells: [], columnWidths: [] }],
+    unsupportedFeatures: [],
+    truncated: false,
+  };
+}
+
 /** 0-based column index to spreadsheet letters: 0 -> A, 25 -> Z, 26 -> AA. */
 export function columnLabel(index: number): string {
   let label = '';

@@ -84,6 +84,8 @@ export interface VaultBridge {
   readAudioData?(path: string): Promise<{ path: string; data: Uint8Array }>;
   createNotebook(path: string): Promise<VaultInfo>;
   createNote(path: string, content?: string): Promise<VaultInfo>;
+  /** Create a blank spreadsheet (.xlsx) with one empty sheet; returns the updated view. */
+  createSpreadsheet(path: string): Promise<VaultInfo>;
   /** Create a standalone link (.url file) in a notebook; returns its path and the updated view. */
   createLink?(input: { title: string; url: string; notebookPath?: string }): Promise<{
     path: string;
