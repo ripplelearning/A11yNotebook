@@ -19,6 +19,12 @@ function renderDialog(props: Partial<React.ComponentProps<typeof NewTaskDialog>>
 }
 
 describe('unified new task dialog', () => {
+  it('puts keyboard focus in the Associate with combo box when the dialog opens', async () => {
+    const { dialog } = renderDialog();
+    expect(within(dialog).getByLabelText('Associate with')).toHaveFocus();
+    expect(within(dialog).getByRole('textbox', { name: 'Task description' })).not.toHaveFocus();
+  });
+
   it('lists notes, files, links, and notebooks in one Associate with dropdown, grouped by type', async () => {
     const { dialog } = renderDialog();
     const select = within(dialog).getByLabelText('Associate with');

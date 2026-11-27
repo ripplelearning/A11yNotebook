@@ -170,6 +170,7 @@ export default function NewTaskDialog({
         <label>
           Associate with
           <select
+            data-autofocus
             value={selection ? selection.path : ''}
             disabled={busy}
             onChange={(event) => {
@@ -197,7 +198,6 @@ export default function NewTaskDialog({
         <label>
           Task description
           <input
-            data-autofocus
             required
             maxLength={500}
             value={text}

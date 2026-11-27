@@ -201,7 +201,10 @@ describe('contextual navigation and creation', () => {
     shortcut('n');
     const dialog = screen.getByRole('dialog', { name: 'New task' });
     const input = within(dialog).getByRole('textbox', { name: 'Task description' });
-    expect(input).toHaveFocus();
+    // Focus starts in the Associate with dropdown, not the description,
+    // so a screen reader user reaches the association choice first.
+    expect(within(dialog).getByLabelText('Associate with')).toHaveFocus();
+    expect(input).not.toHaveFocus();
     // With no task text the dialog cannot create: the button stays
     // disabled instead of submitting an empty task.
     expect(within(dialog).getByRole('button', { name: 'Create task' })).toBeDisabled();
