@@ -91,6 +91,16 @@ const BLOCKED_TAGS = new Set([
   'head',
   'title',
 ]);
+/**
+ * Blocked elements whose content is raw text, never markup: a tag scanner
+ * must not look for tags inside them. Script and style bodies, page
+ * titles, textareas, noscript blocks, and iframe fallbacks routinely
+ * contain `<` sequences (including literal `<script>` strings), and
+ * scanning those as tags corrupts the blocked-element stack so badly
+ * that it never unwinds — everything after the first such element,
+ * including a whole captured article body, is swallowed.
+ */
+const RAW_TEXT_TAGS = new Set(['script', 'style', 'textarea', 'title', 'noscript', 'iframe']);
 const TASK_ATTRIBUTES = new Set([
   'data-a11y-task-id',
   'data-a11y-task-complete',
@@ -166,6 +176,23 @@ function readTag(source: string, start: number) {
   return -1;
 }
 
+/**
+ * Find the end of a raw-text element starting just after its opening
+ * tag: the first `</name` followed by whitespace, `/`, or `>`, then the
+ * end of that close tag. Returns -1 when the element never closes, in
+ * which case the rest of the input is inside it. Searching for the close
+ * tag as text (instead of scanning for tags) matches how an HTML parser
+ * ends these elements, at the first `</name`.
+ */
+function findRawTextEnd(source: string, from: number, tag: string): number {
+  const closeTag = new RegExp(`</${tag}(?=[\\s/>])`, 'gi');
+  closeTag.lastIndex = from;
+  const match = closeTag.exec(source);
+  if (!match) return -1;
+  const end = readTag(source, match.index);
+  return end < 0 ? source.length : end;
+}
+
 function attributes(raw: string) {
   const result: Array<[string, string]> = [];
   const opening = /^<\s*\/?\s*[a-z][\w:-]*/i.exec(raw)?.[0].length ?? 0;
@@ -214,9 +241,27 @@ export function sanitizeHtmlFragment(
     if (!match) continue;
     const closing = Boolean(match[1]);
     const tag = match[2].toLowerCase();
+    if (!closing && RAW_TEXT_TAGS.has(tag)) {
+      // Raw-text content is never scanned for tags: jump past the
+      // matching close tag instead. A `<script>` string inside a script
+      // body would otherwise push a second entry that its close tag
+      // never pops, and the stuck stack swallows the rest of the
+      // document. This applies inside blocked elements too, so a script
+      // inside a form, head, or template cannot corrupt the stack
+      // either.
+      const endOfRawText = findRawTextEnd(source, end, tag);
+      cursor = endOfRawText < 0 ? source.length : endOfRawText;
+      continue;
+    }
     if (blocked.length) {
-      if (closing && blocked[blocked.length - 1] === tag) blocked.pop();
-      else if (!closing && BLOCKED_TAGS.has(tag) && !VOID_TAGS.has(tag)) blocked.push(tag);
+      if (closing) {
+        // Pop the matching entry even when it is not on top: a
+        // mismatched close still ends its element (and anything opened
+        // inside it), so the scan recovers instead of swallowing the
+        // rest of the document behind a stuck entry.
+        const at = blocked.lastIndexOf(tag);
+        if (at >= 0) blocked.length = at;
+      } else if (!closing && BLOCKED_TAGS.has(tag) && !VOID_TAGS.has(tag)) blocked.push(tag);
       continue;
     }
     if (BLOCKED_TAGS.has(tag)) {

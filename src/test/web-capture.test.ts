@@ -89,6 +89,31 @@ describe('web capture conversion and URL validation', () => {
     expect(capture.html).not.toContain('steal()');
   });
 
+  it('keeps the article when a page script writes a script tag', async () => {
+    // Regression: capturing a page like the XDA article used to produce
+    // an HTML Note with no article text at all. A script body containing
+    // a `<script>` string with a backslash-escaped close (`<\/script>`)
+    // corrupted the sanitizer's blocked-element stack, so everything
+    // after it — the whole article — was swallowed.
+    const { result, response, outgoing } = await beginCapture();
+    response.emit(
+      'data',
+      Buffer.from(
+        '<html><head><title>Everyday tasks</title>' +
+          `<script>document.write('<script src="a.js"><\\/script>');</script>` +
+          '</head><body><h1>Everyday tasks</h1><article><p>Do the thing in a browser.</p></article></body></html>',
+      ),
+    );
+    response.emit('end');
+    outgoing.emit('close');
+    const capture = await result;
+    expect(capture.html).toContain('<h1>Everyday tasks</h1>');
+    expect(capture.html).toContain('Do the thing in a browser.');
+    expect(capture.html).not.toContain('<script');
+    expect(capture.html).not.toContain('document.write');
+    expect(capture.markdown).toContain('Do the thing in a browser.');
+  });
+
   it('retains accessible headings, table structure, safe links, and localized raster references', () => {
     const safe = sanitizeHtmlFragment(
       '<h2>Section</h2><table><tr><th scope="col">A</th><td>B</td></tr></table><a href="../link">Link</a><img src="/image.png" alt="Chart">',

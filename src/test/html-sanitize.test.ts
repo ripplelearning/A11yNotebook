@@ -108,3 +108,74 @@ describe('main-process standalone HTML sanitization', () => {
     expect(safe).not.toContain('class="custom"');
   });
 });
+
+describe('raw-text elements cannot corrupt the blocked-element stack', () => {
+  it('keeps article text after a script that writes a script tag', () => {
+    // The XDA capture shape: a script body containing a `<script>`
+    // string whose close is backslash-escaped (`<\/script>`). The old
+    // tag scanner pushed the inner `<script>` open but never popped it
+    // (the escaped close is not a tag), so the stack stayed stuck and
+    // the whole article body after it was swallowed.
+    const safe = sanitizeHtmlFragment(
+      '<html><head><title>Everyday tasks</title>' +
+        `<script>document.write('<script src="a.js"><\\/script>');</script>` +
+        '</head><body><h1>Everyday tasks</h1><article><p>Do the thing in a browser.</p></article></body></html>',
+    );
+    expect(safe).toContain('<h1>Everyday tasks</h1>');
+    expect(safe).toContain('Do the thing in a browser.');
+    expect(safe).not.toContain('<script');
+    expect(safe).not.toContain('document.write');
+  });
+
+  it('keeps text after a title containing a less-than sign', () => {
+    // A literal `<` inside a title used to be read as a tag whose end
+    // consumed the real `</title>`, so the title never closed and
+    // everything after it was swallowed.
+    const safe = sanitizeHtmlFragment('<title>5 < 10 things</title><p>Kept</p>');
+    expect(safe).toContain('<p>Kept</p>');
+    expect(safe).not.toContain('<title');
+  });
+
+  it('keeps text after a style block whose content looks like markup', () => {
+    const safe = sanitizeHtmlFragment(
+      '<style>a<b{color:red}</style><p>Kept</p><script>var x = "<div>";</script><p>Also kept</p>',
+    );
+    expect(safe).toContain('<p>Kept</p>');
+    expect(safe).toContain('<p>Also kept</p>');
+    expect(safe).not.toContain('<style');
+    expect(safe).not.toContain('<script');
+    expect(safe).not.toContain('var x');
+  });
+
+  it('recovers after mismatched closes of blocked elements', () => {
+    // A close tag for an element deeper in the stack still ends it
+    // (and anything opened inside it), instead of leaving the stack
+    // stuck and swallowing the rest of the document.
+    const safe = sanitizeHtmlFragment(
+      '<form><button>Label</form><p>After the form.</p><template><form></template><p>After the template.</p>',
+    );
+    expect(safe).toContain('After the form.');
+    expect(safe).toContain('After the template.');
+    expect(safe).not.toContain('<form');
+    expect(safe).not.toContain('<button');
+    expect(safe).not.toContain('<template');
+    expect(safe).not.toContain('Label');
+  });
+
+  it('drops an unclosed script and everything after it', () => {
+    const safe = sanitizeHtmlFragment('<p>Before</p><script>var x = 1;');
+    expect(safe).toContain('<p>Before</p>');
+    expect(safe).not.toContain('var x');
+    expect(safe).not.toContain('<script');
+  });
+
+  it('still drops blocked content nested inside other blocked elements', () => {
+    const safe = sanitizeHtmlFragment(
+      '<head><noscript><form><input></form></noscript><script>steal()</script></head><p>Kept</p>',
+    );
+    expect(safe).toContain('<p>Kept</p>');
+    expect(safe).not.toContain('<noscript');
+    expect(safe).not.toContain('<form');
+    expect(safe).not.toContain('steal()');
+  });
+});
