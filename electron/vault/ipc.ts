@@ -28,6 +28,7 @@ import {
 } from '../../src/shared/metadata-protection';
 import { DEFAULT_REMINDER_DEFAULTS, validateReminderDefaults } from '../../src/shared/reminder-defaults';
 import { AUDIO_TYPES, DOCUMENT_TYPES, IMAGE_TYPES, protocolPath, readConvertedAttachment, readTextAttachment } from './attachments';
+import { buildEmailMessage } from './email-message';
 import { readDocumentAttachment } from './document-preview';
 import { captureWebPage } from './web-capture';
 import { lookupThesaurus } from './thesaurus';
@@ -3396,37 +3397,12 @@ export function setupVaultIpc(
       access.assertCurrent();
       // Mailto cannot carry an attachment, so the app writes a MIME
       // message with the file embedded and opens it in the default mail
-      // app, where the user presses Send. The temp file stays behind for
-      // the mail app to read; the operating system cleans its temp folder.
-      const boundary = `a11y-notebook-${randomUUID()}`;
-      const safeName = name.replace(/["\r\n]/g, '-');
-      const encodedName = encodeURIComponent(name).replace(/[!()*']/g, (character) =>
-        `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
-      );
-      const subject = /^[\x20-\x7e]*$/.test(name) ? name : `=?UTF-8?B?${Buffer.from(name, 'utf8').toString('base64')}?=`;
-      const base64 = bytes.toString('base64');
-      const wrapped: string[] = [];
-      for (let offset = 0; offset < base64.length; offset += 76) wrapped.push(base64.slice(offset, offset + 76));
-      const message = [
-        `Subject: ${subject}`,
-        'MIME-Version: 1.0',
-        `Content-Type: multipart/mixed; boundary="${boundary}"`,
-        '',
-        `--${boundary}`,
-        'Content-Type: text/plain; charset=UTF-8',
-        'Content-Transfer-Encoding: 7bit',
-        '',
-        `Attached: ${name}`,
-        '',
-        `--${boundary}`,
-        'Content-Type: application/octet-stream',
-        'Content-Transfer-Encoding: base64',
-        `Content-Disposition: attachment; filename="${safeName}"; filename*=UTF-8''${encodedName}`,
-        '',
-        ...wrapped,
-        `--${boundary}--`,
-        '',
-      ].join('\r\n');
+      // app, where the user presses Send. The message carries
+      // `X-Unsent: 1` first so the mail app opens it as an unsent draft
+      // in compose mode instead of a read-only received message. The
+      // temp file stays behind for the mail app to read; the operating
+      // system cleans its temp folder.
+      const message = buildEmailMessage(name, bytes);
       const emlPath = path.join(tmpdir(), `a11y-notebook-email-${randomUUID()}.eml`);
       await writeFile(emlPath, message, { flag: 'wx', mode: 0o600 });
       const failure = await shell.openPath(emlPath);
