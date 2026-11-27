@@ -865,6 +865,11 @@ export default function App() {
     }
   });
   const [settings, setSettings] = useState<NotebookSettings>(DEFAULT_SETTINGS);
+  // The latest settings for settings saves to build on: a save that runs
+  // after another save must start from the state that save left, not
+  // from the render its caller closed over (see persistSettings).
+  const settingsRef = useRef(settings);
+  settingsRef.current = settings;
   const [settingsLoadFailed, setSettingsLoadFailed] = useState(false);
   const [settingsVaultPath, setSettingsVaultPath] = useState<string>();
   const [securityEnabled, setSecurityEnabled] = useState(false);
@@ -990,15 +995,36 @@ export default function App() {
   // Save settings only when the last load succeeded: after a failed load
   // the in-memory settings are defaults, and persisting them would
   // overwrite the stored settings file. Returns false when blocked.
+  //
+  // Saves run through one queue, in the order they started, and each
+  // save builds its next settings from the latest state at the moment
+  // it runs — never from the render its caller closed over. Two
+  // overlapping saves used to apply in completion order, so a snapshot
+  // captured before a later choice could land after it and wipe that
+  // choice, in memory and on disk: choosing a transcription model while
+  // the library was still seeding its built-in templates (or recording
+  // the last notebook) lost the model, and the next Alt+Ctrl+D opened
+  // the model chooser again instead of retrying the microphone. A
+  // failed save never blocks the saves behind it.
+  const persistSettingsQueueRef = useRef(Promise.resolve());
   const persistSettings = useCallback(
-    async (next: NotebookSettings): Promise<boolean> => {
+    async (update: (prev: NotebookSettings) => NotebookSettings): Promise<boolean> => {
       if (settingsLoadFailed) {
         setStatusMessage('Settings did not load, so saving is disabled to protect your stored settings.');
         return false;
       }
-      await window.a11yNotebook!.vault.saveSettings(next);
-      setSettings(next);
-      return true;
+      const run = persistSettingsQueueRef.current.then(async () => {
+        const next = update(settingsRef.current);
+        await window.a11yNotebook!.vault.saveSettings(next);
+        setSettings(next);
+      });
+      persistSettingsQueueRef.current = run.catch(() => undefined);
+      try {
+        await run;
+        return true;
+      } catch {
+        return false;
+      }
     },
     [settingsLoadFailed],
   );
@@ -1014,7 +1040,7 @@ export default function App() {
     if (settingsLoadFailed || settingsVaultPath !== vault.path) return;
     if (switchingRef.current) return;
     if (settings.lastNotebookPath === selectedNotebookPath) return;
-    void persistSettings({ ...settings, lastNotebookPath: selectedNotebookPath });
+    void persistSettings((prev) => ({ ...prev, lastNotebookPath: selectedNotebookPath }));
   }, [vault, selectedNotebookPath, selectedTab, settings, settingsVaultPath, settingsLoadFailed, persistSettings]);
 
   const applyHistoryLocation = (location: NavigationLocation) => {
@@ -1537,7 +1563,7 @@ export default function App() {
       }
       if (!stillCurrent()) return;
       setVault(latest);
-      if (stillCurrent()) void persistSettings({ ...settings, templatesSeeded: true });
+      if (stillCurrent()) void persistSettings((prev) => ({ ...prev, templatesSeeded: true }));
     })();
   }, [vault, securityLocked, settingsLoadFailed, settingsVaultPath, settings, persistSettings, allEntries]);
 
@@ -1607,8 +1633,7 @@ export default function App() {
       autoBackupRunningRef.current = true;
       try {
         const result = await create(settings.autoBackupFolder ?? '', settings.autoBackupKeepCount ?? 5);
-        const next = { ...settings, lastAutoBackupAt: new Date().toISOString() };
-        if (await persistSettings(next)) {
+        if (await persistSettings((prev) => ({ ...prev, lastAutoBackupAt: new Date().toISOString() }))) {
           setStatusMessage(`Automatic backup created (${result.files} files).`);
         }
       } catch {
@@ -2920,8 +2945,7 @@ export default function App() {
 
   const savePriorityOptions = async (options: string[]) => {
     if (!window.a11yNotebook) return;
-    const next = { ...settings, priorityOptions: options };
-    await persistSettings(next);
+    await persistSettings((prev) => ({ ...prev, priorityOptions: options }));
   };
 
   const [spellingOpen, setSpellingOpen] = useState(false);
@@ -3320,11 +3344,10 @@ export default function App() {
 
   const addToCustomDictionary = async (word: string) => {
     if (!window.a11yNotebook) return;
-    const next = {
-      ...settings,
-      customDictionary: [...(settings.customDictionary ?? []), word],
-    };
-    await persistSettings(next);
+    await persistSettings((prev) => ({
+      ...prev,
+      customDictionary: [...(prev.customDictionary ?? []), word],
+    }));
   };
 
   const refreshVault = async () => {
@@ -6637,7 +6660,7 @@ export default function App() {
 
   const chooseTranscriptionModel = async (optionId: TranscriptionModelOption['id']) => {
     setTranscriptionModelChoiceOpen(false);
-    const saved = await persistSettings({ ...settings, transcriptionModel: optionId });
+    const saved = await persistSettings((prev) => ({ ...prev, transcriptionModel: optionId }));
     if (!saved) return;
     if (dictationStartPendingRef.current) {
       dictationStartPendingRef.current = false;
@@ -9049,7 +9072,7 @@ export default function App() {
           recoveryAvailable={recoveryAvailable}
           onClose={closeDialog}
           onSave={async (value) => {
-            if (await persistSettings(value)) {
+            if (await persistSettings((prev) => ({ ...prev, ...value }))) {
               setStatusMessage('Settings saved.');
             }
           }}
