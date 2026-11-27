@@ -182,6 +182,7 @@ import {
   isTemplateNotePath,
   parseTemplateFields,
 } from '../shared/template-fields';
+import { seedBuiltInTemplates } from '../shared/template-seeding';
 import { useAnnotations } from './features/annotations/useAnnotations';
 import type { NoteAnnotation } from '../shared/annotations';
 import RemindersView from './features/reminders/RemindersView';
@@ -1556,7 +1557,10 @@ export default function App() {
   // get any built-in that is missing. The templatesSeeded marker in the
   // library's settings makes this once-per-library, so a built-in copy
   // the user later deletes stays deleted; a failed seed leaves the
-  // marker unset and retries on the next open.
+  // marker unset and retries on the next open. Seeding is a background
+  // task: each copy is retried across passes, and a failure is logged
+  // for diagnosis, never written to the shared status line — a stale
+  // background error there can be mistaken for a later result.
   const templatesSeededRef = useRef<string | null>(null);
   useEffect(() => {
     if (!vault || securityLocked || settingsLoadFailed) return;
@@ -1564,7 +1568,7 @@ export default function App() {
     if (settings.templatesSeeded) return;
     if (templatesSeededRef.current === vault.path) return;
     const bridge = window.a11yNotebook?.vault;
-    if (!bridge?.createNote) return;
+    if (!bridge?.createNote || !bridge?.get) return;
     templatesSeededRef.current = vault.path;
     const root = vault.path;
     const generation = vaultGenerationRef.current;
@@ -1572,22 +1576,18 @@ export default function App() {
     const stillCurrent = () =>
       !switchingRef.current && vaultPathRef.current === root && vaultGenerationRef.current === generation;
     void (async () => {
-      let latest = vault;
-      try {
-        for (const template of missing) {
-          if (!stillCurrent()) return;
-          latest = await bridge.createNote(
-            templateNotePath(TEMPLATES_FOLDER, template.name, template.format ?? 'markdown'),
-            template.content,
-          );
-        }
-      } catch {
-        if (stillCurrent()) setStatusMessage('Could not copy the built-in templates into the Templates folder.');
-        return;
-      }
+      const result = await seedBuiltInTemplates(missing, allEntries.map((entry) => entry.path), {
+        createNote: (relativePath, content) => bridge.createNote(relativePath, content),
+        getLibrary: async () => {
+          const view = await bridge.get();
+          if (!view) throw new Error('Could not read the library.');
+          return view;
+        },
+        isCurrent: stillCurrent,
+      });
       if (!stillCurrent()) return;
-      setVault(latest);
-      if (stillCurrent()) void persistSettings((prev) => ({ ...prev, templatesSeeded: true }));
+      if (result.latestLibrary) setVault(result.latestLibrary);
+      if (result.allSeeded) void persistSettings((prev) => ({ ...prev, templatesSeeded: true }));
     })();
   }, [vault, securityLocked, settingsLoadFailed, settingsVaultPath, settings, persistSettings, allEntries]);
 
