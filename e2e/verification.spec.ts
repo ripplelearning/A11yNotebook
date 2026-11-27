@@ -237,7 +237,7 @@ test('csv opens as an editable spreadsheet, not Cognitive Tools', async () => {
     await openGridEntry(page, 'Budget.csv');
     // The spreadsheet grid renders the CSV: header row plus data rows.
     await expect(page.locator('table caption')).toContainText('Budget — ', { timeout: 30000 });
-    await expect(page.getByRole('textbox', { name: 'Row 2, column A, Rent' })).toBeVisible();
+    await expect(page.getByRole('gridcell', { name: 'Row 2, column A, Rent' })).toBeVisible();
     // The old bug opened the Assets tab (Cognitive Tools) instead.
     await expect(page.getByRole('heading', { name: 'Cognitive Tools' })).toHaveCount(0);
     expect(pageErrors).toEqual([]);
@@ -252,9 +252,16 @@ test('xlsx opens as an editable spreadsheet and saves back', async () => {
     await openNotebook(page, 'Data');
     await openGridEntry(page, 'Budget.xlsx');
     await expect(page.locator('table caption')).toContainText('Budget — 4 rows', { timeout: 30000 });
-    const cellB1 = page.getByRole('textbox', { name: 'Row 1, column B, 1200' });
+    // Cells are grid cells now, not text boxes: click to make B1 active,
+    // F2 to edit, Enter to commit and move down.
+    const cellB1 = page.getByRole('gridcell', { name: 'Row 1, column B, 1200' });
     await expect(cellB1).toBeVisible();
-    await cellB1.fill('1300');
+    await cellB1.click();
+    await page.keyboard.press('F2');
+    const editor = page.getByRole('textbox', { name: 'Row 1, column B, 1200' });
+    await expect(editor).toBeVisible();
+    await editor.fill('1300');
+    await page.keyboard.press('Enter');
     await page.getByRole('button', { name: 'Save spreadsheet (Ctrl+S)' }).click();
     await expect(statusLine(page)).toContainText('Saved Budget.xlsx.', { timeout: 30000 });
     // Prove the edit reached disk: re-read the saved file with the app's

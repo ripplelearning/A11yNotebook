@@ -35,6 +35,8 @@ export type CommandId =
   | 'bookmark-heading-at-cursor'
   | 'bookmark-position-at-cursor'
   | 'bookmark-jump-next'
+  | 'spreadsheet-next-sheet'
+  | 'spreadsheet-previous-sheet'
   | 'toggle-focus-mode'
   | 'edit-note-metadata'
   | 'close-current-tab'
@@ -156,6 +158,9 @@ export type CommandActionContext = {
   bookmarkPositionAtCursor: () => void;
   /** Jump to the next bookmark after the cursor in the open note or PDF. */
   jumpToNextBookmark: () => void;
+  /** Switch sheets in the open spreadsheet; false when none is open. */
+  nextSpreadsheetSheet?: () => boolean;
+  previousSpreadsheetSheet?: () => boolean;
   /** Move keyboard focus to a region or control of the shell. */
   focusTarget: (target: FocusTarget) => void;
   checkForUpdates: () => void;
@@ -839,6 +844,20 @@ export const COMMANDS: CommandDefinition[] = [
     shortcut: 'Ctrl+Alt+J',
   },
   {
+    id: 'spreadsheet-next-sheet',
+    label: 'Next spreadsheet sheet',
+    description: 'Switch to the next sheet in the open spreadsheet, wrapping to the first sheet.',
+    shortcut: 'Ctrl+PageDown',
+    contexts: ['general'],
+  },
+  {
+    id: 'spreadsheet-previous-sheet',
+    label: 'Previous spreadsheet sheet',
+    description: 'Switch to the previous sheet in the open spreadsheet, wrapping to the last sheet.',
+    shortcut: 'Ctrl+PageUp',
+    contexts: ['general'],
+  },
+  {
     id: 'toggle-focus-mode',
     label: 'Toggle Focus Mode',
     description: 'Show only the title, menu, search, and document. Press F11 again to restore the full layout.',
@@ -1192,6 +1211,10 @@ export function dispatchCommand(commandId: CommandId, context: CommandActionCont
     case 'bookmark-jump-next':
       context.jumpToNextBookmark();
       return undefined;
+    case 'spreadsheet-next-sheet':
+      return context.nextSpreadsheetSheet?.() ? undefined : 'Open a spreadsheet to switch sheets.';
+    case 'spreadsheet-previous-sheet':
+      return context.previousSpreadsheetSheet?.() ? undefined : 'Open a spreadsheet to switch sheets.';
     case 'close-current-tab':
       context.setSelectedTab('notes-files');
       return 'Current tab closed.';

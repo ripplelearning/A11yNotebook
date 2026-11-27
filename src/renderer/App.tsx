@@ -149,6 +149,7 @@ import {
 } from '../shared/settings';
 import AttachmentView from './features/previews/AttachmentView';
 import type { PdfBookmarkApi } from './features/previews/DocumentReader';
+import type { SpreadsheetSheetApi } from './features/previews/SpreadsheetView';
 import type { AttachmentPreview } from '../shared/attachments';
 import { AudioRecorder, type FinishedRecording } from './features/audio/recorder';
 import { LocalTranscriber } from './features/audio/transcription';
@@ -432,6 +433,10 @@ export default function App() {
   // The spreadsheet preview's save function, when one is open: Ctrl+S
   // (save-current-note) calls it when the attachment tab is active.
   const spreadsheetSaveRef = useRef<(() => Promise<void>) | null>(null);
+  // The open spreadsheet's sheet-switching API, when one is open: the
+  // spreadsheet-next-sheet and spreadsheet-previous-sheet commands call
+  // it. Kept beside the save ref it mirrors.
+  const spreadsheetSheetRef = useRef<SpreadsheetSheetApi | null>(null);
   // The OCR save function, when temporary OCR text is showing in the
   // document reader: Ctrl+S (save-current-note) calls it when the
   // attachment tab is active, writing the recognized text into the file.
@@ -7517,6 +7522,8 @@ export default function App() {
       showNotebooks: () => navigateScreen('notebooks'),
       showNotesFiles: () => navigateScreen('notes-files'),
       saveNote: () => void saveActiveNote(),
+      nextSpreadsheetSheet: () => spreadsheetSheetRef.current?.nextSheet() ?? false,
+      previousSpreadsheetSheet: () => spreadsheetSheetRef.current?.previousSheet() ?? false,
       showTasks: () => {
         setTaskTabOpen(true);
         navigateScreen('tasks');
@@ -8647,6 +8654,7 @@ export default function App() {
                     if (entry) void openEntry(entry);
                   }}
                   spreadsheetSaveRef={spreadsheetSaveRef}
+                  spreadsheetSheetRef={spreadsheetSheetRef}
                   ocrSaveRef={ocrSaveRef}
                   pdfBookmarkRef={pdfBookmarkRef}
                   onSpreadsheetFileCreated={() => {

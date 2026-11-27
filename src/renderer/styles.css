@@ -824,6 +824,18 @@ a:focus-visible,
   font-weight: 400;
 }
 
+/* Spreadsheet grid: the selected range gets a tint in addition to
+   aria-selected and the announced selection, so selection is never
+   color-only. The active cell keeps the app's focus outline. */
+.table-scroll [role='gridcell'][aria-selected='true'] {
+  background: rgba(125, 211, 252, 0.18);
+}
+
+.table-scroll [role='gridcell'] input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .command-list {
   list-style: none;
   padding: 0;

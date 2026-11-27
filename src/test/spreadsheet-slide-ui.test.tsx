@@ -91,9 +91,13 @@ describe('spreadsheet preview', () => {
   it('edits a cell and saves the updated workbook', async () => {
     stubVault();
     const saveRef = renderAttachment('Sheets/Budget.xlsx', '.xlsx');
-    const input = await screen.findByLabelText('Row 1, column B, 1200');
+    const cell = await screen.findByLabelText('Row 1, column B, 1200');
+    // Clicking a cell makes it the active cell; F2 edits the active cell.
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: 'F2' });
+    const input = screen.getByRole('textbox');
     fireEvent.change(input, { target: { value: '1300' } });
-    fireEvent.blur(input);
+    fireEvent.keyDown(input, { key: 'Enter' });
     const saveButton = screen.getByRole('button', { name: 'Save spreadsheet (Ctrl+S)' });
     expect(saveButton).toBeEnabled();
     fireEvent.click(saveButton);
