@@ -49,6 +49,13 @@ test('capture dialog lists Markdown Note, HTML Note, and Webpage File', async ()
     await waitForApp(page);
     await dismissTutorial(page);
 
+    // The capture command refuses while the library is still opening,
+    // so wait until the seeded notebook is listed before firing the
+    // shortcut: on a slow Windows runner the shortcut can otherwise
+    // land before the vault is ready, the command refuses, and the
+    // dialog never opens.
+    await expect(page.getByRole('gridcell', { name: 'Research' })).toBeVisible({ timeout: 30000 });
+
     await pressShortcut(page, 'Control+Shift+W');
     const dialog = page.getByRole('dialog', { name: 'Capture web page' });
     await expect(dialog).toBeVisible();
