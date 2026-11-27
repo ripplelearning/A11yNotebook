@@ -34,7 +34,7 @@ async function createSpreadsheet(page: Page, name: string): Promise<void> {
   await dialog.getByLabel('Note format').selectOption('spreadsheet');
   await dialog.getByRole('button', { name: 'New note', exact: true }).click();
   await expect(statusLine(page)).toContainText('Spreadsheet created.', { timeout: 30000 });
-  await expect(page.getByRole('table', { name: 'Sheet1 — 0 rows' })).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole('grid', { name: 'Sheet1 — 0 rows' })).toBeVisible({ timeout: 30000 });
 }
 
 test('a spreadsheet created from the dialog opens blank and shows Type Excel spreadsheet', async () => {
@@ -85,14 +85,18 @@ test('a created spreadsheet round-trips an edit through save, close, and reopen'
     await createSpreadsheet(page, 'Budget');
 
     // A blank sheet has no rows until one is added; then the first cell
-    // takes the edit, and Ctrl+S saves it back into the new file.
+    // takes the edit, and Ctrl+S saves it back into the new file. The
+    // grid model edits through F2 and the editor textbox, not a per-cell
+    // input, so click the cell, press F2, fill the editor, and Tab to
+    // commit.
     await page.getByRole('button', { name: 'Add row' }).click();
-    const cell = page.getByLabel('Row 1, column A, empty');
+    const cell = page.getByRole('gridcell', { name: 'Row 1, column A, empty', exact: true });
     await expect(cell).toBeVisible({ timeout: 30000 });
-    await cell.fill('42');
-    // Filling renames the cell's accessible name to its new value, so
-    // move focus with the keyboard instead of re-resolving the old name:
-    // leaving the cell commits the edit.
+    await cell.click();
+    await page.keyboard.press('F2');
+    const editor = page.getByRole('textbox', { name: 'Row 1, column A, empty' });
+    await expect(editor).toBeVisible();
+    await editor.fill('42');
     await page.keyboard.press('Tab');
     await pressShortcut(page, 'Control+S');
     await expect(statusLine(page)).toContainText('Saved Budget.xlsx.', { timeout: 30000 });
@@ -112,7 +116,9 @@ test('a created spreadsheet round-trips an edit through save, close, and reopen'
     await dismissTutorial(page);
     await switchView(page, 'Control+3', async () => page.getByRole('gridcell', { name: 'Budget.xlsx' }).count());
     await openGridEntry(page, 'Budget.xlsx');
-    await expect(page.getByLabel('Row 1, column A, 42')).toBeVisible({ timeout: 30000 });
+    await expect(
+      page.getByRole('gridcell', { name: 'Row 1, column A, 42', exact: true }),
+    ).toBeVisible({ timeout: 30000 });
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);
