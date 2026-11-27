@@ -212,7 +212,7 @@ export interface VaultBridge {
   readCredentials?(): Promise<{ id: string; username: string; password: string }[]>;
   saveCredential?(id: string, username: string, password: string): Promise<void>;
   deleteCredential?(id: string): Promise<void>;
-  captureWeb?(url: string, notebookPath: string, format: 'markdown' | 'html'): Promise<VaultCaptureResult>;
+  captureWeb?(url: string, notebookPath: string, format: 'markdown' | 'html' | 'webpage'): Promise<VaultCaptureResult>;
   exportNote?(
     path: string,
     format: 'html' | 'markdown',

@@ -1195,16 +1195,22 @@ encrypted on its own, or protected in another way, needs the explicit
 consent box checked; locked content is never silently unlocked for
 export.
 
-Choose **Capture web page** and pick Markdown or HTML output. The app
-takes public HTTPS pages only, pins public DNS addresses for each
-request, checks redirects again, and applies the usual size, image, and
-time limits. HTML output keeps semantic headings, lists, tables, safe
-links, and images it managed to download, with their descriptions;
-scripts, handlers, forms, and remote resources are removed. The note
-says where it came from, using the checked final address. When some
-images are missing or have no description, the app tells you how many
-and adds a note about it in the saved note; the captured note is opened
-and indexed.
+Choose **Capture web page**, enter the page address, pick the notebook
+to save it in, and pick an output format: **Markdown Note**, **HTML
+Note**, or **Webpage File**. The app takes public HTTPS pages only, pins
+public DNS addresses for each request, checks redirects again, and
+applies the usual size, image, and time limits. A Markdown Note or HTML
+Note is an editable note in the notebook you picked. A Webpage File is
+the captured page saved as a standalone file in that notebook instead:
+it shows Type "Webpage" in Notes and Files, opens read-only in the
+reader, and never opens as an editable note. HTML output keeps semantic
+headings, lists, tables, safe links, and images it managed to download,
+with their descriptions; scripts, handlers, forms, and remote resources
+are removed. The saved page says where it came from, using the checked
+final address. When some images are missing or have no description, the
+app tells you how many and adds a note about it in the saved page. A
+captured page never opens by itself: open it from Notes and Files when
+you are ready. Captured pages are indexed, so search finds them.
 
 ### Attachment previews
 

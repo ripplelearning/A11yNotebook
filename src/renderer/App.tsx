@@ -164,6 +164,7 @@ import {
 } from '../shared/audio';
 import { isAllowedLinkUrl, parseLinkUrl } from '../shared/links';
 import { isAliusPath, type ImportPending } from '../shared/alius';
+import { isWebpagePath } from '../shared/webpage';
 import EditorTools, { type EditorToolsHandle } from './features/editor/EditorTools';
 import NewFromTemplateDialog from './features/templates/NewFromTemplateDialog';
 import SaveAsTemplateDialog, { type SaveAsTemplateResult } from './features/templates/SaveAsTemplateDialog';
@@ -1189,6 +1190,10 @@ export default function App() {
   const currentNoteEditLocked = !!currentEditLockKey && lockedEditPaths.has(currentEditLockKey);
   const currentNoteProtected =
     !!currentNote && !!findEntryInTree(vault?.entries ?? [], currentNote.path)?.protected;
+  // A captured webpage file opens in the reader but is never editable:
+  // it is a file, not a note, so the read-only rules below treat it like
+  // a protected note.
+  const currentNoteIsWebpage = !!currentNote && isWebpagePath(currentNote.path);
   const openProtectedRequest = (path: string, action: ProtectedAction) => {
     const entries = vault?.entries ?? [];
     const block = findProtectionBlockInTree(entries, path);
@@ -1225,7 +1230,13 @@ export default function App() {
     const forced = forceEditNoteRef.current;
     if (forced) {
       forceEditNoteRef.current = null;
-      if (forced === currentNoteId && !securityLocked && !currentNoteEditLocked && !currentNoteProtected) {
+      if (
+        forced === currentNoteId &&
+        !securityLocked &&
+        !currentNoteEditLocked &&
+        !currentNoteProtected &&
+        !currentNoteIsWebpage
+      ) {
         setMode('edit');
         return;
       }
@@ -1237,8 +1248,10 @@ export default function App() {
     // forced mode is never recorded as the note's remembered mode. The
     // remembered entry is forgotten so that unlocking returns to the
     // default mode, exactly as before mode memory existed. A protected
-    // note behaves the same way: read-only until it is unprotected.
-    if (securityLocked || currentNoteEditLocked || currentNoteProtected) {
+    // note behaves the same way: read-only until it is unprotected. A
+    // captured webpage file is read-only the same way: it is a file, and
+    // there is no editing it back into a note.
+    if (securityLocked || currentNoteEditLocked || currentNoteProtected || currentNoteIsWebpage) {
       delete noteModeRef.current[currentNoteId];
       setMode('read-only');
       return;
@@ -1249,7 +1262,11 @@ export default function App() {
       return;
     }
     const next =
-      settings.defaultNoteOpenMode === 'edit' && !securityLocked && !currentNoteEditLocked && !currentNoteProtected
+      settings.defaultNoteOpenMode === 'edit' &&
+      !securityLocked &&
+      !currentNoteEditLocked &&
+      !currentNoteProtected &&
+      !currentNoteIsWebpage
         ? 'edit'
         : 'read-only';
     noteModeRef.current[currentNoteId] = next;
@@ -1262,11 +1279,18 @@ export default function App() {
     securityLocked,
     currentNoteEditLocked,
     currentNoteProtected,
+    currentNoteIsWebpage,
   ]);
   useEffect(() => {
-    if (currentNoteId && !securityLocked && !currentNoteEditLocked && !currentNoteProtected)
+    if (
+      currentNoteId &&
+      !securityLocked &&
+      !currentNoteEditLocked &&
+      !currentNoteProtected &&
+      !currentNoteIsWebpage
+    )
       noteModeRef.current[currentNoteId] = mode;
-  }, [mode, currentNoteId, securityLocked, currentNoteEditLocked, currentNoteProtected]);
+  }, [mode, currentNoteId, securityLocked, currentNoteEditLocked, currentNoteProtected, currentNoteIsWebpage]);
   useEffect(() => {
     const open = new Set(openNotes.map((note) => note.id));
     for (const id of Object.keys(noteModeRef.current)) {
@@ -2501,6 +2525,11 @@ export default function App() {
     }
     const dispatchPath = isAlius ? aliusTarget! : entry.path;
     const dispatchKind = isAlius ? (/\.(?:md|html|htm|txt)$/i.test(dispatchPath) ? 'note' : 'attachment') : entry.kind;
+    // A captured webpage file opens in the reader like an HTML note: the
+    // attachment preview would strip its images and links. It is a file,
+    // though, so it always opens read-only. The path settles it (not the
+    // kind), so an Alius of a webpage file behaves the same way.
+    const isWebpage = isWebpagePath(dispatchPath);
     if (entry.kind === 'link' && !isAlius) {
       await openLinkEntry(entry);
       return;
@@ -2592,7 +2621,7 @@ export default function App() {
       }
       return;
     }
-    if (dispatchKind !== 'note') return;
+    if (dispatchKind !== 'note' && !isWebpage) return;
     const existingNote = openNotes.find((item) => item.id === entry.path);
     if (existingNote) {
       onOpened?.();
@@ -2620,8 +2649,10 @@ export default function App() {
       id: entry.path,
       path: entry.path,
       title: isAlius
-        ? (aliusTarget!.split(/[\\/]/).at(-1) ?? entry.name).replace(/\.(?:md|html|htm|txt)$/i, '')
-        : entry.name.replace(/\.(?:md|html|htm|txt)$/i, ''),
+        ? (aliusTarget!.split(/[\\/]/).at(-1) ?? entry.name)
+            .replace(/\.webpage\.html?$/i, '')
+            .replace(/\.(?:md|html|htm|txt)$/i, '')
+        : entry.name.replace(/\.webpage\.html?$/i, '').replace(/\.(?:md|html|htm|txt)$/i, ''),
       content,
       saved: content,
       ...(isAlius ? { aliusTarget: aliusTarget! } : {}),
@@ -2632,7 +2663,7 @@ export default function App() {
         : [...current, note],
     );
     setSelectedTab(note.id);
-    setMode(settings.defaultNoteOpenMode === 'edit' ? 'edit' : 'read-only');
+    setMode(isWebpage ? 'read-only' : settings.defaultNoteOpenMode === 'edit' ? 'edit' : 'read-only');
     setPendingFocus('main');
     onOpened?.();
     setNotePasswordDialog(null);
@@ -2804,7 +2835,7 @@ export default function App() {
     const menuEntry = selectionPath ? findEntry(vault?.entries ?? [], selectionPath) : undefined;
     if (menuEntry?.kind === 'note') {
       setTaskInitialOption({ kind: 'note', path: selectionPath ?? '' });
-    } else if (menuEntry?.kind === 'attachment' || menuEntry?.kind === 'link') {
+    } else if (menuEntry?.kind === 'attachment' || menuEntry?.kind === 'link' || menuEntry?.kind === 'webpage') {
       setTaskInitialOption({
         kind: menuEntry.kind === 'link' ? 'link' : 'file',
         path: selectionPath ?? '',
@@ -7250,6 +7281,10 @@ export default function App() {
       setStatusMessage('Save this note before editing it again.');
       return;
     }
+    if (commandId === 'toggle-read-only-mode' && currentNoteIsWebpage) {
+      setStatusMessage('A captured webpage is a file, so it always opens read-only.');
+      return;
+    }
     if (commandId === 'toggle-focus-mode') {
       toggleFocusMode();
       return;
@@ -7664,7 +7699,7 @@ export default function App() {
       const entry = findEntry(vault?.entries ?? [], treeSelection);
       return !window.a11yNotebook || !entry || entry.kind === 'notebook';
     }
-    if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked;
+    if (id === 'toggle-read-only-mode') return !currentNote || currentNoteEditLocked || currentNoteIsWebpage;
     if (id === 'organize-library') return !vault;
     if (id === 'enable-reading-mode') return !currentNote;
     if (id === 'find-in-document')
@@ -9278,10 +9313,13 @@ export default function App() {
             setVault(result.vault);
             // Captured pages never open automatically: the user opens them
             // when ready (Tristen, 1.9.17 retest).
+            const capturedLabel =
+              format === 'webpage' ? 'a Webpage File' : format === 'html' ? 'an HTML Note' : 'a Markdown Note';
+            const capturedThing = format === 'webpage' ? 'the file' : 'the note';
             setStatusMessage(
               result.omittedImages
-                ? `Web page captured as ${format.toUpperCase()}. ${result.omittedImages} image${result.omittedImages === 1 ? ' was' : 's were'} unavailable; the note explains the omissions.`
-                : `Web page captured as ${format.toUpperCase()}. Open it from Notes and Files when ready.`,
+                ? `Web page captured as ${capturedLabel}. ${result.omittedImages} image${result.omittedImages === 1 ? ' was' : 's were'} unavailable; ${capturedThing} explains the omissions.`
+                : `Web page captured as ${capturedLabel}. Open it from Notes and Files when ready.`,
             );
           }}
         />

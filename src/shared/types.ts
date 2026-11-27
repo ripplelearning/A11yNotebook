@@ -53,7 +53,7 @@ export interface PointerImportFailure {
 export interface VaultEntry {
   name: string;
   path: string;
-  kind: 'notebook' | 'note' | 'attachment' | 'link';
+  kind: 'notebook' | 'note' | 'attachment' | 'link' | 'webpage';
   children?: VaultEntry[];
   /** Missing metadata and externally replaced files are conservatively unknown. */
   provenance?: 'created' | 'imported' | 'task' | 'unknown';

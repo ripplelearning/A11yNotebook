@@ -2364,7 +2364,7 @@ export function setupVaultIpc(
       typeof url !== 'string' ||
       typeof notebookPath !== 'string' ||
       notebookPath.length > 2048 ||
-      !['markdown', 'html'].includes(String(format))
+      !['markdown', 'html', 'webpage'].includes(String(format))
     ) {
       throw new Error('Invalid web capture request.');
     }
@@ -2380,7 +2380,7 @@ export function setupVaultIpc(
     let attachmentParent: string | undefined;
     let attachmentFolderCreated = false;
     let attachmentParentCreated = false;
-    let noteCreated = false;
+    let pageCreated = false;
     const createdFiles: Array<{ absolute: string; dev: number | bigint; ino: number | bigint }> = [];
     const rememberCreated = (absolute: string, identity: { dev: number | bigint; ino: number | bigint }) => {
       createdFiles.push({ absolute, ...identity });
@@ -2421,18 +2421,27 @@ export function setupVaultIpc(
             .replace(/^[.\s]+/g, '')
             .trim()
             .slice(0, 100) || 'Web capture';
-        const extension = format === 'html' ? '.html' : '.md';
+        // A Webpage File keeps the captured page as a standalone file in
+        // the picked notebook: the same HTML an HTML Note would hold, but
+        // saved with the .webpage.html marker so the library lists it as
+        // a file of Type "Webpage" instead of as an editable note.
+        const isWebpage = format === 'webpage';
+        const extension = isWebpage ? '.webpage.html' : format === 'html' ? '.html' : '.md';
         const notePath = `${noteDirectory}${safeTitle}-${captureId.slice(0, 8)}${extension}`;
         const content =
-          format === 'html' ? capture.html : `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
+          format === 'html' || isWebpage
+            ? capture.html
+            : `# ${safeTitle}\n\nSource: ${capture.sourceUrl}\n\n${capture.markdown}\n`;
         access.assertCurrent();
-        const opened = await vault.createNote(notePath, content, 'imported', access.assertCurrent, rememberCreated);
-        noteCreated = true;
+        const opened = isWebpage
+          ? await vault.createDocument(notePath, content, 'imported', access.assertCurrent, rememberCreated)
+          : await vault.createNote(notePath, content, 'imported', access.assertCurrent, rememberCreated);
+        pageCreated = true;
         access.assertCurrent();
         return { vault: opened, notePath, omittedImages: capture.omittedImages };
       });
     } catch (error) {
-      if (!noteCreated) {
+      if (!pageCreated) {
         for (const created of createdFiles.reverse()) {
           const current = await lstat(created.absolute).catch(() => null);
           if (current?.isFile() && current.dev === created.dev && current.ino === created.ino)
