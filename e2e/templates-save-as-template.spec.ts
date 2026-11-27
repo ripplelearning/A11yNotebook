@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import type { ElectronApplication, Page } from '@playwright/test';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import {
@@ -100,6 +100,93 @@ test('built-ins are seeded into the Templates folder and listed for new notes', 
     await expect(page.getByRole('heading', { name: 'Priorities', level: 2 })).toBeVisible({ timeout: 30000 });
     await expect(page.getByRole('textbox', { name: 'Markdown source' })).toHaveCount(0);
 
+    expect(pageErrors).toEqual([]);
+  } finally {
+    await closeApp(app, paths);
+  }
+});
+
+test('seeding retries a template when its first copy fails', async () => {
+  // A transient copy failure — the locked-file refusal a slow Windows
+  // runner hits — used to abort the whole seed: the first template
+  // failed, the rest never landed, and a stale error sat in the status
+  // line. Seeding now retries across passes, so one failed copy must
+  // not lose any template.
+  //
+  // The failure is injected in the main process, by refusing the first
+  // staging write once: a copied note is written to a `.import-` staging
+  // file first, so one refused staging write fails exactly one copy
+  // with a lock error, the same shape as the Windows refusal that
+  // blocked the release. A renderer-side wrapper cannot do this: the
+  // preload bridge is frozen by the context bridge, so replacing its
+  // createNote silently does nothing. The library only opens when the
+  // test opens it from the picker below, so the patch is in place
+  // before any copy can happen. The patch records whether it fired, so
+  // a missed injection fails loudly instead of passing without
+  // exercising the retry.
+  const paths = seedLibrary([
+    {
+      name: 'Work',
+      files: [{ name: 'Weekly review.md', content: '# Weekly review\n\nWhat went well this week.\n' }],
+    },
+  ]);
+  const recentFile = path.join(paths.userDataDir, 'recent-vault.json');
+  const recent = JSON.parse(readFileSync(recentFile, 'utf8')) as { recent: unknown };
+  writeFileSync(recentFile, JSON.stringify({ recent: recent.recent }, null, 2), 'utf8');
+  const { app, page } = await launchApp(paths.userDataDir);
+  const pageErrors: string[] = [];
+  const consoleErrors: string[] = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error)));
+  page.on('console', (message) => {
+    if (message.type() === 'error') consoleErrors.push(message.text());
+  });
+  try {
+    await waitForApp(page);
+    // Nothing is open yet: the Libraries picker is showing.
+    await expect(page.getByRole('heading', { name: 'Libraries', level: 2, exact: true })).toBeVisible({
+      timeout: 30000,
+    });
+    await app.evaluate(() => {
+      const proc = globalThis.process as unknown as {
+        mainModule?: { require?: (id: string) => Record<string, unknown> };
+      };
+      const target = proc.mainModule?.require?.('node:fs/promises') as unknown as {
+        writeFile: (...args: unknown[]) => Promise<unknown>;
+      };
+      const original = target.writeFile;
+      let failedOnce = false;
+      target.writeFile = (async (...args: unknown[]) => {
+        const filePath = args[0];
+        if (!failedOnce && typeof filePath === 'string' && filePath.includes('.import-')) {
+          failedOnce = true;
+          (globalThis as unknown as { __seedWriteStubThrew?: boolean }).__seedWriteStubThrew = true;
+          const error = new Error('Simulated transient staging write failure') as NodeJS.ErrnoException;
+          error.code = 'EPERM';
+          throw error;
+        }
+        return original(...args);
+      }) as typeof target.writeFile;
+    });
+    // The tutorial opens on first launch and makes the shell inert, so
+    // dismiss it before touching the picker.
+    await dismissTutorial(page);
+    // Open the recent library from the picker: double-clicking its row opens it.
+    await page.getByRole('gridcell', { name: 'library', exact: true }).dblclick();
+    await expect(page.getByRole('gridcell', { name: 'Work' })).toBeVisible({ timeout: 30000 });
+
+    // The retry lands Daily on a later pass: all five built-ins appear.
+    await expect(page.getByRole('gridcell', { name: 'Templates' })).toBeVisible({ timeout: 30000 });
+    await openNotebook(page, 'Templates');
+    for (const name of ['Daily.md', 'Meeting.md', 'Project.md', 'Reading.md', 'Lecture.md']) {
+      await expect(page.getByRole('gridcell', { name })).toBeVisible({ timeout: 30000 });
+    }
+    // The patch really fired, and the failure reached the seeding
+    // retry: without the injected failure this test would pass without
+    // exercising the retry at all.
+    expect(
+      await app.evaluate(() => (globalThis as unknown as { __seedWriteStubThrew?: boolean }).__seedWriteStubThrew),
+    ).toBe(true);
+    expect(consoleErrors.some((text) => text.includes('Template seeding failed for Daily'))).toBe(true);
     expect(pageErrors).toEqual([]);
   } finally {
     await closeApp(app, paths);
