@@ -191,18 +191,38 @@ describe('dictation microphone', () => {
     expect(screen.getByRole('button', { name: 'Stop dictation' })).toBeInTheDocument();
   });
 
-  it('F9 outside dictation keeps toggling the right pane and never touches the microphone', async () => {
+  it('F9 outside dictation does nothing: the pane stays open and the microphone stays untouched', async () => {
     const getUserMedia = vi.fn(async () => ({ getTracks: () => [] }));
     installBridge(getUserMedia);
     render(<App />);
     await screen.findByRole('heading', { name: 'Study' });
 
-    // F9 is the Toggle right pane shortcut; it keeps that job when the
-    // user is not dictating, and the microphone stays untouched.
+    // F9 is the microphone toggle now: outside dictation it must stay
+    // silent — no announcement, no pane change, no microphone use.
+    expect(screen.getByRole('complementary', { name: 'Right information pane' })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: 'F9' });
+    expect(screen.getByRole('complementary', { name: 'Right information pane' })).toBeInTheDocument();
+    expect(screen.queryByText('Right pane closed.')).not.toBeInTheDocument();
+    expect(getUserMedia).not.toHaveBeenCalled();
+  });
+
+  it('F8 toggles the right pane and F9 no longer does', async () => {
+    const getUserMedia = vi.fn(async () => ({ getTracks: () => [] }));
+    installBridge(getUserMedia);
+    render(<App />);
+    await screen.findByRole('heading', { name: 'Study' });
+
+    fireEvent.keyDown(window, { key: 'F8' });
     await expectStatus('Right pane closed.');
-    fireEvent.keyDown(window, { key: 'F9' });
+    expect(screen.queryByRole('complementary', { name: 'Right information pane' })).not.toBeInTheDocument();
+    fireEvent.keyDown(window, { key: 'F8' });
     await expectStatus('Right pane opened.');
+    expect(screen.getByRole('complementary', { name: 'Right information pane' })).toBeInTheDocument();
+
+    // F9 used to own this job; now it leaves the pane alone.
+    fireEvent.keyDown(window, { key: 'F9' });
+    expect(screen.getByRole('complementary', { name: 'Right information pane' })).toBeInTheDocument();
+    expect(screen.queryByText('Right pane closed.')).not.toBeInTheDocument();
     expect(getUserMedia).not.toHaveBeenCalled();
   });
 

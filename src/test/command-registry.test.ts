@@ -182,6 +182,23 @@ describe('command registry', () => {
     });
   });
 
+  it('binds F9 to the dictation microphone toggle and F8 to the right pane', () => {
+    // F9 used to toggle the right pane; Tristen ruled it owns the
+    // microphone instead, and the pane moved to F8. F6 stays the
+    // focus-between-panes key and F2 stays rename, so neither was free.
+    const shortcuts = getKeyboardShortcuts();
+    expect(shortcuts).toContainEqual({
+      commandId: 'toggle-dictation-microphone',
+      label: 'Mute or unmute microphone while dictating',
+      shortcut: 'F9',
+    });
+    expect(shortcuts).toContainEqual({
+      commandId: 'toggle-right-pane',
+      label: 'Toggle right pane',
+      shortcut: 'F8',
+    });
+  });
+
   it('offers PDF annotation actions only in their matching contexts without conflicting default shortcuts', () => {
     expect(getContextMenuCommands('pdf-selection', true).map(({ id }) => id)).toEqual(['annotate-pdf-selection']);
     expect(getContextMenuCommands('pdf-selection', false)).toEqual([]);
