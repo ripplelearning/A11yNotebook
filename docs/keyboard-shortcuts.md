@@ -66,6 +66,8 @@ On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 | Ctrl+Alt+H     | Bookmark heading at cursor                |
 | Ctrl+Alt+B     | Bookmark position at cursor               |
 | Ctrl+Alt+J     | Jump to next bookmark                     |
+| Ctrl+PageDown  | Next spreadsheet sheet                    |
+| Ctrl+PageUp    | Previous spreadsheet sheet                |
 | F11            | Toggle Focus Mode                         |
 | Ctrl+M         | Edit note metadata…                       |
 | Ctrl+W         | Close current item                        |
@@ -101,14 +103,15 @@ Quick Task has no default shortcut on macOS; assign one in Settings.
 These are defaults; Settings can change command bindings. Help and the command palette show active bindings.
 Standard text editing and pane/tab navigation are reserved.
 
-| Context               | Keys / behavior                                                                                       |
-| --------------------- | ----------------------------------------------------------------------------------------------------- |
-| Global context menu   | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape         |
-| Rich-text toolbar     | One tab stop; Left/Right, Home/End; Tab leaves toolbar                                                |
-| Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder                             |
-| Editable grid         | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header |
-| Details grid          | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames  |
-| Flashcards            | Tab to Show answer, then Again/Hard/Good/Easy                                                         |
+| Context               | Keys / behavior                                                                                                                                                                                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Global context menu   | Shift+F10 / Applications key / right-click; arrows, Home/End, type-ahead, Enter/Space, Escape                                                                                                                                                                        |
+| Rich-text toolbar     | One tab stop; Left/Right, Home/End; Tab leaves toolbar                                                                                                                                                                                                               |
+| Outline/mind-map tree | Arrows; Enter new item; Tab/Shift+Tab indent/outdent; Alt+Up/Down reorder                                                                                                                                                                                            |
+| Editable grid         | Arrows, Home/End; Enter/F2 edit; Enter commit; Shift+Enter newline; Escape cancel; Space sorts header                                                                                                                                                                |
+| Spreadsheet grid      | Arrows move the active cell; Shift+Arrows extend the selection; F2 edits; typing starts editing; Enter commits and moves down; Shift+Enter commits and moves up; Tab commits and moves to the next cell; Escape cancels; Ctrl+PageUp and Ctrl+PageDown switch sheets |
+| Details grid          | Arrows/Home/End navigate cells and headers; Enter opens or sorts; Space selects or sorts; F2 renames                                                                                                                                                                 |
+| Flashcards            | Tab to Show answer, then Again/Hard/Good/Easy                                                                                                                                                                                                                        |
 
 ## Customize and capture
 

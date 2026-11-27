@@ -4,7 +4,7 @@ import { imageUrl, type AttachmentPreview } from '../../../shared/attachments';
 import { isAudioPath } from '../../../shared/audio';
 import PlainTextDocument from '../vault/PlainTextDocument';
 import DocumentReader, { type PdfBookmarkApi } from './DocumentReader';
-import SpreadsheetView from './SpreadsheetView';
+import SpreadsheetView, { type SpreadsheetSheetApi } from './SpreadsheetView';
 import SlideDeckView from './SlideDeckView';
 
 interface Props {
@@ -23,6 +23,8 @@ interface Props {
   onOpenTranscript?: () => void;
   /** App's Ctrl+S calls the spreadsheet save function registered here. */
   spreadsheetSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
+  /** The open spreadsheet registers its sheet-switching API here. */
+  spreadsheetSheetRef?: MutableRefObject<SpreadsheetSheetApi | null>;
   /** App's Ctrl+S calls the OCR save function registered here, when temporary OCR text is showing. */
   ocrSaveRef?: MutableRefObject<(() => Promise<void>) | null>;
   /** Called with the new path after an .xls file is saved as .xlsx. */
@@ -42,6 +44,7 @@ export default function AttachmentView({
   transcriptPath,
   onOpenTranscript,
   spreadsheetSaveRef,
+  spreadsheetSheetRef,
   ocrSaveRef,
   onSpreadsheetFileCreated,
   pdfBookmarkRef,
@@ -142,6 +145,7 @@ export default function AttachmentView({
           path={preview.path}
           announce={announce}
           spreadsheetSaveRef={spreadsheetSaveRef}
+          spreadsheetSheetRef={spreadsheetSheetRef}
           onFileCreated={onSpreadsheetFileCreated}
         />
       ) : slides ? (

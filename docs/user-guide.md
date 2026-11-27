@@ -1312,16 +1312,29 @@ any attachment and open in an editable grid. Slide decks (`.pptx`,
 `.odp`, up to 40 MB) open as read-only text: a list of slides with
 titles, body text, and speaker notes.
 
-**Edit a spreadsheet.** Open the file to see its sheets as a table with
-row numbers and column letters. Each cell is a text box labelled with
-its row and column; type a new value and move on — numbers stay numbers,
-TRUE and FALSE stay true and false, and a date typed into a cell that
-already held a date stays a date. Cells that hold a formula show the
-formula's calculated value and are labelled as formulas; editing one
-replaces the formula with the value you type. Use **Add row** and **Add
-column** to grow the sheet at the end, and **Delete row** / **Delete
-column** to remove the row or column the focused cell is in. When a
-workbook has more than one sheet, pick the sheet from the **Sheet** list.
+**Move around a spreadsheet.** Open the file to see its sheets as a
+grid with row numbers and column letters. Arrow keys move the active
+cell; Home and End jump to the start and end of the row, Ctrl+Home and
+Ctrl+End jump to the first and last used cells, and PageUp and PageDown
+move by a screenful. Tab moves to the next cell and wraps to the next
+row; Shift+Tab goes back. Hold Shift with the arrow keys to select a
+range of cells — the app tells you the range and how big it is, for
+example "B2 to D4, 3 rows by 3 columns". When a workbook has more than
+one sheet, pick the sheet from the **Sheet** list, or press
+**Ctrl+PageDown** and **Ctrl+PageUp** to move between sheets.
+
+**Edit a cell.** Press **F2** to edit the active cell, or just start
+typing — typing replaces the cell with what you type. Double-clicking a
+cell edits it too. **Enter** saves the new value and moves down,
+**Shift+Enter** saves and moves up, **Tab** saves and moves to the next
+cell, and **Escape** cancels and restores the old value. Numbers stay
+numbers, TRUE and FALSE stay true and false, and a date typed into a
+cell that already held a date stays a date. Cells that hold a formula
+show the formula's calculated value and are labelled as formulas;
+editing one replaces the formula with the value you type. Use **Add
+row** and **Add column** to grow the sheet at the end, and **Delete
+row** / **Delete column** to remove the row or column the active cell
+is in.
 
 **Save a spreadsheet.** Press **Ctrl+S**, or the **Save spreadsheet**
 button, to save back into the same file, like a note. Old binary `.xls`
