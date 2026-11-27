@@ -54,6 +54,7 @@ function setup() {
         });
       }),
       createNote: vi.fn(async () => vault),
+      createSpreadsheet: vi.fn(async () => vault),
       createNotebook: vi.fn(async () => vault),
       rename: vi.fn(async () => vault),
       delete: vi.fn(async () => vault),

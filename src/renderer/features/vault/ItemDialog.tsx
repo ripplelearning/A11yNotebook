@@ -12,14 +12,14 @@ export interface ItemDialogRequest {
 interface Props {
   request: ItemDialogRequest;
   notebooks: string[];
-  onSubmit: (name: string, notebook: string, format?: 'markdown' | 'html' | 'txt') => Promise<void>;
+  onSubmit: (name: string, notebook: string, format?: 'markdown' | 'html' | 'txt' | 'spreadsheet') => Promise<void>;
   onClose: () => void;
 }
 
 export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Props) {
   const [name, setName] = useState(request.name ?? '');
   const [notebook, setNotebook] = useState('');
-  const [format, setFormat] = useState<'markdown' | 'html' | 'txt'>('markdown');
+  const [format, setFormat] = useState<'markdown' | 'html' | 'txt' | 'spreadsheet'>('markdown');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const title = { 'new-note': 'New note', 'new-notebook': 'New notebook', rename: 'Rename item', move: 'Move item' }[
@@ -72,10 +72,14 @@ export default function ItemDialog({ request, notebooks, onSubmit, onClose }: Pr
         {request.action === 'new-note' ? (
           <label>
             Note format
-            <select value={format} onChange={(event) => setFormat(event.target.value as 'markdown' | 'html' | 'txt')}>
+            <select
+              value={format}
+              onChange={(event) => setFormat(event.target.value as 'markdown' | 'html' | 'txt' | 'spreadsheet')}
+            >
               <option value="markdown">Markdown (.md)</option>
               <option value="html">HTML (.html)</option>
               <option value="txt">Plain text (.txt)</option>
+              <option value="spreadsheet">Spreadsheet (.xlsx)</option>
             </select>
           </label>
         ) : null}

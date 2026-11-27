@@ -26,6 +26,7 @@ function setup(focus: { libraryPath: string; reminderId: string } | null, remind
       open: vi.fn(async () => vault),
       get: vi.fn(async () => vault),
       createNote: vi.fn(async () => vault),
+      createSpreadsheet: vi.fn(async () => vault),
       createNotebook: vi.fn(async () => vault),
       rename: vi.fn(async () => vault),
       delete: vi.fn(async () => vault),

@@ -5190,7 +5190,11 @@ export default function App() {
     setItemDialog({ action: 'rename', path: entryPath, name: entryPath.split('/').at(-1) });
   };
 
-  const submitItem = async (name: string, notebook: string, format: 'markdown' | 'html' | 'txt' = 'markdown') => {
+  const submitItem = async (
+    name: string,
+    notebook: string,
+    format: 'markdown' | 'html' | 'txt' | 'spreadsheet' = 'markdown',
+  ) => {
     const bridge = window.a11yNotebook?.vault;
     if (!bridge || !vault || !itemDialog) return;
     const request = itemDialog;
@@ -5207,11 +5211,17 @@ export default function App() {
             (selected?.kind === 'notebook' ? selected.path : (selected?.path.split('/').slice(0, -1).join('/') ?? '')));
       const leaf =
         request.action === 'new-note'
-          ? `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : format === 'txt' ? 'txt' : 'md'}`
+          ? format === 'spreadsheet'
+            ? `${name.replace(/\.xlsx$/i, '')}.xlsx`
+            : `${name.replace(/\.(?:md|html|htm|txt)$/i, '')}.${format === 'html' ? 'html' : format === 'txt' ? 'txt' : 'md'}`
           : name;
       const relative = [parent, leaf].filter(Boolean).join('/');
       setVault(
-        request.action === 'new-note' ? await bridge.createNote(relative) : await bridge.createNotebook(relative),
+        request.action === 'new-note'
+          ? format === 'spreadsheet'
+            ? await bridge.createSpreadsheet(relative)
+            : await bridge.createNote(relative)
+          : await bridge.createNotebook(relative),
       );
       if (request.action === 'new-notebook') {
         // The new notebook becomes the selected notebook, so its Notes
@@ -5220,8 +5230,12 @@ export default function App() {
         setTreeSelection(relative);
       }
       if (request.action === 'new-note')
-        await openEntry({ name: leaf, path: relative, kind: 'note', provenance: 'created' });
-      if (request.action === 'new-note') {
+        await openEntry(
+          format === 'spreadsheet'
+            ? { name: leaf, path: relative, kind: 'attachment', provenance: 'created' }
+            : { name: leaf, path: relative, kind: 'note', provenance: 'created' },
+        );
+      if (request.action === 'new-note' && format !== 'spreadsheet') {
         // A note that was just created is created to be written in: it
         // opens in Editing mode with the editor focused, regardless of
         // the default open mode. The refs survive the mode effect that
@@ -5237,7 +5251,7 @@ export default function App() {
           parent ? `Notebook created inside ${parent}.` : 'Notebook created in the Library root.',
         );
       } else {
-        setStatusMessage('Note created.');
+        setStatusMessage(format === 'spreadsheet' ? 'Spreadsheet created.' : 'Note created.');
       }
       return;
     }

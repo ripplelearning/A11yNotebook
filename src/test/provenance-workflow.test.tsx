@@ -39,6 +39,7 @@ function installBridge() {
       saveNote: vi.fn(),
       createNotebook: vi.fn(async () => library),
       createNote: vi.fn(async () => library),
+      createSpreadsheet: vi.fn(async () => library),
       rename: vi.fn(async () => library),
       delete: vi.fn(async () => library),
       deletePermanently: vi.fn(async () => library),

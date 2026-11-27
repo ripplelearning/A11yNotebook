@@ -42,6 +42,7 @@ describe('local vault workflow', () => {
         saveNote: vi.fn(async () => undefined),
         createNotebook: vi.fn(async () => vault),
         createNote: vi.fn(async () => vault),
+        createSpreadsheet: vi.fn(async () => vault),
         rename: vi.fn(async () => vault),
         reveal: vi.fn(async () => undefined),
         openExternal: vi.fn(async () => undefined),
