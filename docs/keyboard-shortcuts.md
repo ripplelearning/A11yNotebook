@@ -4,82 +4,83 @@ Generated from `src/shared/command-registry.ts` by `npm run docs:shortcuts`.
 
 On macOS, use Command (⌘) in place of Ctrl and Option in place of Alt.
 
-| Shortcut       | Command                                 |
-| -------------- | --------------------------------------- |
-| Ctrl+N         | New in current view                     |
-| Ctrl+Shift+B   | Back up library                         |
-| Ctrl+Shift+O   | Open in external app                    |
-| Ctrl+Q         | Quick Task                              |
-| Ctrl+Alt+L     | Add link                                |
-| Ctrl+Alt+D     | Dictate                                 |
-| Ctrl+0         | Contents view                           |
-| Ctrl+1         | Libraries                               |
-| Ctrl+2         | Notebooks                               |
-| Ctrl+3         | Notes & Files                           |
-| Ctrl+Shift+V   | Organize library                        |
-| Alt+ArrowLeft  | Back in history                         |
-| Alt+ArrowRight | Forward in history                      |
-| Ctrl+Shift+I   | Import file                             |
-| Ctrl+Shift+X   | Export note…                            |
-| Ctrl+Shift+W   | Capture webpage…                        |
-| Ctrl+Shift+E   | Reveal selected item in Explorer        |
-| Ctrl+Shift+Y   | Encrypt current note…                   |
-| Ctrl+Shift+F   | Convert current note to another format… |
-| Ctrl+Shift+G   | Convert current note to outline…        |
-| Ctrl+Shift+M   | Insert image or attachment              |
-| Ctrl+Shift+C   | Citation generator…                     |
-| Ctrl+Shift+J   | Bibliography…                           |
-| Ctrl+Alt+S     | Settings                                |
-| F7             | Spelling and Grammar Check              |
-| Shift+F7       | Thesaurus                               |
-| Ctrl+Shift+N   | New note from template                  |
-| Ctrl+Shift+S   | Save note as template…                  |
-| Ctrl+Shift+A   | Annotate selection                      |
-| Ctrl+Alt+A     | Annotate PDF selection                  |
-| Ctrl+Alt+P     | Annotate this paragraph/heading/cell    |
-| Ctrl+7         | Open Reminders                          |
-| Ctrl+Shift+R   | Open Reminders                          |
-| Ctrl+6         | Calendar                                |
-| Ctrl+5         | Cognitive tools                         |
-| Ctrl+B         | Bold                                    |
-| Ctrl+I         | Italic                                  |
-| Ctrl+Alt+1     | Heading 1                               |
-| Ctrl+Alt+2     | Heading 2                               |
-| Ctrl+Alt+3     | Heading 3                               |
-| Ctrl+Alt+4     | Heading 4                               |
-| Ctrl+Alt+5     | Heading 5                               |
-| Ctrl+Alt+6     | Heading 6                               |
-| Ctrl+Alt+8     | Bulleted list                           |
-| Ctrl+Alt+7     | Numbered list                           |
-| Ctrl+Alt+9     | Checkbox list                           |
-| Ctrl+Alt+Q     | Quote                                   |
-| Ctrl+Alt+C     | Code block                              |
-| Ctrl+Shift+L   | Insert link                             |
-| Ctrl+K         | Insert link                             |
-| Ctrl+Alt+T     | Insert table                            |
-| Alt+=          | Insert math                             |
-| Ctrl+O         | Open library                            |
-| Ctrl+S         | Save note                               |
-| Ctrl+4         | Tasks                                   |
-| Ctrl+D         | Toggle note bookmark                    |
-| Ctrl+Alt+H     | Bookmark heading at cursor              |
-| Ctrl+Alt+B     | Bookmark position at cursor             |
-| Ctrl+Alt+J     | Jump to next bookmark                   |
-| F11            | Toggle Focus Mode                       |
-| Ctrl+M         | Edit note metadata…                     |
-| Ctrl+W         | Close current item                      |
-| Ctrl+E         | Toggle read-only/edit mode              |
-| Ctrl+R         | Enable reading mode                     |
-| Ctrl+F         | Find in document                        |
-| F3             | Find next match                         |
-| Shift+F3       | Find previous match                     |
-| F9             | Toggle right pane                       |
-| Alt+Q          | Open search                             |
-| Ctrl+Shift+P   | Command Palette                         |
-| F5             | Refresh links                           |
-| F1             | User Guide                              |
-| Ctrl+Shift+U   | Check for Updates                       |
-| Ctrl+Shift+H   | About A11y Notebook                     |
+| Shortcut       | Command                                   |
+| -------------- | ----------------------------------------- |
+| Ctrl+N         | New in current view                       |
+| Ctrl+Shift+B   | Back up library                           |
+| Ctrl+Shift+O   | Open in external app                      |
+| Ctrl+Q         | Quick Task                                |
+| Ctrl+Alt+L     | Add link                                  |
+| Ctrl+Alt+D     | Dictate                                   |
+| F9             | Mute or unmute microphone while dictating |
+| Ctrl+0         | Contents view                             |
+| Ctrl+1         | Libraries                                 |
+| Ctrl+2         | Notebooks                                 |
+| Ctrl+3         | Notes & Files                             |
+| Ctrl+Shift+V   | Organize library                          |
+| Alt+ArrowLeft  | Back in history                           |
+| Alt+ArrowRight | Forward in history                        |
+| Ctrl+Shift+I   | Import file                               |
+| Ctrl+Shift+X   | Export note…                              |
+| Ctrl+Shift+W   | Capture webpage…                          |
+| Ctrl+Shift+E   | Reveal selected item in Explorer          |
+| Ctrl+Shift+Y   | Encrypt current note…                     |
+| Ctrl+Shift+F   | Convert current note to another format…   |
+| Ctrl+Shift+G   | Convert current note to outline…          |
+| Ctrl+Shift+M   | Insert image or attachment                |
+| Ctrl+Shift+C   | Citation generator…                       |
+| Ctrl+Shift+J   | Bibliography…                             |
+| Ctrl+Alt+S     | Settings                                  |
+| F7             | Spelling and Grammar Check                |
+| Shift+F7       | Thesaurus                                 |
+| Ctrl+Shift+N   | New note from template                    |
+| Ctrl+Shift+S   | Save note as template…                    |
+| Ctrl+Shift+A   | Annotate selection                        |
+| Ctrl+Alt+A     | Annotate PDF selection                    |
+| Ctrl+Alt+P     | Annotate this paragraph/heading/cell      |
+| Ctrl+7         | Open Reminders                            |
+| Ctrl+Shift+R   | Open Reminders                            |
+| Ctrl+6         | Calendar                                  |
+| Ctrl+5         | Cognitive tools                           |
+| Ctrl+B         | Bold                                      |
+| Ctrl+I         | Italic                                    |
+| Ctrl+Alt+1     | Heading 1                                 |
+| Ctrl+Alt+2     | Heading 2                                 |
+| Ctrl+Alt+3     | Heading 3                                 |
+| Ctrl+Alt+4     | Heading 4                                 |
+| Ctrl+Alt+5     | Heading 5                                 |
+| Ctrl+Alt+6     | Heading 6                                 |
+| Ctrl+Alt+8     | Bulleted list                             |
+| Ctrl+Alt+7     | Numbered list                             |
+| Ctrl+Alt+9     | Checkbox list                             |
+| Ctrl+Alt+Q     | Quote                                     |
+| Ctrl+Alt+C     | Code block                                |
+| Ctrl+Shift+L   | Insert link                               |
+| Ctrl+K         | Insert link                               |
+| Ctrl+Alt+T     | Insert table                              |
+| Alt+=          | Insert math                               |
+| Ctrl+O         | Open library                              |
+| Ctrl+S         | Save note                                 |
+| Ctrl+4         | Tasks                                     |
+| Ctrl+D         | Toggle note bookmark                      |
+| Ctrl+Alt+H     | Bookmark heading at cursor                |
+| Ctrl+Alt+B     | Bookmark position at cursor               |
+| Ctrl+Alt+J     | Jump to next bookmark                     |
+| F11            | Toggle Focus Mode                         |
+| Ctrl+M         | Edit note metadata…                       |
+| Ctrl+W         | Close current item                        |
+| Ctrl+E         | Toggle read-only/edit mode                |
+| Ctrl+R         | Enable reading mode                       |
+| Ctrl+F         | Find in document                          |
+| F3             | Find next match                           |
+| Shift+F3       | Find previous match                       |
+| F8             | Toggle right pane                         |
+| Alt+Q          | Open search                               |
+| Ctrl+Shift+P   | Command Palette                           |
+| F5             | Refresh links                             |
+| F1             | User Guide                                |
+| Ctrl+Shift+U   | Check for Updates                         |
+| Ctrl+Shift+H   | About A11y Notebook                       |
 
 Quick Task has no default shortcut on macOS; assign one in Settings.
 

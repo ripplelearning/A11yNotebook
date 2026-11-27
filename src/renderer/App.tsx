@@ -6766,13 +6766,14 @@ export default function App() {
   }, []);
 
   const toggleDictationMicrophone = () => {
+    // F9 does nothing when dictation is not active: no announcement,
+    // no state change. The command's description promises this, and a
+    // stray F9 press outside dictation must stay silent.
     if (!dictationActive) {
-      setStatusMessage('Dictation is not active.');
       return;
     }
     const recorder = dictationRecorderRef.current;
     if (!recorder) {
-      setStatusMessage('Dictation is not active.');
       return;
     }
     if (dictationMuted) {
@@ -7632,17 +7633,6 @@ export default function App() {
       return;
     }
     if (event.defaultPrevented || event.isComposing) return;
-    // F9 mutes or unmutes the microphone while dictation is active.
-    // F9 is also the Toggle right pane shortcut, and the command
-    // registry forbids two commands sharing a shortcut, so the mic
-    // toggle is wired here instead of in the registry: while dictating
-    // F9 owns the microphone, and otherwise it keeps toggling the
-    // right pane as before.
-    if (dictationActive && matchesShortcut(event, 'F9', isMac)) {
-      event.preventDefault();
-      toggleDictationMicrophone();
-      return;
-    }
     const command = COMMANDS.find((item) =>
       effectiveCommandShortcuts(item, settings.shortcuts, settings.shortcutAliases, isMac).some((shortcut) =>
         matchesShortcut(event, shortcut, isMac),

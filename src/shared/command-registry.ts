@@ -260,7 +260,8 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'toggle-dictation-microphone',
     label: 'Mute or unmute microphone while dictating',
     description:
-      'Turn the microphone off or on while dictation is active. F9 does this while dictating; otherwise the microphone can only be toggled from here. Does nothing when dictation is not active.',
+      'Turn the microphone off or on while dictation is active. Does nothing when dictation is not active.',
+    shortcut: 'F9',
     contexts: ['general'],
   },
   {
@@ -885,7 +886,7 @@ export const COMMANDS: CommandDefinition[] = [
     id: 'toggle-right-pane',
     label: 'Toggle right pane',
     description: 'Show or hide the right information pane.',
-    shortcut: 'F9',
+    shortcut: 'F8',
   },
   {
     id: 'focus-search',
