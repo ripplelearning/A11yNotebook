@@ -73,6 +73,7 @@ export const RELEASE_NOTES_SECTIONS: { heading: string; items: string[] }[] = [
       'Emailing a note now opens an editable draft in your mail app instead of a read-only message.',
       'A template stays in the "new note from template" picker even after its file was replaced by a cloud sync.',
       'Choosing a transcription model can no longer be silently undone by a settings save racing it.',
+      'Copying the built-in templates into a library’s Templates folder now retries a few times when a copy fails, one template at a time, so a slow start no longer leaves the folder empty — and a copying failure no longer leaves a stale error in the status line.',
     ],
   },
 ];
