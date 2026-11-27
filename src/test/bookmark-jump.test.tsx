@@ -255,6 +255,63 @@ describe('bookmark jump from the side pane', () => {
     expect(window.getSelection()?.toString()).toBe('Setup');
   });
 
+  it('does not let a late resume steal focus from a Bookmarks-list button', async () => {
+    // The 1.9.27 release build failed on Windows because the saved-position
+    // resume resolved while a Bookmarks-list button had focus, yanking
+    // focus onto the resumed heading — so the following Enter went to the
+    // heading instead of activating the bookmark. Hold the resume open
+    // with a deferred load, focus the button without activating it, then
+    // let the resume resolve: it must stand down.
+    const savedPosition: ReadingPosition = {
+      path: 'Note.md',
+      heading: 'Title',
+      occurrence: 0,
+      updated: new Date().toISOString(),
+    };
+    let resolveSaved: (value: ReadingPosition | null) => void = () => undefined;
+    const getReadingPositionImpl = () =>
+      new Promise<ReadingPosition | null>((resolve) => {
+        resolveSaved = resolve;
+      });
+    setup([headingBookmark], content, null, {}, getReadingPositionImpl);
+    await openNote();
+    const jumpButton = screen.getByRole('button', { name: 'Setup — Note.md' });
+    jumpButton.focus();
+    expect(document.activeElement).toBe(jumpButton);
+    await act(async () => {
+      resolveSaved(savedPosition);
+    });
+    // The resume must not have landed: focus stays on the button, and no
+    // "Resumed at" announcement appears.
+    expect(document.activeElement).toBe(jumpButton);
+    expect(statusBar()).not.toHaveTextContent('Resumed at Title.');
+  });
+
+  it('still resumes when focus has not moved since the note opened', async () => {
+    // The same deferred load, with focus left where opening the note put
+    // it: the resume must land as before.
+    const savedPosition: ReadingPosition = {
+      path: 'Note.md',
+      heading: 'Title',
+      occurrence: 0,
+      updated: new Date().toISOString(),
+    };
+    let resolveSaved: (value: ReadingPosition | null) => void = () => undefined;
+    const getReadingPositionImpl = () =>
+      new Promise<ReadingPosition | null>((resolve) => {
+        resolveSaved = resolve;
+      });
+    setup([headingBookmark], content, null, {}, getReadingPositionImpl);
+    await openNote();
+    await act(async () => {
+      resolveSaved(savedPosition);
+    });
+    await waitFor(() => expect(statusBar()).toHaveTextContent('Resumed at Title.'));
+    expect(document.activeElement).toBe(
+      screen.getByRole('heading', { name: 'Title' }),
+    );
+  });
+
   it('lands on the bookmarked line for a position bookmark with no heading before it', async () => {
     const plainContent = 'Intro text.\n\nMore text.\n';
     const positionBookmark: VaultBookmark = {

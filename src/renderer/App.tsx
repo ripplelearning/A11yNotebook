@@ -4915,6 +4915,15 @@ export default function App() {
         // the focus now: resuming to the saved position would yank the
         // reader off the bookmarked heading.
         if (bookmarkJumpRef.current?.path === path) return;
+        // The reader may have moved on since this note opened — a
+        // bookmark activation, a click into the document, or focus on a
+        // control such as a Bookmarks-list button. The resume restores
+        // where reading stopped last time; it must not yank focus away
+        // from what the reader is doing now. It lands only while focus
+        // is still where opening the note left it (the tab panel) or
+        // nowhere yet.
+        const active = document.activeElement as HTMLElement | null;
+        if (active && active !== document.body && active !== tabPanelRef.current) return;
         const container = annotationTools.documentRef.current;
         const headings = container ? [...container.querySelectorAll<HTMLElement>('h1, h2, h3, h4, h5, h6')] : [];
         const wanted = normalizeHeadingText(saved.heading);
