@@ -752,6 +752,27 @@ describe('extended vault IPC integration', () => {
     expect(await readFile(path.join(mock.root, image!.path))).toEqual(bytes);
   });
 
+  it('saves a Webpage File capture as a webpage file in the picked notebook', async () => {
+    const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 1, 2, 3]);
+    mock.captureImages = [{ extension: '.png', bytes }];
+    const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.com', 'Folder', 'webpage')) as {
+      vault: import('../shared/types').VaultInfo;
+      notePath: string;
+    };
+    // The dot-prefixed mock title sanitizes to "Research", as for notes.
+    expect(result.notePath).toMatch(/^Folder\/Research-[0-9a-f]{8}\.webpage\.html$/);
+    const folder = result.vault.entries.find((entry) => entry.path === 'Folder')!;
+    const page = folder.children?.find((entry) => entry.path === result.notePath);
+    expect(page?.kind).toBe('webpage');
+    expect(page?.provenance).toBe('imported');
+    // The file holds the captured HTML, not a note, and its images sit
+    // beside it under the picked notebook.
+    expect(await readFile(path.join(mock.root, result.notePath), 'utf8')).toBe('<h1>Research</h1>');
+    const image = folder.children?.find((entry) => entry.name === 'Attachments')?.children?.[0].children?.[0];
+    expect(image?.provenance).toBe('imported');
+    expect(await readFile(path.join(mock.root, image!.path))).toEqual(bytes);
+  });
+
   it('refreshes the index only once when capturing multiple images and their note', async () => {
     await reopenWithoutWatcher();
     const bytes = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
@@ -1779,7 +1800,7 @@ describe('extended vault IPC integration', () => {
     expect(await response.text()).not.toContain('private-image');
   });
 
-  it.each(['markdown', 'html'])('creates visible capture notes for dot-prefixed titles (%s)', async (format) => {
+  it.each(['markdown', 'html', 'webpage'])('creates visible capture pages for dot-prefixed titles (%s)', async (format) => {
     for (const title of ['.Research', '. .Research', '.\u00a0.Research', '...']) {
       mock.captureTitle = title;
       const result = (await invoke(IPC_CHANNELS.vaultCaptureWeb, 'https://example.org/', '', format)) as {

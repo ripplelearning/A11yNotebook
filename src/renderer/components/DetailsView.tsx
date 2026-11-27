@@ -40,19 +40,25 @@ const CONTEXTS = {
   note: 'tree-note',
   attachment: 'attachment',
   link: 'link',
+  // A captured webpage is a file, so its rows get the file menu: open,
+  // open in an external app, reveal, delete, protect, and properties.
+  webpage: 'attachment',
 } as const;
 
 const cellKey = (path: string, column: Column) => `${path}\0${column}`;
 
 /** A note created as a task (dialog or Quick Task) shows Type "Task". Any
  * other note — including one that merely contains a checkbox task line —
- * shows its kind. An attachment shows its real file type ("PDF", "Word
- * document") instead of the generic "Attachment". An Alius record shows
- * Type "Alius", with "(broken)" when its original cannot be found. */
+ * shows its kind. A captured webpage file shows Type "Webpage". An
+ * attachment shows its real file type ("PDF", "Word document") instead of
+ * the generic "Attachment". An Alius record shows Type "Alius", with
+ * "(broken)" when its original cannot be found. */
 const typeLabel = (item: DetailsViewItem) =>
   item.kind === 'note' && item.provenance === 'task'
     ? 'Task'
-    : isAliusPath(item.path)
+    : item.kind === 'webpage'
+      ? 'Webpage'
+      : isAliusPath(item.path)
       ? item.aliusBroken
         ? 'Alius (broken)'
         : 'Alius'

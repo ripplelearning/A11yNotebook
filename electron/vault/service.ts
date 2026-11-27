@@ -60,6 +60,7 @@ import { createProtectionStore } from './protection';
 import { createSupersededStore } from './superseded';
 import { formatLinkFile, isAllowedLinkUrl, isLinkPath, linkFileName, parseLinkUrl } from '../../src/shared/links';
 import { aliusFileName, formatAliusFile, isAliusPath, parseAliusTarget } from '../../src/shared/alius';
+import { isWebpagePath } from '../../src/shared/webpage';
 import { readAliusTargetBytes, validateAliusTarget, writeAliusTargetBytes } from './alius';
 import {
   decryptLibraryFile,
@@ -652,13 +653,14 @@ export function createVaultService(
         const isNote = isNotePath(entry.name);
         const isLink = isLinkPath(entry.name);
         const isAlius = isAliusPath(entry.name);
+        const isWebpage = isWebpagePath(entry.name);
         const origin = await provenance.get(childPath, origins);
         const fileIdentity = await provenance.identity(childPath);
         if (fileIdentity) live.add(fileIdentity);
         const record: VaultEntry = {
           name: entry.name,
           path: childRelative,
-          kind: isAlius || isLink ? 'link' : isNote ? 'note' : 'attachment',
+          kind: isAlius || isLink ? 'link' : isWebpage ? 'webpage' : isNote ? 'note' : 'attachment',
           ...(origin ? { provenance: origin } : {}),
           ...(fileIdentity && fileIdentity in supersededRecords ? { superseded: true } : {}),
           ...(fileIdentity && fileIdentity in protectionRecords ? { protected: true } : {}),
@@ -2503,7 +2505,7 @@ export function createVaultService(
     const files: string[] = [];
     const collect = (entries: VaultEntry[]) => {
       for (const entry of entries) {
-        if (entry.kind === 'note' || entry.kind === 'attachment') files.push(entry.path);
+        if (entry.kind === 'note' || entry.kind === 'attachment' || entry.kind === 'webpage') files.push(entry.path);
         if (entry.children) collect(entry.children);
       }
     };

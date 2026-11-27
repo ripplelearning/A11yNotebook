@@ -125,7 +125,9 @@ export default function ItemPropertiesDialog({
       ? 'Notebook'
       : entry.kind === 'note'
         ? 'Note'
-        : isAliusPath(entry.path)
+        : entry.kind === 'webpage'
+          ? 'Webpage'
+          : isAliusPath(entry.path)
           ? 'Alius'
           : entry.kind === 'link'
             ? 'Link'

@@ -391,6 +391,50 @@ describe('accessible details view', () => {
     expect(within(grid).getAllByRole('gridcell', { name: 'note' })).toHaveLength(2);
   });
 
+  it('shows Type "Webpage" for a captured webpage file, not "note" or "Web page"', () => {
+    const webpageItems: VaultEntry[] = [
+      { name: 'Research-abc12345.webpage.html', path: 'Research/Research-abc12345.webpage.html', kind: 'webpage' },
+      { name: 'Note.md', path: 'Research/Note.md', kind: 'note' },
+    ];
+    renderDetails({ items: webpageItems });
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    expect(within(grid).getByRole('gridcell', { name: 'Webpage' })).toBeInTheDocument();
+    expect(within(grid).getByRole('gridcell', { name: 'note' })).toBeInTheDocument();
+    expect(within(grid).queryByRole('gridcell', { name: 'Web page' })).not.toBeInTheDocument();
+  });
+
+  it('sorts by Type with the same header interaction as sorting by Name', () => {
+    const typedItems: VaultEntry[] = [
+      { name: 'Zed.md', path: 'Research/Zed.md', kind: 'note' },
+      { name: 'Page.webpage.html', path: 'Research/Page.webpage.html', kind: 'webpage' },
+      { name: 'Data.csv', path: 'Research/Data.csv', kind: 'attachment' },
+    ];
+    renderDetails({ items: typedItems });
+    const grid = screen.getByRole('grid', { name: 'Notebook items' });
+    const typeHeader = within(grid).getByRole('button', { name: 'Type' });
+    const rowNames = () =>
+      within(grid)
+        .getAllByRole('row')
+        .slice(1)
+        .map((row) => within(row).getAllByRole('gridcell')[0].textContent);
+
+    // Default sort is by Name.
+    expect(rowNames()).toEqual(['Data.csv', 'Page.webpage.html', 'Zed.md']);
+    typeHeader.focus();
+    fireEvent.click(typeHeader);
+    expect(within(grid).getByRole('columnheader', { name: 'Type' })).toHaveAttribute('aria-sort', 'ascending');
+    expect(rowNames()).toEqual(['Data.csv', 'Zed.md', 'Page.webpage.html']);
+    fireEvent.click(typeHeader);
+    expect(within(grid).getByRole('columnheader', { name: 'Type' })).toHaveAttribute('aria-sort', 'descending');
+    expect(rowNames()).toEqual(['Page.webpage.html', 'Zed.md', 'Data.csv']);
+    // Keyboard: Enter on the focused Type header sorts again.
+    const typeColumn = within(grid).getByRole('columnheader', { name: 'Type' });
+    typeColumn.focus();
+    fireEvent.keyDown(typeColumn, { key: 'Enter' });
+    expect(within(grid).getByRole('columnheader', { name: 'Type' })).toHaveAttribute('aria-sort', 'ascending');
+    expect(rowNames()).toEqual(['Data.csv', 'Zed.md', 'Page.webpage.html']);
+  });
+
   it('shows nothing in notes and files until a notebook is selected (notebook silo)', () => {
     const entries: VaultEntry[] = [
       {
